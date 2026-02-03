@@ -12,6 +12,7 @@ class TaskLogEvent:
     ts: str
     level: str
     message: str
+    channel: str = "task"  # task | script
 
 
 class Task:
@@ -45,14 +46,18 @@ class Task:
     def _now_iso(self) -> str:
         return datetime.now(UTC).isoformat()
 
-    def log(self, level: str, message: str) -> None:
+    def log(self, level: str, message: str, *, channel: str = "task") -> None:
         level_l = level.lower().strip()
         if level_l in ("debug", "info", "warning", "error"):
             getattr(self._logger, level_l)(message)
         else:
             self._logger.info(message)
         if self._emit:
-            self._emit(TaskLogEvent(ts=self._now_iso(), level=level_l, message=message))
+            self._emit(TaskLogEvent(ts=self._now_iso(), level=level_l, message=message, channel=channel))
+
+    def script_log(self, level: str, message: str) -> None:
+        """Small-detail log stream coming from the underlying script/provider."""
+        self.log(level, message, channel="script")
 
     def run(self) -> None:
         """Override in subclasses."""
@@ -87,5 +92,8 @@ class DemoSleepTask(Task):
 
     def run(self) -> None:
         for i in range(1, 6):
+            # main/task log (big picture)
             self.log("info", f"working... step {i}/5")
+            # script log (small details)
+            self.script_log("info", f"script output line {i}: ok")
             time.sleep(self.seconds / 5)

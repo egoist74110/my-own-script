@@ -87,11 +87,35 @@ class MainWindow(QtWidgets.QMainWindow):
             QPushButton#PrimaryButton:hover { background: #334155; }
             QPushButton#PrimaryButton:pressed { background: #1f2937; }
 
-            QPlainTextEdit#LogBox {
+            QToolButton#MenuButton {
+              background: transparent;
+              color: #cbd5e1;
+              border-radius: 10px;
+              padding: 6px 10px;
+              border: 1px solid rgba(255,255,255,0.10);
+            }
+            QToolButton#MenuButton:hover { background: rgba(255,255,255,0.06); }
+
+            QTabWidget::pane {
+              border: 1px solid rgba(255,255,255,0.06);
+              border-radius: 12px;
+              top: -1px;
+              background: #0f1115;
+            }
+            QTabBar::tab {
+              background: #15181d;
+              color: #94a3b8;
+              padding: 8px 12px;
+              border-top-left-radius: 10px;
+              border-top-right-radius: 10px;
+              margin-right: 6px;
+            }
+            QTabBar::tab:selected { color: #e5e7eb; background: #0f1115; }
+
+            QPlainTextEdit#TaskLogBox, QPlainTextEdit#ScriptLogBox {
               background: #0f1115;
               color: #e5e7eb;
-              border-radius: 12px;
-              border: 1px solid rgba(255,255,255,0.06);
+              border: none;
               padding: 10px;
             }
             """
@@ -172,12 +196,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "模拟一次 publish / build 的执行与日志输出。",
         )
         self.card_demo_1.start_clicked.connect(self._run_demo_task)
+        self.card_demo_1.view_task_log.connect(lambda: self._show_logs("task"))
+        self.card_demo_1.view_script_log.connect(lambda: self._show_logs("script"))
 
         self.card_demo_2 = TaskRowCard(
             "同步状态（Demo）",
             "模拟从 storage 读取 job 状态（目前只是 UI demo）。",
         )
-        self.card_demo_2.start_clicked.connect(lambda: self._append_log(TaskLogEvent(ts=self._now(), level="info", message="status demo: TODO")))
+        self.card_demo_2.start_clicked.connect(
+            lambda: self._append_log(
+                TaskLogEvent(ts=self._now(), level="info", message="status demo: TODO", channel="task")
+            )
+        )
 
         v.addWidget(self.card_demo_1)
         v.addWidget(self.card_demo_2)
@@ -185,15 +215,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         scroll.setWidget(container)
 
-        self.log_box = QtWidgets.QPlainTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setObjectName("LogBox")
-        self.log_box.setPlaceholderText("任务日志会显示在这里…")
+        self.logs_tabs = QtWidgets.QTabWidget()
+        self.logs_tabs.setObjectName("LogsTabs")
+
+        self.task_log_box = QtWidgets.QPlainTextEdit()
+        self.task_log_box.setReadOnly(True)
+        self.task_log_box.setObjectName("TaskLogBox")
+        self.task_log_box.setPlaceholderText("主日志：展示任务大类事件（开始/成功/失败/超时/拒绝等）")
+
+        self.script_log_box = QtWidgets.QPlainTextEdit()
+        self.script_log_box.setReadOnly(True)
+        self.script_log_box.setObjectName("ScriptLogBox")
+        self.script_log_box.setPlaceholderText("脚本日志：展示脚本/子任务输出细节")
+
+        self.logs_tabs.addTab(self.task_log_box, "主日志")
+        self.logs_tabs.addTab(self.script_log_box, "脚本日志")
 
         layout.addWidget(header)
         layout.addWidget(scroll, 2)
-        layout.addWidget(QtWidgets.QLabel("日志"), 0)
-        layout.addWidget(self.log_box, 1)
+        layout.addWidget(self.logs_tabs, 1)
         return page
 
     def _build_settings_page(self) -> QtWidgets.QWidget:
@@ -223,11 +263,24 @@ class MainWindow(QtWidgets.QMainWindow):
         return datetime.now(UTC).isoformat()
 
     def _append_log(self, evt: TaskLogEvent) -> None:
-        self.log_box.appendPlainText(f"[{evt.ts}] {evt.level.upper()} {evt.message}")
+        line = f"[{evt.ts}] {evt.level.upper()} {evt.message}"
+        if evt.channel == "script":
+            self.script_log_box.appendPlainText(line)
+        else:
+            self.task_log_box.appendPlainText(line)
+
+    def _show_logs(self, which: str) -> None:
+        # focus the right tab
+        if which == "script":
+            self.logs_tabs.setCurrentWidget(self.script_log_box)
+        else:
+            self.logs_tabs.setCurrentWidget(self.task_log_box)
 
     def _run_demo_task(self) -> None:
         self.card_demo_1.set_status("running")
-        self.log_box.clear()
+        self.task_log_box.clear()
+        self.script_log_box.clear()
+        self._show_logs("task")
 
         def emit(evt: TaskLogEvent) -> None:
             # hop to UI thread
@@ -258,6 +311,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _append_log_slot(self, d: dict) -> None:
         evt = TaskLogEvent(**d)
         self._append_log(evt)
+
+        # auto-switch to script tab if script output is coming in and user asked for it
+        # (we keep it simple: do nothing here; user can use the dropdown)
 
 
 def main() -> None:
