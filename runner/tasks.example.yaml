@@ -1,0 +1,17 @@
+apps:
+  web:
+    provider: github
+    repo: your_org/your_web_repo
+    workflow: release.yml
+    allowed_envs: [dev, stage, prod]
+    env_default: prod
+    ref_default: main
+
+  api:
+    provider: azure
+    org: your_org
+    project: your_project
+    pipeline_id: 123
+    allowed_envs: [stage, prod]
+    env_default: stage
+    ref_default: main
