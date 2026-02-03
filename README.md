@@ -29,6 +29,18 @@ Edit `tasks.yaml` to define allowed apps, providers, envs, and defaults.
 
 ## Commands
 
+## UI (PySide6)
+
+Install deps then run:
+
+```bash
+my-own-script-ui
+```
+
+See `ui_app/README_UI.md`.
+
+## CLI Commands
+
 ### publish
 
 ```bash

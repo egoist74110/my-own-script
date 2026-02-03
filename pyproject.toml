@@ -15,10 +15,12 @@ dependencies = [
   "pydantic>=2.6.0",
   "PyYAML>=6.0.1",
   "keyring>=25.0.0",
+  "PySide6>=6.6.0",
 ]
 
 [project.scripts]
 my-own-script = "runner_app.cli:app"
+my-own-script-ui = "ui_app.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["runner_app"]
