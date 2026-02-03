@@ -10,37 +10,53 @@ class NavButton(QtWidgets.QPushButton):
             self.setIcon(icon)
         self.setCheckable(True)
         self.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.setMinimumHeight(36)
+        self.setMinimumHeight(40)
+        self.setObjectName("NavButton")
 
 
-class TaskCard(QtWidgets.QFrame):
+class TaskRowCard(QtWidgets.QFrame):
+    """A single row card in the task list (title + subtitle + start button)."""
+
+    start_clicked = QtCore.Signal()
+
     def __init__(self, title: str, subtitle: str = "") -> None:
         super().__init__()
-        self.setFrameShape(QtWidgets.QFrame.StyledPanel)
-        self.setFrameShadow(QtWidgets.QFrame.Raised)
-        self.setObjectName("TaskCard")
+        self.setObjectName("TaskRowCard")
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(6)
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(12)
+
+        left = QtWidgets.QVBoxLayout()
+        left.setSpacing(4)
 
         self.title = QtWidgets.QLabel(title)
-        self.title.setStyleSheet("font-weight: 600; font-size: 14px;")
+        self.title.setObjectName("TaskTitle")
 
         self.subtitle = QtWidgets.QLabel(subtitle)
-        self.subtitle.setStyleSheet("color: #666;")
+        self.subtitle.setWordWrap(True)
+        self.subtitle.setObjectName("TaskSubtitle")
 
         self.status = QtWidgets.QLabel("idle")
-        self.status.setStyleSheet("color: #1f2937;")
+        self.status.setObjectName("TaskStatus")
 
-        self.run_btn = QtWidgets.QPushButton("Run")
-        self.run_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-
-        layout.addWidget(self.title)
+        left.addWidget(self.title)
         if subtitle:
-            layout.addWidget(self.subtitle)
-        layout.addWidget(self.status)
-        layout.addWidget(self.run_btn, alignment=QtCore.Qt.AlignLeft)
+            left.addWidget(self.subtitle)
+        left.addWidget(self.status)
+
+        right = QtWidgets.QHBoxLayout()
+        right.setSpacing(10)
+
+        self.start_btn = QtWidgets.QPushButton("开始")
+        self.start_btn.setObjectName("PrimaryButton")
+        self.start_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.start_btn.clicked.connect(self.start_clicked.emit)
+
+        right.addWidget(self.start_btn)
+
+        root.addLayout(left, 1)
+        root.addLayout(right, 0)
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)
