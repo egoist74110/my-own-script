@@ -7,6 +7,7 @@ from typing import Optional
 import typer
 
 from runner_app.config import (
+    APP_ID,
     LocalConfig,
     load_local_config,
     load_tasks,
@@ -120,13 +121,13 @@ def setup() -> None:
         typer.echo("GitHub token: create a Personal Access Token with appropriate repo/workflow permissions.")
         token = getpass.getpass("Enter GITHUB token (hidden): ")
         if token.strip():
-            keyring.set_password("runner", "github_token", token.strip())
+            keyring.set_password(APP_ID, "github_token", token.strip())
 
     if use_azure:
         typer.echo("Azure DevOps token: create a PAT with build/release permissions.")
         token = getpass.getpass("Enter AZURE DevOps token (hidden): ")
         if token.strip():
-            keyring.set_password("runner", "azure_token", token.strip())
+            keyring.set_password(APP_ID, "azure_token", token.strip())
 
     if typer.confirm("Save default tasks.yaml path to user config?", default=True):
         path = typer.prompt("tasks.yaml path", default=str(resolve_tasks_path(None)))
@@ -136,8 +137,12 @@ def setup() -> None:
         saved = None
 
     # summary (never print token values)
-    gh_set = keyring.get_password("runner", "github_token") is not None
-    az_set = keyring.get_password("runner", "azure_token") is not None
+    gh_set = (keyring.get_password(APP_ID, "github_token") is not None) or (
+        keyring.get_password("runner", "github_token") is not None
+    )
+    az_set = (keyring.get_password(APP_ID, "azure_token") is not None) or (
+        keyring.get_password("runner", "azure_token") is not None
+    )
     _print_json(
         {
             "keyring": {"github_token": "saved" if gh_set else "missing", "azure_token": "saved" if az_set else "missing"},
@@ -157,8 +162,12 @@ def config_show() -> None:
     tasks_path = resolve_tasks_path(cfg.tasks_path)
     gh_env = bool(os.getenv("GITHUB_TOKEN"))
     az_env = bool(os.getenv("AZURE_DEVOPS_TOKEN"))
-    gh_kr = keyring.get_password("runner", "github_token") is not None
-    az_kr = keyring.get_password("runner", "azure_token") is not None
+    gh_kr = (keyring.get_password(APP_ID, "github_token") is not None) or (
+        keyring.get_password("runner", "github_token") is not None
+    )
+    az_kr = (keyring.get_password(APP_ID, "azure_token") is not None) or (
+        keyring.get_password("runner", "azure_token") is not None
+    )
 
     _print_json(
         {

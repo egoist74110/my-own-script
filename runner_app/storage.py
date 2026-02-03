@@ -18,7 +18,7 @@ class Storage:
     def __init__(self, db_path: Optional[Path] = None):
         dd = data_dir()
         dd.mkdir(parents=True, exist_ok=True)
-        self.db_path = db_path or (dd / "runner.sqlite")
+        self.db_path = db_path or (dd / "my-own-script.sqlite")
         self._init()
 
     def _connect(self) -> sqlite3.Connection:

@@ -1,4 +1,4 @@
-# runner
+# my-own-script
 
 A pure-Python **remote release execution runner** (currently stubbed providers) with a strict whitelist from `tasks.yaml`.
 
@@ -11,7 +11,7 @@ A pure-Python **remote release execution runner** (currently stubbed providers) 
 Using `pip` (editable):
 
 ```bash
-cd runner
+cd my-own-script
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -32,7 +32,7 @@ Edit `tasks.yaml` to define allowed apps, providers, envs, and defaults.
 ### publish
 
 ```bash
-runner publish web prod main
+my-own-script publish web prod main
 ```
 
 Outputs **JSON lines** (one JSON object per line):
@@ -50,19 +50,19 @@ Outputs **JSON lines** (one JSON object per line):
 ### build
 
 ```bash
-runner build web main
+my-own-script build web main
 ```
 
 ### status
 
 ```bash
-runner status gh:...
+my-own-script status gh:...
 ```
 
 ### logs
 
 ```bash
-runner logs gh:... --lines 100
+my-own-script logs gh:... --lines 100
 ```
 
 ### setup
@@ -70,19 +70,19 @@ runner logs gh:... --lines 100
 Interactive setup:
 
 ```bash
-runner setup
+my-own-script setup
 ```
 
-- Tokens are stored using `keyring` under service name `runner`.
+- Tokens are stored using `keyring` under service name `my-own-script`.
 - Env var override priority:
   1. `GITHUB_TOKEN` / `AZURE_DEVOPS_TOKEN`
-  2. keyring entries: `runner/github_token`, `runner/azure_token`
-  3. otherwise error + suggest `runner setup`
+  2. keyring entries: `my-own-script/github_token`, `my-own-script/azure_token` (back-compat read: `runner/github_token`, `runner/azure_token`)
+  3. otherwise error + suggest `my-own-script setup`
 
 ### config show
 
 ```bash
-runner config show
+my-own-script config show
 ```
 
 Prints JSON showing what is configured (never prints token values).
@@ -104,4 +104,4 @@ subprocess.run(["openclaw", "notify", ...])
 ## Notes
 
 - Providers (`github`, `azure`) are **stubs** now. They return fake run ids and URLs.
-- Storage uses SQLite in `~/.local/share/runner/runner.sqlite` (macOS/Linux).
+- Storage uses SQLite in `~/.local/share/my-own-script/my-own-script.sqlite` (macOS/Linux).

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.24.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "runner"
+name = "my-own-script"
 version = "0.1.0"
 description = "Remote release execution runner (stubbed providers)"
 readme = "README.md"
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-runner = "runner_app.cli:app"
+my-own-script = "runner_app.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["runner_app"]

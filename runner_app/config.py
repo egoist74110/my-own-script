@@ -30,12 +30,15 @@ class LocalConfig(BaseModel):
     tasks_path: Optional[str] = None
 
 
+APP_ID = "my-own-script"
+
+
 def config_dir() -> Path:
-    return Path.home() / ".config" / "runner"
+    return Path.home() / ".config" / APP_ID
 
 
 def data_dir() -> Path:
-    return Path.home() / ".local" / "share" / "runner"
+    return Path.home() / ".local" / "share" / APP_ID
 
 
 def load_local_config() -> LocalConfig:
@@ -60,7 +63,7 @@ def resolve_tasks_path(explicit: Optional[str] = None) -> Path:
         return Path(explicit).expanduser()
 
     # Next: env var
-    env_path = os.getenv("RUNNER_TASKS_PATH")
+    env_path = os.getenv("MY_OWN_SCRIPT_TASKS_PATH") or os.getenv("RUNNER_TASKS_PATH")
     if env_path:
         return Path(env_path).expanduser()
 

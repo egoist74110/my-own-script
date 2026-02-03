@@ -56,20 +56,22 @@ def require_token(provider: str) -> None:
 
     import keyring
 
+    from runner_app.config import APP_ID
+
     p = provider.lower()
     if p == "github":
         if os.getenv("GITHUB_TOKEN"):
             return
-        if keyring.get_password("runner", "github_token"):
+        if keyring.get_password(APP_ID, "github_token") or keyring.get_password("runner", "github_token"):
             return
-        raise RuntimeError("Missing GitHub token. Set GITHUB_TOKEN or run: runner setup")
+        raise RuntimeError("Missing GitHub token. Set GITHUB_TOKEN or run: my-own-script setup")
 
     if p == "azure":
         if os.getenv("AZURE_DEVOPS_TOKEN"):
             return
-        if keyring.get_password("runner", "azure_token"):
+        if keyring.get_password(APP_ID, "azure_token") or keyring.get_password("runner", "azure_token"):
             return
-        raise RuntimeError("Missing Azure DevOps token. Set AZURE_DEVOPS_TOKEN or run: runner setup")
+        raise RuntimeError("Missing Azure DevOps token. Set AZURE_DEVOPS_TOKEN or run: my-own-script setup")
 
 
 def publish(
@@ -149,7 +151,7 @@ def publish(
 
     notifier = get_notifier("openclaw")
     notifier.send(
-        title=f"runner publish {app} {env} {ref}",
+        title=f"my-own-script publish {app} {env} {ref}",
         content=f"job_id={job_id} status={final_status.value}",
         level="info" if final_status == JobStatus.success else "error",
         meta={"job_id": job_id, "run_url": run_url},
@@ -223,7 +225,7 @@ def build(
 
     notifier = get_notifier("openclaw")
     notifier.send(
-        title=f"runner build {app} {ref}",
+        title=f"my-own-script build {app} {ref}",
         content=f"job_id={job_id} status={final_status.value}",
         level="info" if final_status == JobStatus.success else "error",
         meta={"job_id": job_id, "run_url": run_url},
