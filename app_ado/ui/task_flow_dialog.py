@@ -40,9 +40,10 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         for p in settings.projects:
             self.project_combo.addItem(p.project, userData=p.id)
 
-        self.repo_combo = combo(); self.repo_combo.setEditable(True)
-        self.source_combo = combo(); self.source_combo.setEditable(True)
-        self.target_combo = combo(); self.target_combo.setEditable(True)
+        # QFluentWidgets ComboBox doesn't support setEditable; keep it selectable only.
+        self.repo_combo = combo()
+        self.source_combo = combo()
+        self.target_combo = combo()
 
         self.repo_path = LineEdit(); self.repo_path.setFixedWidth(420)
         self.btn_pick_path = PushButton("选择...")
