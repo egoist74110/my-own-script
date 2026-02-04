@@ -251,7 +251,12 @@ class ProjectDialog(QDialog):
 
         def fail(err: NetError) -> None:
             self._set_loading(False)
-            details = f"URL: {err.url}\n状态码: {err.status}\n错误: {err.message}\n\nBody(截断):\n{err.body or ''}"
+            hint = "\n\n可能原因/建议：\n- 服务器/代理不支持 HTTP/2：已在客户端强制 HTTP/1.1（如仍失败请反馈）\n- PAT 无效或权限不足也会 401（但这里提示更像协议问题）\n"
+            details = (
+                f"URL: {err.url}\n状态码: {err.status}\n错误: {err.message}"
+                f"\n\nBody(截断):\n{err.body or ''}"
+                + hint
+            )
             show_error_dialog(self, "获取 Projects 失败", details)
 
         job.ok.connect(ok)

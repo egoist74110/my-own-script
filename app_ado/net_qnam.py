@@ -64,7 +64,15 @@ class NetJob(QtCore.QObject):
 
         err = r.error()
         if err != QtNetwork.QNetworkReply.NetworkError.NoError:
-            self.failed.emit(NetError(f"{self._tag} {r.errorString()}".strip(), url=self._url, status=status_i, body=raw[:2000]))
+            # include Qt error code for diagnostics
+            self.failed.emit(
+                NetError(
+                    f"{self._tag} QtError={int(err)} {r.errorString()}".strip(),
+                    url=self._url,
+                    status=status_i,
+                    body=raw[:2000],
+                )
+            )
             self.finished.emit()
             r.deleteLater()
             return
@@ -103,6 +111,11 @@ class Net(QtCore.QObject):
             qurl.setQuery(q)
 
         req = QtNetwork.QNetworkRequest(qurl)
+        # Some enterprise servers/proxies break on HTTP/2; force HTTP/1.1
+        try:
+            req.setAttribute(QtNetwork.QNetworkRequest.Http2AllowedAttribute, False)
+        except Exception:
+            pass
         if headers:
             for k, v in headers.items():
                 req.setRawHeader(k.encode("utf-8"), v.encode("utf-8"))
