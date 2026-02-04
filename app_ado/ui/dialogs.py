@@ -132,6 +132,16 @@ class ProjectDialog(QDialog):
         root.setLabelAlignment(QtCore.Qt.AlignLeft)
         root.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
+        # library picker
+        self.lib_combo = ComboBox(); self.lib_combo.setFixedWidth(260)
+        idx = 0
+        for i, lib in enumerate(self._settings.libraries):
+            self.lib_combo.addItem(lib.name, userData=lib.id)
+            if (self._library_id and lib.id == self._library_id) or (existing and lib.id == existing.library_id):
+                idx = i
+        if self._settings.libraries:
+            self.lib_combo.setCurrentIndex(idx)
+
         # Two modes: manual input OR dropdowns (when discovery is implemented)
         self.collection_input = LineEdit(); self.collection_input.setFixedWidth(260)
         self.project_input = LineEdit(); self.project_input.setFixedWidth(260)
@@ -141,6 +151,7 @@ class ProjectDialog(QDialog):
         self.collection_combo.setVisible(False)
         self.project_combo.setVisible(False)
 
+        root.addRow("代码库", self.lib_combo)
         root.addRow("Collection", self.collection_input)
         root.addRow("Project", self.project_input)
         root.addRow("Collection(下拉)", self.collection_combo)
@@ -191,7 +202,9 @@ class ProjectDialog(QDialog):
 
     def _fetch_projects(self) -> None:
         # Real request (QNAM): GET /{collection}/_apis/projects?api-version=7.0
-        lib_id = self._library_id or self._settings.active_library_id or (self._settings.libraries[0].id if self._settings.libraries else None)
+        lib_id = self.lib_combo.currentData() or self._library_id or self._settings.active_library_id or (
+            self._settings.libraries[0].id if self._settings.libraries else None
+        )
         if not lib_id:
             show_error_dialog(self, "错误", "请先新增代码库")
             return
@@ -274,8 +287,8 @@ class ProjectDialog(QDialog):
         if not self._settings.libraries:
             toast(self, "错误", "请先新增代码库", ok=False)
             return
-        lib_id = self._library_id or self._settings.active_library_id or self._settings.libraries[0].id
+        lib_id = self.lib_combo.currentData() or self._library_id or self._settings.active_library_id or self._settings.libraries[0].id
 
         pid = self._existing.id if self._existing else f"proj:{uuid.uuid4()}"
-        self._result = ProjectEntry(id=pid, library_id=lib_id, collection=collection, project=project)
+        self._result = ProjectEntry(id=pid, library_id=str(lib_id), collection=collection, project=project)
         self.accept()
