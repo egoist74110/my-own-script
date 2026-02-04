@@ -391,8 +391,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.status.setText("已停止刷新（如果网络请求仍在进行，会在后台自行结束）")
         # Don't block UI while cancelling.
         self._cleanup(block=False)
-        self._thread = None
-        self._worker = None
+        # keep thread refs until it actually finishes; avoids Qt deleting a running QThread
 
     def _start_watchdog(self, ms: int = 12000) -> None:
         t = QtCore.QTimer(self)
@@ -409,8 +408,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.status.setText(f"刷新超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
             # Don't block UI; background thread may still be in-flight.
             self._cleanup(block=False)
-            self._thread = None
-            self._worker = None
+            # keep thread refs until it actually finishes; avoids Qt deleting a running QThread
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -457,8 +455,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             if self.status.text().startswith("刷新分支"):
                 self.status.setText(f"刷新分支超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
             self._cleanup_branches(block=False)
-            self._branches_thread = None
-            self._branches_worker = None
+            # keep thread refs until it actually finishes
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -472,8 +469,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._set_branches_refreshing(False)
         self.status.setText("已停止刷新分支（如果网络请求仍在进行，会在后台自行结束）")
         self._cleanup_branches(block=False)
-        self._branches_thread = None
-        self._branches_worker = None
+        # keep thread refs until it actually finishes
 
     def _set_stages_refreshing(self, on: bool, msg: str = "") -> None:
         has_release = isinstance(self.release_combo.currentData(), ReleaseDef)
@@ -515,8 +511,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             if self.status.text().startswith("刷新发布阶段"):
                 self.status.setText(f"刷新发布阶段超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
             self._cleanup_stages(block=False)
-            self._stages_thread = None
-            self._stages_worker = None
+            # keep thread refs until it actually finishes
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -530,8 +525,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._set_stages_refreshing(False)
         self.status.setText("已停止刷新发布阶段（如果网络请求仍在进行，会在后台自行结束）")
         self._cleanup_stages(block=False)
-        self._stages_thread = None
-        self._stages_worker = None
+        # keep thread refs until it actually finishes
 
     def _refresh_release_stages(self) -> None:
         if self._stages_refreshing:
@@ -831,7 +825,6 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.status.setText("刷新已结束但未收到结果（可能是线程/网络异常）。请重试")
 
         thread.finished.connect(_done)
-        thread.finished.connect(thread.deleteLater)
         # IMPORTANT: cleanup the specific thread to avoid old-thread-finish cancelling a new thread.
         thread.finished.connect(lambda th=thread: self._cleanup_specific_thread(th, kind="main"))
 
