@@ -44,11 +44,13 @@ class AdoReleaseTab(Tab):
         self.lib_pat.setEchoMode(LineEdit.Password)
 
         self.btn_new_lib = PushButton("新增")
-        self.btn_save_lib = PushButton("保存")
+        self.btn_save_lib = PushButton("保存配置")
+        self.btn_del_lib = PushButton("删除")
         self.btn_save_pat = PushButton("保存PAT(写入钥匙串)")
 
         self.btn_new_lib.clicked.connect(self._new_library)
         self.btn_save_lib.clicked.connect(self._save_library)
+        self.btn_del_lib.clicked.connect(self._delete_library)
         self.btn_save_pat.clicked.connect(self._save_pat)
         self.lib_combo.currentIndexChanged.connect(self._load_selected_library)
 
@@ -57,7 +59,7 @@ class AdoReleaseTab(Tab):
         form.addRow("URL", self.lib_url)
         form.addRow("PAT", self.lib_pat)
         form.addRow(self.btn_new_lib, self.btn_save_lib)
-        form.addRow(self.btn_save_pat)
+        form.addRow(self.btn_del_lib, self.btn_save_pat)
 
         self.add_card("代码库（本地配置）", w)
         self._refresh_lib_combo()
@@ -72,16 +74,19 @@ class AdoReleaseTab(Tab):
         self.proj_project = LineEdit()
 
         self.btn_new_proj = PushButton("新增")
-        self.btn_save_proj = PushButton("保存")
+        self.btn_save_proj = PushButton("保存配置")
+        self.btn_del_proj = PushButton("删除")
 
         self.btn_new_proj.clicked.connect(self._new_project)
         self.btn_save_proj.clicked.connect(self._save_project)
+        self.btn_del_proj.clicked.connect(self._delete_project)
         self.proj_combo.currentIndexChanged.connect(self._load_selected_project)
 
         form.addRow("项目", self.proj_combo)
         form.addRow("Collection", self.proj_collection)
         form.addRow("Project", self.proj_project)
         form.addRow(self.btn_new_proj, self.btn_save_proj)
+        form.addRow(self.btn_del_proj)
 
         self.add_card("项目（本地配置）", w)
         self._refresh_proj_combo()
@@ -117,11 +122,38 @@ class AdoReleaseTab(Tab):
         lib = next((x for x in self._settings.libraries if x.id == lid), None)
         if not lib:
             return
-        lib.name = self.lib_name.text().strip()
-        lib.base_url = self.lib_url.text().strip().rstrip("/")
+        name = self.lib_name.text().strip()
+        url = self.lib_url.text().strip().rstrip("/")
+        if not name:
+            self._toast("错误", "代码库名称不能为空", ok=False)
+            return
+        if not url:
+            self._toast("错误", "代码库 URL 不能为空", ok=False)
+            return
+        # name unique
+        for x in self._settings.libraries:
+            if x.id != lib.id and x.name == name:
+                self._toast("错误", f"代码库名称重复：{name}", ok=False)
+                return
+
+        lib.name = name
+        lib.base_url = url
         save_ui_settings(self._settings)
         self._toast("已保存", "代码库配置已保存")
         self._refresh_lib_combo()
+
+    def _delete_library(self) -> None:
+        lid = self.lib_combo.currentData()
+        lib = next((x for x in self._settings.libraries if x.id == lid), None)
+        if not lib:
+            return
+        self._settings.libraries = [x for x in self._settings.libraries if x.id != lib.id]
+        # remove linked projects too
+        self._settings.projects = [p for p in self._settings.projects if p.library_id != lib.id]
+        save_ui_settings(self._settings)
+        self._toast("已删除", f"代码库已删除：{lib.name}")
+        self._refresh_lib_combo()
+        self._refresh_proj_combo()
 
     def _save_pat(self) -> None:
         lid = self.lib_combo.currentData()
@@ -171,8 +203,32 @@ class AdoReleaseTab(Tab):
         p = next((x for x in self._settings.projects if x.id == pid), None)
         if not p:
             return
-        p.collection = self.proj_collection.text().strip()
-        p.project = self.proj_project.text().strip()
+        collection = self.proj_collection.text().strip()
+        project = self.proj_project.text().strip()
+        if not collection:
+            self._toast("错误", "Collection 不能为空", ok=False)
+            return
+        if not project:
+            self._toast("错误", "Project 不能为空", ok=False)
+            return
+        # project name unique within all projects
+        for x in self._settings.projects:
+            if x.id != p.id and x.project == project:
+                self._toast("错误", f"项目名称重复：{project}", ok=False)
+                return
+
+        p.collection = collection
+        p.project = project
         save_ui_settings(self._settings)
         self._toast("已保存", "项目配置已保存")
+        self._refresh_proj_combo()
+
+    def _delete_project(self) -> None:
+        pid = self.proj_combo.currentData()
+        p = next((x for x in self._settings.projects if x.id == pid), None)
+        if not p:
+            return
+        self._settings.projects = [x for x in self._settings.projects if x.id != p.id]
+        save_ui_settings(self._settings)
+        self._toast("已删除", f"项目已删除：{p.project}")
         self._refresh_proj_combo()
