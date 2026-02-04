@@ -171,7 +171,11 @@ class AdoReleaseTab(Tab):
         if not self._settings.libraries:
             self._toast("错误", "请先新增代码库", ok=False)
             return
-        dlg = ProjectDialog(self, settings=self._settings)
+        lib = self._active_library()
+        if not lib:
+            self._toast("错误", "请先选择代码库，再新增项目", ok=False)
+            return
+        dlg = ProjectDialog(self, settings=self._settings, library_id=lib.id)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
@@ -188,7 +192,11 @@ class AdoReleaseTab(Tab):
         if not p:
             self._toast("提示", "请先选择项目", ok=False)
             return
-        dlg = ProjectDialog(self, settings=self._settings, existing=p)
+        lib = self._active_library()
+        if not lib:
+            self._toast("错误", "请先选择代码库", ok=False)
+            return
+        dlg = ProjectDialog(self, settings=self._settings, existing=p, library_id=lib.id)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()

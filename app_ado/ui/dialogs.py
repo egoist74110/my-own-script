@@ -117,10 +117,11 @@ class LibraryDialog(QDialog):
 
 
 class ProjectDialog(QDialog):
-    def __init__(self, parent: QWidget, *, settings: UiSettings, existing: ProjectEntry | None = None):
+    def __init__(self, parent: QWidget, *, settings: UiSettings, existing: ProjectEntry | None = None, library_id: str | None = None):
         super().__init__(parent)
         self._settings = settings
         self._existing = existing
+        self._library_id = library_id
         self._result: ProjectEntry | None = None
 
         self.setWindowTitle("编辑项目" if existing else "新增项目")
@@ -190,7 +191,7 @@ class ProjectDialog(QDialog):
 
     def _fetch_projects(self) -> None:
         # Real request (QNAM): GET /{collection}/_apis/projects?api-version=7.0
-        lib_id = self._settings.active_library_id or (self._settings.libraries[0].id if self._settings.libraries else None)
+        lib_id = self._library_id or self._settings.active_library_id or (self._settings.libraries[0].id if self._settings.libraries else None)
         if not lib_id:
             show_error_dialog(self, "错误", "请先新增代码库")
             return
@@ -273,7 +274,7 @@ class ProjectDialog(QDialog):
         if not self._settings.libraries:
             toast(self, "错误", "请先新增代码库", ok=False)
             return
-        lib_id = self._settings.active_library_id or self._settings.libraries[0].id
+        lib_id = self._library_id or self._settings.active_library_id or self._settings.libraries[0].id
 
         pid = self._existing.id if self._existing else f"proj:{uuid.uuid4()}"
         self._result = ProjectEntry(id=pid, library_id=lib_id, collection=collection, project=project)
