@@ -8,7 +8,7 @@ from qfluentwidgets import LineEdit, PushButton, InfoBar, InfoBarPosition, Combo
 
 from app_ado.models import LibraryEntry, ProjectEntry, UiSettings
 from app_ado.secrets import get_pat, set_pat
-from app_ado.net_qnam import NetError, auth_headers_from_pat, get_net
+from app_ado.curl_ado import curl_get_raw
 
 
 def toast(parent: QWidget, title: str, content: str, ok: bool = True) -> None:
@@ -225,22 +225,50 @@ class ProjectDialog(QDialog):
         url = f"{lib.base_url.rstrip('/')}/{c}/_apis/projects"
         self._set_loading(True, f"正在获取 Projects（{c}）...")
 
-        job = get_net().get_json(
-            url,
-            params={"api-version": "7.0"},
-            headers=auth_headers_from_pat(pat),
-            timeout_ms=10000,
-            tag="list_projects",
-        )
+        # Use curl subprocess for maximum compatibility with enterprise auth/proxy.
+        def run() -> None:
+            try:
+                res = curl_get_raw(url, pat=pat, timeout_sec=12)
+                self._curl_res = res
+            except Exception as e:
+                self._curl_res = e
 
-        def ok(data: dict) -> None:
+        # run in background thread (python threading), then marshal back to UI
+        import threading
+
+        self._curl_res = None
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
             self._set_loading(False)
+            if isinstance(self._curl_res, Exception):
+                show_error_dialog(self, "获取 Projects 失败", str(self._curl_res))
+                return
+            res = self._curl_res
+            assert res is not None
+
+            if res.status != 200:
+                details = f"URL: {url}\n状态码: {res.status}\n\nHeaders:\n" + "\n".join(
+                    [f"{k}: {v}" for k, v in res.headers.items()]
+                ) + f"\n\nBody(截断):\n{(res.body or '')[:4000]}"
+                show_error_dialog(self, "获取 Projects 失败", details)
+                return
+
+            try:
+                data = json.loads(res.body or "{}")
+            except Exception as e:
+                show_error_dialog(self, "解析失败", f"JSON解析失败: {e}\n\nBody:\n{(res.body or '')[:4000]}")
+                return
+
             items = [x.get("name") for x in (data.get("value") or []) if x.get("name")]
             self.project_combo.clear()
             for name in items:
                 self.project_combo.addItem(str(name), userData=str(name))
             if items:
-                # Switch to dropdown mode
                 self.project_input.setVisible(False)
                 self.project_combo.setVisible(True)
                 self.project_combo.setCurrentIndex(0)
@@ -249,29 +277,7 @@ class ProjectDialog(QDialog):
             else:
                 show_error_dialog(self, "提示", "请求成功，但没有返回任何 Projects")
 
-        def fail(err: NetError) -> None:
-            self._set_loading(False)
-            hint = "\n\n可能原因/建议：\n- 服务器/代理不支持 HTTP/2：已在客户端强制 HTTP/1.1（如仍失败请反馈）\n- PAT 无效或权限不足也会 401（但这里提示更像协议问题）\n"
-            hdr = ""
-            if err.headers:
-                show_keys = ["www-authenticate", "lfs-authenticate", "location", "set-cookie"]
-                lines = []
-                for k in show_keys:
-                    if k in err.headers:
-                        lines.append(f"{k}: {err.headers[k]}")
-                if lines:
-                    hdr = "\n\nHeaders(关键):\n" + "\n".join(lines)
-
-            details = (
-                f"URL: {err.url}\n状态码: {err.status}\n错误: {err.message}"
-                + hdr +
-                f"\n\nBody(截断):\n{err.body or ''}"
-                + hint
-            )
-            show_error_dialog(self, "获取 Projects 失败", details)
-
-        job.ok.connect(ok)
-        job.failed.connect(fail)
+        QtCore.QTimer.singleShot(80, finish)
 
     def _finish_stub(self, msg: str) -> None:
         self._set_loading(False)
