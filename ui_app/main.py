@@ -635,8 +635,13 @@ class MainWindow(QtWidgets.QMainWindow):
         from ui_app.flow_executor import SyncMergeBuildReleaseTask
 
         rel = flow.release_name or flow.release_id
-        if flow.release_stage_name:
-            rel = f"{rel}->{flow.release_stage_name}"
+        stages = []
+        if getattr(flow, "release_stage_names", None):
+            stages = list(flow.release_stage_names)
+        elif flow.release_stage_name:
+            stages = [flow.release_stage_name]
+        if stages:
+            rel = f"{rel}->{','.join(stages)}"
         summary = (
             f"把 {flow.source_branch} 合并到 {flow.target_branch} | "
             f"Build={flow.build_name or flow.build_id} | Release={rel}"

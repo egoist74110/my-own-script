@@ -196,12 +196,14 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.release_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         setup_combo(self.release_combo, popup_w=820)
 
-        self.release_stage_combo = QtWidgets.QComboBox()
-        self.release_stage_combo.setEditable(True)
-        self.release_stage_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-        self.release_stage_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
-        self.release_stage_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
-        setup_combo(self.release_stage_combo, popup_w=520)
+        self.release_stage_list = QtWidgets.QListWidget()
+        self.release_stage_list.setMinimumHeight(160)
+        self.release_stage_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.release_stage_list.setObjectName("ReleaseStageList")
+        try:
+            self.release_stage_list.setMinimumWidth(520)
+        except Exception:
+            pass
 
         setup_combo(self.project_combo, min_w=520, popup_w=520)
 
@@ -244,7 +246,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         form.addRow("目标分支（合并到）", self.target_combo)
         form.addRow("构建流水线", self.build_combo)
         form.addRow("发布流水线", self.release_combo)
-        form.addRow("发布到阶段", self.release_stage_combo)
+        form.addRow("发布到阶段（可多选）", self.release_stage_list)
         root.addLayout(form)
 
         refresh_row = QtWidgets.QHBoxLayout()
@@ -311,8 +313,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.build_combo.setCurrentText(flow.build_name)
         if flow.release_name:
             self.release_combo.setCurrentText(flow.release_name)
-        if flow.release_stage_name:
-            self.release_stage_combo.setCurrentText(flow.release_stage_name)
+        # stages are loaded after refresh; keep desired selection in flow
 
         # Manual refresh is safer (avoids auto threads on open)
         self.project_combo.currentIndexChanged.connect(lambda _: self._on_project_change())
@@ -519,7 +520,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText("请先选择发布流水线，才能刷新发布阶段")
             return
 
-        self.release_stage_combo.clear()
+        self.release_stage_list.clear()
 
         self._stages_cancelled = False
         self._stages_refreshing = True
@@ -545,18 +546,20 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self._stages_refreshing = False
             self._set_stages_refreshing(False)
             stages: list[ReleaseStage] = payload.get("stages") or []
+            self.release_stage_list.clear()
+
+            # Determine desired selected ids (new list fields, fallback old single)
+            want_ids = list(getattr(self._flow, "release_stage_ids", []) or [])
+            if not want_ids and self._flow.release_stage_id:
+                want_ids = [self._flow.release_stage_id]
+
             for s in stages:
-                self.release_stage_combo.addItem(s.name, userData=s)
-            if stages:
-                # try pick configured stage
-                if self._flow.release_stage_id:
-                    for i in range(self.release_stage_combo.count()):
-                        sd: ReleaseStage = self.release_stage_combo.itemData(i)
-                        if sd and sd.id == self._flow.release_stage_id:
-                            self.release_stage_combo.setCurrentIndex(i)
-                            break
-                else:
-                    self.release_stage_combo.setCurrentIndex(0)
+                it = QtWidgets.QListWidgetItem(s.name)
+                it.setData(QtCore.Qt.UserRole, s)
+                it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+                it.setCheckState(QtCore.Qt.Checked if s.id in want_ids else QtCore.Qt.Unchecked)
+                self.release_stage_list.addItem(it)
+
             self.status.setText(f"发布阶段刷新完成：{len(stages)}")
 
         def fail(msg: str) -> None:
@@ -674,7 +677,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.target_combo.clear()
         self.build_combo.clear()
         self.release_combo.clear()
-        self.release_stage_combo.clear()
+        self.release_stage_list.clear()
         self.status.setText("项目已切换：请点击刷新")
 
     def _on_repo_change(self) -> None:
@@ -686,7 +689,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
     def _on_release_change(self) -> None:
         # release changed -> refresh stages
-        self.release_stage_combo.clear()
+        self.release_stage_list.clear()
         self.status.setText("发布流水线已切换：请刷新发布阶段")
 
     def _selected_project(self) -> ProjectEntry | None:
@@ -737,7 +740,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.target_combo.clear()
         self.build_combo.clear()
         self.release_combo.clear()
-        self.release_stage_combo.clear()
+        self.release_stage_list.clear()
 
         self._cancelled = False
         self._refreshing = True
@@ -855,7 +858,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText(msg)
 
             # If we already have a release selected, try to load stages automatically (best-effort).
-            if self.release_combo.currentData() and self.release_stage_combo.count() == 0:
+            if self.release_combo.currentData() and self.release_stage_list.count() == 0:
                 self._refresh_release_stages()
 
         def fail(msg: str) -> None:
@@ -886,7 +889,17 @@ class FlowTaskDialog(QtWidgets.QDialog):
         tb: GitBranch | None = self.target_combo.currentData()
         bt: BuildTarget | None = self.build_combo.currentData()
         rt: ReleaseDef | None = self.release_combo.currentData()
-        st: ReleaseStage | None = self.release_stage_combo.currentData()
+
+        # stages from checklist
+        stage_ids: list[str] = []
+        stage_names: list[str] = []
+        for i in range(self.release_stage_list.count()):
+            it = self.release_stage_list.item(i)
+            if it.checkState() == QtCore.Qt.Checked:
+                s: ReleaseStage = it.data(QtCore.Qt.UserRole)
+                if s:
+                    stage_ids.append(s.id)
+                    stage_names.append(s.name)
 
         # allow manual typing (editable combos): match typed text back to items
         if rr is None:
@@ -924,13 +937,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 if r and r.name == t:
                     rt = r
                     break
-        if st is None:
-            t = self.release_stage_combo.currentText().strip()
-            for i in range(self.release_stage_combo.count()):
-                s: ReleaseStage = self.release_stage_combo.itemData(i)
-                if s and s.name == t:
-                    st = s
-                    break
+        # release stages are multi-select (checkbox list)
 
         if not pid:
             QtWidgets.QMessageBox.warning(self, "错误", "请选择 Project")
@@ -944,8 +951,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
         if not bt or not rt:
             QtWidgets.QMessageBox.warning(self, "错误", "请先刷新并选择 构建流水线/发布流水线")
             return
-        if not st:
-            QtWidgets.QMessageBox.warning(self, "错误", "请选择发布到哪个阶段")
+        if not stage_ids:
+            QtWidgets.QMessageBox.warning(self, "错误", "请选择发布到哪个阶段（可多选）")
             return
 
         self._result = self._flow.model_copy(
@@ -961,8 +968,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 "release_kind": "release",
                 "release_id": rt.id,
                 "release_name": rt.name,
-                "release_stage_id": st.id,
-                "release_stage_name": st.name,
+                "release_stage_ids": stage_ids,
+                "release_stage_names": stage_names,
+                # keep old fields for back-compat
+                "release_stage_id": stage_ids[0] if stage_ids else None,
+                "release_stage_name": stage_names[0] if stage_names else None,
             }
         )
         super().accept()

@@ -29,7 +29,11 @@ class FlowTaskConfig(BaseModel):
     release_id: Optional[str] = None
     release_name: Optional[str] = None
 
-    # release stage (environment) within release definition
+    # release stages (environments) within release definition (multi-select)
+    release_stage_ids: list[str] = Field(default_factory=list)
+    release_stage_names: list[str] = Field(default_factory=list)
+
+    # Back-compat (older single-select fields)
     release_stage_id: Optional[str] = None
     release_stage_name: Optional[str] = None
 
