@@ -14,6 +14,30 @@ class RefreshWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
 
+
+class BranchesWorker(QtCore.QObject):
+    ok = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.collection = collection
+        self.project = project
+        self.pat = pat
+        self.repo_id = repo_id
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            branches = list_branches(self.base_url, self.collection, self.project, self.repo_id, self.pat)
+            self.ok.emit({"branches": branches, "repo_id": self.repo_id})
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            self.failed.emit(str(e))
+
     def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str | None) -> None:
         super().__init__()
         self.base_url = base_url
@@ -107,6 +131,16 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.stop_btn.clicked.connect(self._cancel_refresh)
         self.stop_btn.setEnabled(False)
 
+        self.refresh_branches_btn = QtWidgets.QPushButton("刷新分支")
+        self.refresh_branches_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.refresh_branches_btn.clicked.connect(self._refresh_branches)
+        self.refresh_branches_btn.setEnabled(True)
+
+        self.stop_branches_btn = QtWidgets.QPushButton("停止")
+        self.stop_branches_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.stop_branches_btn.clicked.connect(self._cancel_branches)
+        self.stop_branches_btn.setEnabled(False)
+
         self.status = QtWidgets.QLabel("")
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
@@ -125,6 +159,14 @@ class FlowTaskDialog(QtWidgets.QDialog):
         refresh_row.addWidget(self.stop_btn)
         refresh_row.addStretch(1)
         root.addLayout(refresh_row)
+
+        branches_row = QtWidgets.QHBoxLayout()
+        branches_row.setSpacing(10)
+        branches_row.addWidget(self.refresh_branches_btn)
+        branches_row.addWidget(self.stop_branches_btn)
+        branches_row.addStretch(1)
+        root.addLayout(branches_row)
+
         root.addWidget(self.status)
 
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Save)
@@ -136,6 +178,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._watchdog: QtCore.QTimer | None = None
         self._refreshing: bool = False
         self._cancelled: bool = False
+
+        self._branches_thread: QtCore.QThread | None = None
+        self._branches_watchdog: QtCore.QTimer | None = None
+        self._branches_refreshing: bool = False
+        self._branches_cancelled: bool = False
 
         # load existing
         if flow.project_id:
@@ -205,9 +252,144 @@ class FlowTaskDialog(QtWidgets.QDialog):
         t.start(ms)
         self._watchdog = t
 
+    def _set_branches_refreshing(self, on: bool, msg: str = "") -> None:
+        # must have repo selected to refresh branches
+        has_repo = isinstance(self.repo_combo.currentData(), GitRepo)
+        self.refresh_branches_btn.setEnabled((not on) and has_repo)
+        self.stop_branches_btn.setEnabled(on)
+        if on:
+            self.status.setText(msg)
+
+    def _cleanup_branches(self, *, block: bool = True) -> None:
+        if self._branches_watchdog is not None:
+            try:
+                self._branches_watchdog.stop()
+            except Exception:
+                pass
+            self._branches_watchdog = None
+
+        if self._branches_thread is not None:
+            try:
+                self._branches_thread.requestInterruption()
+                self._branches_thread.quit()
+                if block:
+                    self._branches_thread.wait(1200)
+            except Exception:
+                pass
+            if block:
+                self._branches_thread = None
+
+    def _start_branches_watchdog(self, ms: int = 12000) -> None:
+        t = QtCore.QTimer(self)
+        t.setSingleShot(True)
+
+        def fire() -> None:
+            if not self._branches_refreshing:
+                return
+            self._branches_cancelled = True
+            self._branches_refreshing = False
+            self._set_branches_refreshing(False)
+            if self.status.text().startswith("刷新分支"):
+                self.status.setText(f"刷新分支超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
+            self._cleanup_branches(block=False)
+            self._branches_thread = None
+
+        t.timeout.connect(fire)
+        t.start(ms)
+        self._branches_watchdog = t
+
+    def _cancel_branches(self) -> None:
+        if not self._branches_refreshing:
+            return
+        self._branches_cancelled = True
+        self._branches_refreshing = False
+        self._set_branches_refreshing(False)
+        self.status.setText("已停止刷新分支（如果网络请求仍在进行，会在后台自行结束）")
+        self._cleanup_branches(block=False)
+        self._branches_thread = None
+
+    def _refresh_branches(self) -> None:
+        if self._branches_refreshing:
+            self.status.setText("正在刷新分支中，请稍候或点击『停止』")
+            return
+
+        p = self._selected_project()
+        if not p:
+            self.status.setText("请先在设置里新增项目")
+            return
+        lib = self._selected_library(p)
+        if not lib:
+            self.status.setText("项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            self.status.setText("该代码库没有 PAT，请先去设置-代码库里保存 PAT")
+            return
+        rr: GitRepo | None = self.repo_combo.currentData()
+        if not rr:
+            self.status.setText("请先选择 Repo，才能刷新分支")
+            return
+
+        self.source_combo.clear()
+        self.target_combo.clear()
+
+        self._branches_cancelled = False
+        self._branches_refreshing = True
+        self._set_branches_refreshing(True, f"刷新分支中：{rr.name} ...")
+        self._cleanup_branches(block=False)
+        self._branches_thread = None
+        self._start_branches_watchdog()
+
+        worker = BranchesWorker(lib.base_url, p.collection, p.project, pat, rr.id)
+        thread = QtCore.QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.ok.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.ok.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def ok(payload: dict) -> None:
+            if self._branches_cancelled:
+                return
+            self._branches_refreshing = False
+            self._set_branches_refreshing(False)
+            branches: list[GitBranch] = payload.get("branches") or []
+            for b in branches:
+                self.source_combo.addItem(b.short, userData=b)
+                self.target_combo.addItem(b.short, userData=b)
+            if branches:
+                self.source_combo.setCurrentIndex(0)
+                self.target_combo.setCurrentIndex(0)
+            self.status.setText(f"分支刷新完成：{len(branches)}")
+
+        def fail(msg: str) -> None:
+            if self._branches_cancelled:
+                return
+            self._branches_refreshing = False
+            self._set_branches_refreshing(False)
+            self.status.setText(f"刷新分支失败：{msg}")
+
+        worker.ok.connect(ok)
+        worker.failed.connect(fail)
+
+        def _done() -> None:
+            if self._branches_refreshing and (not self._branches_cancelled) and self.status.text().startswith("刷新分支"):
+                self._branches_refreshing = False
+                self._set_branches_refreshing(False)
+                self.status.setText("刷新分支已结束但未收到结果（可能是线程/网络异常）。请重试")
+
+        thread.finished.connect(_done)
+        thread.finished.connect(lambda: self._cleanup_branches(block=False))
+
+        self._branches_thread = thread
+        thread.start()
+
     def closeEvent(self, event) -> None:
         # Ensure background refresh thread is stopped
         self._cleanup()
+        self._cleanup_branches()
         return super().closeEvent(event)
 
     def _on_project_change(self) -> None:
@@ -220,10 +402,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.status.setText("项目已切换：请点击刷新")
 
     def _on_repo_change(self) -> None:
-        # changing repo should refresh branches
+        # changing repo should allow refresh branches
         self.source_combo.clear()
         self.target_combo.clear()
-        self.status.setText("Repo 已切换：请点击刷新")
+        self.status.setText("Repo 已切换：可点击『刷新分支』")
+        self._set_branches_refreshing(False)
 
     def _selected_project(self) -> ProjectEntry | None:
         pid = self.project_combo.currentData()
