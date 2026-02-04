@@ -114,35 +114,52 @@ class FlowTaskDialog(QtWidgets.QDialog):
         for p in settings.projects:
             self.project_combo.addItem(p.project, userData=p.id)
 
+        def setup_combo(cb: QtWidgets.QComboBox, *, min_w: int = 520, popup_w: int = 720) -> None:
+            cb.setMinimumWidth(min_w)
+            cb.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(28)
+            # Make popup wide enough to read long names
+            try:
+                cb.view().setMinimumWidth(popup_w)
+            except Exception:
+                pass
+
         self.repo_combo = QtWidgets.QComboBox()
         self.repo_combo.setEditable(True)
         self.repo_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.repo_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
         self.repo_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.repo_combo)
 
         self.source_combo = QtWidgets.QComboBox()
         self.source_combo.setEditable(True)
         self.source_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.source_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
         self.source_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.source_combo, popup_w=520)
 
         self.target_combo = QtWidgets.QComboBox()
         self.target_combo.setEditable(True)
         self.target_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.target_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
         self.target_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.target_combo, popup_w=520)
 
         self.build_combo = QtWidgets.QComboBox()
         self.build_combo.setEditable(True)
         self.build_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.build_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
         self.build_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.build_combo, popup_w=820)
 
         self.release_combo = QtWidgets.QComboBox()
         self.release_combo.setEditable(True)
         self.release_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.release_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
         self.release_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.release_combo, popup_w=820)
+
+        setup_combo(self.project_combo, min_w=520, popup_w=520)
 
         self.refresh_btn = QtWidgets.QPushButton("刷新 Repo/Branches/Build")
         self.refresh_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
