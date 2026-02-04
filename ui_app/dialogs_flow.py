@@ -621,6 +621,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText("请先选择 Repo，才能刷新分支")
             return
 
+        # Preserve current branch selections (user may have changed them)
+        want_src = self.source_combo.currentText().strip()
+        want_tgt = self.target_combo.currentText().strip()
+
         self.source_combo.clear()
         self.target_combo.clear()
 
@@ -652,8 +656,26 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.source_combo.addItem(b.short, userData=b)
                 self.target_combo.addItem(b.short, userData=b)
             if branches:
-                self.source_combo.setCurrentIndex(0)
-                self.target_combo.setCurrentIndex(0)
+                # preserve current UI selection; then config; else first
+                src_pick = want_src or self._flow.source_branch
+                if src_pick:
+                    for i in range(self.source_combo.count()):
+                        bb: GitBranch = self.source_combo.itemData(i)
+                        if bb and bb.short == src_pick:
+                            self.source_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.source_combo.setCurrentIndex(0)
+
+                tgt_pick = want_tgt or self._flow.target_branch
+                if tgt_pick:
+                    for i in range(self.target_combo.count()):
+                        bb: GitBranch = self.target_combo.itemData(i)
+                        if bb and bb.short == tgt_pick:
+                            self.target_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.target_combo.setCurrentIndex(0)
             self.status.setText(f"分支刷新完成：{len(branches)}")
 
         def fail(msg: str) -> None:
@@ -750,6 +772,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
         if isinstance(d, GitRepo):
             existing_repo = d.id
 
+        # Preserve current branch selections (user may have changed them)
+        want_src = self.source_combo.currentText().strip()
+        want_tgt = self.target_combo.currentText().strip()
+
         self.repo_combo.clear()
         self.source_combo.clear()
         self.target_combo.clear()
@@ -820,20 +846,22 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.source_combo.addItem(b.short, userData=b)
                 self.target_combo.addItem(b.short, userData=b)
             if branches:
-                # prefer config
-                if self._flow.source_branch:
+                # prefer current UI selection; then config; else first
+                src_pick = want_src or self._flow.source_branch
+                if src_pick:
                     for i in range(self.source_combo.count()):
                         bb: GitBranch = self.source_combo.itemData(i)
-                        if bb and bb.short == self._flow.source_branch:
+                        if bb and bb.short == src_pick:
                             self.source_combo.setCurrentIndex(i)
                             break
                 else:
                     self.source_combo.setCurrentIndex(0)
 
-                if self._flow.target_branch:
+                tgt_pick = want_tgt or self._flow.target_branch
+                if tgt_pick:
                     for i in range(self.target_combo.count()):
                         bb: GitBranch = self.target_combo.itemData(i)
-                        if bb and bb.short == self._flow.target_branch:
+                        if bb and bb.short == tgt_pick:
                             self.target_combo.setCurrentIndex(i)
                             break
                 else:
