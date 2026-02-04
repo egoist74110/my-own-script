@@ -37,9 +37,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(1180, 760)
 
         self.logger = setup_app_logger()
-        self._apply_style()
-
         self.ui_settings: UiSettings = load_ui_settings()
+        self._apply_style()
 
     def _apply_style(self) -> None:
         # minimal dark theme + rounded cards
