@@ -15,10 +15,11 @@ class FetchWorker(QtCore.QObject):
     projects_ok = QtCore.Signal(list)
     failed = QtCore.Signal(str)
 
-    def __init__(self, base_url: str, pat: str) -> None:
+    def __init__(self, base_url: str, pat: str, *, collection: str | None = None) -> None:
         super().__init__()
         self.base_url = base_url
         self.pat = pat
+        self.collection = collection
 
     @QtCore.Slot()
     def fetch_collections(self) -> None:
@@ -41,6 +42,14 @@ class FetchWorker(QtCore.QObject):
             self.failed.emit(f"HTTP {e.response.status_code}: {body}")
         except Exception as e:
             self.failed.emit(str(e))
+
+    @QtCore.Slot()
+    def fetch_projects0(self) -> None:
+        c = (self.collection or "").strip()
+        if not c:
+            self.failed.emit("collection 为空")
+            return
+        self.fetch_projects(c)
 
 
 class ProjectDialog(QtWidgets.QDialog):
@@ -231,6 +240,8 @@ class ProjectDialog(QtWidgets.QDialog):
         def _done() -> None:
             self.fetch_btn.setEnabled(True)
             self.pick_default_btn.setEnabled(True)
+            if self.status.text().startswith("拉取 Collections"):
+                self.status.setText("拉取 Collections 已结束但未收到结果（可忽略/重试）")
         thread.finished.connect(_done)
         thread.finished.connect(self._cleanup)
         thread.start()
@@ -260,10 +271,11 @@ class ProjectDialog(QtWidgets.QDialog):
         self._cleanup()
         self._start_watchdog(f"拉取 Projects（{collection}）")
 
-        worker = FetchWorker(lib.base_url, pat)
+        worker = FetchWorker(lib.base_url, pat, collection=collection)
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
-        thread.started.connect(lambda: worker.fetch_projects(collection))
+        # IMPORTANT: don't use lambda here; it would run in the UI thread.
+        thread.started.connect(worker.fetch_projects0)
         worker.projects_ok.connect(thread.quit)
         worker.failed.connect(thread.quit)
         worker.projects_ok.connect(worker.deleteLater)
@@ -295,6 +307,8 @@ class ProjectDialog(QtWidgets.QDialog):
         def _done() -> None:
             self.fetch_btn.setEnabled(True)
             self.pick_default_btn.setEnabled(True)
+            if self.status.text().startswith("拉取 Projects"):
+                self.status.setText("拉取 Projects 已结束但未收到结果（请重试；我会补充详细URL/状态码日志）")
         thread.finished.connect(_done)
         thread.finished.connect(self._cleanup)
         thread.start()
