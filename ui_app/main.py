@@ -12,6 +12,8 @@ from ui_app.settings_store import load_ui_settings, save_ui_settings, UiSettings
 from ui_app.dialogs_library import LibraryDialog
 from ui_app.dialogs_project import ProjectDialog
 from ui_app.library_store import new_library_id, set_pat
+from ui_app.tasks_store import load_task_settings, save_task_settings, get_flow
+from ui_app.dialogs_flow import FlowTaskDialog
 
 
 class Worker(QtCore.QObject):
@@ -40,6 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.logger = setup_app_logger()
         self.ui_settings: UiSettings = load_ui_settings()
+        self.task_settings = load_task_settings()
         self._apply_style()
 
     def _apply_style(self) -> None:
@@ -277,26 +280,15 @@ class MainWindow(QtWidgets.QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(12)
 
-        self.card_demo_1 = TaskRowCard(
-            "自动发布（Demo）",
-            "模拟一次 publish / build 的执行与日志输出。",
+        self.card_flow = TaskRowCard(
+            "Sync/Merge + Build + Release",
+            "配置分支、Build/Release 流水线后，一键执行（主日志+脚本日志+TG通知）。",
         )
-        self.card_demo_1.start_clicked.connect(self._run_demo_task)
-        self.card_demo_1.view_task_log.connect(lambda: self._show_logs("task"))
-        self.card_demo_1.view_script_log.connect(lambda: self._show_logs("script"))
+        self.card_flow.start_clicked.connect(self._run_flow_task)
+        self.card_flow.view_task_log.connect(lambda: self._show_logs("task"))
+        self.card_flow.view_script_log.connect(lambda: self._show_logs("script"))
 
-        self.card_demo_2 = TaskRowCard(
-            "同步状态（Demo）",
-            "模拟从 storage 读取 job 状态（目前只是 UI demo）。",
-        )
-        self.card_demo_2.start_clicked.connect(
-            lambda: self._append_log(
-                TaskLogEvent(ts=self._now(), level="info", message="status demo: TODO", channel="task")
-            )
-        )
-
-        v.addWidget(self.card_demo_1)
-        v.addWidget(self.card_demo_2)
+        v.addWidget(self.card_flow)
         v.addStretch(1)
 
         scroll.setWidget(container)
@@ -609,14 +601,36 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.logs_tabs.setCurrentWidget(self.task_log_box)
 
-    def _run_demo_task(self) -> None:
-        self.card_demo_1.set_status("running")
+    def _run_flow_task(self) -> None:
+        flow = get_flow(self.task_settings)
+
+        # If not configured, open config dialog first.
+        if not flow.project_id or not flow.source_branch or not flow.target_branch:
+            dlg = FlowTaskDialog(self, settings=self.ui_settings, flow=flow)
+            if dlg.exec() != QtWidgets.QDialog.Accepted:
+                return
+            updated = dlg.result_flow()
+            if not updated:
+                return
+            # update in store
+            self.task_settings.flows = [updated if f.id == updated.id else f for f in self.task_settings.flows]
+            save_task_settings(self.task_settings)
+            flow = updated
+
+        # Run stub executor
+        from ui_app.flow_executor import SyncMergeBuildReleaseTask
+
+        summary = (
+            f"project_id={flow.project_id} {flow.source_branch}->{flow.target_branch} "
+            f"build={flow.build_name or flow.build_id} release={flow.release_name or flow.release_id}"
+        )
+
+        self.card_flow.set_status("running")
         self.task_log_box.clear()
         self.script_log_box.clear()
         self._show_logs("task")
 
         def emit(evt: TaskLogEvent) -> None:
-            # hop to UI thread
             QtCore.QMetaObject.invokeMethod(
                 self,
                 "_append_log_slot",
@@ -624,13 +638,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.Q_ARG(dict, asdict(evt)),
             )
 
-        task = DemoSleepTask(seconds=2.0, logger=self.logger, emit=emit)
+        task = SyncMergeBuildReleaseTask(config_summary=summary, logger=self.logger, emit=emit)
         worker = Worker(task)
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
 
-        worker.finished.connect(lambda status: self.card_demo_1.set_status(status))
-        worker.failed.connect(lambda err: self.card_demo_1.set_status(f"failed: {err}"))
+        worker.finished.connect(lambda status: self.card_flow.set_status(status))
+        worker.failed.connect(lambda err: self.card_flow.set_status(f"failed: {err}"))
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
