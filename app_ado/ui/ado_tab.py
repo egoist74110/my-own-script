@@ -3,12 +3,13 @@ from __future__ import annotations
 import uuid
 
 from PySide6 import QtCore
+from PySide6 import QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import LineEdit, ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget
+from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget
 
-from app_ado.models import LibraryEntry, ProjectEntry, UiSettings
-from app_ado.secrets import set_pat
+from app_ado.models import UiSettings
 from app_ado.store import load_ui_settings, save_ui_settings
+from app_ado.ui.dialogs import LibraryDialog, ProjectDialog
 from ok.gui.widget.Tab import Tab
 
 
@@ -38,28 +39,21 @@ class AdoReleaseTab(Tab):
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
 
         self.lib_combo = ComboBox()
-        self.lib_name = LineEdit()
-        self.lib_url = LineEdit()
-        self.lib_pat = LineEdit()
-        self.lib_pat.setEchoMode(LineEdit.Password)
-
         self.btn_new_lib = PushButton("新增")
-        self.btn_save_lib = PushButton("保存配置")
+        self.btn_edit_lib = PushButton("编辑")
         self.btn_del_lib = PushButton("删除")
-        self.btn_save_pat = PushButton("保存PAT(写入钥匙串)")
 
         self.btn_new_lib.clicked.connect(self._new_library)
-        self.btn_save_lib.clicked.connect(self._save_library)
+        self.btn_edit_lib.clicked.connect(self._edit_library)
         self.btn_del_lib.clicked.connect(self._delete_library)
-        self.btn_save_pat.clicked.connect(self._save_pat)
-        self.lib_combo.currentIndexChanged.connect(self._load_selected_library)
 
         form.addRow("代码库", self.lib_combo)
-        form.addRow("名称", self.lib_name)
-        form.addRow("URL", self.lib_url)
-        form.addRow("PAT", self.lib_pat)
-        form.addRow(self.btn_new_lib, self.btn_save_lib)
-        form.addRow(self.btn_del_lib, self.btn_save_pat)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addWidget(self.btn_new_lib)
+        btn_row.addWidget(self.btn_edit_lib)
+        btn_row.addWidget(self.btn_del_lib)
+        form.addRow(btn_row)
 
         self.add_card("代码库（本地配置）", w)
         self._refresh_lib_combo()
@@ -70,163 +64,143 @@ class AdoReleaseTab(Tab):
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
 
         self.proj_combo = ComboBox()
-        self.proj_collection = LineEdit()
-        self.proj_project = LineEdit()
 
         self.btn_new_proj = PushButton("新增")
-        self.btn_save_proj = PushButton("保存配置")
+        self.btn_edit_proj = PushButton("编辑")
         self.btn_del_proj = PushButton("删除")
 
         self.btn_new_proj.clicked.connect(self._new_project)
-        self.btn_save_proj.clicked.connect(self._save_project)
+        self.btn_edit_proj.clicked.connect(self._edit_project)
         self.btn_del_proj.clicked.connect(self._delete_project)
-        self.proj_combo.currentIndexChanged.connect(self._load_selected_project)
 
         form.addRow("项目", self.proj_combo)
-        form.addRow("Collection", self.proj_collection)
-        form.addRow("Project", self.proj_project)
-        form.addRow(self.btn_new_proj, self.btn_save_proj)
-        form.addRow(self.btn_del_proj)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addWidget(self.btn_new_proj)
+        btn_row.addWidget(self.btn_edit_proj)
+        btn_row.addWidget(self.btn_del_proj)
+        form.addRow(btn_row)
 
         self.add_card("项目（本地配置）", w)
         self._refresh_proj_combo()
 
     # --- libraries ---
-    def _refresh_lib_combo(self) -> None:
+    def _refresh_lib_combo(self, *, select_id: str | None = None) -> None:
+        self._settings = load_ui_settings()
+        active = select_id or self._settings.active_library_id
         self.lib_combo.blockSignals(True)
         self.lib_combo.clear()
-        for lib in self._settings.libraries:
+        idx = 0
+        for i, lib in enumerate(self._settings.libraries):
             self.lib_combo.addItem(lib.name, userData=lib.id)
+            if active and lib.id == active:
+                idx = i
         if self._settings.libraries:
-            self.lib_combo.setCurrentIndex(0)
+            self.lib_combo.setCurrentIndex(idx)
         self.lib_combo.blockSignals(False)
-        self._load_selected_library()
 
-    def _load_selected_library(self) -> None:
+    def _active_library(self):
         lid = self.lib_combo.currentData()
-        lib = next((x for x in self._settings.libraries if x.id == lid), None)
-        if not lib:
-            return
-        self.lib_name.setText(lib.name)
-        self.lib_url.setText(lib.base_url)
+        return next((x for x in self._settings.libraries if x.id == lid), None)
 
     def _new_library(self) -> None:
-        lib = LibraryEntry(id=f"lib:{uuid.uuid4()}", name="manka", base_url="https://azuredevops.cg1alias.com")
-        self._settings.libraries.append(lib)
+        dlg = LibraryDialog(self, settings=self._settings)
+        if dlg.exec() != dlg.Accepted:
+            return
+        entry = dlg.result_entry()
+        if not entry:
+            return
+        self._settings.libraries.append(entry)
+        self._settings.active_library_id = entry.id
         save_ui_settings(self._settings)
-        self._toast("已新增", "代码库已创建（请保存PAT）")
-        self._refresh_lib_combo()
+        self._toast("已新增", f"代码库已创建：{entry.name}")
+        self._refresh_lib_combo(select_id=entry.id)
 
-    def _save_library(self) -> None:
-        lid = self.lib_combo.currentData()
-        lib = next((x for x in self._settings.libraries if x.id == lid), None)
+    def _edit_library(self) -> None:
+        lib = self._active_library()
         if not lib:
+            self._toast("提示", "请先选择代码库", ok=False)
             return
-        name = self.lib_name.text().strip()
-        url = self.lib_url.text().strip().rstrip("/")
-        if not name:
-            self._toast("错误", "代码库名称不能为空", ok=False)
+        dlg = LibraryDialog(self, settings=self._settings, existing=lib)
+        if dlg.exec() != dlg.Accepted:
             return
-        if not url:
-            self._toast("错误", "代码库 URL 不能为空", ok=False)
+        entry = dlg.result_entry()
+        if not entry:
             return
-        # name unique
-        for x in self._settings.libraries:
-            if x.id != lib.id and x.name == name:
-                self._toast("错误", f"代码库名称重复：{name}", ok=False)
-                return
-
-        lib.name = name
-        lib.base_url = url
+        self._settings.libraries = [entry if x.id == lib.id else x for x in self._settings.libraries]
+        self._settings.active_library_id = entry.id
         save_ui_settings(self._settings)
         self._toast("已保存", "代码库配置已保存")
-        self._refresh_lib_combo()
+        self._refresh_lib_combo(select_id=entry.id)
 
     def _delete_library(self) -> None:
-        lid = self.lib_combo.currentData()
-        lib = next((x for x in self._settings.libraries if x.id == lid), None)
+        lib = self._active_library()
         if not lib:
+            self._toast("提示", "请先选择代码库", ok=False)
             return
         self._settings.libraries = [x for x in self._settings.libraries if x.id != lib.id]
-        # remove linked projects too
         self._settings.projects = [p for p in self._settings.projects if p.library_id != lib.id]
         save_ui_settings(self._settings)
         self._toast("已删除", f"代码库已删除：{lib.name}")
         self._refresh_lib_combo()
         self._refresh_proj_combo()
 
-    def _save_pat(self) -> None:
-        lid = self.lib_combo.currentData()
-        if not lid:
-            self._toast("错误", "请选择代码库", ok=False)
-            return
-        pat = self.lib_pat.text().strip()
-        if not pat:
-            self._toast("错误", "请输入PAT", ok=False)
-            return
-        set_pat(str(lid), pat)
-        self.lib_pat.setText("")
-        self._toast("已保存", "PAT 已写入钥匙串（Keychain）")
-
     # --- projects ---
-    def _refresh_proj_combo(self) -> None:
+    def _refresh_proj_combo(self, *, select_id: str | None = None) -> None:
+        self._settings = load_ui_settings()
+        active = select_id or self._settings.active_project_id
         self.proj_combo.blockSignals(True)
         self.proj_combo.clear()
-        for p in self._settings.projects:
+        idx = 0
+        for i, p in enumerate(self._settings.projects):
             self.proj_combo.addItem(p.project, userData=p.id)
+            if active and p.id == active:
+                idx = i
         if self._settings.projects:
-            self.proj_combo.setCurrentIndex(0)
+            self.proj_combo.setCurrentIndex(idx)
         self.proj_combo.blockSignals(False)
-        self._load_selected_project()
 
-    def _load_selected_project(self) -> None:
+    def _active_project(self):
         pid = self.proj_combo.currentData()
-        p = next((x for x in self._settings.projects if x.id == pid), None)
-        if not p:
-            return
-        self.proj_collection.setText(p.collection)
-        self.proj_project.setText(p.project)
+        return next((x for x in self._settings.projects if x.id == pid), None)
 
     def _new_project(self) -> None:
         if not self._settings.libraries:
             self._toast("错误", "请先新增代码库", ok=False)
             return
-        lib_id = self._settings.libraries[0].id
-        p = ProjectEntry(id=f"proj:{uuid.uuid4()}", library_id=lib_id, collection="DefaultCollection", project="CG")
-        self._settings.projects.append(p)
+        dlg = ProjectDialog(self, settings=self._settings)
+        if dlg.exec() != dlg.Accepted:
+            return
+        entry = dlg.result_entry()
+        if not entry:
+            return
+        self._settings.projects.append(entry)
+        self._settings.active_project_id = entry.id
         save_ui_settings(self._settings)
-        self._toast("已新增", "项目已创建")
-        self._refresh_proj_combo()
+        self._toast("已新增", f"项目已创建：{entry.project}")
+        self._refresh_proj_combo(select_id=entry.id)
 
-    def _save_project(self) -> None:
-        pid = self.proj_combo.currentData()
-        p = next((x for x in self._settings.projects if x.id == pid), None)
+    def _edit_project(self) -> None:
+        p = self._active_project()
         if not p:
+            self._toast("提示", "请先选择项目", ok=False)
             return
-        collection = self.proj_collection.text().strip()
-        project = self.proj_project.text().strip()
-        if not collection:
-            self._toast("错误", "Collection 不能为空", ok=False)
+        dlg = ProjectDialog(self, settings=self._settings, existing=p)
+        if dlg.exec() != dlg.Accepted:
             return
-        if not project:
-            self._toast("错误", "Project 不能为空", ok=False)
+        entry = dlg.result_entry()
+        if not entry:
             return
-        # project name unique within all projects
-        for x in self._settings.projects:
-            if x.id != p.id and x.project == project:
-                self._toast("错误", f"项目名称重复：{project}", ok=False)
-                return
-
-        p.collection = collection
-        p.project = project
+        self._settings.projects = [entry if x.id == p.id else x for x in self._settings.projects]
+        self._settings.active_project_id = entry.id
         save_ui_settings(self._settings)
         self._toast("已保存", "项目配置已保存")
-        self._refresh_proj_combo()
+        self._refresh_proj_combo(select_id=entry.id)
 
     def _delete_project(self) -> None:
-        pid = self.proj_combo.currentData()
-        p = next((x for x in self._settings.projects if x.id == pid), None)
+        p = self._active_project()
         if not p:
+            self._toast("提示", "请先选择项目", ok=False)
             return
         self._settings.projects = [x for x in self._settings.projects if x.id != p.id]
         save_ui_settings(self._settings)
