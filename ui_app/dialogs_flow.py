@@ -24,19 +24,48 @@ class RefreshWorker(QtCore.QObject):
 
     @QtCore.Slot()
     def run(self) -> None:
+        # Do best-effort refresh so a 401 on Build doesn't block repos/branches.
+        repos: list[GitRepo] = []
+        branches: list[GitBranch] = []
+        targets: list[BuildTarget] = []
+        repo_id: str | None = None
+        warnings: list[str] = []
+
         try:
             repos = list_repos(self.base_url, self.collection, self.project, self.pat)
             repo_id = self.repo_id or (repos[0].id if repos else None)
-            branches: list[GitBranch] = []
-            if repo_id:
-                branches = list_branches(self.base_url, self.collection, self.project, repo_id, self.pat)
-            targets = discover_build_targets(self.base_url, self.collection, self.pat)
-            self.ok.emit({"repos": repos, "repo_id": repo_id, "branches": branches, "targets": targets})
         except httpx.HTTPStatusError as e:
-            body = (e.response.text or "")[:400]
-            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
+            body = (e.response.text or "")[:200]
+            self.failed.emit(f"repos: HTTP {e.response.status_code}: {body}")
+            return
         except Exception as e:
-            self.failed.emit(str(e))
+            self.failed.emit(f"repos: {e}")
+            return
+
+        if repo_id:
+            try:
+                branches = list_branches(self.base_url, self.collection, self.project, repo_id, self.pat)
+            except httpx.HTTPStatusError as e:
+                body = (e.response.text or "")[:200]
+                warnings.append(f"branches: HTTP {e.response.status_code}: {body}")
+            except Exception as e:
+                warnings.append(f"branches: {e}")
+
+        try:
+            targets = discover_build_targets(self.base_url, self.collection, self.pat)
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:200]
+            warnings.append(f"build targets: HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            warnings.append(f"build targets: {e}")
+
+        self.ok.emit({
+            "repos": repos,
+            "repo_id": repo_id,
+            "branches": branches,
+            "targets": targets,
+            "warnings": warnings,
+        })
 
 
 class FlowTaskDialog(QtWidgets.QDialog):
@@ -237,6 +266,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             repo_id: str | None = payload.get("repo_id")
             branches: list[GitBranch] = payload.get("branches") or []
             targets: list[BuildTarget] = payload.get("targets") or []
+            warnings: list[str] = payload.get("warnings") or []
 
             # repos
             for r in repos:
@@ -268,9 +298,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.build_combo.setCurrentIndex(0)
                 self.release_combo.setCurrentIndex(0)
 
-            self.status.setText(
-                f"刷新完成：repos={len(repos)} branches={len(branches)} buildTargets={len(targets)}"
-            )
+            msg = f"刷新完成：repos={len(repos)} branches={len(branches)} buildTargets={len(targets)}"
+            if warnings:
+                msg += "\n" + "\n".join([f"⚠️ {w}" for w in warnings][:3])
+            self.status.setText(msg)
 
         def fail(msg: str) -> None:
             self._set_refreshing(False)
