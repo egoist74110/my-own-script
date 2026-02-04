@@ -353,6 +353,27 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self._thread = None
                 self._worker = None
 
+    def _cleanup_specific_thread(self, thread: QtCore.QThread, *, kind: str) -> None:
+        """Cleanup a specific thread safely (avoid races where old thread finishes and cancels new thread)."""
+        try:
+            thread.requestInterruption()
+            thread.quit()
+        except Exception:
+            pass
+
+        if kind == "main":
+            if self._thread is thread:
+                self._thread = None
+                self._worker = None
+        elif kind == "branches":
+            if self._branches_thread is thread:
+                self._branches_thread = None
+                self._branches_worker = None
+        elif kind == "stages":
+            if self._stages_thread is thread:
+                self._stages_thread = None
+                self._stages_worker = None
+
     def _auto_refresh_start(self) -> None:
         # Only meaningful if a project is selected.
         if not self._selected_project():
@@ -594,7 +615,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.status.setText("刷新发布阶段已结束但未收到结果（可能是线程/网络异常）。请重试")
 
         thread.finished.connect(_done)
-        thread.finished.connect(lambda: self._cleanup_stages(block=False))
+        thread.finished.connect(lambda th=thread: self._cleanup_specific_thread(th, kind="stages"))
 
         self._stages_thread = thread
         thread.start()
@@ -695,7 +716,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.status.setText("刷新分支已结束但未收到结果（可能是线程/网络异常）。请重试")
 
         thread.finished.connect(_done)
-        thread.finished.connect(lambda: self._cleanup_branches(block=False))
+        thread.finished.connect(lambda th=thread: self._cleanup_specific_thread(th, kind="branches"))
 
         self._branches_thread = thread
         thread.start()
@@ -811,7 +832,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         thread.finished.connect(_done)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: self._cleanup(block=False))
+        # IMPORTANT: cleanup the specific thread to avoid old-thread-finish cancelling a new thread.
+        thread.finished.connect(lambda th=thread: self._cleanup_specific_thread(th, kind="main"))
 
         def ok(payload: dict) -> None:
             if self._cancelled:
