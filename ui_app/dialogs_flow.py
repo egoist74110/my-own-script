@@ -16,6 +16,7 @@ from ui_app.tasks_store import FlowTaskConfig
 class RefreshWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
+    progress = QtCore.Signal(str)
 
     def _pp(self, obj: object, *, limit: int = 12000) -> str:
         try:
@@ -45,8 +46,10 @@ class RefreshWorker(QtCore.QObject):
         debug: list[str] = []
 
         debug.append(f"base={self.base_url} collection={self.collection} project={self.project}")
+        self.progress.emit("worker: start")
 
         try:
+            self.progress.emit("step: list_repos")
             repos = list_repos(self.base_url, self.collection, self.project, self.pat)
             debug.append(f"repos: {len(repos)}")
             debug.append(self._pp([r.__dict__ for r in repos[:50]]))
@@ -57,11 +60,13 @@ class RefreshWorker(QtCore.QObject):
             self.failed.emit(f"repos: HTTP {e.response.status_code}: {body}")
             return
         except Exception as e:
+            self.progress.emit(f"repos exception: {e}")
             self.failed.emit(f"repos: {e}")
             return
 
         if repo_id:
             try:
+                self.progress.emit("step: list_branches")
                 branches = list_branches(self.base_url, self.collection, self.project, repo_id, self.pat)
                 debug.append(f"branches: {len(branches)}")
                 debug.append(self._pp([b.__dict__ for b in branches[:200]]))
@@ -72,6 +77,7 @@ class RefreshWorker(QtCore.QObject):
                 warnings.append(f"branches: {e}")
 
         try:
+            self.progress.emit("step: discover_build_targets")
             targets = discover_build_targets(self.base_url, self.collection, self.pat, project=self.project)
             debug.append(f"build_targets: {len(targets)}")
             debug.append(self._pp([t.__dict__ for t in targets[:200]]))
@@ -83,6 +89,7 @@ class RefreshWorker(QtCore.QObject):
 
         release_defs: list[ReleaseDef] = []
         try:
+            self.progress.emit("step: list_release_definitions")
             release_defs = list_release_definitions(self.base_url, self.collection, self.project, self.pat)
             debug.append(f"release_defs: {len(release_defs)}")
             debug.append(self._pp([d.__dict__ for d in release_defs[:200]]))
@@ -980,6 +987,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         worker.ok.connect(ok, QtCore.Qt.QueuedConnection)
         worker.failed.connect(fail, QtCore.Qt.QueuedConnection)
+        worker.progress.connect(
+            lambda s: self.debug_box.appendPlainText(s) if self.debug_chk.isChecked() else None,
+            QtCore.Qt.QueuedConnection,
+        )
 
         self._thread = thread
         thread.start()
