@@ -8,8 +8,10 @@ from PySide6 import QtCore, QtWidgets
 from ui_app.logging_setup import setup_app_logger
 from ui_app.task_base import DemoSleepTask, TaskLogEvent
 from ui_app.widgets import NavButton, TaskRowCard
-from ui_app.settings_store import load_ui_settings, save_ui_settings, UiSettings
-from ui_app.dialogs import AddRepoDialog
+from ui_app.settings_store import load_ui_settings, save_ui_settings, UiSettings, LibraryEntry, ProjectEntry
+from ui_app.dialogs_library import LibraryDialog
+from ui_app.dialogs_project import ProjectDialog
+from ui_app.library_store import new_library_id, set_pat
 
 
 class Worker(QtCore.QObject):
@@ -274,167 +276,261 @@ class MainWindow(QtWidgets.QMainWindow):
         header = QtWidgets.QLabel("设置")
         header.setObjectName("PageHeader")
 
-        # Settings: repo selector + add
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(10)
-
-        self.repo_combo = QtWidgets.QComboBox()
-        self.repo_combo.setMinimumWidth(360)
-        self.repo_combo.currentIndexChanged.connect(self._on_repo_selected)
-
-        self.repo_add_btn = QtWidgets.QPushButton("新增")
-        self.repo_add_btn.setObjectName("PrimaryButton")
-        self.repo_add_btn.clicked.connect(self._add_repo)
-
-        self.repo_edit_btn = QtWidgets.QPushButton("编辑")
-        self.repo_edit_btn.clicked.connect(self._edit_repo)
-
-        self.repo_del_btn = QtWidgets.QPushButton("删除")
-        self.repo_del_btn.clicked.connect(self._delete_repo)
-
-        row.addWidget(QtWidgets.QLabel("代码仓库"))
-        row.addWidget(self.repo_combo, 1)
-        row.addWidget(self.repo_add_btn, 0)
-        row.addWidget(self.repo_edit_btn, 0)
-        row.addWidget(self.repo_del_btn, 0)
-
-        self.repo_card = QtWidgets.QFrame()
-        self.repo_card.setObjectName("RepoCard")
-        card_layout = QtWidgets.QFormLayout(self.repo_card)
-        card_layout.setContentsMargins(14, 14, 14, 14)
-        card_layout.setSpacing(8)
-
-        self.repo_name_v = QtWidgets.QLabel("-")
-        self.repo_base_v = QtWidgets.QLabel("-")
-        self.repo_coll_v = QtWidgets.QLabel("-")
-        self.repo_proj_v = QtWidgets.QLabel("-")
-
         from PySide6 import QtCore
 
-        for w in (self.repo_base_v, self.repo_coll_v, self.repo_proj_v):
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+
+        def make_row(label: str):
+            l = QtWidgets.QLabel(label)
+            combo = QtWidgets.QComboBox()
+            combo.setMinimumWidth(380)
+            btn_add = QtWidgets.QPushButton("新增")
+            btn_add.setObjectName("PrimaryButton")
+            btn_edit = QtWidgets.QPushButton("编辑")
+            btn_del = QtWidgets.QPushButton("删除")
+            return l, combo, btn_add, btn_edit, btn_del
+
+        # Row 1: Libraries
+        self.lib_label, self.lib_combo, self.lib_add_btn, self.lib_edit_btn, self.lib_del_btn = make_row("代码库")
+        self.lib_combo.currentIndexChanged.connect(self._on_library_selected)
+        self.lib_add_btn.clicked.connect(self._add_library)
+        self.lib_edit_btn.clicked.connect(self._edit_library)
+        self.lib_del_btn.clicked.connect(self._delete_library)
+
+        # Row 2: Projects
+        self.proj_label, self.proj_combo, self.proj_add_btn, self.proj_edit_btn, self.proj_del_btn = make_row("项目")
+        self.proj_combo.currentIndexChanged.connect(self._on_project_selected)
+        self.proj_add_btn.clicked.connect(self._add_project)
+        self.proj_edit_btn.clicked.connect(self._edit_project)
+        self.proj_del_btn.clicked.connect(self._delete_project)
+
+        # Layout rows: label | combo | add | edit | del
+        grid.addWidget(self.lib_label, 0, 0)
+        grid.addWidget(self.lib_combo, 0, 1)
+        grid.addWidget(self.lib_add_btn, 0, 2)
+        grid.addWidget(self.lib_edit_btn, 0, 3)
+        grid.addWidget(self.lib_del_btn, 0, 4)
+
+        grid.addWidget(self.proj_label, 1, 0)
+        grid.addWidget(self.proj_combo, 1, 1)
+        grid.addWidget(self.proj_add_btn, 1, 2)
+        grid.addWidget(self.proj_edit_btn, 1, 3)
+        grid.addWidget(self.proj_del_btn, 1, 4)
+
+        # Info card
+        self.info_card = QtWidgets.QFrame()
+        self.info_card.setObjectName("RepoCard")
+        info_layout = QtWidgets.QFormLayout(self.info_card)
+        info_layout.setContentsMargins(14, 14, 14, 14)
+        info_layout.setSpacing(8)
+
+        self.info_a = QtWidgets.QLabel("-")
+        self.info_b = QtWidgets.QLabel("-")
+        self.info_c = QtWidgets.QLabel("-")
+
+        for w in (self.info_a, self.info_b, self.info_c):
             w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
 
-        card_layout.addRow("名称", self.repo_name_v)
-        card_layout.addRow("Server", self.repo_base_v)
-        card_layout.addRow("Collection", self.repo_coll_v)
-        card_layout.addRow("Project", self.repo_proj_v)
+        info_layout.addRow("当前代码库", self.info_a)
+        info_layout.addRow("URL", self.info_b)
+        info_layout.addRow("当前项目", self.info_c)
 
         hint = QtWidgets.QLabel(
-            "提示：点击【编辑】可以修改信息并手动验证；token 会安全存储在系统钥匙串(Keychain)，不会写入仓库文件。"
+            "代码库：只配置名称+URL+PAT（安全写入 Keychain）。\n"
+            "项目：选择代码库后拉取 collection/project（能拉就下拉默认第一个；拉不到就手填）。"
         )
         hint.setWordWrap(True)
         hint.setObjectName("Muted")
 
         layout.addWidget(header)
-        layout.addLayout(row)
-        layout.addWidget(self.repo_card)
+        layout.addLayout(grid)
+        layout.addWidget(self.info_card)
         layout.addWidget(hint)
         layout.addStretch(1)
 
-        self._refresh_repo_combo()
+        self._refresh_settings_rows()
         return page
 
-    def _refresh_repo_combo(self) -> None:
-        self.repo_combo.blockSignals(True)
-        self.repo_combo.clear()
-
-        if not self.ui_settings.repos:
-            self.repo_combo.addItem("（暂无，点击右侧新增）", userData=None)
-            self.repo_combo.setEnabled(False)
+    def _refresh_settings_rows(self) -> None:
+        # Libraries dropdown
+        self.lib_combo.blockSignals(True)
+        self.lib_combo.clear()
+        if not self.ui_settings.libraries:
+            self.lib_combo.addItem("（暂无，点击新增）", userData=None)
+            self.lib_combo.setEnabled(False)
         else:
-            self.repo_combo.setEnabled(True)
-            active_id = self.ui_settings.active_repo_id
-            active_index = 0
-            for i, r in enumerate(self.ui_settings.repos):
-                # B: name · collection · project
-                c = r.default_collection or r.collection or r.org or "-"
-                p = (r.projects[0] if r.projects else (r.project or "-"))
-                self.repo_combo.addItem(f"{r.display_name}  ·  {c}  ·  {p}", userData=r.id)
-                if active_id and r.id == active_id:
-                    active_index = i
-            self.repo_combo.setCurrentIndex(active_index)
+            self.lib_combo.setEnabled(True)
+            active = self.ui_settings.active_library_id
+            idx = 0
+            for i, lib in enumerate(self.ui_settings.libraries):
+                self.lib_combo.addItem(lib.name, userData=lib.id)
+                if active and lib.id == active:
+                    idx = i
+            self.lib_combo.setCurrentIndex(idx)
+        self.lib_combo.blockSignals(False)
 
-        self.repo_combo.blockSignals(False)
-        self._update_repo_status()
+        # Projects dropdown
+        self.proj_combo.blockSignals(True)
+        self.proj_combo.clear()
+        if not self.ui_settings.projects:
+            self.proj_combo.addItem("（暂无，点击新增）", userData=None)
+            self.proj_combo.setEnabled(False)
+        else:
+            self.proj_combo.setEnabled(True)
+            active = self.ui_settings.active_project_id
+            idx = 0
+            for i, p in enumerate(self.ui_settings.projects):
+                self.proj_combo.addItem(p.project, userData=p.id)  # 2:b only name
+                if active and p.id == active:
+                    idx = i
+            self.proj_combo.setCurrentIndex(idx)
+        self.proj_combo.blockSignals(False)
 
-    def _active_repo(self):
-        if not self.ui_settings.repos:
+        self._update_info_card()
+
+    def _active_library(self) -> LibraryEntry | None:
+        if not self.ui_settings.libraries:
             return None
-        rid = self.ui_settings.active_repo_id or self.ui_settings.repos[0].id
-        return next((r for r in self.ui_settings.repos if r.id == rid), None)
+        lid = self.ui_settings.active_library_id or self.ui_settings.libraries[0].id
+        return next((x for x in self.ui_settings.libraries if x.id == lid), None)
 
-    def _update_repo_status(self) -> None:
-        repo = self._active_repo()
-        has = repo is not None
-        self.repo_edit_btn.setEnabled(has)
-        self.repo_del_btn.setEnabled(has)
-        self.repo_card.setEnabled(has)
+    def _active_project(self) -> ProjectEntry | None:
+        if not self.ui_settings.projects:
+            return None
+        pid = self.ui_settings.active_project_id or self.ui_settings.projects[0].id
+        return next((x for x in self.ui_settings.projects if x.id == pid), None)
 
-        if not repo:
-            self.repo_name_v.setText("未配置")
-            self.repo_base_v.setText("-")
-            self.repo_coll_v.setText("-")
-            self.repo_proj_v.setText("-")
-            return
+    def _update_info_card(self) -> None:
+        lib = self._active_library()
+        proj = self._active_project()
 
-        self.repo_name_v.setText(repo.display_name)
-        self.repo_base_v.setText(repo.base_url or "-")
-        self.repo_coll_v.setText(repo.default_collection or repo.collection or repo.org or "-")
-        if repo.projects:
-            self.repo_proj_v.setText(", ".join(repo.projects[:3]) + (" …" if len(repo.projects) > 3 else ""))
+        self.lib_edit_btn.setEnabled(lib is not None)
+        self.lib_del_btn.setEnabled(lib is not None)
+        self.proj_edit_btn.setEnabled(proj is not None)
+        self.proj_del_btn.setEnabled(proj is not None)
+
+        if not lib:
+            self.info_a.setText("未配置")
+            self.info_b.setText("-")
         else:
-            self.repo_proj_v.setText(repo.project or "-")
+            self.info_a.setText(lib.name)
+            self.info_b.setText(lib.base_url)
 
-    def _on_repo_selected(self, idx: int) -> None:
-        rid = self.repo_combo.currentData()
-        if rid:
-            self.ui_settings.active_repo_id = rid
+        self.info_c.setText(proj.project if proj else "-")
+
+    def _on_library_selected(self, idx: int) -> None:
+        lid = self.lib_combo.currentData()
+        if lid:
+            self.ui_settings.active_library_id = lid
             save_ui_settings(self.ui_settings)
-        self._update_repo_status()
+        self._update_info_card()
 
-    def _add_repo(self) -> None:
-        dlg = AddRepoDialog(self)
+    def _on_project_selected(self, idx: int) -> None:
+        pid = self.proj_combo.currentData()
+        if pid:
+            self.ui_settings.active_project_id = pid
+            save_ui_settings(self.ui_settings)
+        self._update_info_card()
+
+    def _add_library(self) -> None:
+        dlg = LibraryDialog(self)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
-        repo = dlg.repo()
-        if not repo:
+        entry = dlg.result_entry()
+        if not entry:
             return
-        self.ui_settings.repos.append(repo)
-        self.ui_settings.active_repo_id = repo.id
+
+        # assign real id
+        real_id = new_library_id()
+        entry = entry.model_copy(update={"id": real_id})
+        # If dialog stored token under placeholder id, user will re-enter; keep simple.
+
+        self.ui_settings.libraries.append(entry)
+        self.ui_settings.active_library_id = entry.id
         save_ui_settings(self.ui_settings)
-        self._refresh_repo_combo()
+        self._refresh_settings_rows()
 
-    def _edit_repo(self) -> None:
-        repo = self._active_repo()
-        if not repo:
+    def _edit_library(self) -> None:
+        lib = self._active_library()
+        if not lib:
+            QtWidgets.QMessageBox.information(self, "提示", "请先选择一个代码库")
             return
-        dlg = AddRepoDialog(self, existing=repo)
+        dlg = LibraryDialog(self, existing=lib)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
-        updated = dlg.repo()
+        updated = dlg.result_entry()
         if not updated:
             return
-        # replace in list
-        self.ui_settings.repos = [updated if r.id == updated.id else r for r in self.ui_settings.repos]
-        self.ui_settings.active_repo_id = updated.id
+        # keep id
+        updated = updated.model_copy(update={"id": lib.id})
+        self.ui_settings.libraries = [updated if x.id == lib.id else x for x in self.ui_settings.libraries]
+        self.ui_settings.active_library_id = lib.id
         save_ui_settings(self.ui_settings)
-        self._refresh_repo_combo()
+        self._refresh_settings_rows()
 
-    def _delete_repo(self) -> None:
-        repo = self._active_repo()
-        if not repo:
+    def _delete_library(self) -> None:
+        lib = self._active_library()
+        if not lib:
+            QtWidgets.QMessageBox.information(self, "提示", "请先选择一个代码库")
             return
-        ok = QtWidgets.QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定删除仓库配置：{repo.display_name} ?\n(不会自动删除钥匙串里的 token；后续可再加清理按钮)",
-        )
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除代码库：{lib.name} ?")
         if ok != QtWidgets.QMessageBox.Yes:
             return
-        self.ui_settings.repos = [r for r in self.ui_settings.repos if r.id != repo.id]
-        self.ui_settings.active_repo_id = self.ui_settings.repos[0].id if self.ui_settings.repos else None
+
+        self.ui_settings.libraries = [x for x in self.ui_settings.libraries if x.id != lib.id]
+        # also remove projects under this library
+        self.ui_settings.projects = [p for p in self.ui_settings.projects if p.library_id != lib.id]
+        self.ui_settings.active_library_id = self.ui_settings.libraries[0].id if self.ui_settings.libraries else None
+        self.ui_settings.active_project_id = self.ui_settings.projects[0].id if self.ui_settings.projects else None
         save_ui_settings(self.ui_settings)
-        self._refresh_repo_combo()
+        self._refresh_settings_rows()
+
+    def _add_project(self) -> None:
+        if not self.ui_settings.libraries:
+            QtWidgets.QMessageBox.information(self, "提示", "请先新增一个代码库")
+            return
+        dlg = ProjectDialog(self, libraries=self.ui_settings.libraries)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        entry = dlg.result_entry()
+        if not entry:
+            return
+        self.ui_settings.projects.append(entry)
+        self.ui_settings.active_project_id = entry.id
+        save_ui_settings(self.ui_settings)
+        self._refresh_settings_rows()
+
+    def _edit_project(self) -> None:
+        proj = self._active_project()
+        if not proj:
+            QtWidgets.QMessageBox.information(self, "提示", "请先选择一个项目")
+            return
+        dlg = ProjectDialog(self, libraries=self.ui_settings.libraries, existing=proj)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        updated = dlg.result_entry()
+        if not updated:
+            return
+        updated = updated.model_copy(update={"id": proj.id})
+        self.ui_settings.projects = [updated if x.id == proj.id else x for x in self.ui_settings.projects]
+        self.ui_settings.active_project_id = proj.id
+        save_ui_settings(self.ui_settings)
+        self._refresh_settings_rows()
+
+    def _delete_project(self) -> None:
+        proj = self._active_project()
+        if not proj:
+            QtWidgets.QMessageBox.information(self, "提示", "请先选择一个项目")
+            return
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除项目：{proj.project} ?")
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+        self.ui_settings.projects = [x for x in self.ui_settings.projects if x.id != proj.id]
+        self.ui_settings.active_project_id = self.ui_settings.projects[0].id if self.ui_settings.projects else None
+        save_ui_settings(self.ui_settings)
+        self._refresh_settings_rows()
 
     def _now(self) -> str:
         from datetime import UTC, datetime

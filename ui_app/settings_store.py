@@ -9,30 +9,25 @@ from pydantic import BaseModel, Field
 from runner_app.config import config_dir
 
 
-class RepoEntry(BaseModel):
+class LibraryEntry(BaseModel):
     id: str
-    provider: str  # azuredevops
-    display_name: str
+    provider: str = "azuredevops"
+    name: str
+    base_url: str
 
-    # provider-specific (azuredevops)
-    base_url: Optional[str] = None
 
-    # Default collection used for project listing.
-    # Many ADO servers block listing collections; we treat this as optional.
-    default_collection: Optional[str] = None
-
-    # Cached projects under the default collection (names only).
-    projects: list[str] = Field(default_factory=list)
-
-    # legacy/compat fields (kept for reading older configs)
-    collection: Optional[str] = None
-    org: Optional[str] = None
-    project: Optional[str] = None
+class ProjectEntry(BaseModel):
+    id: str
+    library_id: str
+    collection: str
+    project: str
 
 
 class UiSettings(BaseModel):
-    repos: list[RepoEntry] = Field(default_factory=list)
-    active_repo_id: Optional[str] = None
+    libraries: list[LibraryEntry] = Field(default_factory=list)
+    projects: list[ProjectEntry] = Field(default_factory=list)
+    active_library_id: Optional[str] = None
+    active_project_id: Optional[str] = None
 
 
 def settings_path() -> Path:
@@ -43,26 +38,57 @@ def load_ui_settings() -> UiSettings:
     path = settings_path()
     if not path.exists():
         return UiSettings()
+
     raw = yaml.safe_load(path.read_text("utf-8")) or {}
+
+    # Back-compat migration from older schema that used `repos`.
+    if "repos" in raw and "libraries" not in raw:
+        libs: list[dict] = []
+        projs: list[dict] = []
+        for r in raw.get("repos") or []:
+            rid = r.get("id")
+            if not rid:
+                continue
+            libs.append(
+                {
+                    "id": rid,
+                    "provider": "azuredevops",
+                    "name": r.get("display_name") or rid,
+                    "base_url": r.get("base_url") or "",
+                }
+            )
+            # If legacy had a project, create a project entry.
+            coll = r.get("default_collection") or r.get("collection") or r.get("org")
+            if coll and (r.get("project") or (r.get("projects") or [])):
+                # prefer first
+                pj = r.get("project") or (r.get("projects") or [None])[0]
+                if pj:
+                    projs.append(
+                        {
+                            "id": f"proj:{rid}",
+                            "library_id": rid,
+                            "collection": coll,
+                            "project": pj,
+                        }
+                    )
+
+        raw2 = {
+            "libraries": libs,
+            "projects": projs,
+            "active_library_id": raw.get("active_repo_id"),
+            "active_project_id": None,
+        }
+        raw = raw2
+
     cfg = UiSettings.model_validate(raw)
 
-    # migrate legacy fields -> new structure
-    changed = False
-    for r in cfg.repos:
-        if not r.default_collection:
-            # prefer explicit legacy collection/org
-            if r.collection:
-                r.default_collection = r.collection
-                changed = True
-            elif r.org:
-                r.default_collection = r.org
-                changed = True
-        if not r.projects and r.project:
-            r.projects = [r.project]
-            changed = True
+    # default actives
+    if cfg.libraries and not cfg.active_library_id:
+        cfg.active_library_id = cfg.libraries[0].id
+    if cfg.projects and not cfg.active_project_id:
+        cfg.active_project_id = cfg.projects[0].id
 
-    if changed:
-        save_ui_settings(cfg)
+    save_ui_settings(cfg)
     return cfg
 
 
