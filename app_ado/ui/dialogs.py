@@ -214,7 +214,11 @@ class ProjectDialog(QDialog):
             return
         pat = get_pat(lib.id)
         if not pat:
-            show_error_dialog(self, "错误", "该代码库未保存 PAT（请在编辑代码库时填写PAT并保存）")
+            show_error_dialog(
+                self,
+                "错误",
+                f"该代码库未保存 PAT：{lib.name}\n\n请在『代码库 → 编辑』里填写 PAT 并保存。",
+            )
             return
 
         c = self.collection_input.text().strip()
@@ -253,9 +257,15 @@ class ProjectDialog(QDialog):
 
             url = f"{base_url.rstrip('/')}/{collection}/_apis/projects?api-version=7.0"
             if res.status != 200:
-                details = f"URL: {url}\n状态码: {res.status}\n\nHeaders:\n" + "\n".join(
-                    [f"{k}: {v}" for k, v in res.headers.items()]
-                ) + f"\n\nBody(截断):\n{(res.body or '')[:4000]}"
+                pat_len = len(pat) if pat else 0
+                details = (
+                    f"代码库: {lib.name}\n"
+                    f"library_id: {lib.id}\n"
+                    f"PAT_len: {pat_len}\n\n"
+                    f"URL: {url}\n状态码: {res.status}\n\nHeaders:\n" + "\n".join(
+                        [f"{k}: {v}" for k, v in res.headers.items()]
+                    ) + f"\n\nBody(截断):\n{(res.body or '')[:4000]}"
+                )
                 show_error_dialog(self, "获取 Projects 失败", details)
                 return
 
