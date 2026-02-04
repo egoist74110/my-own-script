@@ -102,6 +102,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.refresh_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.refresh_btn.clicked.connect(self._refresh_all)
 
+        self.stop_btn = QtWidgets.QPushButton("停止")
+        self.stop_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.stop_btn.clicked.connect(self._cancel_refresh)
+        self.stop_btn.setEnabled(False)
+
         self.status = QtWidgets.QLabel("")
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
@@ -114,7 +119,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
         form.addRow("Release", self.release_combo)
         root.addLayout(form)
 
-        root.addWidget(self.refresh_btn)
+        refresh_row = QtWidgets.QHBoxLayout()
+        refresh_row.setSpacing(10)
+        refresh_row.addWidget(self.refresh_btn)
+        refresh_row.addWidget(self.stop_btn)
+        refresh_row.addStretch(1)
+        root.addLayout(refresh_row)
         root.addWidget(self.status)
 
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Save)
@@ -124,6 +134,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         self._thread: QtCore.QThread | None = None
         self._watchdog: QtCore.QTimer | None = None
+        self._refreshing: bool = False
+        self._cancelled: bool = False
 
         # load existing
         if flow.project_id:
@@ -141,7 +153,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
     def result_flow(self) -> FlowTaskConfig | None:
         return self._result
 
-    def _cleanup(self) -> None:
+    def _cleanup(self, *, block: bool = True) -> None:
         if self._watchdog is not None:
             try:
                 self._watchdog.stop()
@@ -151,22 +163,43 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         if self._thread is not None:
             try:
+                # Best-effort; may not stop a blocked network call.
+                self._thread.requestInterruption()
                 self._thread.quit()
-                self._thread.wait(1200)
+                if block:
+                    self._thread.wait(1200)
             except Exception:
                 pass
-            self._thread = None
+            if block:
+                self._thread = None
+
+    def _cancel_refresh(self) -> None:
+        if not self._refreshing:
+            return
+        self._cancelled = True
+        self._refreshing = False
+        self._set_refreshing(False)
+        self.status.setText("已停止刷新（如果网络请求仍在进行，会在后台自行结束）")
+        # Don't block UI while cancelling.
+        self._cleanup(block=False)
+        self._thread = None
 
     def _start_watchdog(self, ms: int = 12000) -> None:
         t = QtCore.QTimer(self)
         t.setSingleShot(True)
 
         def fire() -> None:
+            if not self._refreshing:
+                return
+            self._cancelled = True
+            self._refreshing = False
             # Don't leave UI stuck even if worker never emits.
             self._set_refreshing(False)
             if self.status.text().startswith("刷新中"):
-                self.status.setText(f"刷新超时（>{ms//1000}s）。可能是网络/权限问题，建议重试；我下一步会加详细URL/状态码日志")
-            self._cleanup()
+                self.status.setText(f"刷新超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
+            # Don't block UI; background thread may still be in-flight.
+            self._cleanup(block=False)
+            self._thread = None
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -207,10 +240,15 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
     def _set_refreshing(self, on: bool, msg: str = "") -> None:
         self.refresh_btn.setEnabled(not on)
+        self.stop_btn.setEnabled(on)
         if on:
             self.status.setText(msg)
 
     def _refresh_all(self) -> None:
+        if self._refreshing:
+            self.status.setText("正在刷新中，请稍候或点击『停止』")
+            return
+
         p = self._selected_project()
         if not p:
             self.status.setText("请先在设置里新增项目")
@@ -236,8 +274,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.build_combo.clear()
         self.release_combo.clear()
 
+        self._cancelled = False
+        self._refreshing = True
         self._set_refreshing(True, f"刷新中：repos/branches/build ({p.project})...")
-        self._cleanup()
+        # Best-effort cleanup of any prior thread without blocking UI
+        self._cleanup(block=False)
+        self._thread = None
         self._start_watchdog()
 
         worker = RefreshWorker(lib.base_url, p.collection, p.project, pat, existing_repo)
@@ -252,14 +294,19 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         def _done() -> None:
             # If worker finishes without emitting ok/failed, don't leave UI in "refreshing" state.
-            if self.status.text().startswith("刷新中"):
+            if self._refreshing and (not self._cancelled) and self.status.text().startswith("刷新中"):
+                self._refreshing = False
                 self._set_refreshing(False)
                 self.status.setText("刷新已结束但未收到结果（可能是线程/网络异常）。请重试")
 
         thread.finished.connect(_done)
-        thread.finished.connect(self._cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: self._cleanup(block=False))
 
         def ok(payload: dict) -> None:
+            if self._cancelled:
+                return
+            self._refreshing = False
             self._set_refreshing(False)
 
             repos: list[GitRepo] = payload.get("repos") or []
@@ -304,6 +351,9 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText(msg)
 
         def fail(msg: str) -> None:
+            if self._cancelled:
+                return
+            self._refreshing = False
             self._set_refreshing(False)
             self.status.setText(f"刷新失败：{msg}")
 
