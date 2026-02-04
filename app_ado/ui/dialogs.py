@@ -252,8 +252,19 @@ class ProjectDialog(QDialog):
         def fail(err: NetError) -> None:
             self._set_loading(False)
             hint = "\n\n可能原因/建议：\n- 服务器/代理不支持 HTTP/2：已在客户端强制 HTTP/1.1（如仍失败请反馈）\n- PAT 无效或权限不足也会 401（但这里提示更像协议问题）\n"
+            hdr = ""
+            if err.headers:
+                show_keys = ["www-authenticate", "lfs-authenticate", "location", "set-cookie"]
+                lines = []
+                for k in show_keys:
+                    if k in err.headers:
+                        lines.append(f"{k}: {err.headers[k]}")
+                if lines:
+                    hdr = "\n\nHeaders(关键):\n" + "\n".join(lines)
+
             details = (
                 f"URL: {err.url}\n状态码: {err.status}\n错误: {err.message}"
+                + hdr +
                 f"\n\nBody(截断):\n{err.body or ''}"
                 + hint
             )

@@ -14,6 +14,7 @@ class NetError:
     url: str
     status: int | None = None
     body: str | None = None
+    headers: dict[str, str] | None = None
 
 
 class NetJob(QtCore.QObject):
@@ -62,6 +63,16 @@ class NetJob(QtCore.QObject):
         except Exception:
             raw = ""
 
+        # response headers
+        headers: dict[str, str] = {}
+        try:
+            for hb in r.rawHeaderList():
+                k = bytes(hb).decode("utf-8", errors="replace")
+                v = bytes(r.rawHeader(hb)).decode("utf-8", errors="replace")
+                headers[k.lower()] = v
+        except Exception:
+            headers = {}
+
         err = r.error()
         if err != QtNetwork.QNetworkReply.NetworkError.NoError:
             # include Qt error code for diagnostics
@@ -79,6 +90,7 @@ class NetJob(QtCore.QObject):
                     url=self._url,
                     status=status_i,
                     body=raw[:2000],
+                    headers=headers,
                 )
             )
             self.finished.emit()
@@ -86,7 +98,7 @@ class NetJob(QtCore.QObject):
             return
 
         if status_i is not None and status_i >= 400:
-            self.failed.emit(NetError(f"{self._tag} HTTP {status_i}".strip(), url=self._url, status=status_i, body=raw[:4000]))
+            self.failed.emit(NetError(f"{self._tag} HTTP {status_i}".strip(), url=self._url, status=status_i, body=raw[:4000], headers=headers))
             self.finished.emit()
             r.deleteLater()
             return
@@ -94,7 +106,7 @@ class NetJob(QtCore.QObject):
         try:
             data: Any = json.loads(raw) if raw else {}
         except Exception as e:
-            self.failed.emit(NetError(f"{self._tag} JSON解析失败: {e}".strip(), url=self._url, status=status_i, body=raw[:2000]))
+            self.failed.emit(NetError(f"{self._tag} JSON解析失败: {e}".strip(), url=self._url, status=status_i, body=raw[:2000], headers=headers))
             self.finished.emit()
             r.deleteLater()
             return
@@ -122,6 +134,16 @@ class Net(QtCore.QObject):
         # Some enterprise servers/proxies break on HTTP/2; force HTTP/1.1
         try:
             req.setAttribute(QtNetwork.QNetworkRequest.Http2AllowedAttribute, False)
+        except Exception:
+            pass
+        # Suppress interactive auth redirects in Azure DevOps/TFS where supported
+        try:
+            req.setRawHeader(b"X-TFS-FedAuthRedirect", b"Suppress")
+        except Exception:
+            pass
+        # Stable UA sometimes helps enterprise proxies
+        try:
+            req.setRawHeader(b"User-Agent", b"my-own-script/1.0")
         except Exception:
             pass
         if headers:
