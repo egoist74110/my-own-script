@@ -147,10 +147,15 @@ class ProjectDialog(QtWidgets.QDialog):
         t.setSingleShot(True)
 
         def fire() -> None:
+            # Don't block the UI by waiting on a stuck thread.
             self.fetch_btn.setEnabled(True)
             self.pick_default_btn.setEnabled(True)
             self.status.setText(f"{op} 超时（>{ms//1000}s），请重试")
-            self._cleanup()
+            # Best-effort: drop references; background thread may still exit later.
+            self._watchdog = None
+            self._watchdog_op = None
+            self._thread = None
+            self._worker = None
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -223,6 +228,10 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self._thread = thread
         self._worker = worker
+        def _done() -> None:
+            self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
+        thread.finished.connect(_done)
         thread.finished.connect(self._cleanup)
         thread.start()
 
@@ -283,6 +292,10 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self._thread = thread
         self._worker = worker
+        def _done() -> None:
+            self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
+        thread.finished.connect(_done)
         thread.finished.connect(self._cleanup)
         thread.start()
 
