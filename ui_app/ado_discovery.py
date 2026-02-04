@@ -43,8 +43,18 @@ def _client(pat: str) -> httpx.Client:
     return httpx.Client(timeout=timeout, headers=_headers(pat))
 
 
-def list_pipelines(base_url: str, collection: str, pat: str, api_version: str = "7.0") -> list[BuildTarget]:
-    url = f"{base_url.rstrip('/')}/{collection}/_apis/pipelines"
+def list_pipelines(
+    base_url: str,
+    collection: str,
+    pat: str,
+    api_version: str = "7.0",
+    *,
+    project: str | None = None,
+) -> list[BuildTarget]:
+    if project:
+        url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines"
+    else:
+        url = f"{base_url.rstrip('/')}/{collection}/_apis/pipelines"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
@@ -58,8 +68,18 @@ def list_pipelines(base_url: str, collection: str, pat: str, api_version: str = 
     return out
 
 
-def list_build_definitions(base_url: str, collection: str, pat: str, api_version: str = "7.0") -> list[BuildTarget]:
-    url = f"{base_url.rstrip('/')}/{collection}/_apis/build/definitions"
+def list_build_definitions(
+    base_url: str,
+    collection: str,
+    pat: str,
+    api_version: str = "7.0",
+    *,
+    project: str | None = None,
+) -> list[BuildTarget]:
+    if project:
+        url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/definitions"
+    else:
+        url = f"{base_url.rstrip('/')}/{collection}/_apis/build/definitions"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
@@ -73,13 +93,16 @@ def list_build_definitions(base_url: str, collection: str, pat: str, api_version
     return out
 
 
-def discover_build_targets(base_url: str, collection: str, pat: str) -> list[BuildTarget]:
+def discover_build_targets(base_url: str, collection: str, pat: str, *, project: str | None = None) -> list[BuildTarget]:
     # Try pipelines first; fall back to build definitions
     try:
-        targets = list_pipelines(base_url, collection, pat)
+        targets = list_pipelines(base_url, collection, pat, project=project)
         if targets:
             return targets
     except httpx.HTTPError:
         pass
 
-    return list_build_definitions(base_url, collection, pat)
+    try:
+        return list_build_definitions(base_url, collection, pat, project=project)
+    except httpx.HTTPError:
+        return []

@@ -52,7 +52,7 @@ class RefreshWorker(QtCore.QObject):
                 warnings.append(f"branches: {e}")
 
         try:
-            targets = discover_build_targets(self.base_url, self.collection, self.pat)
+            targets = discover_build_targets(self.base_url, self.collection, self.pat, project=self.project)
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:200]
             warnings.append(f"build targets: HTTP {e.response.status_code}: {body}")
