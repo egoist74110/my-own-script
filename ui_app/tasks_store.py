@@ -24,10 +24,14 @@ class FlowTaskConfig(BaseModel):
     build_id: Optional[str] = None
     build_name: Optional[str] = None
 
-    # release target (pipeline for now)
+    # release target
     release_kind: Optional[str] = None
     release_id: Optional[str] = None
     release_name: Optional[str] = None
+
+    # release stage (environment) within release definition
+    release_stage_id: Optional[str] = None
+    release_stage_name: Optional[str] = None
 
     build_timeout_min: int = 30
     release_timeout_min: int = 60

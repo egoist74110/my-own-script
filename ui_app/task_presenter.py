@@ -31,6 +31,9 @@ def flow_subtitle_cn(settings: UiSettings, flow: FlowTaskConfig) -> str:
     if flow.build_name:
         bits.append(f"构建：{flow.build_name}")
     if flow.release_name:
-        bits.append(f"发布：{flow.release_name}")
+        if flow.release_stage_name:
+            bits.append(f"发布：{flow.release_name} → {flow.release_stage_name}")
+        else:
+            bits.append(f"发布：{flow.release_name}")
 
     return " | ".join(bits)

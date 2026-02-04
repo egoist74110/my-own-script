@@ -5,6 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui_app.ado_discovery import BuildTarget, GitBranch, GitRepo, discover_build_targets
 from ui_app.ado_git import list_branches, list_repos
+from ui_app.ado_release import ReleaseDef, ReleaseStage, list_release_definitions, list_release_stages
 from ui_app.library_store import get_pat
 from ui_app.settings_store import LibraryEntry, ProjectEntry, UiSettings
 from ui_app.tasks_store import FlowTaskConfig
@@ -59,11 +60,21 @@ class RefreshWorker(QtCore.QObject):
         except Exception as e:
             warnings.append(f"build targets: {e}")
 
+        release_defs: list[ReleaseDef] = []
+        try:
+            release_defs = list_release_definitions(self.base_url, self.collection, self.project, self.pat)
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:200]
+            warnings.append(f"release defs: HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            warnings.append(f"release defs: {e}")
+
         self.ok.emit({
             "repos": repos,
             "repo_id": repo_id,
             "branches": branches,
             "targets": targets,
+            "release_defs": release_defs,
             "warnings": warnings,
         })
 
@@ -71,6 +82,32 @@ class RefreshWorker(QtCore.QObject):
 class BranchesWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
+
+
+class ReleaseStagesWorker(QtCore.QObject):
+    ok = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, base_url: str, collection: str, project: str, pat: str, release_def_id: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.collection = collection
+        self.project = project
+        self.pat = pat
+        self.release_def_id = release_def_id
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            stages = list_release_stages(
+                self.base_url, self.collection, self.project, self.pat, self.release_def_id
+            )
+            self.ok.emit({"stages": stages, "release_def_id": self.release_def_id})
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            self.failed.emit(str(e))
 
     def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
         super().__init__()
@@ -159,6 +196,13 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.release_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         setup_combo(self.release_combo, popup_w=820)
 
+        self.release_stage_combo = QtWidgets.QComboBox()
+        self.release_stage_combo.setEditable(True)
+        self.release_stage_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.release_stage_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.release_stage_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        setup_combo(self.release_stage_combo, popup_w=520)
+
         setup_combo(self.project_combo, min_w=520, popup_w=520)
 
         self.refresh_btn = QtWidgets.QPushButton("刷新 Repo/Branches/Build")
@@ -180,6 +224,16 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.stop_branches_btn.clicked.connect(self._cancel_branches)
         self.stop_branches_btn.setEnabled(False)
 
+        self.refresh_stages_btn = QtWidgets.QPushButton("刷新发布阶段")
+        self.refresh_stages_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.refresh_stages_btn.clicked.connect(self._refresh_release_stages)
+        self.refresh_stages_btn.setEnabled(True)
+
+        self.stop_stages_btn = QtWidgets.QPushButton("停止")
+        self.stop_stages_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.stop_stages_btn.clicked.connect(self._cancel_stages)
+        self.stop_stages_btn.setEnabled(False)
+
         self.status = QtWidgets.QLabel("")
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
@@ -190,6 +244,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         form.addRow("目标分支（合并到）", self.target_combo)
         form.addRow("构建流水线", self.build_combo)
         form.addRow("发布流水线", self.release_combo)
+        form.addRow("发布到阶段", self.release_stage_combo)
         root.addLayout(form)
 
         refresh_row = QtWidgets.QHBoxLayout()
@@ -205,6 +260,13 @@ class FlowTaskDialog(QtWidgets.QDialog):
         branches_row.addWidget(self.stop_branches_btn)
         branches_row.addStretch(1)
         root.addLayout(branches_row)
+
+        stages_row = QtWidgets.QHBoxLayout()
+        stages_row.setSpacing(10)
+        stages_row.addWidget(self.refresh_stages_btn)
+        stages_row.addWidget(self.stop_stages_btn)
+        stages_row.addStretch(1)
+        root.addLayout(stages_row)
 
         root.addWidget(self.status)
 
@@ -225,6 +287,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._branches_refreshing: bool = False
         self._branches_cancelled: bool = False
 
+        self._stages_thread: QtCore.QThread | None = None
+        self._stages_worker: QtCore.QObject | None = None
+        self._stages_watchdog: QtCore.QTimer | None = None
+        self._stages_refreshing: bool = False
+        self._stages_cancelled: bool = False
+
         # load existing
         if flow.project_id:
             for i in range(self.project_combo.count()):
@@ -235,6 +303,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         # Manual refresh is safer (avoids auto threads on open)
         self.project_combo.currentIndexChanged.connect(lambda _: self._on_project_change())
         self.repo_combo.currentIndexChanged.connect(lambda _: self._on_repo_change())
+        self.release_combo.currentIndexChanged.connect(lambda _: self._on_release_change())
 
         self.status.setText("提示：先点『刷新 Repo/Branches/Build』拉取仓库/分支/流水线，然后选择：把【源分支】合并到【目标分支】。")
 
@@ -355,6 +424,149 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._branches_thread = None
         self._branches_worker = None
 
+    def _set_stages_refreshing(self, on: bool, msg: str = "") -> None:
+        has_release = isinstance(self.release_combo.currentData(), ReleaseDef)
+        self.refresh_stages_btn.setEnabled((not on) and has_release)
+        self.stop_stages_btn.setEnabled(on)
+        if on:
+            self.status.setText(msg)
+
+    def _cleanup_stages(self, *, block: bool = True) -> None:
+        if self._stages_watchdog is not None:
+            try:
+                self._stages_watchdog.stop()
+            except Exception:
+                pass
+            self._stages_watchdog = None
+
+        if self._stages_thread is not None:
+            try:
+                self._stages_thread.requestInterruption()
+                self._stages_thread.quit()
+                if block:
+                    self._stages_thread.wait(1200)
+            except Exception:
+                pass
+            if block:
+                self._stages_thread = None
+                self._stages_worker = None
+
+    def _start_stages_watchdog(self, ms: int = 12000) -> None:
+        t = QtCore.QTimer(self)
+        t.setSingleShot(True)
+
+        def fire() -> None:
+            if not self._stages_refreshing:
+                return
+            self._stages_cancelled = True
+            self._stages_refreshing = False
+            self._set_stages_refreshing(False)
+            if self.status.text().startswith("刷新发布阶段"):
+                self.status.setText(f"刷新发布阶段超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
+            self._cleanup_stages(block=False)
+            self._stages_thread = None
+            self._stages_worker = None
+
+        t.timeout.connect(fire)
+        t.start(ms)
+        self._stages_watchdog = t
+
+    def _cancel_stages(self) -> None:
+        if not self._stages_refreshing:
+            return
+        self._stages_cancelled = True
+        self._stages_refreshing = False
+        self._set_stages_refreshing(False)
+        self.status.setText("已停止刷新发布阶段（如果网络请求仍在进行，会在后台自行结束）")
+        self._cleanup_stages(block=False)
+        self._stages_thread = None
+        self._stages_worker = None
+
+    def _refresh_release_stages(self) -> None:
+        if self._stages_refreshing:
+            self.status.setText("正在刷新发布阶段中，请稍候或点击『停止』")
+            return
+
+        p = self._selected_project()
+        if not p:
+            self.status.setText("请先在设置里新增项目")
+            return
+        lib = self._selected_library(p)
+        if not lib:
+            self.status.setText("项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            self.status.setText("该代码库没有 PAT，请先去设置-代码库里保存 PAT")
+            return
+
+        rd: ReleaseDef | None = self.release_combo.currentData()
+        if not rd:
+            self.status.setText("请先选择发布流水线，才能刷新发布阶段")
+            return
+
+        self.release_stage_combo.clear()
+
+        self._stages_cancelled = False
+        self._stages_refreshing = True
+        self._set_stages_refreshing(True, f"刷新发布阶段中：{rd.name} ...")
+        self._cleanup_stages(block=False)
+        self._stages_thread = None
+        self._start_stages_watchdog()
+
+        worker = ReleaseStagesWorker(lib.base_url, p.collection, p.project, pat, rd.id)
+        self._stages_worker = worker
+        thread = QtCore.QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.ok.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.ok.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def ok(payload: dict) -> None:
+            if self._stages_cancelled:
+                return
+            self._stages_refreshing = False
+            self._set_stages_refreshing(False)
+            stages: list[ReleaseStage] = payload.get("stages") or []
+            for s in stages:
+                self.release_stage_combo.addItem(s.name, userData=s)
+            if stages:
+                # try pick configured stage
+                if self._flow.release_stage_id:
+                    for i in range(self.release_stage_combo.count()):
+                        sd: ReleaseStage = self.release_stage_combo.itemData(i)
+                        if sd and sd.id == self._flow.release_stage_id:
+                            self.release_stage_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.release_stage_combo.setCurrentIndex(0)
+            self.status.setText(f"发布阶段刷新完成：{len(stages)}")
+
+        def fail(msg: str) -> None:
+            if self._stages_cancelled:
+                return
+            self._stages_refreshing = False
+            self._set_stages_refreshing(False)
+            self.status.setText(f"刷新发布阶段失败：{msg}")
+
+        worker.ok.connect(ok)
+        worker.failed.connect(fail)
+
+        def _done() -> None:
+            if self._stages_refreshing and (not self._stages_cancelled) and self.status.text().startswith("刷新发布阶段"):
+                self._stages_refreshing = False
+                self._set_stages_refreshing(False)
+                self.status.setText("刷新发布阶段已结束但未收到结果（可能是线程/网络异常）。请重试")
+
+        thread.finished.connect(_done)
+        thread.finished.connect(lambda: self._cleanup_stages(block=False))
+
+        self._stages_thread = thread
+        thread.start()
+
     def _refresh_branches(self) -> None:
         if self._branches_refreshing:
             self.status.setText("正在刷新分支中，请稍候或点击『停止』")
@@ -438,6 +650,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         # Ensure background refresh thread is stopped
         self._cleanup()
         self._cleanup_branches()
+        self._cleanup_stages()
         return super().closeEvent(event)
 
     def _on_project_change(self) -> None:
@@ -447,6 +660,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.target_combo.clear()
         self.build_combo.clear()
         self.release_combo.clear()
+        self.release_stage_combo.clear()
         self.status.setText("项目已切换：请点击刷新")
 
     def _on_repo_change(self) -> None:
@@ -455,6 +669,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.target_combo.clear()
         self.status.setText("Repo 已切换：可点击『刷新分支』")
         self._set_branches_refreshing(False)
+
+    def _on_release_change(self) -> None:
+        # release changed -> refresh stages
+        self.release_stage_combo.clear()
+        self.status.setText("发布流水线已切换：请刷新发布阶段")
 
     def _selected_project(self) -> ProjectEntry | None:
         pid = self.project_combo.currentData()
@@ -504,6 +723,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.target_combo.clear()
         self.build_combo.clear()
         self.release_combo.clear()
+        self.release_stage_combo.clear()
 
         self._cancelled = False
         self._refreshing = True
@@ -545,6 +765,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             repo_id: str | None = payload.get("repo_id")
             branches: list[GitBranch] = payload.get("branches") or []
             targets: list[BuildTarget] = payload.get("targets") or []
+            release_defs: list[ReleaseDef] = payload.get("release_defs") or []
             warnings: list[str] = payload.get("warnings") or []
 
             # repos
@@ -569,13 +790,33 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.source_combo.setCurrentIndex(0)
                 self.target_combo.setCurrentIndex(0)
 
-            # build/release
+            # build
             for t in targets:
                 self.build_combo.addItem(f"{t.name} ({t.kind}:{t.id})", userData=t)
-                self.release_combo.addItem(f"{t.name} ({t.kind}:{t.id})", userData=t)
             if targets:
-                self.build_combo.setCurrentIndex(0)
-                self.release_combo.setCurrentIndex(0)
+                # pick configured build if possible
+                if self._flow.build_id:
+                    for i in range(self.build_combo.count()):
+                        bd: BuildTarget = self.build_combo.itemData(i)
+                        if bd and bd.id == self._flow.build_id:
+                            self.build_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.build_combo.setCurrentIndex(0)
+
+            # release definitions (classic release)
+            self.release_combo.clear()
+            for rd in release_defs:
+                self.release_combo.addItem(rd.name, userData=rd)
+            if release_defs:
+                if self._flow.release_id:
+                    for i in range(self.release_combo.count()):
+                        rdd: ReleaseDef = self.release_combo.itemData(i)
+                        if rdd and rdd.id == self._flow.release_id:
+                            self.release_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.release_combo.setCurrentIndex(0)
 
             msg = f"刷新完成：repos={len(repos)} branches={len(branches)} buildTargets={len(targets)}"
             if warnings:
@@ -609,7 +850,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
         sb: GitBranch | None = self.source_combo.currentData()
         tb: GitBranch | None = self.target_combo.currentData()
         bt: BuildTarget | None = self.build_combo.currentData()
-        rt: BuildTarget | None = self.release_combo.currentData()
+        rt: ReleaseDef | None = self.release_combo.currentData()
+        st: ReleaseStage | None = self.release_stage_combo.currentData()
 
         # allow manual typing (editable combos): match typed text back to items
         if rr is None:
@@ -643,9 +885,16 @@ class FlowTaskDialog(QtWidgets.QDialog):
         if rt is None:
             t = self.release_combo.currentText().strip()
             for i in range(self.release_combo.count()):
-                b: BuildTarget = self.release_combo.itemData(i)
-                if b and f"{b.name} ({b.kind}:{b.id})" == t:
-                    rt = b
+                r: ReleaseDef = self.release_combo.itemData(i)
+                if r and r.name == t:
+                    rt = r
+                    break
+        if st is None:
+            t = self.release_stage_combo.currentText().strip()
+            for i in range(self.release_stage_combo.count()):
+                s: ReleaseStage = self.release_stage_combo.itemData(i)
+                if s and s.name == t:
+                    st = s
                     break
 
         if not pid:
@@ -658,7 +907,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "错误", "请选择 source/target 分支")
             return
         if not bt or not rt:
-            QtWidgets.QMessageBox.warning(self, "错误", "请先刷新并选择 Build/Release")
+            QtWidgets.QMessageBox.warning(self, "错误", "请先刷新并选择 构建流水线/发布流水线")
+            return
+        if not st:
+            QtWidgets.QMessageBox.warning(self, "错误", "请选择发布到哪个阶段")
             return
 
         self._result = self._flow.model_copy(
@@ -671,9 +923,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 "build_kind": bt.kind,
                 "build_id": bt.id,
                 "build_name": bt.name,
-                "release_kind": rt.kind,
+                "release_kind": "release",
                 "release_id": rt.id,
                 "release_name": rt.name,
+                "release_stage_id": st.id,
+                "release_stage_name": st.name,
             }
         )
         super().accept()
