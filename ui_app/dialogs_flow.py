@@ -282,6 +282,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._watchdog: QtCore.QTimer | None = None
         self._refreshing: bool = False
         self._cancelled: bool = False
+        self._auto_refresh_mode: bool = bool(flow.project_id)
+        self._auto_refresh_phase: int = 0
 
         self._branches_thread: QtCore.QThread | None = None
         self._branches_worker: QtCore.QObject | None = None
@@ -322,6 +324,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         self.status.setText("提示：先点『刷新 Repo/Branches/Build』拉取仓库/分支/流水线，然后选择：把【源分支】合并到【目标分支】。")
 
+        # When editing an existing task, auto refresh in order:
+        # 1) repos/branches/build/release definitions -> 2) branches -> 3) release stages
+        if self._auto_refresh_mode and self._settings.projects:
+            QtCore.QTimer.singleShot(0, self._auto_refresh_start)
+
     def result_flow(self) -> FlowTaskConfig | None:
         return self._result
 
@@ -345,6 +352,14 @@ class FlowTaskDialog(QtWidgets.QDialog):
             if block:
                 self._thread = None
                 self._worker = None
+
+    def _auto_refresh_start(self) -> None:
+        # Only meaningful if a project is selected.
+        if not self._selected_project():
+            return
+        self._auto_refresh_phase = 1
+        self.status.setText("编辑模式：自动刷新中（1/3：Repo/Branches/Build）...")
+        self._refresh_all()
 
     def _cancel_refresh(self) -> None:
         if not self._refreshing:
@@ -860,6 +875,18 @@ class FlowTaskDialog(QtWidgets.QDialog):
             # If we already have a release selected, try to load stages automatically (best-effort).
             if self.release_combo.currentData() and self.release_stage_list.count() == 0:
                 self._refresh_release_stages()
+
+            # Auto refresh chain for edit-mode
+            if self._auto_refresh_mode and self._auto_refresh_phase == 1:
+                self._auto_refresh_phase = 2
+                self.status.setText("编辑模式：自动刷新中（2/3：分支）...")
+                # refresh branches requires repo selected
+                self._refresh_branches()
+                self._auto_refresh_phase = 3
+                # stages refresh happens after release defs are loaded; call explicitly too
+                if self.release_combo.currentData():
+                    self.status.setText("编辑模式：自动刷新中（3/3：发布阶段）...")
+                    self._refresh_release_stages()
 
         def fail(msg: str) -> None:
             if self._cancelled:
