@@ -83,6 +83,24 @@ class MainWindow(QtWidgets.QMainWindow):
               border-radius: 14px;
             }
             QFrame#RepoCard QLabel { color: #e5e7eb; }
+
+            /* Form widgets readability */
+            QDialog { background: #0f1115; }
+            QDialog QLabel { color: #e5e7eb; }
+            QLineEdit, QComboBox {
+              background: #0f1115;
+              color: #e5e7eb;
+              border-radius: 10px;
+              border: 1px solid rgba(255,255,255,0.14);
+              padding: 8px 10px;
+            }
+            QLineEdit:disabled, QComboBox:disabled { color: #64748b; border: 1px solid rgba(255,255,255,0.08); }
+            QComboBox QAbstractItemView {
+              background: #0f1115;
+              color: #e5e7eb;
+              selection-background-color: rgba(56,189,248,0.20);
+              border: 1px solid rgba(255,255,255,0.14);
+            }
             QLabel#TaskTitle { color: #e5e7eb; font-size: 15px; font-weight: 650; }
             QLabel#TaskSubtitle { color: #94a3b8; }
             QLabel#TaskStatus { color: #cbd5e1; }
@@ -329,8 +347,8 @@ class MainWindow(QtWidgets.QMainWindow):
             active_index = 0
             for i, r in enumerate(self.ui_settings.repos):
                 # B: name · collection · project
-                c = r.collection or r.org or "-"
-                p = r.project or "-"
+                c = r.default_collection or r.collection or r.org or "-"
+                p = (r.projects[0] if r.projects else (r.project or "-"))
                 self.repo_combo.addItem(f"{r.display_name}  ·  {c}  ·  {p}", userData=r.id)
                 if active_id and r.id == active_id:
                     active_index = i
@@ -361,8 +379,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.repo_name_v.setText(repo.display_name)
         self.repo_base_v.setText(repo.base_url or "-")
-        self.repo_coll_v.setText(repo.collection or repo.org or "-")
-        self.repo_proj_v.setText(repo.project or "-")
+        self.repo_coll_v.setText(repo.default_collection or repo.collection or repo.org or "-")
+        if repo.projects:
+            self.repo_proj_v.setText(", ".join(repo.projects[:3]) + (" …" if len(repo.projects) > 3 else ""))
+        else:
+            self.repo_proj_v.setText(repo.project or "-")
 
     def _on_repo_selected(self, idx: int) -> None:
         rid = self.repo_combo.currentData()

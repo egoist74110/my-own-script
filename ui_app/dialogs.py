@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from runner_app.config import APP_ID
 from ui_app.azuredevops_client import AzureDevOpsClient
 from ui_app.settings_store import RepoEntry
+from ui_app.repo_tasks import normalize_base_url
 
 
 class FetchWorker(QtCore.QObject):
@@ -88,7 +89,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.base_url.setPlaceholderText("例如：https://azuredevops.your-company.com")
 
         self.collection_input = QtWidgets.QLineEdit()
-        self.collection_input.setPlaceholderText("例如：DefaultCollection")
+        self.collection_input.setPlaceholderText("默认 Collection（例如：DefaultCollection）")
         self.collection_input.setEnabled(True)
         self.collection_input.editingFinished.connect(self._on_collection_input)
 
@@ -106,8 +107,9 @@ class AddRepoDialog(QtWidgets.QDialog):
         guide = QtWidgets.QLabel(
             "<b>个人访问令牌 (PAT)</b><br>"
             "1) 在 Azure DevOps 创建 PAT（建议最小权限）。<br>"
-            "2) 输入 PAT 后点击【验证并拉取】，我们会拉取你可访问的 Org/Project 供选择。<br>"
-            "3) 保存时 token 通过 <code>keyring</code> 写入系统钥匙串(Keychain)，不落盘明文。"
+            "2) 验证：尝试拉取 Collection（很多企业服务器会禁用该接口）。<br>"
+            "3) Projects：基于默认 Collection 拉取 Projects 列表。<br>"
+            "4) 保存时 token 通过 <code>keyring</code> 写入系统钥匙串(Keychain)，不落盘明文。"
         )
         guide.setWordWrap(True)
         guide.setTextFormat(QtCore.Qt.RichText)
@@ -121,7 +123,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.token.setEchoMode(QtWidgets.QLineEdit.Password)
         self.token.setPlaceholderText("粘贴 Azure DevOps PAT（不会回显；留空=不修改已保存的 PAT）")
 
-        self.fetch_btn = QtWidgets.QPushButton("验证并拉取")
+        self.fetch_btn = QtWidgets.QPushButton("验证(尝试拉Collection)")
         self.fetch_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.fetch_btn.clicked.connect(self._start_fetch_collections)
 
@@ -160,10 +162,15 @@ class AddRepoDialog(QtWidgets.QDialog):
             self.display_name.setText(existing.display_name)
             if existing.base_url:
                 self.base_url.setText(existing.base_url)
-            if existing.collection:
+            if existing.default_collection:
+                self.collection_input.setText(existing.default_collection)
+            elif existing.collection:
                 self.collection_input.setText(existing.collection)
-            if existing.project:
-                # will be selected after fetching projects
+            if existing.projects:
+                for p in existing.projects:
+                    self.project_combo.addItem(p, userData=p)
+                self.project_combo.setEnabled(True)
+            elif existing.project:
                 self.project_combo.addItem(existing.project, userData=existing.project)
                 self.project_combo.setEnabled(True)
 
@@ -215,10 +222,7 @@ class AddRepoDialog(QtWidgets.QDialog):
             return
 
         # Normalize: allow user to omit scheme
-        base_url = raw_base.strip()
-        if not base_url.startswith("http://") and not base_url.startswith("https://"):
-            base_url = "https://" + base_url
-        base_url = base_url.rstrip("/")
+        base_url = normalize_base_url(raw_base)
 
         # If user pasted a URL containing a collection path, split it.
         maybe_collection = None
@@ -236,7 +240,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.base_url.setText(base_url)
 
         self._cleanup_thread()
-        self._set_busy(True, "正在验证 PAT 并拉取 Collection 列表...")
+        self._set_busy(True, "正在验证 PAT（尝试拉取 Collection 列表）...")
 
         worker = FetchWorker(base_url, pat, "7.0")
         thread = QtCore.QThread(self)
@@ -268,7 +272,7 @@ class AddRepoDialog(QtWidgets.QDialog):
                 self.collection_input.setText(cols[0].name)
             self._set_busy(False, f"验证成功：发现 {len(cols)} 个 Collection。可手动修改 Collection 后回车拉取 Projects。")
         else:
-            self._set_busy(False, "验证成功，但未发现 Collection。请手动输入（例如 DefaultCollection）后回车以拉取 Projects。")
+            self._set_busy(False, "验证成功，但未发现 Collection（或接口被禁用）。请手动填写默认 Collection（例如 DefaultCollection），然后回车以拉取 Projects。")
 
     def _start_fetch_projects(self, collection: str) -> None:
         base_url = self.base_url.text().strip().rstrip("/")
@@ -318,7 +322,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         self._set_busy(
             False,
             "无法自动拉取 Collection（常见原因：服务器禁用该接口/权限限制）。\n"
-            "请在 Collection 输入框里手动输入（例如：DefaultCollection）后回车/切换焦点，我会尝试拉取 Projects。\n"
+            "请手动填写默认 Collection（例如 DefaultCollection），然后回车以拉取 Projects。\n"
             f"原始错误：{msg}",
         )
 
@@ -364,9 +368,11 @@ class AddRepoDialog(QtWidgets.QDialog):
             provider="azuredevops",
             display_name=display_name,
             base_url=base_url,
-            collection=str(collection),
-            project=str(project) if project else None,
+            default_collection=str(collection),
+            projects=[],
         )
+        if project:
+            entry.projects = [str(project)]
 
         # store token securely in keychain ONLY if user entered a new token
         if token:
