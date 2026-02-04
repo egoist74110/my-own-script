@@ -105,7 +105,7 @@ class AdoReleaseTab(Tab):
 
     def _new_library(self) -> None:
         dlg = LibraryDialog(self, settings=self._settings)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
         if not entry:
@@ -122,7 +122,7 @@ class AdoReleaseTab(Tab):
             self._toast("提示", "请先选择代码库", ok=False)
             return
         dlg = LibraryDialog(self, settings=self._settings, existing=lib)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
         if not entry:
@@ -137,6 +137,9 @@ class AdoReleaseTab(Tab):
         lib = self._active_library()
         if not lib:
             self._toast("提示", "请先选择代码库", ok=False)
+            return
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除代码库：{lib.name} ？\n（会同时删除关联项目）")
+        if ok != QtWidgets.QMessageBox.Yes:
             return
         self._settings.libraries = [x for x in self._settings.libraries if x.id != lib.id]
         self._settings.projects = [p for p in self._settings.projects if p.library_id != lib.id]
@@ -169,7 +172,7 @@ class AdoReleaseTab(Tab):
             self._toast("错误", "请先新增代码库", ok=False)
             return
         dlg = ProjectDialog(self, settings=self._settings)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
         if not entry:
@@ -186,7 +189,7 @@ class AdoReleaseTab(Tab):
             self._toast("提示", "请先选择项目", ok=False)
             return
         dlg = ProjectDialog(self, settings=self._settings, existing=p)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
         if not entry:
@@ -201,6 +204,9 @@ class AdoReleaseTab(Tab):
         p = self._active_project()
         if not p:
             self._toast("提示", "请先选择项目", ok=False)
+            return
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除项目：{p.project} ？")
+        if ok != QtWidgets.QMessageBox.Yes:
             return
         self._settings.projects = [x for x in self._settings.projects if x.id != p.id]
         save_ui_settings(self._settings)
