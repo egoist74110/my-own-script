@@ -7,7 +7,8 @@ from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QWidget
 from qfluentwidgets import LineEdit, PushButton, InfoBar, InfoBarPosition, ComboBox
 
 from app_ado.models import LibraryEntry, ProjectEntry, UiSettings
-from app_ado.secrets import set_pat
+from app_ado.secrets import get_pat, set_pat
+from app_ado.net_qnam import NetError, auth_headers_from_pat, get_net
 
 
 def toast(parent: QWidget, title: str, content: str, ok: bool = True) -> None:
@@ -141,6 +142,8 @@ class ProjectDialog(QDialog):
 
         root.addRow("Collection", self.collection_input)
         root.addRow("Project", self.project_input)
+        root.addRow("Collection(下拉)", self.collection_combo)
+        root.addRow("Project(下拉)", self.project_combo)
 
         self.btn_fetch_collections = PushButton("获取Collections")
         self.btn_try_default = PushButton("尝试DefaultCollection")
@@ -186,12 +189,59 @@ class ProjectDialog(QDialog):
         QtCore.QTimer.singleShot(200, lambda: self._finish_stub("获取 Collections 尚未接入网络层（后续用 QNetworkAccessManager 封装）。"))
 
     def _fetch_projects(self) -> None:
+        # Real request (QNAM): GET /{collection}/_apis/projects?api-version=7.0
+        lib_id = self._settings.active_library_id or (self._settings.libraries[0].id if self._settings.libraries else None)
+        if not lib_id:
+            show_error_dialog(self, "错误", "请先新增代码库")
+            return
+        lib = next((x for x in self._settings.libraries if x.id == lib_id), None)
+        if not lib:
+            show_error_dialog(self, "错误", "找不到代码库配置")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT（请在编辑代码库时填写PAT并保存）")
+            return
+
         c = self.collection_input.text().strip()
         if not c:
             show_error_dialog(self, "错误", "请先填写 Collection（例如 DefaultCollection）")
             return
+
+        url = f"{lib.base_url.rstrip('/')}/{c}/_apis/projects"
         self._set_loading(True, f"正在获取 Projects（{c}）...")
-        QtCore.QTimer.singleShot(200, lambda: self._finish_stub("获取 Projects 尚未接入网络层（后续用 QNetworkAccessManager 封装）。"))
+
+        job = get_net().get_json(
+            url,
+            params={"api-version": "7.0"},
+            headers=auth_headers_from_pat(pat),
+            timeout_ms=10000,
+            tag="list_projects",
+        )
+
+        def ok(data: dict) -> None:
+            self._set_loading(False)
+            items = [x.get("name") for x in (data.get("value") or []) if x.get("name")]
+            self.project_combo.clear()
+            for name in items:
+                self.project_combo.addItem(str(name), userData=str(name))
+            if items:
+                # Switch to dropdown mode
+                self.project_input.setVisible(False)
+                self.project_combo.setVisible(True)
+                self.project_combo.setCurrentIndex(0)
+                self.project_input.setText(str(items[0]))
+                toast(self, "成功", f"已获取 Projects: {len(items)}")
+            else:
+                show_error_dialog(self, "提示", "请求成功，但没有返回任何 Projects")
+
+        def fail(err: NetError) -> None:
+            self._set_loading(False)
+            details = f"URL: {err.url}\n状态码: {err.status}\n错误: {err.message}\n\nBody(截断):\n{err.body or ''}"
+            show_error_dialog(self, "获取 Projects 失败", details)
+
+        job.ok.connect(ok)
+        job.failed.connect(fail)
 
     def _finish_stub(self, msg: str) -> None:
         self._set_loading(False)
@@ -202,7 +252,8 @@ class ProjectDialog(QDialog):
 
     def _on_ok(self) -> None:
         collection = self.collection_input.text().strip()
-        project = self.project_input.text().strip()
+        project = (self.project_combo.currentData() if self.project_combo.isVisible() else self.project_input.text().strip())
+        project = str(project).strip() if project else ""
 
         if not collection:
             toast(self, "错误", "Collection 不能为空", ok=False)
