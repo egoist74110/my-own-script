@@ -94,14 +94,51 @@ class MainWindow(QtWidgets.QMainWindow):
               color: #0f172a;
               border-radius: 10px;
               border: 1px solid #cbd5e1;
-              padding: 8px 10px;
+              padding: 8px 12px;
+              min-height: 34px;
+            }
+            QLineEdit:focus, QComboBox:focus {
+              border: 1px solid rgba(2,132,199,0.45);
             }
             QLineEdit:disabled, QComboBox:disabled { color: #94a3b8; border: 1px solid #e2e8f0; }
+
+            /* macOS-like combo */
+            QComboBox { padding-right: 28px; }
+            QComboBox::drop-down {
+              subcontrol-origin: padding;
+              subcontrol-position: top right;
+              width: 26px;
+              border-left: 1px solid #e2e8f0;
+              border-top-right-radius: 10px;
+              border-bottom-right-radius: 10px;
+              background: #f8fafc;
+            }
+            QComboBox::down-arrow {
+              width: 10px;
+              height: 10px;
+              image: none;
+            }
+
             QComboBox QAbstractItemView {
               background: #ffffff;
               color: #0f172a;
-              selection-background-color: rgba(2,132,199,0.18);
               border: 1px solid #cbd5e1;
+              border-radius: 10px;
+              padding: 6px;
+              selection-background-color: rgba(2,132,199,0.12);
+              selection-color: #0f172a;
+              outline: 0;
+            }
+            QComboBox QAbstractItemView::item {
+              padding: 8px 10px;
+              border-radius: 8px;
+              margin: 2px;
+            }
+            QComboBox QAbstractItemView::item:selected {
+              background: rgba(2,132,199,0.12);
+            }
+            QComboBox QAbstractItemView::item:hover {
+              background: rgba(2,132,199,0.08);
             }
 
             QLabel#TaskTitle { color: #0f172a; font-size: 15px; font-weight: 750; }
