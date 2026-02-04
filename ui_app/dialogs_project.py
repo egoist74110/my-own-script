@@ -156,6 +156,7 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self.status.setText("拉取 Collections 中...")
         self.fetch_btn.setEnabled(False)
+        self.pick_default_btn.setEnabled(False)
         self._cleanup()
 
         worker = FetchWorker(lib.base_url, pat)
@@ -170,6 +171,7 @@ class ProjectDialog(QtWidgets.QDialog):
 
         def ok(cols: list[str]) -> None:
             self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
             if cols:
                 self.collection_combo.setEnabled(True)
                 self.collection_combo.clear()
@@ -185,6 +187,7 @@ class ProjectDialog(QtWidgets.QDialog):
 
         def fail(msg: str) -> None:
             self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
             self.collection_input.setEnabled(True)
             self.status.setText(f"无法拉取 Collections（可忽略）：{msg}")
 
@@ -193,6 +196,7 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self._thread = thread
         self._worker = worker
+        thread.finished.connect(self._cleanup)
         thread.start()
 
     def _use_collection(self, collection: str) -> None:
@@ -215,6 +219,8 @@ class ProjectDialog(QtWidgets.QDialog):
         self.project_combo.clear()
         self.project_combo.setEnabled(False)
         self.status.setText(f"拉取 Projects（{collection}）...")
+        self.fetch_btn.setEnabled(False)
+        self.pick_default_btn.setEnabled(False)
         self._cleanup()
 
         worker = FetchWorker(lib.base_url, pat)
@@ -228,6 +234,8 @@ class ProjectDialog(QtWidgets.QDialog):
         thread.finished.connect(thread.deleteLater)
 
         def ok(ps: list[str]) -> None:
+            self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
             if ps:
                 self.project_combo.setEnabled(True)
                 for p in ps:
@@ -238,6 +246,8 @@ class ProjectDialog(QtWidgets.QDialog):
                 self.status.setText("未拉取到 Projects")
 
         def fail(msg: str) -> None:
+            self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
             self.status.setText(f"拉取 Projects 失败：{msg}")
 
         worker.projects_ok.connect(ok)
@@ -245,6 +255,7 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self._thread = thread
         self._worker = worker
+        thread.finished.connect(self._cleanup)
         thread.start()
 
     def accept(self) -> None:
