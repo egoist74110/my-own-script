@@ -8,7 +8,7 @@ from qfluentwidgets import LineEdit, PushButton, InfoBar, InfoBarPosition, Combo
 
 from app_ado.models import LibraryEntry, ProjectEntry, UiSettings
 from app_ado.secrets import get_pat, set_pat
-from app_ado.curl_ado import curl_get_raw
+from app_ado.httpx_ado import get_projects
 
 
 def toast(parent: QWidget, title: str, content: str, ok: bool = True) -> None:
@@ -222,21 +222,21 @@ class ProjectDialog(QDialog):
             show_error_dialog(self, "错误", "请先填写 Collection（例如 DefaultCollection）")
             return
 
-        url = f"{lib.base_url.rstrip('/')}/{c}/_apis/projects"
+        base_url = lib.base_url
+        collection = c
         self._set_loading(True, f"正在获取 Projects（{c}）...")
 
-        # Use curl subprocess for maximum compatibility with enterprise auth/proxy.
         def run() -> None:
             try:
-                res = curl_get_raw(url, pat=pat, timeout_sec=12)
-                self._curl_res = res
+                res = get_projects(base_url, collection, pat=pat, api_version="7.0", timeout_sec=10.0)
+                self._http_res = res
             except Exception as e:
-                self._curl_res = e
+                self._http_res = e
 
         # run in background thread (python threading), then marshal back to UI
         import threading
 
-        self._curl_res = None
+        self._http_res = None
         th = threading.Thread(target=run, daemon=True)
         th.start()
 
@@ -245,12 +245,13 @@ class ProjectDialog(QDialog):
                 QtCore.QTimer.singleShot(80, finish)
                 return
             self._set_loading(False)
-            if isinstance(self._curl_res, Exception):
-                show_error_dialog(self, "获取 Projects 失败", str(self._curl_res))
+            if isinstance(self._http_res, Exception):
+                show_error_dialog(self, "获取 Projects 失败", str(self._http_res))
                 return
-            res = self._curl_res
+            res = self._http_res
             assert res is not None
 
+            url = f"{base_url.rstrip('/')}/{collection}/_apis/projects?api-version=7.0"
             if res.status != 200:
                 details = f"URL: {url}\n状态码: {res.status}\n\nHeaders:\n" + "\n".join(
                     [f"{k}: {v}" for k, v in res.headers.items()]
