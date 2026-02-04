@@ -82,6 +82,8 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.collection_combo.setEditable(True)
         self.collection_combo.setEnabled(False)
         self.collection_combo.currentIndexChanged.connect(self._on_collection_changed)
+        # If user types a collection manually, fetch projects.
+        self.collection_combo.lineEdit().editingFinished.connect(lambda: self._on_collection_changed(self.collection_combo.currentIndex()))
 
         self.project_combo = QtWidgets.QComboBox()
         self.project_combo.setEnabled(False)
@@ -159,14 +161,30 @@ class AddRepoDialog(QtWidgets.QDialog):
             self._worker = None
 
     def _start_fetch_collections(self) -> None:
-        base_url = self.base_url.text().strip().rstrip("/")
+        raw_base = self.base_url.text().strip()
         pat = self.token.text().strip()
-        if not base_url:
+        if not raw_base:
             QtWidgets.QMessageBox.warning(self, "错误", "请先填写 Server URL")
             return
         if not pat:
             QtWidgets.QMessageBox.warning(self, "错误", "请先粘贴 PAT")
             return
+
+        # If user pasted a URL containing a collection path, split it.
+        base_url = raw_base.rstrip("/")
+        maybe_collection = None
+        if "/_apis/" in base_url:
+            base_url = base_url.split("/_apis/")[0]
+        parts = base_url.split("/")
+        if len(parts) > 3 and parts[-1].lower().endswith("collection"):
+            maybe_collection = parts[-1]
+            base_url = "/".join(parts[:-1])
+
+        if maybe_collection:
+            self.collection_combo.setEnabled(True)
+            self.collection_combo.clear()
+            self.collection_combo.addItem(maybe_collection, userData=maybe_collection)
+            self.collection_combo.setCurrentIndex(0)
 
         self._cleanup_thread()
         self._set_busy(True, "正在验证 PAT 并拉取 Collection 列表...")
@@ -176,7 +194,8 @@ class AddRepoDialog(QtWidgets.QDialog):
         worker.moveToThread(thread)
 
         worker.collections_ready.connect(self._on_collections_ready)
-        worker.failed.connect(self._on_fetch_failed)
+        # If listing collections fails (common on locked-down servers), we allow manual collection entry.
+        worker.failed.connect(self._on_fetch_collections_failed)
         thread.started.connect(worker.fetch_collections)
         worker.collections_ready.connect(thread.quit)
         worker.failed.connect(thread.quit)
@@ -243,6 +262,18 @@ class AddRepoDialog(QtWidgets.QDialog):
     def _on_fetch_failed(self, msg: str) -> None:
         self._save_btn.setEnabled(False)
         self._set_busy(False, f"拉取失败：{msg}")
+
+    def _on_fetch_collections_failed(self, msg: str) -> None:
+        # Some ADO servers block listing collections. Allow user to type collection manually.
+        self._save_btn.setEnabled(False)
+        self.collection_combo.setEnabled(True)
+        self.collection_combo.setEditable(True)
+        self._set_busy(
+            False,
+            "无法自动拉取 Collection（常见原因：服务器禁用该接口/权限限制）。\n"
+            "请手动输入 Collection（例如：DefaultCollection）后回车/切换焦点，我会尝试拉取 Projects。\n"
+            f"原始错误：{msg}",
+        )
 
     def _on_collection_changed(self, idx: int) -> None:
         collection = self.collection_combo.currentData() or self.collection_combo.currentText().strip()
