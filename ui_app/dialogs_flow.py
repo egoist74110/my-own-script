@@ -14,30 +14,6 @@ class RefreshWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
 
-
-class BranchesWorker(QtCore.QObject):
-    ok = QtCore.Signal(object)
-    failed = QtCore.Signal(str)
-
-    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
-        super().__init__()
-        self.base_url = base_url
-        self.collection = collection
-        self.project = project
-        self.pat = pat
-        self.repo_id = repo_id
-
-    @QtCore.Slot()
-    def run(self) -> None:
-        try:
-            branches = list_branches(self.base_url, self.collection, self.project, self.repo_id, self.pat)
-            self.ok.emit({"branches": branches, "repo_id": self.repo_id})
-        except httpx.HTTPStatusError as e:
-            body = (e.response.text or "")[:400]
-            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
-        except Exception as e:
-            self.failed.emit(str(e))
-
     def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str | None) -> None:
         super().__init__()
         self.base_url = base_url
@@ -90,6 +66,30 @@ class BranchesWorker(QtCore.QObject):
             "targets": targets,
             "warnings": warnings,
         })
+
+
+class BranchesWorker(QtCore.QObject):
+    ok = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.collection = collection
+        self.project = project
+        self.pat = pat
+        self.repo_id = repo_id
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            branches = list_branches(self.base_url, self.collection, self.project, self.repo_id, self.pat)
+            self.ok.emit({"branches": branches, "repo_id": self.repo_id})
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            self.failed.emit(str(e))
 
 
 class FlowTaskDialog(QtWidgets.QDialog):
