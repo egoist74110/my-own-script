@@ -23,6 +23,10 @@ class FlowTaskConfig(BaseModel):
     enabled: bool = True
 
     project_id: Optional[str] = None
+
+    # local repo folder to run git commands
+    local_repo_path: str = ""
+
     repo_id: Optional[str] = None
     repo_name: Optional[str] = None
     source_branch: str = ""

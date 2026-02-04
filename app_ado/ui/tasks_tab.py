@@ -79,12 +79,12 @@ class TasksTab(Tab):
         if not flow:
             return
 
-        local_path = getattr(flow, "local_repo_path", "")
+        local_path = flow.local_repo_path
         if not local_path:
             self._edit()
             ts = load_task_settings()
             flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
-            local_path = getattr(flow, "local_repo_path", "")
+            local_path = flow.local_repo_path
         if not local_path:
             return
 

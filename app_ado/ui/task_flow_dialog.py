@@ -84,9 +84,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if flow.target_branch:
             self.target_combo.setCurrentText(flow.target_branch)
 
-        # store local path in build_name field for now? (we'll add real field later)
-        # Use Qt dynamic property for now
-        self.repo_path.setText(getattr(flow, "local_repo_path", "") if hasattr(flow, "local_repo_path") else "")
+        self.repo_path.setText(flow.local_repo_path)
 
     def _row(self, a: QtWidgets.QWidget, b: QtWidgets.QWidget) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -257,16 +255,15 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             show_error_dialog(self, "错误", "请选择本地仓库路径")
             return
 
-        # store extra attribute (temporary)
         updated = self._flow.model_copy(
             update={
                 "project_id": proj.id,
+                "local_repo_path": local_path,
                 "repo_id": rr.id,
                 "repo_name": rr.name,
                 "source_branch": sb.short,
                 "target_branch": tb.short,
             }
         )
-        setattr(updated, "local_repo_path", local_path)
         self._result = updated
         super().accept()
