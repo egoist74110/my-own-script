@@ -38,7 +38,7 @@ class AdoReleaseTab(Tab):
         form = QFormLayout(w)
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
 
-        self.lib_combo = ComboBox()
+        self.lib_combo = ComboBox(); self.lib_combo.setFixedWidth(260)
         self.btn_new_lib = PushButton("新增")
         self.btn_edit_lib = PushButton("编辑")
         self.btn_del_lib = PushButton("删除")
@@ -63,7 +63,7 @@ class AdoReleaseTab(Tab):
         form = QFormLayout(w)
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
 
-        self.proj_combo = ComboBox()
+        self.proj_combo = ComboBox(); self.proj_combo.setFixedWidth(260)
 
         self.btn_new_proj = PushButton("新增")
         self.btn_edit_proj = PushButton("编辑")
