@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -14,6 +16,15 @@ from ui_app.tasks_store import FlowTaskConfig
 class RefreshWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
+
+    def _pp(self, obj: object, *, limit: int = 12000) -> str:
+        try:
+            s = json.dumps(obj, ensure_ascii=False, indent=2)
+        except Exception:
+            s = str(obj)
+        if len(s) > limit:
+            return s[:limit] + "\n...<truncated>"
+        return s
 
     def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str | None) -> None:
         super().__init__()
@@ -31,10 +42,16 @@ class RefreshWorker(QtCore.QObject):
         targets: list[BuildTarget] = []
         repo_id: str | None = None
         warnings: list[str] = []
+        debug: list[str] = []
+
+        debug.append(f"base={self.base_url} collection={self.collection} project={self.project}")
 
         try:
             repos = list_repos(self.base_url, self.collection, self.project, self.pat)
+            debug.append(f"repos: {len(repos)}")
+            debug.append(self._pp([r.__dict__ for r in repos[:50]]))
             repo_id = self.repo_id or (repos[0].id if repos else None)
+            debug.append(f"repo_id: {repo_id}")
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:200]
             self.failed.emit(f"repos: HTTP {e.response.status_code}: {body}")
@@ -46,6 +63,8 @@ class RefreshWorker(QtCore.QObject):
         if repo_id:
             try:
                 branches = list_branches(self.base_url, self.collection, self.project, repo_id, self.pat)
+                debug.append(f"branches: {len(branches)}")
+                debug.append(self._pp([b.__dict__ for b in branches[:200]]))
             except httpx.HTTPStatusError as e:
                 body = (e.response.text or "")[:200]
                 warnings.append(f"branches: HTTP {e.response.status_code}: {body}")
@@ -54,6 +73,8 @@ class RefreshWorker(QtCore.QObject):
 
         try:
             targets = discover_build_targets(self.base_url, self.collection, self.pat, project=self.project)
+            debug.append(f"build_targets: {len(targets)}")
+            debug.append(self._pp([t.__dict__ for t in targets[:200]]))
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:200]
             warnings.append(f"build targets: HTTP {e.response.status_code}: {body}")
@@ -63,6 +84,8 @@ class RefreshWorker(QtCore.QObject):
         release_defs: list[ReleaseDef] = []
         try:
             release_defs = list_release_definitions(self.base_url, self.collection, self.project, self.pat)
+            debug.append(f"release_defs: {len(release_defs)}")
+            debug.append(self._pp([d.__dict__ for d in release_defs[:200]]))
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:200]
             warnings.append(f"release defs: HTTP {e.response.status_code}: {body}")
@@ -76,6 +99,7 @@ class RefreshWorker(QtCore.QObject):
             "targets": targets,
             "release_defs": release_defs,
             "warnings": warnings,
+            "debug": debug,
         })
 
 
@@ -240,6 +264,13 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
 
+        self.debug_chk = QtWidgets.QCheckBox("调试：输出请求结果到下方日志")
+        self.debug_chk.setChecked(True)
+        self.debug_box = QtWidgets.QPlainTextEdit()
+        self.debug_box.setReadOnly(True)
+        self.debug_box.setMaximumHeight(220)
+        self.debug_box.setPlaceholderText("这里会输出每一步请求的结果（会截断），方便定位为什么 UI 没拿到数据")
+
         form.addRow("项目", self.project_combo)
         form.addRow("仓库", self.repo_combo)
         form.addRow("源分支（要合并的）", self.source_combo)
@@ -271,6 +302,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
         root.addLayout(stages_row)
 
         root.addWidget(self.status)
+        root.addWidget(self.debug_chk)
+        root.addWidget(self.debug_box)
 
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Save)
         btns.accepted.connect(self.accept)
@@ -840,6 +873,11 @@ class FlowTaskDialog(QtWidgets.QDialog):
             targets: list[BuildTarget] = payload.get("targets") or []
             release_defs: list[ReleaseDef] = payload.get("release_defs") or []
             warnings: list[str] = payload.get("warnings") or []
+            debug: list[str] = payload.get("debug") or []
+
+            if self.debug_chk.isChecked():
+                self.debug_box.clear()
+                self.debug_box.appendPlainText("\n\n".join(debug) if debug else "(no debug)")
 
             # repos
             for r in repos:
@@ -937,6 +975,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self._refreshing = False
             self._set_refreshing(False)
             self.status.setText(f"刷新失败：{msg}")
+            if self.debug_chk.isChecked():
+                self.debug_box.appendPlainText(f"FAIL: {msg}")
 
         worker.ok.connect(ok, QtCore.Qt.QueuedConnection)
         worker.failed.connect(fail, QtCore.Qt.QueuedConnection)
