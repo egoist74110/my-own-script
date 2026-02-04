@@ -37,9 +37,10 @@ def _headers(pat: str) -> dict[str, str]:
     return {"Authorization": _auth_header_from_pat(pat), "Accept": "application/json"}
 
 
-def _client(pat: str) -> httpx.Client:
+def _client(pat: str, *, timeout: httpx.Timeout | None = None) -> httpx.Client:
     # Keep timeouts tight so UI doesn't hang
-    timeout = httpx.Timeout(10.0, connect=5.0)
+    if timeout is None:
+        timeout = httpx.Timeout(10.0, connect=5.0)
     return httpx.Client(timeout=timeout, headers=_headers(pat))
 
 
@@ -50,12 +51,13 @@ def list_pipelines(
     api_version: str = "7.0",
     *,
     project: str | None = None,
+    timeout: httpx.Timeout | None = None,
 ) -> list[BuildTarget]:
     if project:
         url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines"
     else:
         url = f"{base_url.rstrip('/')}/{collection}/_apis/pipelines"
-    with _client(pat) as c:
+    with _client(pat, timeout=timeout) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
         data: Any = r.json()
@@ -75,12 +77,13 @@ def list_build_definitions(
     api_version: str = "7.0",
     *,
     project: str | None = None,
+    timeout: httpx.Timeout | None = None,
 ) -> list[BuildTarget]:
     if project:
         url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/definitions"
     else:
         url = f"{base_url.rstrip('/')}/{collection}/_apis/build/definitions"
-    with _client(pat) as c:
+    with _client(pat, timeout=timeout) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
         data: Any = r.json()
@@ -94,15 +97,18 @@ def list_build_definitions(
 
 
 def discover_build_targets(base_url: str, collection: str, pat: str, *, project: str | None = None) -> list[BuildTarget]:
+    # Build endpoints can be slow/permission-gated; keep them on a shorter leash.
+    fast_timeout = httpx.Timeout(5.0, connect=3.0)
+
     # Try pipelines first; fall back to build definitions
     try:
-        targets = list_pipelines(base_url, collection, pat, project=project)
+        targets = list_pipelines(base_url, collection, pat, project=project, timeout=fast_timeout)
         if targets:
             return targets
     except httpx.HTTPError:
         pass
 
     try:
-        return list_build_definitions(base_url, collection, pat, project=project)
+        return list_build_definitions(base_url, collection, pat, project=project, timeout=fast_timeout)
     except httpx.HTTPError:
         return []
