@@ -584,8 +584,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self._set_stages_refreshing(False)
             self.status.setText(f"刷新发布阶段失败：{msg}")
 
-        worker.ok.connect(ok)
-        worker.failed.connect(fail)
+        worker.ok.connect(ok, QtCore.Qt.QueuedConnection)
+        worker.failed.connect(fail, QtCore.Qt.QueuedConnection)
 
         def _done() -> None:
             if self._stages_refreshing and (not self._stages_cancelled) and self.status.text().startswith("刷新发布阶段"):
@@ -685,8 +685,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self._set_branches_refreshing(False)
             self.status.setText(f"刷新分支失败：{msg}")
 
-        worker.ok.connect(ok)
-        worker.failed.connect(fail)
+        worker.ok.connect(ok, QtCore.Qt.QueuedConnection)
+        worker.failed.connect(fail, QtCore.Qt.QueuedConnection)
 
         def _done() -> None:
             if self._branches_refreshing and (not self._branches_cancelled) and self.status.text().startswith("刷新分支"):
@@ -923,8 +923,8 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self._set_refreshing(False)
             self.status.setText(f"刷新失败：{msg}")
 
-        worker.ok.connect(ok)
-        worker.failed.connect(fail)
+        worker.ok.connect(ok, QtCore.Qt.QueuedConnection)
+        worker.failed.connect(fail, QtCore.Qt.QueuedConnection)
 
         self._thread = thread
         thread.start()
