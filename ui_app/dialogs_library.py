@@ -30,9 +30,10 @@ class VerifyWorker(QtCore.QObject):
 
 
 class LibraryDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None, *, existing: LibraryEntry | None = None) -> None:
+    def __init__(self, parent=None, *, existing: LibraryEntry | None = None, new_id: str | None = None) -> None:
         super().__init__(parent)
         self._existing = existing
+        self._new_id = new_id
         self._result: LibraryEntry | None = None
 
         self.setWindowTitle("编辑代码库" if existing else "新增代码库")
@@ -149,7 +150,7 @@ class LibraryDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "错误", "请填写 URL")
             return
 
-        lid = self._existing.id if self._existing else "lib:new"
+        lid = self._existing.id if self._existing else (self._new_id or "lib:new")
         entry = LibraryEntry(
             id=lid,
             provider="azuredevops",

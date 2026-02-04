@@ -24,6 +24,15 @@ def set_pat(library_id: str, pat: str) -> None:
     keyring.set_password(APP_ID, keychain_key(library_id), pat)
 
 
+def move_pat(old_library_id: str, new_library_id: str) -> None:
+    """Move stored PAT from old id to new id (best-effort)."""
+    v = get_pat(old_library_id)
+    if not v:
+        return
+    set_pat(new_library_id, v)
+    delete_pat(old_library_id)
+
+
 def delete_pat(library_id: str) -> None:
     try:
         keyring.delete_password(APP_ID, keychain_key(library_id))

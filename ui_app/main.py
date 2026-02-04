@@ -11,7 +11,7 @@ from ui_app.widgets import NavButton, TaskRowCard
 from ui_app.settings_store import load_ui_settings, save_ui_settings, UiSettings, LibraryEntry, ProjectEntry
 from ui_app.dialogs_library import LibraryDialog
 from ui_app.dialogs_project import ProjectDialog
-from ui_app.library_store import new_library_id, set_pat
+from ui_app.library_store import new_library_id, set_pat, move_pat
 from ui_app.tasks_store import load_task_settings, save_task_settings, get_flow
 from ui_app.dialogs_flow import FlowTaskDialog
 
@@ -485,17 +485,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_info_card()
 
     def _add_library(self) -> None:
-        dlg = LibraryDialog(self)
+        # Generate id up-front so PAT is stored under the final keychain key.
+        real_id = new_library_id()
+        dlg = LibraryDialog(self, new_id=real_id)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         entry = dlg.result_entry()
         if not entry:
             return
 
-        # assign real id
-        real_id = new_library_id()
+        # ensure id
         entry = entry.model_copy(update={"id": real_id})
-        # If dialog stored token under placeholder id, user will re-enter; keep simple.
 
         self.ui_settings.libraries.append(entry)
         self.ui_settings.active_library_id = entry.id
