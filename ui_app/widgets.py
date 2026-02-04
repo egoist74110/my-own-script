@@ -21,6 +21,7 @@ class TaskRowCard(QtWidgets.QFrame):
     """
 
     start_clicked = QtCore.Signal()
+    config_clicked = QtCore.Signal()
     view_task_log = QtCore.Signal()
     view_script_log = QtCore.Signal()
 
@@ -53,6 +54,11 @@ class TaskRowCard(QtWidgets.QFrame):
         right = QtWidgets.QHBoxLayout()
         right.setSpacing(10)
 
+        self.config_btn = QtWidgets.QPushButton("编辑")
+        self.config_btn.setObjectName("SecondaryButton")
+        self.config_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.config_btn.clicked.connect(self.config_clicked.emit)
+
         self.start_btn = QtWidgets.QPushButton("开始")
         self.start_btn.setObjectName("PrimaryButton")
         self.start_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -71,6 +77,7 @@ class TaskRowCard(QtWidgets.QFrame):
         action_script.triggered.connect(self.view_script_log.emit)
         self.menu_btn.setMenu(menu)
 
+        right.addWidget(self.config_btn)
         right.addWidget(self.start_btn)
         right.addWidget(self.menu_btn)
 
@@ -79,3 +86,7 @@ class TaskRowCard(QtWidgets.QFrame):
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)
+
+    def set_subtitle(self, text: str) -> None:
+        self.subtitle.setText(text)
+        self.subtitle.setVisible(bool(text))

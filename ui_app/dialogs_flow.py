@@ -167,12 +167,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
 
-        form.addRow("Project", self.project_combo)
-        form.addRow("Repo", self.repo_combo)
-        form.addRow("source_branch", self.source_combo)
-        form.addRow("target_branch", self.target_combo)
-        form.addRow("Build", self.build_combo)
-        form.addRow("Release", self.release_combo)
+        form.addRow("项目", self.project_combo)
+        form.addRow("仓库", self.repo_combo)
+        form.addRow("源分支（要合并的）", self.source_combo)
+        form.addRow("目标分支（合并到）", self.target_combo)
+        form.addRow("构建流水线", self.build_combo)
+        form.addRow("发布流水线", self.release_combo)
         root.addLayout(form)
 
         refresh_row = QtWidgets.QHBoxLayout()
@@ -219,7 +219,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.project_combo.currentIndexChanged.connect(lambda _: self._on_project_change())
         self.repo_combo.currentIndexChanged.connect(lambda _: self._on_repo_change())
 
-        self.status.setText("请点击『刷新 Repo/Branches/Build』拉取下拉选项")
+        self.status.setText("提示：先点『刷新 Repo/Branches/Build』拉取仓库/分支/流水线，然后选择：把【源分支】合并到【目标分支】。")
 
     def result_flow(self) -> FlowTaskConfig | None:
         return self._result

@@ -14,6 +14,7 @@ from ui_app.dialogs_project import ProjectDialog
 from ui_app.library_store import new_library_id, set_pat, move_pat
 from ui_app.tasks_store import load_task_settings, save_task_settings, get_flow
 from ui_app.dialogs_flow import FlowTaskDialog
+from ui_app.task_presenter import flow_subtitle_cn
 
 
 class Worker(QtCore.QObject):
@@ -281,14 +282,16 @@ class MainWindow(QtWidgets.QMainWindow):
         v.setSpacing(12)
 
         self.card_flow = TaskRowCard(
-            "Sync/Merge + Build + Release",
-            "配置分支、Build/Release 流水线后，一键执行（主日志+脚本日志+TG通知）。",
+            "同步/合并 + 构建 + 发布",
+            "（未配置）",
         )
         self.card_flow.start_clicked.connect(self._run_flow_task)
+        self.card_flow.config_clicked.connect(self._edit_flow_task)
         self.card_flow.view_task_log.connect(lambda: self._show_logs("task"))
         self.card_flow.view_script_log.connect(lambda: self._show_logs("script"))
 
         v.addWidget(self.card_flow)
+        self._refresh_flow_card_subtitle()
         v.addStretch(1)
 
         scroll.setWidget(container)
@@ -594,6 +597,10 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.task_log_box.appendPlainText(line)
 
+    def _refresh_flow_card_subtitle(self) -> None:
+        flow = get_flow(self.task_settings)
+        self.card_flow.set_subtitle(flow_subtitle_cn(self.ui_settings, flow))
+
     def _show_logs(self, which: str) -> None:
         # focus the right tab
         if which == "script":
@@ -601,28 +608,35 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.logs_tabs.setCurrentWidget(self.task_log_box)
 
+    def _edit_flow_task(self) -> FlowTaskConfig | None:
+        flow = get_flow(self.task_settings)
+        dlg = FlowTaskDialog(self, settings=self.ui_settings, flow=flow)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return None
+        updated = dlg.result_flow()
+        if not updated:
+            return None
+        self.task_settings.flows = [updated if f.id == updated.id else f for f in self.task_settings.flows]
+        save_task_settings(self.task_settings)
+        self._refresh_flow_card_subtitle()
+        return updated
+
     def _run_flow_task(self) -> None:
         flow = get_flow(self.task_settings)
 
-        # If not configured, open config dialog first.
+        # Always allow editing; if not configured, force open.
         if not flow.project_id or not flow.source_branch or not flow.target_branch:
-            dlg = FlowTaskDialog(self, settings=self.ui_settings, flow=flow)
-            if dlg.exec() != QtWidgets.QDialog.Accepted:
-                return
-            updated = dlg.result_flow()
+            updated = self._edit_flow_task()
             if not updated:
                 return
-            # update in store
-            self.task_settings.flows = [updated if f.id == updated.id else f for f in self.task_settings.flows]
-            save_task_settings(self.task_settings)
             flow = updated
 
         # Run stub executor
         from ui_app.flow_executor import SyncMergeBuildReleaseTask
 
         summary = (
-            f"project_id={flow.project_id} {flow.source_branch}->{flow.target_branch} "
-            f"build={flow.build_name or flow.build_id} release={flow.release_name or flow.release_id}"
+            f"把 {flow.source_branch} 合并到 {flow.target_branch} | "
+            f"Build={flow.build_name or flow.build_id} | Release={flow.release_name or flow.release_id}"
         )
 
         self.card_flow.set_status("running")
