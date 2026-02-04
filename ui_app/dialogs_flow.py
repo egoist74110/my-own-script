@@ -115,12 +115,34 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.project_combo.addItem(p.project, userData=p.id)
 
         self.repo_combo = QtWidgets.QComboBox()
+        self.repo_combo.setEditable(True)
+        self.repo_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.repo_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.repo_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
         self.source_combo = QtWidgets.QComboBox()
+        self.source_combo.setEditable(True)
+        self.source_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.source_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.source_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+
         self.target_combo = QtWidgets.QComboBox()
+        self.target_combo.setEditable(True)
+        self.target_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.target_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.target_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
         self.build_combo = QtWidgets.QComboBox()
+        self.build_combo.setEditable(True)
+        self.build_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.build_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.build_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+
         self.release_combo = QtWidgets.QComboBox()
+        self.release_combo.setEditable(True)
+        self.release_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.release_combo.completer().setFilterMode(QtCore.Qt.MatchContains)
+        self.release_combo.completer().setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
         self.refresh_btn = QtWidgets.QPushButton("刷新 Repo/Branches/Build")
         self.refresh_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -571,6 +593,43 @@ class FlowTaskDialog(QtWidgets.QDialog):
         tb: GitBranch | None = self.target_combo.currentData()
         bt: BuildTarget | None = self.build_combo.currentData()
         rt: BuildTarget | None = self.release_combo.currentData()
+
+        # allow manual typing (editable combos): match typed text back to items
+        if rr is None:
+            t = self.repo_combo.currentText().strip()
+            for i in range(self.repo_combo.count()):
+                r: GitRepo = self.repo_combo.itemData(i)
+                if r and r.name == t:
+                    rr = r
+                    break
+        if sb is None:
+            t = self.source_combo.currentText().strip()
+            for i in range(self.source_combo.count()):
+                b: GitBranch = self.source_combo.itemData(i)
+                if b and b.short == t:
+                    sb = b
+                    break
+        if tb is None:
+            t = self.target_combo.currentText().strip()
+            for i in range(self.target_combo.count()):
+                b: GitBranch = self.target_combo.itemData(i)
+                if b and b.short == t:
+                    tb = b
+                    break
+        if bt is None:
+            t = self.build_combo.currentText().strip()
+            for i in range(self.build_combo.count()):
+                b: BuildTarget = self.build_combo.itemData(i)
+                if b and f"{b.name} ({b.kind}:{b.id})" == t:
+                    bt = b
+                    break
+        if rt is None:
+            t = self.release_combo.currentText().strip()
+            for i in range(self.release_combo.count()):
+                b: BuildTarget = self.release_combo.itemData(i)
+                if b and f"{b.name} ({b.kind}:{b.id})" == t:
+                    rt = b
+                    break
 
         if not pid:
             QtWidgets.QMessageBox.warning(self, "错误", "请选择 Project")
