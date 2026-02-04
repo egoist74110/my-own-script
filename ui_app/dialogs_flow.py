@@ -83,6 +83,25 @@ class BranchesWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
 
+    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.collection = collection
+        self.project = project
+        self.pat = pat
+        self.repo_id = repo_id
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            branches = list_branches(self.base_url, self.collection, self.project, self.repo_id, self.pat)
+            self.ok.emit({"branches": branches, "repo_id": self.repo_id})
+        except httpx.HTTPStatusError as e:
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
+        except Exception as e:
+            self.failed.emit(str(e))
+
 
 class ReleaseStagesWorker(QtCore.QObject):
     ok = QtCore.Signal(object)
@@ -103,25 +122,6 @@ class ReleaseStagesWorker(QtCore.QObject):
                 self.base_url, self.collection, self.project, self.pat, self.release_def_id
             )
             self.ok.emit({"stages": stages, "release_def_id": self.release_def_id})
-        except httpx.HTTPStatusError as e:
-            body = (e.response.text or "")[:400]
-            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
-        except Exception as e:
-            self.failed.emit(str(e))
-
-    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str) -> None:
-        super().__init__()
-        self.base_url = base_url
-        self.collection = collection
-        self.project = project
-        self.pat = pat
-        self.repo_id = repo_id
-
-    @QtCore.Slot()
-    def run(self) -> None:
-        try:
-            branches = list_branches(self.base_url, self.collection, self.project, self.repo_id, self.pat)
-            self.ok.emit({"branches": branches, "repo_id": self.repo_id})
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:400]
             self.failed.emit(f"HTTP {e.response.status_code}: {body}")
@@ -293,12 +293,26 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._stages_refreshing: bool = False
         self._stages_cancelled: bool = False
 
-        # load existing
+        # load existing (prefill for editing)
         if flow.project_id:
             for i in range(self.project_combo.count()):
                 if self.project_combo.itemData(i) == flow.project_id:
                     self.project_combo.setCurrentIndex(i)
                     break
+
+        # prefill texts so user sees previous values even before refresh
+        if flow.repo_name:
+            self.repo_combo.setCurrentText(flow.repo_name)
+        if flow.source_branch:
+            self.source_combo.setCurrentText(flow.source_branch)
+        if flow.target_branch:
+            self.target_combo.setCurrentText(flow.target_branch)
+        if flow.build_name:
+            self.build_combo.setCurrentText(flow.build_name)
+        if flow.release_name:
+            self.release_combo.setCurrentText(flow.release_name)
+        if flow.release_stage_name:
+            self.release_stage_combo.setCurrentText(flow.release_stage_name)
 
         # Manual refresh is safer (avoids auto threads on open)
         self.project_combo.currentIndexChanged.connect(lambda _: self._on_project_change())
@@ -773,10 +787,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.repo_combo.addItem(r.name, userData=r)
             if repos:
                 idx = 0
-                if repo_id:
+                # prefer config repo_id; else worker-chosen repo_id
+                want_repo_id = self._flow.repo_id or repo_id
+                if want_repo_id:
                     for i in range(self.repo_combo.count()):
                         rr: GitRepo = self.repo_combo.itemData(i)
-                        if rr and rr.id == repo_id:
+                        if rr and rr.id == want_repo_id:
                             idx = i
                             break
                 self.repo_combo.setCurrentIndex(idx)
@@ -785,10 +801,25 @@ class FlowTaskDialog(QtWidgets.QDialog):
             for b in branches:
                 self.source_combo.addItem(b.short, userData=b)
                 self.target_combo.addItem(b.short, userData=b)
-            # try to keep previous text if any
             if branches:
-                self.source_combo.setCurrentIndex(0)
-                self.target_combo.setCurrentIndex(0)
+                # prefer config
+                if self._flow.source_branch:
+                    for i in range(self.source_combo.count()):
+                        bb: GitBranch = self.source_combo.itemData(i)
+                        if bb and bb.short == self._flow.source_branch:
+                            self.source_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.source_combo.setCurrentIndex(0)
+
+                if self._flow.target_branch:
+                    for i in range(self.target_combo.count()):
+                        bb: GitBranch = self.target_combo.itemData(i)
+                        if bb and bb.short == self._flow.target_branch:
+                            self.target_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.target_combo.setCurrentIndex(0)
 
             # build
             for t in targets:
@@ -822,6 +853,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
             if warnings:
                 msg += "\n" + "\n".join([f"⚠️ {w}" for w in warnings][:3])
             self.status.setText(msg)
+
+            # If we already have a release selected, try to load stages automatically (best-effort).
+            if self.release_combo.currentData() and self.release_stage_combo.count() == 0:
+                self._refresh_release_stages()
 
         def fail(msg: str) -> None:
             if self._cancelled:
