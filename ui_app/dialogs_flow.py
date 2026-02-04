@@ -175,11 +175,13 @@ class FlowTaskDialog(QtWidgets.QDialog):
         root.addWidget(btns)
 
         self._thread: QtCore.QThread | None = None
+        self._worker: QtCore.QObject | None = None
         self._watchdog: QtCore.QTimer | None = None
         self._refreshing: bool = False
         self._cancelled: bool = False
 
         self._branches_thread: QtCore.QThread | None = None
+        self._branches_worker: QtCore.QObject | None = None
         self._branches_watchdog: QtCore.QTimer | None = None
         self._branches_refreshing: bool = False
         self._branches_cancelled: bool = False
@@ -219,6 +221,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 pass
             if block:
                 self._thread = None
+                self._worker = None
 
     def _cancel_refresh(self) -> None:
         if not self._refreshing:
@@ -230,6 +233,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         # Don't block UI while cancelling.
         self._cleanup(block=False)
         self._thread = None
+        self._worker = None
 
     def _start_watchdog(self, ms: int = 12000) -> None:
         t = QtCore.QTimer(self)
@@ -247,6 +251,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
             # Don't block UI; background thread may still be in-flight.
             self._cleanup(block=False)
             self._thread = None
+            self._worker = None
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -278,6 +283,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 pass
             if block:
                 self._branches_thread = None
+                self._branches_worker = None
 
     def _start_branches_watchdog(self, ms: int = 12000) -> None:
         t = QtCore.QTimer(self)
@@ -293,6 +299,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 self.status.setText(f"刷新分支超时（>{ms//1000}s）。可能是网络/权限问题，建议重试")
             self._cleanup_branches(block=False)
             self._branches_thread = None
+            self._branches_worker = None
 
         t.timeout.connect(fire)
         t.start(ms)
@@ -307,6 +314,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self.status.setText("已停止刷新分支（如果网络请求仍在进行，会在后台自行结束）")
         self._cleanup_branches(block=False)
         self._branches_thread = None
+        self._branches_worker = None
 
     def _refresh_branches(self) -> None:
         if self._branches_refreshing:
@@ -341,6 +349,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._start_branches_watchdog()
 
         worker = BranchesWorker(lib.base_url, p.collection, p.project, pat, rr.id)
+        self._branches_worker = worker  # keep Python ref
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -466,6 +475,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._start_watchdog()
 
         worker = RefreshWorker(lib.base_url, p.collection, p.project, pat, existing_repo)
+        self._worker = worker  # keep Python ref; avoid GC before thread starts
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
