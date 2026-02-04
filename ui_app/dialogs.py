@@ -78,12 +78,10 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.base_url = QtWidgets.QLineEdit()
         self.base_url.setPlaceholderText("例如：https://azuredevops.your-company.com")
 
-        self.collection_combo = QtWidgets.QComboBox()
-        self.collection_combo.setEditable(True)
-        self.collection_combo.setEnabled(False)
-        self.collection_combo.currentIndexChanged.connect(self._on_collection_changed)
-        # If user types a collection manually, fetch projects.
-        self.collection_combo.lineEdit().editingFinished.connect(lambda: self._on_collection_changed(self.collection_combo.currentIndex()))
+        self.collection_input = QtWidgets.QLineEdit()
+        self.collection_input.setPlaceholderText("例如：DefaultCollection")
+        self.collection_input.setEnabled(True)
+        self.collection_input.editingFinished.connect(self._on_collection_input)
 
         self.project_combo = QtWidgets.QComboBox()
         self.project_combo.setEnabled(False)
@@ -91,7 +89,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         form.addRow("类型", self.provider)
         form.addRow("名称", self.display_name)
         form.addRow("Server URL", self.base_url)
-        form.addRow("Collection", self.collection_combo)
+        form.addRow("Collection", self.collection_input)
         form.addRow("Project", self.project_combo)
 
         layout.addLayout(form)
@@ -114,12 +112,17 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.token.setEchoMode(QtWidgets.QLineEdit.Password)
         self.token.setPlaceholderText("粘贴 Azure DevOps PAT（不会回显）")
 
-        self.fetch_btn = QtWidgets.QPushButton("验证并拉取")
+        self.fetch_btn = QtWidgets.QPushButton("验证")
         self.fetch_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.fetch_btn.clicked.connect(self._start_fetch_collections)
 
+        self.try_default_btn = QtWidgets.QPushButton("尝试 DefaultCollection")
+        self.try_default_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.try_default_btn.clicked.connect(lambda: self._set_collection_and_fetch("DefaultCollection"))
+
         token_row.addWidget(self.token, 1)
         token_row.addWidget(self.fetch_btn, 0)
+        token_row.addWidget(self.try_default_btn, 0)
         layout.addLayout(token_row)
 
         self.status = QtWidgets.QLabel("")
@@ -147,9 +150,10 @@ class AddRepoDialog(QtWidgets.QDialog):
 
     def _set_busy(self, busy: bool, msg: str = "") -> None:
         self.fetch_btn.setEnabled(not busy)
+        self.try_default_btn.setEnabled(not busy)
         self.token.setEnabled(not busy)
         self.base_url.setEnabled(not busy)
-        self.collection_combo.setEnabled(not busy and self.collection_combo.count() > 0)
+        self.collection_input.setEnabled(not busy)
         self.project_combo.setEnabled(not busy and self.project_combo.count() > 0)
         self.status.setText(msg)
 
@@ -188,8 +192,13 @@ class AddRepoDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "错误", "请先粘贴 PAT")
             return
 
+        # Normalize: allow user to omit scheme
+        base_url = raw_base.strip()
+        if not base_url.startswith("http://") and not base_url.startswith("https://"):
+            base_url = "https://" + base_url
+        base_url = base_url.rstrip("/")
+
         # If user pasted a URL containing a collection path, split it.
-        base_url = raw_base.rstrip("/")
         maybe_collection = None
         if "/_apis/" in base_url:
             base_url = base_url.split("/_apis/")[0]
@@ -199,10 +208,10 @@ class AddRepoDialog(QtWidgets.QDialog):
             base_url = "/".join(parts[:-1])
 
         if maybe_collection:
-            self.collection_combo.setEnabled(True)
-            self.collection_combo.clear()
-            self.collection_combo.addItem(maybe_collection, userData=maybe_collection)
-            self.collection_combo.setCurrentIndex(0)
+            self.collection_input.setText(maybe_collection)
+
+        # Update normalized base url back to input for clarity
+        self.base_url.setText(base_url)
 
         self._cleanup_thread()
         self._set_busy(True, "正在验证 PAT 并拉取 Collection 列表...")
@@ -228,19 +237,17 @@ class AddRepoDialog(QtWidgets.QDialog):
 
     def _on_collections_ready(self, cols: list) -> None:
         self._collections = cols
-        self.collection_combo.clear()
-        for c in cols:
-            # c: AzureDevOpsCollection
-            self.collection_combo.addItem(c.name, userData=c.name)
-
+        # We still allow manual input, but if we got collections, prefill with the first one.
         ok = bool(cols)
-        self.collection_combo.setEnabled(True)  # editable, allow manual entry
         self.project_combo.setEnabled(False)
         self._save_btn.setEnabled(False)
-        self._set_busy(False, f"拉取成功：发现 {len(cols)} 个 Collection。请选择一个继续拉取 Project。" if ok else "未发现 Collection（可能需要手动输入 Collection 名称，如 DefaultCollection）。")
 
         if ok:
-            self._start_fetch_projects(self.collection_combo.currentData())
+            self.collection_input.setText(cols[0].name)
+            self._set_busy(False, f"验证成功：发现 {len(cols)} 个 Collection。已默认填入第一个，可手动修改。")
+            self._start_fetch_projects(cols[0].name)
+        else:
+            self._set_busy(False, "验证成功，但未发现 Collection。请手动输入（例如 DefaultCollection）后回车以拉取 Projects。")
 
     def _start_fetch_projects(self, collection: str) -> None:
         base_url = self.base_url.text().strip().rstrip("/")
@@ -286,17 +293,20 @@ class AddRepoDialog(QtWidgets.QDialog):
     def _on_fetch_collections_failed(self, msg: str) -> None:
         # Some ADO servers block listing collections. Allow user to type collection manually.
         self._save_btn.setEnabled(False)
-        self.collection_combo.setEnabled(True)
-        self.collection_combo.setEditable(True)
+        self.collection_input.setEnabled(True)
         self._set_busy(
             False,
             "无法自动拉取 Collection（常见原因：服务器禁用该接口/权限限制）。\n"
-            "请手动输入 Collection（例如：DefaultCollection）后回车/切换焦点，我会尝试拉取 Projects。\n"
+            "请在 Collection 输入框里手动输入（例如：DefaultCollection）后回车/切换焦点，我会尝试拉取 Projects。\n"
             f"原始错误：{msg}",
         )
 
-    def _on_collection_changed(self, idx: int) -> None:
-        collection = self.collection_combo.currentData() or self.collection_combo.currentText().strip()
+    def _set_collection_and_fetch(self, collection: str) -> None:
+        self.collection_input.setText(collection)
+        self._on_collection_input()
+
+    def _on_collection_input(self) -> None:
+        collection = self.collection_input.text().strip()
         if not collection:
             return
         cached = self._projects_by_collection.get(collection)
@@ -314,7 +324,7 @@ class AddRepoDialog(QtWidgets.QDialog):
         display_name = self.display_name.text().strip()
         token = self.token.text().strip()
         base_url = self.base_url.text().strip().rstrip("/")
-        collection = self.collection_combo.currentData() or self.collection_combo.currentText().strip()
+        collection = self.collection_input.text().strip()
         project = self.project_combo.currentData() if self.project_combo.isEnabled() else None
 
         if not display_name:
