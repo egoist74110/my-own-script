@@ -104,6 +104,8 @@ class ProjectDialog(QtWidgets.QDialog):
 
         self._thread: QtCore.QThread | None = None
         self._worker: FetchWorker | None = None
+        self._watchdog: QtCore.QTimer | None = None
+        self._watchdog_op: str | None = None
 
         if existing:
             # select library
@@ -121,6 +123,14 @@ class ProjectDialog(QtWidgets.QDialog):
         return self._result
 
     def _cleanup(self) -> None:
+        if self._watchdog is not None:
+            try:
+                self._watchdog.stop()
+            except Exception:
+                pass
+            self._watchdog = None
+            self._watchdog_op = None
+
         if self._thread is not None:
             try:
                 self._thread.quit()
@@ -129,6 +139,22 @@ class ProjectDialog(QtWidgets.QDialog):
                 pass
             self._thread = None
             self._worker = None
+
+    def _start_watchdog(self, op: str, ms: int = 12000) -> None:
+        # Ensures UI doesn't get stuck if the worker never emits (network hang, thread issues).
+        self._watchdog_op = op
+        t = QtCore.QTimer(self)
+        t.setSingleShot(True)
+
+        def fire() -> None:
+            self.fetch_btn.setEnabled(True)
+            self.pick_default_btn.setEnabled(True)
+            self.status.setText(f"{op} 超时（>{ms//1000}s），请重试")
+            self._cleanup()
+
+        t.timeout.connect(fire)
+        t.start(ms)
+        self._watchdog = t
 
     def _current_lib(self) -> LibraryEntry | None:
         lid = self.lib_combo.currentData()
@@ -158,6 +184,7 @@ class ProjectDialog(QtWidgets.QDialog):
         self.fetch_btn.setEnabled(False)
         self.pick_default_btn.setEnabled(False)
         self._cleanup()
+        self._start_watchdog("拉取 Collections")
 
         worker = FetchWorker(lib.base_url, pat)
         thread = QtCore.QThread(self)
@@ -222,6 +249,7 @@ class ProjectDialog(QtWidgets.QDialog):
         self.fetch_btn.setEnabled(False)
         self.pick_default_btn.setEnabled(False)
         self._cleanup()
+        self._start_watchdog(f"拉取 Projects（{collection}）")
 
         worker = FetchWorker(lib.base_url, pat)
         thread = QtCore.QThread(self)
