@@ -8,6 +8,8 @@ from PySide6 import QtCore, QtWidgets
 from ui_app.logging_setup import setup_app_logger
 from ui_app.task_base import DemoSleepTask, TaskLogEvent
 from ui_app.widgets import NavButton, TaskRowCard
+from ui_app.settings_store import load_ui_settings, save_ui_settings, UiSettings
+from ui_app.dialogs import AddRepoDialog
 
 
 class Worker(QtCore.QObject):
@@ -36,6 +38,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.logger = setup_app_logger()
         self._apply_style()
+
+        self.ui_settings: UiSettings = load_ui_settings()
 
     def _apply_style(self) -> None:
         # minimal dark theme + rounded cards
@@ -246,16 +250,91 @@ class MainWindow(QtWidgets.QMainWindow):
         header = QtWidgets.QLabel("设置")
         header.setObjectName("PageHeader")
 
-        note = QtWidgets.QLabel(
-            "这里是 UI 壳子（Demo）。后续可放：tasks.yaml 路径、token 状态、通知开关等。"
+        # Settings: repo selector + add
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(10)
+
+        self.repo_combo = QtWidgets.QComboBox()
+        self.repo_combo.setMinimumWidth(360)
+        self.repo_combo.currentIndexChanged.connect(self._on_repo_selected)
+
+        self.repo_add_btn = QtWidgets.QPushButton("新增")
+        self.repo_add_btn.setObjectName("PrimaryButton")
+        self.repo_add_btn.clicked.connect(self._add_repo)
+
+        row.addWidget(QtWidgets.QLabel("代码仓库"))
+        row.addWidget(self.repo_combo, 1)
+        row.addWidget(self.repo_add_btn, 0)
+
+        hint = QtWidgets.QLabel(
+            "第一版只支持 Azure DevOps。点击【新增】后会引导你安全保存 PAT（写入系统钥匙串/Keychain）。"
         )
-        note.setWordWrap(True)
-        note.setObjectName("Muted")
+        hint.setWordWrap(True)
+        hint.setObjectName("Muted")
+
+        self.repo_status = QtWidgets.QLabel("")
+        self.repo_status.setObjectName("Muted")
 
         layout.addWidget(header)
-        layout.addWidget(note)
+        layout.addLayout(row)
+        layout.addWidget(hint)
+        layout.addWidget(self.repo_status)
         layout.addStretch(1)
+
+        self._refresh_repo_combo()
         return page
+
+    def _refresh_repo_combo(self) -> None:
+        self.repo_combo.blockSignals(True)
+        self.repo_combo.clear()
+
+        if not self.ui_settings.repos:
+            self.repo_combo.addItem("（暂无，点击右侧新增）", userData=None)
+            self.repo_combo.setEnabled(False)
+        else:
+            self.repo_combo.setEnabled(True)
+            active_id = self.ui_settings.active_repo_id
+            active_index = 0
+            for i, r in enumerate(self.ui_settings.repos):
+                self.repo_combo.addItem(f"{r.display_name}  ·  {r.provider}", userData=r.id)
+                if active_id and r.id == active_id:
+                    active_index = i
+            self.repo_combo.setCurrentIndex(active_index)
+
+        self.repo_combo.blockSignals(False)
+        self._update_repo_status()
+
+    def _update_repo_status(self) -> None:
+        # lightweight status; we don't show token
+        if not self.ui_settings.repos:
+            self.repo_status.setText("未配置代码仓库。")
+            return
+        rid = self.ui_settings.active_repo_id or self.ui_settings.repos[0].id
+        repo = next((r for r in self.ui_settings.repos if r.id == rid), None)
+        if not repo:
+            self.repo_status.setText("未选择仓库。")
+            return
+        info = f"当前：{repo.display_name}（Azure DevOps org={repo.org}" + (f", project={repo.project}" if repo.project else "") + ")"
+        self.repo_status.setText(info)
+
+    def _on_repo_selected(self, idx: int) -> None:
+        rid = self.repo_combo.currentData()
+        if rid:
+            self.ui_settings.active_repo_id = rid
+            save_ui_settings(self.ui_settings)
+        self._update_repo_status()
+
+    def _add_repo(self) -> None:
+        dlg = AddRepoDialog(self)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        repo = dlg.repo()
+        if not repo:
+            return
+        self.ui_settings.repos.append(repo)
+        self.ui_settings.active_repo_id = repo.id
+        save_ui_settings(self.ui_settings)
+        self._refresh_repo_combo()
 
     def _now(self) -> str:
         from datetime import UTC, datetime
