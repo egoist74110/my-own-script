@@ -65,9 +65,17 @@ class NetJob(QtCore.QObject):
         err = r.error()
         if err != QtNetwork.QNetworkReply.NetworkError.NoError:
             # include Qt error code for diagnostics
+            try:
+                err_code = int(err.value)  # type: ignore[attr-defined]
+            except Exception:
+                try:
+                    err_code = int(err)  # fallback
+                except Exception:
+                    err_code = -1
+
             self.failed.emit(
                 NetError(
-                    f"{self._tag} QtError={int(err)} {r.errorString()}".strip(),
+                    f"{self._tag} QtError={err_code} {r.errorString()}".strip(),
                     url=self._url,
                     status=status_i,
                     body=raw[:2000],
