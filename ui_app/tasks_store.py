@@ -14,6 +14,8 @@ class FlowTaskConfig(BaseModel):
     enabled: bool = True
 
     project_id: Optional[str] = None
+    repo_id: Optional[str] = None
+    repo_name: Optional[str] = None
     source_branch: str = ""
     target_branch: str = ""
 

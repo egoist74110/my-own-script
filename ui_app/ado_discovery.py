@@ -18,13 +18,34 @@ class BuildTarget:
     name: str
 
 
+@dataclass(frozen=True)
+class GitRepo:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class GitBranch:
+    name: str  # refs/heads/x
+
+    @property
+    def short(self) -> str:
+        return self.name.removeprefix("refs/heads/")
+
+
 def _headers(pat: str) -> dict[str, str]:
     return {"Authorization": _auth_header_from_pat(pat), "Accept": "application/json"}
 
 
+def _client(pat: str) -> httpx.Client:
+    # Keep timeouts tight so UI doesn't hang
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    return httpx.Client(timeout=timeout, headers=_headers(pat))
+
+
 def list_pipelines(base_url: str, collection: str, pat: str, api_version: str = "7.0") -> list[BuildTarget]:
     url = f"{base_url.rstrip('/')}/{collection}/_apis/pipelines"
-    with httpx.Client(timeout=10.0, headers=_headers(pat)) as c:
+    with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
         data: Any = r.json()
@@ -39,7 +60,7 @@ def list_pipelines(base_url: str, collection: str, pat: str, api_version: str = 
 
 def list_build_definitions(base_url: str, collection: str, pat: str, api_version: str = "7.0") -> list[BuildTarget]:
     url = f"{base_url.rstrip('/')}/{collection}/_apis/build/definitions"
-    with httpx.Client(timeout=10.0, headers=_headers(pat)) as c:
+    with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
         data: Any = r.json()

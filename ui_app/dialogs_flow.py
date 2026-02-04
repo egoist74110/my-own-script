@@ -3,27 +3,35 @@ from __future__ import annotations
 import httpx
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ui_app.ado_discovery import BuildTarget, discover_build_targets
+from ui_app.ado_discovery import BuildTarget, GitBranch, GitRepo, discover_build_targets
+from ui_app.ado_git import list_branches, list_repos
 from ui_app.library_store import get_pat
 from ui_app.settings_store import LibraryEntry, ProjectEntry, UiSettings
 from ui_app.tasks_store import FlowTaskConfig
 
 
-class FetchTargetsWorker(QtCore.QObject):
-    ok = QtCore.Signal(list)
+class RefreshWorker(QtCore.QObject):
+    ok = QtCore.Signal(object)
     failed = QtCore.Signal(str)
 
-    def __init__(self, base_url: str, collection: str, pat: str) -> None:
+    def __init__(self, base_url: str, collection: str, project: str, pat: str, repo_id: str | None) -> None:
         super().__init__()
         self.base_url = base_url
         self.collection = collection
+        self.project = project
         self.pat = pat
+        self.repo_id = repo_id
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
+            repos = list_repos(self.base_url, self.collection, self.project, self.pat)
+            repo_id = self.repo_id or (repos[0].id if repos else None)
+            branches: list[GitBranch] = []
+            if repo_id:
+                branches = list_branches(self.base_url, self.collection, self.project, repo_id, self.pat)
             targets = discover_build_targets(self.base_url, self.collection, self.pat)
-            self.ok.emit(targets)
+            self.ok.emit({"repos": repos, "repo_id": repo_id, "branches": branches, "targets": targets})
         except httpx.HTTPStatusError as e:
             body = (e.response.text or "")[:400]
             self.failed.emit(f"HTTP {e.response.status_code}: {body}")
@@ -53,26 +61,26 @@ class FlowTaskDialog(QtWidgets.QDialog):
         for p in settings.projects:
             self.project_combo.addItem(p.project, userData=p.id)
 
-        self.source_branch = QtWidgets.QLineEdit()
-        self.source_branch.setPlaceholderText("source branch")
+        self.repo_combo = QtWidgets.QComboBox()
 
-        self.target_branch = QtWidgets.QLineEdit()
-        self.target_branch.setPlaceholderText("target branch")
+        self.source_combo = QtWidgets.QComboBox()
+        self.target_combo = QtWidgets.QComboBox()
 
         self.build_combo = QtWidgets.QComboBox()
         self.release_combo = QtWidgets.QComboBox()
 
-        self.refresh_btn = QtWidgets.QPushButton("刷新 Build/Release 列表")
+        self.refresh_btn = QtWidgets.QPushButton("刷新 Repo/Branches/Build")
         self.refresh_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.refresh_btn.clicked.connect(self._refresh_targets)
+        self.refresh_btn.clicked.connect(self._refresh_all)
 
         self.status = QtWidgets.QLabel("")
         self.status.setObjectName("Muted")
         self.status.setWordWrap(True)
 
         form.addRow("Project", self.project_combo)
-        form.addRow("source_branch", self.source_branch)
-        form.addRow("target_branch", self.target_branch)
+        form.addRow("Repo", self.repo_combo)
+        form.addRow("source_branch", self.source_combo)
+        form.addRow("target_branch", self.target_combo)
         form.addRow("Build", self.build_combo)
         form.addRow("Release", self.release_combo)
         root.addLayout(form)
@@ -93,12 +101,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 if self.project_combo.itemData(i) == flow.project_id:
                     self.project_combo.setCurrentIndex(i)
                     break
-        self.source_branch.setText(flow.source_branch)
-        self.target_branch.setText(flow.target_branch)
 
-        self.project_combo.currentIndexChanged.connect(lambda _: self._refresh_targets())
-        # initial refresh
-        self._refresh_targets()
+        # Manual refresh is safer (avoids auto threads on open)
+        self.project_combo.currentIndexChanged.connect(lambda _: self._on_project_change())
+        self.repo_combo.currentIndexChanged.connect(lambda _: self._on_repo_change())
+
+        self.status.setText("请点击『刷新 Repo/Branches/Build』拉取下拉选项")
 
     def result_flow(self) -> FlowTaskConfig | None:
         return self._result
@@ -107,10 +115,30 @@ class FlowTaskDialog(QtWidgets.QDialog):
         if self._thread is not None:
             try:
                 self._thread.quit()
-                self._thread.wait(800)
+                self._thread.wait(1200)
             except Exception:
                 pass
             self._thread = None
+
+    def closeEvent(self, event) -> None:
+        # Ensure background refresh thread is stopped
+        self._cleanup()
+        return super().closeEvent(event)
+
+    def _on_project_change(self) -> None:
+        # reset dependent dropdowns
+        self.repo_combo.clear()
+        self.source_combo.clear()
+        self.target_combo.clear()
+        self.build_combo.clear()
+        self.release_combo.clear()
+        self.status.setText("项目已切换：请点击刷新")
+
+    def _on_repo_change(self) -> None:
+        # changing repo should refresh branches
+        self.source_combo.clear()
+        self.target_combo.clear()
+        self.status.setText("Repo 已切换：请点击刷新")
 
     def _selected_project(self) -> ProjectEntry | None:
         pid = self.project_combo.currentData()
@@ -125,7 +153,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
                 return lib
         return None
 
-    def _refresh_targets(self) -> None:
+    def _set_refreshing(self, on: bool, msg: str = "") -> None:
+        self.refresh_btn.setEnabled(not on)
+        if on:
+            self.status.setText(msg)
+
+    def _refresh_all(self) -> None:
         p = self._selected_project()
         if not p:
             self.status.setText("请先在设置里新增项目")
@@ -139,13 +172,22 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText("该代码库没有 PAT，请先去设置-代码库里保存 PAT")
             return
 
+        self.repo_combo.clear()
+        self.source_combo.clear()
+        self.target_combo.clear()
         self.build_combo.clear()
         self.release_combo.clear()
-        self.status.setText(f"拉取中：{lib.base_url} / {p.collection} ...")
-        self.refresh_btn.setEnabled(False)
+
+        self._set_refreshing(True, f"刷新中：repos/branches/build ({p.project})...")
         self._cleanup()
 
-        worker = FetchTargetsWorker(lib.base_url, p.collection, pat)
+        # Keep selected repo if any
+        existing_repo: str | None = None
+        d = self.repo_combo.currentData()
+        if isinstance(d, GitRepo):
+            existing_repo = d.id
+
+        worker = RefreshWorker(lib.base_url, p.collection, p.project, pat, existing_repo)
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -154,22 +196,53 @@ class FlowTaskDialog(QtWidgets.QDialog):
         worker.ok.connect(worker.deleteLater)
         worker.failed.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._cleanup)
 
-        def ok(targets: list[BuildTarget]) -> None:
-            self.refresh_btn.setEnabled(True)
-            if not targets:
-                self.status.setText("没有拉到 Build 目标（你可以后续改成手填 ID）")
-                return
+        def ok(payload: dict) -> None:
+            self._set_refreshing(False)
+
+            repos: list[GitRepo] = payload.get("repos") or []
+            repo_id: str | None = payload.get("repo_id")
+            branches: list[GitBranch] = payload.get("branches") or []
+            targets: list[BuildTarget] = payload.get("targets") or []
+
+            # repos
+            for r in repos:
+                self.repo_combo.addItem(r.name, userData=r)
+            if repos:
+                idx = 0
+                if repo_id:
+                    for i in range(self.repo_combo.count()):
+                        rr: GitRepo = self.repo_combo.itemData(i)
+                        if rr and rr.id == repo_id:
+                            idx = i
+                            break
+                self.repo_combo.setCurrentIndex(idx)
+
+            # branches
+            for b in branches:
+                self.source_combo.addItem(b.short, userData=b)
+                self.target_combo.addItem(b.short, userData=b)
+            # try to keep previous text if any
+            if branches:
+                self.source_combo.setCurrentIndex(0)
+                self.target_combo.setCurrentIndex(0)
+
+            # build/release
             for t in targets:
                 self.build_combo.addItem(f"{t.name} ({t.kind}:{t.id})", userData=t)
                 self.release_combo.addItem(f"{t.name} ({t.kind}:{t.id})", userData=t)
-            self.build_combo.setCurrentIndex(0)
-            self.release_combo.setCurrentIndex(0)
-            self.status.setText(f"已拉取 {len(targets)} 个 Build 目标（Release 先复用同一列表）")
+            if targets:
+                self.build_combo.setCurrentIndex(0)
+                self.release_combo.setCurrentIndex(0)
+
+            self.status.setText(
+                f"刷新完成：repos={len(repos)} branches={len(branches)} buildTargets={len(targets)}"
+            )
 
         def fail(msg: str) -> None:
-            self.refresh_btn.setEnabled(True)
-            self.status.setText(f"拉取失败：{msg}")
+            self._set_refreshing(False)
+            self.status.setText(f"刷新失败：{msg}")
 
         worker.ok.connect(ok)
         worker.failed.connect(fail)
@@ -177,22 +250,30 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._thread = thread
         thread.start()
 
+    def _refresh_branches_only(self) -> None:
+        # Keep it simple for v1: full refresh
+        self._refresh_all()
+
     def accept(self) -> None:
         if not self._settings.projects:
             QtWidgets.QMessageBox.warning(self, "错误", "请先在设置里新增项目")
             return
 
         pid = self.project_combo.currentData()
-        src = self.source_branch.text().strip()
-        tgt = self.target_branch.text().strip()
+        rr: GitRepo | None = self.repo_combo.currentData()
+        sb: GitBranch | None = self.source_combo.currentData()
+        tb: GitBranch | None = self.target_combo.currentData()
         bt: BuildTarget | None = self.build_combo.currentData()
         rt: BuildTarget | None = self.release_combo.currentData()
 
         if not pid:
             QtWidgets.QMessageBox.warning(self, "错误", "请选择 Project")
             return
-        if not src or not tgt:
-            QtWidgets.QMessageBox.warning(self, "错误", "请填写 source/target 分支")
+        if not rr:
+            QtWidgets.QMessageBox.warning(self, "错误", "请选择 Repo")
+            return
+        if not sb or not tb:
+            QtWidgets.QMessageBox.warning(self, "错误", "请选择 source/target 分支")
             return
         if not bt or not rt:
             QtWidgets.QMessageBox.warning(self, "错误", "请先刷新并选择 Build/Release")
@@ -201,8 +282,10 @@ class FlowTaskDialog(QtWidgets.QDialog):
         self._result = self._flow.model_copy(
             update={
                 "project_id": pid,
-                "source_branch": src,
-                "target_branch": tgt,
+                "repo_id": rr.id,
+                "repo_name": rr.name,
+                "source_branch": sb.short,
+                "target_branch": tb.short,
                 "build_kind": bt.kind,
                 "build_id": bt.id,
                 "build_name": bt.name,
