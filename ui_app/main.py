@@ -76,6 +76,13 @@ class MainWindow(QtWidgets.QMainWindow):
               border-radius: 14px;
             }
             QFrame#TaskRowCard:hover { border: 1px solid rgba(56,189,248,0.22); }
+
+            QFrame#RepoCard {
+              background: #15181d;
+              border: 1px solid rgba(255,255,255,0.06);
+              border-radius: 14px;
+            }
+            QFrame#RepoCard QLabel { color: #e5e7eb; }
             QLabel#TaskTitle { color: #e5e7eb; font-size: 15px; font-weight: 650; }
             QLabel#TaskSubtitle { color: #94a3b8; }
             QLabel#TaskStatus { color: #cbd5e1; }
@@ -261,23 +268,49 @@ class MainWindow(QtWidgets.QMainWindow):
         self.repo_add_btn.setObjectName("PrimaryButton")
         self.repo_add_btn.clicked.connect(self._add_repo)
 
+        self.repo_edit_btn = QtWidgets.QPushButton("编辑")
+        self.repo_edit_btn.clicked.connect(self._edit_repo)
+
+        self.repo_del_btn = QtWidgets.QPushButton("删除")
+        self.repo_del_btn.clicked.connect(self._delete_repo)
+
         row.addWidget(QtWidgets.QLabel("代码仓库"))
         row.addWidget(self.repo_combo, 1)
         row.addWidget(self.repo_add_btn, 0)
+        row.addWidget(self.repo_edit_btn, 0)
+        row.addWidget(self.repo_del_btn, 0)
+
+        self.repo_card = QtWidgets.QFrame()
+        self.repo_card.setObjectName("RepoCard")
+        card_layout = QtWidgets.QFormLayout(self.repo_card)
+        card_layout.setContentsMargins(14, 14, 14, 14)
+        card_layout.setSpacing(8)
+
+        self.repo_name_v = QtWidgets.QLabel("-")
+        self.repo_base_v = QtWidgets.QLabel("-")
+        self.repo_coll_v = QtWidgets.QLabel("-")
+        self.repo_proj_v = QtWidgets.QLabel("-")
+
+        from PySide6 import QtCore
+
+        for w in (self.repo_base_v, self.repo_coll_v, self.repo_proj_v):
+            w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+
+        card_layout.addRow("名称", self.repo_name_v)
+        card_layout.addRow("Server", self.repo_base_v)
+        card_layout.addRow("Collection", self.repo_coll_v)
+        card_layout.addRow("Project", self.repo_proj_v)
 
         hint = QtWidgets.QLabel(
-            "第一版只支持 Azure DevOps。点击【新增】后会引导你安全保存 PAT（写入系统钥匙串/Keychain）。"
+            "提示：点击【编辑】可以修改信息并手动验证；token 会安全存储在系统钥匙串(Keychain)，不会写入仓库文件。"
         )
         hint.setWordWrap(True)
         hint.setObjectName("Muted")
 
-        self.repo_status = QtWidgets.QLabel("")
-        self.repo_status.setObjectName("Muted")
-
         layout.addWidget(header)
         layout.addLayout(row)
+        layout.addWidget(self.repo_card)
         layout.addWidget(hint)
-        layout.addWidget(self.repo_status)
         layout.addStretch(1)
 
         self._refresh_repo_combo()
@@ -295,7 +328,10 @@ class MainWindow(QtWidgets.QMainWindow):
             active_id = self.ui_settings.active_repo_id
             active_index = 0
             for i, r in enumerate(self.ui_settings.repos):
-                self.repo_combo.addItem(f"{r.display_name}  ·  {r.provider}", userData=r.id)
+                # B: name · collection · project
+                c = r.collection or r.org or "-"
+                p = r.project or "-"
+                self.repo_combo.addItem(f"{r.display_name}  ·  {c}  ·  {p}", userData=r.id)
                 if active_id and r.id == active_id:
                     active_index = i
             self.repo_combo.setCurrentIndex(active_index)
@@ -303,18 +339,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.repo_combo.blockSignals(False)
         self._update_repo_status()
 
-    def _update_repo_status(self) -> None:
-        # lightweight status; we don't show token
+    def _active_repo(self):
         if not self.ui_settings.repos:
-            self.repo_status.setText("未配置代码仓库。")
-            return
+            return None
         rid = self.ui_settings.active_repo_id or self.ui_settings.repos[0].id
-        repo = next((r for r in self.ui_settings.repos if r.id == rid), None)
+        return next((r for r in self.ui_settings.repos if r.id == rid), None)
+
+    def _update_repo_status(self) -> None:
+        repo = self._active_repo()
+        has = repo is not None
+        self.repo_edit_btn.setEnabled(has)
+        self.repo_del_btn.setEnabled(has)
+        self.repo_card.setEnabled(has)
+
         if not repo:
-            self.repo_status.setText("未选择仓库。")
+            self.repo_name_v.setText("未配置")
+            self.repo_base_v.setText("-")
+            self.repo_coll_v.setText("-")
+            self.repo_proj_v.setText("-")
             return
-        info = f"当前：{repo.display_name}（Azure DevOps org={repo.org}" + (f", project={repo.project}" if repo.project else "") + ")"
-        self.repo_status.setText(info)
+
+        self.repo_name_v.setText(repo.display_name)
+        self.repo_base_v.setText(repo.base_url or "-")
+        self.repo_coll_v.setText(repo.collection or repo.org or "-")
+        self.repo_proj_v.setText(repo.project or "-")
 
     def _on_repo_selected(self, idx: int) -> None:
         rid = self.repo_combo.currentData()
@@ -332,6 +380,38 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.ui_settings.repos.append(repo)
         self.ui_settings.active_repo_id = repo.id
+        save_ui_settings(self.ui_settings)
+        self._refresh_repo_combo()
+
+    def _edit_repo(self) -> None:
+        repo = self._active_repo()
+        if not repo:
+            return
+        dlg = AddRepoDialog(self, existing=repo)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        updated = dlg.repo()
+        if not updated:
+            return
+        # replace in list
+        self.ui_settings.repos = [updated if r.id == updated.id else r for r in self.ui_settings.repos]
+        self.ui_settings.active_repo_id = updated.id
+        save_ui_settings(self.ui_settings)
+        self._refresh_repo_combo()
+
+    def _delete_repo(self) -> None:
+        repo = self._active_repo()
+        if not repo:
+            return
+        ok = QtWidgets.QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定删除仓库配置：{repo.display_name} ?\n(不会自动删除钥匙串里的 token；后续可再加清理按钮)",
+        )
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+        self.ui_settings.repos = [r for r in self.ui_settings.repos if r.id != repo.id]
+        self.ui_settings.active_repo_id = self.ui_settings.repos[0].id if self.ui_settings.repos else None
         save_ui_settings(self.ui_settings)
         self._refresh_repo_combo()
 

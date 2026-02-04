@@ -48,18 +48,27 @@ class FetchWorker(QtCore.QObject):
 
 
 class AddRepoDialog(QtWidgets.QDialog):
-    """Wizard-ish dialog for adding a code repo connection.
+    """Add/Edit a code repo connection.
 
-    v1: only Azure DevOps.
-    User provides PAT, then we fetch orgs/projects for selection.
+    v1: only Azure DevOps Server.
+    - User enters server URL + PAT.
+    - Collection listing may be blocked; allow manual collection.
+    - Projects are fetched for convenience.
+
     Token is stored in OS keychain via keyring.
     """
 
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget | None = None,
+        *,
+        existing: RepoEntry | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("新增代码仓库")
+        self._existing = existing
+        self.setWindowTitle("编辑代码仓库" if existing else "新增代码仓库")
         self.setModal(True)
-        self.resize(560, 420)
+        self.resize(640, 460)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -110,9 +119,9 @@ class AddRepoDialog(QtWidgets.QDialog):
 
         self.token = QtWidgets.QLineEdit()
         self.token.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.token.setPlaceholderText("粘贴 Azure DevOps PAT（不会回显）")
+        self.token.setPlaceholderText("粘贴 Azure DevOps PAT（不会回显；留空=不修改已保存的 PAT）")
 
-        self.fetch_btn = QtWidgets.QPushButton("验证")
+        self.fetch_btn = QtWidgets.QPushButton("验证并拉取")
         self.fetch_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.fetch_btn.clicked.connect(self._start_fetch_collections)
 
@@ -134,7 +143,8 @@ class AddRepoDialog(QtWidgets.QDialog):
             QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Save
         )
         self._save_btn = btns.button(QtWidgets.QDialogButtonBox.Save)
-        self._save_btn.setEnabled(False)
+        # allow save without verification; user can verify when needed
+        self._save_btn.setEnabled(True)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
@@ -144,6 +154,18 @@ class AddRepoDialog(QtWidgets.QDialog):
         self._projects_by_collection: dict[str, list] = {}
         self._worker: FetchWorker | None = None
         self._thread: QtCore.QThread | None = None
+
+        if existing:
+            # prefill fields
+            self.display_name.setText(existing.display_name)
+            if existing.base_url:
+                self.base_url.setText(existing.base_url)
+            if existing.collection:
+                self.collection_input.setText(existing.collection)
+            if existing.project:
+                # will be selected after fetching projects
+                self.project_combo.addItem(existing.project, userData=existing.project)
+                self.project_combo.setEnabled(True)
 
     def repo(self) -> RepoEntry | None:
         return self._repo
@@ -237,15 +259,14 @@ class AddRepoDialog(QtWidgets.QDialog):
 
     def _on_collections_ready(self, cols: list) -> None:
         self._collections = cols
-        # We still allow manual input, but if we got collections, prefill with the first one.
         ok = bool(cols)
         self.project_combo.setEnabled(False)
-        self._save_btn.setEnabled(False)
 
         if ok:
-            self.collection_input.setText(cols[0].name)
-            self._set_busy(False, f"验证成功：发现 {len(cols)} 个 Collection。已默认填入第一个，可手动修改。")
-            self._start_fetch_projects(cols[0].name)
+            # If user already typed a collection, keep it.
+            if not self.collection_input.text().strip():
+                self.collection_input.setText(cols[0].name)
+            self._set_busy(False, f"验证成功：发现 {len(cols)} 个 Collection。可手动修改 Collection 后回车拉取 Projects。")
         else:
             self._set_busy(False, "验证成功，但未发现 Collection。请手动输入（例如 DefaultCollection）后回车以拉取 Projects。")
 
@@ -333,14 +354,11 @@ class AddRepoDialog(QtWidgets.QDialog):
         if not base_url:
             QtWidgets.QMessageBox.warning(self, "错误", "请填写 Server URL")
             return
-        if not token:
-            QtWidgets.QMessageBox.warning(self, "错误", "请填写 PAT")
-            return
         if not collection:
-            QtWidgets.QMessageBox.warning(self, "错误", "请先拉取并选择/输入 Collection")
+            QtWidgets.QMessageBox.warning(self, "错误", "请填写 Collection")
             return
 
-        repo_id = f"ado:{uuid.uuid4()}"
+        repo_id = self._existing.id if self._existing else f"ado:{uuid.uuid4()}"
         entry = RepoEntry(
             id=repo_id,
             provider="azuredevops",
@@ -350,11 +368,10 @@ class AddRepoDialog(QtWidgets.QDialog):
             project=str(project) if project else None,
         )
 
-        # store token securely in keychain
-        keyring.set_password(APP_ID, f"azuredevops_pat:{repo_id}", token)
-
-        # clear token field after save (basic safety)
-        self.token.setText("")
+        # store token securely in keychain ONLY if user entered a new token
+        if token:
+            keyring.set_password(APP_ID, f"azuredevops_pat:{repo_id}", token)
+            self.token.setText("")
 
         self._repo = entry
         super().accept()
