@@ -154,9 +154,27 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.status.setText(msg)
 
     def _cleanup_thread(self) -> None:
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait(1000)
+        # QThread objects can be deleted by Qt when finished + deleteLater.
+        # Guard against double-cleanup.
+        if self._thread is None:
+            self._worker = None
+            return
+
+        try:
+            from shiboken6 import isValid  # bundled with PySide6
+
+            valid = isValid(self._thread)
+        except Exception:
+            valid = True
+
+        try:
+            if valid:
+                self._thread.quit()
+                self._thread.wait(1000)
+        except RuntimeError:
+            # already deleted
+            pass
+        finally:
             self._thread = None
             self._worker = None
 
@@ -205,6 +223,7 @@ class AddRepoDialog(QtWidgets.QDialog):
 
         self._worker = worker
         self._thread = thread
+        thread.finished.connect(self._cleanup_thread)
         thread.start()
 
     def _on_collections_ready(self, cols: list) -> None:
@@ -247,6 +266,7 @@ class AddRepoDialog(QtWidgets.QDialog):
 
         self._worker = worker
         self._thread = thread
+        thread.finished.connect(self._cleanup_thread)
         thread.start()
 
     def _on_projects_ready(self, collection: str, projects: list) -> None:
