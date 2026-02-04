@@ -15,6 +15,10 @@ class RepoEntry(BaseModel):
     display_name: str
 
     # provider-specific (azuredevops)
+    # - public cloud: org + project
+    # - server: base_url + collection + project
+    base_url: Optional[str] = None
+    collection: Optional[str] = None
     org: Optional[str] = None
     project: Optional[str] = None
 

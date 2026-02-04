@@ -12,33 +12,37 @@ from ui_app.settings_store import RepoEntry
 
 
 class FetchWorker(QtCore.QObject):
-    accounts_ready = QtCore.Signal(list)
+    collections_ready = QtCore.Signal(list)
     projects_ready = QtCore.Signal(str, list)
     failed = QtCore.Signal(str)
 
-    def __init__(self, pat: str) -> None:
+    def __init__(self, base_url: str, pat: str, api_version: str = "7.0") -> None:
         super().__init__()
+        self._base_url = base_url
         self._pat = pat
+        self._api_version = api_version
 
     @QtCore.Slot()
-    def fetch_accounts(self) -> None:
+    def fetch_collections(self) -> None:
         try:
-            c = AzureDevOpsClient(pat=self._pat)
-            accounts = c.list_accounts()
-            self.accounts_ready.emit(accounts)
+            c = AzureDevOpsClient(base_url=self._base_url, pat=self._pat, api_version=self._api_version)
+            cols = c.list_collections()
+            self.collections_ready.emit(cols)
         except httpx.HTTPStatusError as e:
-            self.failed.emit(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
         except Exception as e:
             self.failed.emit(str(e))
 
     @QtCore.Slot(str)
-    def fetch_projects(self, org: str) -> None:
+    def fetch_projects(self, collection: str) -> None:
         try:
-            c = AzureDevOpsClient(pat=self._pat)
-            projects = c.list_projects(org)
-            self.projects_ready.emit(org, projects)
+            c = AzureDevOpsClient(base_url=self._base_url, pat=self._pat, api_version=self._api_version)
+            projects = c.list_projects(collection)
+            self.projects_ready.emit(collection, projects)
         except httpx.HTTPStatusError as e:
-            self.failed.emit(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+            body = (e.response.text or "")[:400]
+            self.failed.emit(f"HTTP {e.response.status_code}: {body}")
         except Exception as e:
             self.failed.emit(str(e))
 
@@ -71,17 +75,22 @@ class AddRepoDialog(QtWidgets.QDialog):
         self.display_name = QtWidgets.QLineEdit()
         self.display_name.setPlaceholderText("例如：公司 ADO")
 
-        self.org_combo = QtWidgets.QComboBox()
-        self.org_combo.setEnabled(False)
-        self.org_combo.currentIndexChanged.connect(self._on_org_changed)
+        self.base_url = QtWidgets.QLineEdit()
+        self.base_url.setPlaceholderText("例如：https://azuredevops.your-company.com")
+
+        self.collection_combo = QtWidgets.QComboBox()
+        self.collection_combo.setEditable(True)
+        self.collection_combo.setEnabled(False)
+        self.collection_combo.currentIndexChanged.connect(self._on_collection_changed)
 
         self.project_combo = QtWidgets.QComboBox()
         self.project_combo.setEnabled(False)
 
         form.addRow("类型", self.provider)
         form.addRow("名称", self.display_name)
-        form.addRow("组织/公司(Org)", self.org_combo)
-        form.addRow("项目(Project)", self.project_combo)
+        form.addRow("Server URL", self.base_url)
+        form.addRow("Collection", self.collection_combo)
+        form.addRow("Project", self.project_combo)
 
         layout.addLayout(form)
 
@@ -105,7 +114,7 @@ class AddRepoDialog(QtWidgets.QDialog):
 
         self.fetch_btn = QtWidgets.QPushButton("验证并拉取")
         self.fetch_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.fetch_btn.clicked.connect(self._start_fetch_accounts)
+        self.fetch_btn.clicked.connect(self._start_fetch_collections)
 
         token_row.addWidget(self.token, 1)
         token_row.addWidget(self.fetch_btn, 0)
@@ -126,8 +135,8 @@ class AddRepoDialog(QtWidgets.QDialog):
         layout.addWidget(btns)
 
         self._repo: RepoEntry | None = None
-        self._accounts: list = []
-        self._projects_by_org: dict[str, list] = {}
+        self._collections: list = []
+        self._projects_by_collection: dict[str, list] = {}
         self._worker: FetchWorker | None = None
         self._thread: QtCore.QThread | None = None
 
@@ -137,7 +146,8 @@ class AddRepoDialog(QtWidgets.QDialog):
     def _set_busy(self, busy: bool, msg: str = "") -> None:
         self.fetch_btn.setEnabled(not busy)
         self.token.setEnabled(not busy)
-        self.org_combo.setEnabled(not busy and self.org_combo.count() > 0)
+        self.base_url.setEnabled(not busy)
+        self.collection_combo.setEnabled(not busy and self.collection_combo.count() > 0)
         self.project_combo.setEnabled(not busy and self.project_combo.count() > 0)
         self.status.setText(msg)
 
@@ -148,25 +158,29 @@ class AddRepoDialog(QtWidgets.QDialog):
             self._thread = None
             self._worker = None
 
-    def _start_fetch_accounts(self) -> None:
+    def _start_fetch_collections(self) -> None:
+        base_url = self.base_url.text().strip().rstrip("/")
         pat = self.token.text().strip()
+        if not base_url:
+            QtWidgets.QMessageBox.warning(self, "错误", "请先填写 Server URL")
+            return
         if not pat:
             QtWidgets.QMessageBox.warning(self, "错误", "请先粘贴 PAT")
             return
 
         self._cleanup_thread()
-        self._set_busy(True, "正在验证 PAT 并拉取 Org 列表...")
+        self._set_busy(True, "正在验证 PAT 并拉取 Collection 列表...")
 
-        worker = FetchWorker(pat)
+        worker = FetchWorker(base_url, pat, "7.0")
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
 
-        worker.accounts_ready.connect(self._on_accounts_ready)
+        worker.collections_ready.connect(self._on_collections_ready)
         worker.failed.connect(self._on_fetch_failed)
-        thread.started.connect(worker.fetch_accounts)
-        worker.accounts_ready.connect(thread.quit)
+        thread.started.connect(worker.fetch_collections)
+        worker.collections_ready.connect(thread.quit)
         worker.failed.connect(thread.quit)
-        worker.accounts_ready.connect(worker.deleteLater)
+        worker.collections_ready.connect(worker.deleteLater)
         worker.failed.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
 
@@ -174,37 +188,38 @@ class AddRepoDialog(QtWidgets.QDialog):
         self._thread = thread
         thread.start()
 
-    def _on_accounts_ready(self, accounts: list) -> None:
-        self._accounts = accounts
-        self.org_combo.clear()
-        for a in accounts:
-            # a: AzureDevOpsAccount
-            self.org_combo.addItem(a.account_name, userData=a.account_name)
+    def _on_collections_ready(self, cols: list) -> None:
+        self._collections = cols
+        self.collection_combo.clear()
+        for c in cols:
+            # c: AzureDevOpsCollection
+            self.collection_combo.addItem(c.name, userData=c.name)
 
-        ok = bool(accounts)
-        self.org_combo.setEnabled(ok)
+        ok = bool(cols)
+        self.collection_combo.setEnabled(True)  # editable, allow manual entry
         self.project_combo.setEnabled(False)
         self._save_btn.setEnabled(False)
-        self._set_busy(False, f"拉取成功：发现 {len(accounts)} 个 Org。请选择 Org 继续拉取 Project。" if ok else "未发现任何可访问的 Org（检查 PAT 权限/账号）。")
+        self._set_busy(False, f"拉取成功：发现 {len(cols)} 个 Collection。请选择一个继续拉取 Project。" if ok else "未发现 Collection（可能需要手动输入 Collection 名称，如 DefaultCollection）。")
 
         if ok:
-            # auto trigger projects fetch for first org
-            self._start_fetch_projects(self.org_combo.currentData())
+            self._start_fetch_projects(self.collection_combo.currentData())
 
-    def _start_fetch_projects(self, org: str) -> None:
+    def _start_fetch_projects(self, collection: str) -> None:
+        base_url = self.base_url.text().strip().rstrip("/")
         pat = self.token.text().strip()
-        if not pat or not org:
+        if not base_url or not pat or not collection:
             return
-        self._cleanup_thread()
-        self._set_busy(True, f"正在拉取 Org={org} 的 Project 列表...")
 
-        worker = FetchWorker(pat)
+        self._cleanup_thread()
+        self._set_busy(True, f"正在拉取 Collection={collection} 的 Project 列表...")
+
+        worker = FetchWorker(base_url, pat, "7.0")
         thread = QtCore.QThread(self)
         worker.moveToThread(thread)
 
         worker.projects_ready.connect(self._on_projects_ready)
         worker.failed.connect(self._on_fetch_failed)
-        thread.started.connect(lambda: worker.fetch_projects(org))
+        thread.started.connect(lambda: worker.fetch_projects(collection))
         worker.projects_ready.connect(thread.quit)
         worker.failed.connect(thread.quit)
         worker.projects_ready.connect(worker.deleteLater)
@@ -215,50 +230,53 @@ class AddRepoDialog(QtWidgets.QDialog):
         self._thread = thread
         thread.start()
 
-    def _on_projects_ready(self, org: str, projects: list) -> None:
-        self._projects_by_org[org] = projects
+    def _on_projects_ready(self, collection: str, projects: list) -> None:
+        self._projects_by_collection[collection] = projects
         self.project_combo.clear()
         for p in projects:
             self.project_combo.addItem(p.name, userData=p.name)
 
         self.project_combo.setEnabled(bool(projects))
-        self._save_btn.setEnabled(True)  # allow saving even if project empty
-        self._set_busy(False, f"拉取成功：Org={org} 共有 {len(projects)} 个 Project。现在可以保存。")
+        self._save_btn.setEnabled(True)
+        self._set_busy(False, f"拉取成功：Collection={collection} 共有 {len(projects)} 个 Project。现在可以保存。")
 
     def _on_fetch_failed(self, msg: str) -> None:
         self._save_btn.setEnabled(False)
         self._set_busy(False, f"拉取失败：{msg}")
 
-    def _on_org_changed(self, idx: int) -> None:
-        org = self.org_combo.currentData()
-        if not org:
+    def _on_collection_changed(self, idx: int) -> None:
+        collection = self.collection_combo.currentData() or self.collection_combo.currentText().strip()
+        if not collection:
             return
-        # if cached, use cached list
-        cached = self._projects_by_org.get(org)
+        cached = self._projects_by_collection.get(collection)
         if cached is not None:
             self.project_combo.clear()
             for p in cached:
                 self.project_combo.addItem(p.name, userData=p.name)
             self.project_combo.setEnabled(bool(cached))
             self._save_btn.setEnabled(True)
-            self.status.setText(f"Org={org} 已缓存 {len(cached)} 个 Project。")
+            self.status.setText(f"Collection={collection} 已缓存 {len(cached)} 个 Project。")
             return
-        self._start_fetch_projects(org)
+        self._start_fetch_projects(collection)
 
     def accept(self) -> None:
         display_name = self.display_name.text().strip()
         token = self.token.text().strip()
-        org = self.org_combo.currentData()
+        base_url = self.base_url.text().strip().rstrip("/")
+        collection = self.collection_combo.currentData() or self.collection_combo.currentText().strip()
         project = self.project_combo.currentData() if self.project_combo.isEnabled() else None
 
         if not display_name:
             QtWidgets.QMessageBox.warning(self, "错误", "请填写名称")
             return
+        if not base_url:
+            QtWidgets.QMessageBox.warning(self, "错误", "请填写 Server URL")
+            return
         if not token:
             QtWidgets.QMessageBox.warning(self, "错误", "请填写 PAT")
             return
-        if not org:
-            QtWidgets.QMessageBox.warning(self, "错误", "请先验证并选择 Org")
+        if not collection:
+            QtWidgets.QMessageBox.warning(self, "错误", "请先拉取并选择/输入 Collection")
             return
 
         repo_id = f"ado:{uuid.uuid4()}"
@@ -266,7 +284,8 @@ class AddRepoDialog(QtWidgets.QDialog):
             id=repo_id,
             provider="azuredevops",
             display_name=display_name,
-            org=str(org),
+            base_url=base_url,
+            collection=str(collection),
             project=str(project) if project else None,
         )
 
