@@ -94,6 +94,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
         root.addWidget(btns)
 
         self._thread: QtCore.QThread | None = None
+        self._watchdog: QtCore.QTimer | None = None
 
         # load existing
         if flow.project_id:
@@ -112,6 +113,13 @@ class FlowTaskDialog(QtWidgets.QDialog):
         return self._result
 
     def _cleanup(self) -> None:
+        if self._watchdog is not None:
+            try:
+                self._watchdog.stop()
+            except Exception:
+                pass
+            self._watchdog = None
+
         if self._thread is not None:
             try:
                 self._thread.quit()
@@ -119,6 +127,21 @@ class FlowTaskDialog(QtWidgets.QDialog):
             except Exception:
                 pass
             self._thread = None
+
+    def _start_watchdog(self, ms: int = 12000) -> None:
+        t = QtCore.QTimer(self)
+        t.setSingleShot(True)
+
+        def fire() -> None:
+            # Don't leave UI stuck even if worker never emits.
+            self._set_refreshing(False)
+            if self.status.text().startswith("刷新中"):
+                self.status.setText(f"刷新超时（>{ms//1000}s）。可能是网络/权限问题，建议重试；我下一步会加详细URL/状态码日志")
+            self._cleanup()
+
+        t.timeout.connect(fire)
+        t.start(ms)
+        self._watchdog = t
 
     def closeEvent(self, event) -> None:
         # Ensure background refresh thread is stopped
@@ -172,6 +195,12 @@ class FlowTaskDialog(QtWidgets.QDialog):
             self.status.setText("该代码库没有 PAT，请先去设置-代码库里保存 PAT")
             return
 
+        # Keep selected repo if any (read before clearing)
+        existing_repo: str | None = None
+        d = self.repo_combo.currentData()
+        if isinstance(d, GitRepo):
+            existing_repo = d.id
+
         self.repo_combo.clear()
         self.source_combo.clear()
         self.target_combo.clear()
@@ -180,12 +209,7 @@ class FlowTaskDialog(QtWidgets.QDialog):
 
         self._set_refreshing(True, f"刷新中：repos/branches/build ({p.project})...")
         self._cleanup()
-
-        # Keep selected repo if any
-        existing_repo: str | None = None
-        d = self.repo_combo.currentData()
-        if isinstance(d, GitRepo):
-            existing_repo = d.id
+        self._start_watchdog()
 
         worker = RefreshWorker(lib.base_url, p.collection, p.project, pat, existing_repo)
         thread = QtCore.QThread(self)
@@ -196,6 +220,14 @@ class FlowTaskDialog(QtWidgets.QDialog):
         worker.ok.connect(worker.deleteLater)
         worker.failed.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
+
+        def _done() -> None:
+            # If worker finishes without emitting ok/failed, don't leave UI in "refreshing" state.
+            if self.status.text().startswith("刷新中"):
+                self._set_refreshing(False)
+                self.status.setText("刷新已结束但未收到结果（可能是线程/网络异常）。请重试")
+
+        thread.finished.connect(_done)
         thread.finished.connect(self._cleanup)
 
         def ok(payload: dict) -> None:
