@@ -154,15 +154,27 @@ class TelegramController:
         cmd = parts[0].lower()
 
         if cmd in ("/help", "/start"):
-            self._reply(
-                token,
-                ctx.chat_id,
-                "可用命令：\n"
-                "/run sync_build_release\n"
-                "/run sync_merge_build_release\n"
-                "/status\n"
-                "/stop",
-            )
+            if role == "owner":
+                msg = (
+                    "可用命令：\n"
+                    "/run sync_build_release\n"
+                    "/run sync_merge_build_release\n"
+                    "/status\n"
+                    "/stop\n"
+                    "/help"
+                )
+            else:
+                # Non-owner: show only runnable tasks
+                allowed_tasks = []
+                if self._can(role, group, "run", task_id="sync_build_release"):
+                    allowed_tasks.append("/run sync_build_release")
+                if self._can(role, group, "run", task_id="sync_merge_build_release"):
+                    allowed_tasks.append("/run sync_merge_build_release")
+                if not allowed_tasks:
+                    msg = "当前无可运行任务权限。请联系管理员分配权限。"
+                else:
+                    msg = "可用任务命令：\n" + "\n".join(allowed_tasks)
+            self._reply(token, ctx.chat_id, msg)
             return
 
         if cmd == "/status":
