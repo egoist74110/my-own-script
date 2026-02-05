@@ -26,10 +26,12 @@ class TelegramCard(CardWidget):
 
         self.btn_save = PushButton("保存")
         self.btn_test = PushButton("测试通知")
+        self.btn_detect = PushButton("自动获取 Chat ID")
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_save)
         row.addWidget(self.btn_test)
+        row.addWidget(self.btn_detect)
         row.addStretch(1)
 
         form.addRow("Chat ID", self.chat_id)
@@ -40,6 +42,7 @@ class TelegramCard(CardWidget):
 
         self.btn_save.clicked.connect(self._save)
         self.btn_test.clicked.connect(self._test)
+        self.btn_detect.clicked.connect(self._detect)
 
     def _load(self):
         self._settings = load_ui_settings()
@@ -61,6 +64,54 @@ class TelegramCard(CardWidget):
             self.token.setText("********")
 
         toast(self, "已保存", "Telegram 配置已保存")
+
+    def _detect(self):
+        token = get_telegram_token()
+        if not token:
+            show_error_dialog(self, "错误", "请先填写并保存 Bot Token")
+            return
+
+        # Tell user what to do
+        toast(self, "提示", "请先在 Telegram 里给你的机器人发一条消息（如：hi），然后再点一次此按钮", ok=True)
+
+        import threading
+        result = None
+
+        def run():
+            nonlocal result
+            try:
+                from app_ado.notifier_telegram_updates import list_chat_candidates
+
+                result = list_chat_candidates(bot_token=token, limit=30)
+            except Exception as e:
+                result = e
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish():
+            nonlocal result
+            if th.is_alive():
+                QtCore.QTimer.singleShot(120, finish)
+                return
+            if isinstance(result, Exception):
+                show_error_dialog(self, "获取失败", str(result))
+                return
+            candidates = result or []
+            if not candidates:
+                show_error_dialog(self, "未找到", "没有从 getUpdates 里读到任何 chat。\n\n请确认：\n- 你已经给机器人发过消息\n- 机器人 Token 正确\n- 机器人没有被 Privacy Mode 限制（群里需要 @bot 或给权限）")
+                return
+
+            items = [f"{c.title} ({c.kind})" + (f" @{c.username}" if c.username else "") + f"\nchat_id={c.chat_id}" for c in candidates]
+            choice, ok = QtWidgets.QInputDialog.getItem(self, "选择 Chat", "从最近消息检测到以下 Chat：", items, 0, False)
+            if not ok or not choice:
+                return
+            # parse chat_id from last line
+            chat_id = choice.split("chat_id=", 1)[-1].strip()
+            self.chat_id.setText(chat_id)
+            toast(self, "已填入", f"Chat ID 已填入：{chat_id}")
+
+        QtCore.QTimer.singleShot(120, finish)
 
     def _test(self):
         s = load_ui_settings()
