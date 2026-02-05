@@ -48,6 +48,10 @@ class TaskCard(ExpandSettingCard):
         self.setExpand(False)
         self._adjustViewSize()
 
+    def set_actions_enabled(self, on: bool) -> None:
+        self.btn_config.setEnabled(on)
+        self.btn_run.setEnabled(on)
+
     def clear_log(self) -> None:
         self.log_box.clear()
 

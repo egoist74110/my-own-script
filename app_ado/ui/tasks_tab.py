@@ -68,7 +68,7 @@ class TasksTab(Tab):
         save_task_settings(ts)
 
     def _run(self) -> None:
-        # v2: sync both branches, merge source -> target, then push target
+        """Run in a background Python thread to keep UI responsive."""
         ts = load_task_settings()
         flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
         if not flow:
@@ -78,7 +78,7 @@ class TasksTab(Tab):
         if not flow:
             return
 
-        # basic config validation
+        # basic config validation (UI thread)
         missing: list[str] = []
         if not flow.local_repo_path:
             missing.append("- 本地仓库路径")
@@ -86,6 +86,8 @@ class TasksTab(Tab):
             missing.append("- 源分支")
         if not flow.target_branch:
             missing.append("- 目标分支")
+        if not flow.build_id or not flow.build_kind:
+            missing.append("- 构建")
         if missing:
             show_error_dialog(self.window(), "配置不完整", "请先在【配置】中补齐：\n" + "\n".join(missing))
             return
@@ -94,166 +96,191 @@ class TasksTab(Tab):
 
         ok = show_confirm_dialog(
             self.window(),
-            "确认执行合并并推送？",
+            "确认执行合并并推送 + 构建？",
             "将执行以下操作：\n"
             f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
             f"2) 更新本地分支（ff-only）\n"
             f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
-            f"4) push origin {flow.target_branch}\n\n"
+            f"4) push origin {flow.target_branch}\n"
+            f"5) 触发构建（目标分支：{flow.target_branch}）并等待完成\n\n"
             f"repo_path={local_path}",
         )
         if not ok:
             return
 
-        # clear + start log
-        self._clear_run_log()
-        self._append_run_log("运行：合并并推送")
-        self._append_run_log(f"repo_path={local_path}")
-        self._append_run_log(f"source={flow.source_branch} target={flow.target_branch}")
-
-        log = RunLogDialog(self.window(), title="运行：合并并推送")
-        log.show()
-
+        import queue
+        import threading
         import subprocess
         import shlex
 
-        def run_cmd(cmd: list[str], *, check: bool = False) -> subprocess.CompletedProcess:
-            line = "$ " + " ".join(shlex.quote(x) for x in cmd)
-            log.log(line)
-            self._append_run_log(line)
-            cp = subprocess.run(cmd, cwd=local_path, capture_output=True, text=True)
-            if cp.stdout:
-                log.log(cp.stdout.strip())
-                self._append_run_log(cp.stdout.strip())
-            if cp.stderr:
-                log.log(cp.stderr.strip())
-                self._append_run_log(cp.stderr.strip())
-            if check and cp.returncode != 0:
-                raise RuntimeError(f"command failed: {cmd} (rc={cp.returncode})")
-            return cp
+        q: queue.Queue[tuple[str, str]] = queue.Queue()
+        # ('log'|'error'|'done', payload)
 
-        def fail(msg: str) -> None:
-            log.log(msg)
-            self._append_run_log(msg)
+        def ui_call(fn):
+            QtCore.QTimer.singleShot(0, fn)
 
-        try:
-            # verify git repo
-            cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
-            if cp.returncode != 0 or "true" not in (cp.stdout or "").lower():
-                show_error_dialog(self.window(), "错误", f"不是有效的 git 仓库：{local_path}")
-                return
+        def emit_log(text: str) -> None:
+            q.put(("log", text))
 
-            # workspace must be clean
-            cp = run_cmd(["git", "status", "--porcelain"])
-            if cp.returncode != 0:
-                fail("git status 失败")
-                return
-            dirty = (cp.stdout or "").strip()
-            if dirty:
-                show_error_dialog(
-                    self.window(),
-                    "工作区未清理",
-                    "检测到未提交改动，请先处理后再运行：\n\n" + dirty,
-                )
-                return
+        def emit_error(title: str, details: str) -> None:
+            q.put(("error", title + "\n" + details))
 
-            # fetch both refs
-            cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
-            if cp.returncode != 0:
-                fail("fetch 失败")
-                return
+        def worker() -> None:
+            try:
+                emit_log("运行：合并并推送 + 构建")
+                emit_log(f"repo_path={local_path}")
+                emit_log(f"source={flow.source_branch} target={flow.target_branch}")
 
-            # update each branch (ff-only)
-            for br in [flow.source_branch, flow.target_branch]:
-                cp = run_cmd(["git", "checkout", br])
+                def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
+                    line = "$ " + " ".join(shlex.quote(x) for x in cmd)
+                    emit_log(line)
+                    cp = subprocess.run(cmd, cwd=local_path, capture_output=True, text=True)
+                    if cp.stdout:
+                        emit_log(cp.stdout.strip())
+                    if cp.stderr:
+                        emit_log(cp.stderr.strip())
+                    return cp
+
+                # verify git repo
+                cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
+                if cp.returncode != 0 or "true" not in (cp.stdout or "").lower():
+                    emit_error("错误", f"不是有效的 git 仓库：{local_path}")
+                    return
+
+                # workspace must be clean
+                cp = run_cmd(["git", "status", "--porcelain"])
                 if cp.returncode != 0:
-                    fail(f"checkout 失败: {br}")
+                    emit_error("错误", "git status 失败")
                     return
-                cp = run_cmd(["git", "pull", "--ff-only"])
+                dirty = (cp.stdout or "").strip()
+                if dirty:
+                    emit_error("工作区未清理", "检测到未提交改动，请先处理后再运行：\n\n" + dirty)
+                    return
+
+                # fetch + update branches
+                cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
                 if cp.returncode != 0:
-                    fail(f"pull 失败: {br}")
+                    emit_error("错误", "fetch 失败")
                     return
 
-            # merge source into target
-            cp = run_cmd(["git", "checkout", flow.target_branch])
-            if cp.returncode != 0:
-                fail(f"checkout 失败: {flow.target_branch}")
-                return
+                for br in [flow.source_branch, flow.target_branch]:
+                    cp = run_cmd(["git", "checkout", br])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"checkout 失败: {br}")
+                        return
+                    cp = run_cmd(["git", "pull", "--ff-only"])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"pull 失败: {br}")
+                        return
 
-            cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
-            if cp.returncode != 0:
-                # list conflict files if any
-                cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
-                conflicts = (cp2.stdout or "").strip()
-                show_error_dialog(
-                    self.window(),
-                    "合并失败（可能存在冲突）",
-                    "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                # merge source into target
+                cp = run_cmd(["git", "checkout", flow.target_branch])
+                if cp.returncode != 0:
+                    emit_error("错误", f"checkout 失败: {flow.target_branch}")
+                    return
+
+                cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
+                if cp.returncode != 0:
+                    cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
+                    conflicts = (cp2.stdout or "").strip()
+                    emit_error(
+                        "合并失败（可能存在冲突）",
+                        "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                    )
+                    return
+
+                cp = run_cmd(["git", "push", "origin", flow.target_branch])
+                if cp.returncode != 0:
+                    emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
+                    return
+
+                cp = run_cmd(["git", "rev-parse", "HEAD"])
+                head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                emit_log(
+                    f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
                 )
-                return
 
-            # push target
-            cp = run_cmd(["git", "push", "origin", flow.target_branch])
-            if cp.returncode != 0:
-                show_error_dialog(self.window(), "推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
-                return
+                # ---- Build (v3) ----
+                from app_ado.store import load_ui_settings
+                from app_ado.secrets import get_pat
+                from app_ado.ado_build_http import (
+                    trigger_build_definition,
+                    trigger_pipeline_run,
+                    wait_build,
+                    wait_pipeline,
+                )
 
-            cp = run_cmd(["git", "rev-parse", "HEAD"])
-            head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-            ok_msg = f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
-            log.log(ok_msg)
-            self._append_run_log(ok_msg)
-
-            # ---- Build (v3) ----
-            from app_ado.store import load_ui_settings
-            from app_ado.secrets import get_pat
-            from app_ado.ado_build_http import (
-                trigger_build_definition,
-                trigger_pipeline_run,
-                wait_build,
-                wait_pipeline,
-            )
-
-            settings = load_ui_settings()
-            proj = next((p for p in settings.projects if p.id == flow.project_id), None)
-            if not proj:
-                show_error_dialog(self.window(), "错误", "找不到项目配置（project_id）")
-                return
-            lib = next((l for l in settings.libraries if l.id == proj.library_id), None)
-            if not lib:
-                show_error_dialog(self.window(), "错误", "找不到代码库配置（library_id）")
-                return
-            pat = get_pat(lib.id)
-            if not pat:
-                show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
-                return
-
-            if not flow.build_id or not flow.build_kind:
-                show_error_dialog(self.window(), "配置不完整", "请先在【配置】里选择构建，并保存")
-                return
-
-            branch = flow.target_branch
-            self._append_run_log(f"\n--- Build: kind={flow.build_kind} id={flow.build_id} branch={branch} ---")
-
-            if flow.build_kind == "pipeline":
-                pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
-                self._append_run_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
-                pr2 = wait_pipeline(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat, timeout_min=30)
-                self._append_run_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
-                if (pr2.result or '').lower() not in ('succeeded', 'success'):
-                    show_error_dialog(self.window(), "构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
+                settings = load_ui_settings()
+                proj = next((p for p in settings.projects if p.id == flow.project_id), None)
+                if not proj:
+                    emit_error("错误", "找不到项目配置（project_id）")
                     return
-            else:
-                br = trigger_build_definition(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
-                self._append_run_log(f"已触发 Build：build_id={br.build_id} status={br.status} url={br.url or ''}")
-                br2 = wait_build(lib.base_url, proj.collection, proj.project, br.build_id, pat=pat, timeout_min=30)
-                self._append_run_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
-                if (br2.result or '').lower() not in ('succeeded', 'success', 'partiallysucceeded'):
-                    show_error_dialog(self.window(), "构建失败", f"Build result={br2.result}\n{br2.url or ''}")
+                lib = next((l for l in settings.libraries if l.id == proj.library_id), None)
+                if not lib:
+                    emit_error("错误", "找不到代码库配置（library_id）")
+                    return
+                pat = get_pat(lib.id)
+                if not pat:
+                    emit_error("错误", "该代码库未保存 PAT")
                     return
 
-            self._append_run_log("✅ 构建成功（下一步：接入 Release 触发+监控）")
+                branch = flow.target_branch
+                emit_log(f"\n--- Build: kind={flow.build_kind} id={flow.build_id} branch={branch} ---")
 
-        except Exception as e:
-            show_error_dialog(self.window(), "运行异常", str(e))
-            return
+                if flow.build_kind == "pipeline":
+                    pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                    emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
+                    pr2 = wait_pipeline(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat, timeout_min=30)
+                    emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
+                    if (pr2.result or '').lower() not in ('succeeded', 'success'):
+                        emit_error("构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
+                        return
+                else:
+                    br = trigger_build_definition(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                    emit_log(f"已触发 Build：build_id={br.build_id} status={br.status} url={br.url or ''}")
+                    br2 = wait_build(lib.base_url, proj.collection, proj.project, br.build_id, pat=pat, timeout_min=30)
+                    emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
+                    if (br2.result or '').lower() not in ('succeeded', 'success', 'partiallysucceeded'):
+                        emit_error("构建失败", f"Build result={br2.result}\n{br2.url or ''}")
+                        return
+
+                emit_log("✅ 构建成功（下一步：接入 Release 触发+监控）")
+
+            except Exception as e:
+                emit_error("运行异常", str(e))
+            finally:
+                q.put(("done", ""))
+
+        # UI init
+        self.flow_card.set_actions_enabled(False)
+        self._clear_run_log()
+        log = RunLogDialog(self.window(), title="运行：合并并推送 + 构建")
+        log.show()
+
+        def flush():
+            finished = False
+            try:
+                while True:
+                    kind, payload = q.get_nowait()
+                    if kind == "log":
+                        self._append_run_log(payload)
+                        log.log(payload)
+                    elif kind == "error":
+                        # payload = title + '\n' + details
+                        parts = payload.split("\n", 1)
+                        title = parts[0]
+                        details = parts[1] if len(parts) > 1 else ""
+                        show_error_dialog(self.window(), title, details)
+                    elif kind == "done":
+                        finished = True
+            except Exception:
+                pass
+
+            if finished:
+                self.flow_card.set_actions_enabled(True)
+                return
+            QtCore.QTimer.singleShot(120, flush)
+
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+        QtCore.QTimer.singleShot(120, flush)
