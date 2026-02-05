@@ -41,6 +41,7 @@ class ReleaseEnv:
     id: str
     name: str
     status: str
+    definition_environment_id: str | None = None
 
 
 def _auth_header(pat: str) -> str:
@@ -199,9 +200,17 @@ def extract_envs(release_json: dict[str, Any]) -> list[ReleaseEnv]:
         eid = e.get("id")
         name = e.get("name")
         status = e.get("status")
+        def_eid = e.get("definitionEnvironmentId")
         if eid is None or not name:
             continue
-        out.append(ReleaseEnv(id=str(eid), name=str(name), status=str(status or "")))
+        out.append(
+            ReleaseEnv(
+                id=str(eid),
+                name=str(name),
+                status=str(status or ""),
+                definition_environment_id=str(def_eid) if def_eid is not None else None,
+            )
+        )
     return out
 
 

@@ -328,9 +328,11 @@ class TasksTab(Tab):
                 printed_debug = False
 
                 def select_envs(envs):
-                    by_id = [e for e in envs if e.id in want_ids]
-                    if by_id:
-                        return by_id, "id"
+                    # IMPORTANT: release environment id != definition environment id.
+                    # The selected stage ids are definition environment ids.
+                    by_def_id = [e for e in envs if (e.definition_environment_id or "") in want_ids]
+                    if by_def_id:
+                        return by_def_id, "definitionEnvironmentId"
                     by_name = [e for e in envs if e.name in want_names]
                     if by_name:
                         return by_name, "name"
@@ -347,14 +349,22 @@ class TasksTab(Tab):
                     if not selected:
                         line = "监控：等待阶段进入 release（环境列表尚未出现/未匹配）"
                         if not printed_debug:
-                            avail = "\n".join([f"- {e.name} (id={e.id}) status={e.status}" for e in envs])
+                            avail = "\n".join(
+                                [
+                                    f"- {e.name} (envId={e.id}, defEnvId={e.definition_environment_id}) status={e.status}"
+                                    for e in envs
+                                ]
+                            )
                             emit_log("调试：期望阶段IDs=" + ",".join(sorted(want_ids)))
                             if want_names:
                                 emit_log("调试：期望阶段Names=" + " | ".join(flow.release_stage_names or []))
                             emit_log("调试：当前Release environments：\n" + (avail or "(空)"))
                             printed_debug = True
                     else:
-                        parts = [f"{e.name}({e.id})={e.status}" for e in selected]
+                        parts = [
+                            f"{e.name}(defEnvId={e.definition_environment_id}, envId={e.id})={e.status}"
+                            for e in selected
+                        ]
                         line = f"监控(mode={mode})：" + " | ".join(parts)
 
                     # avoid spamming identical lines
