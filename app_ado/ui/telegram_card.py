@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QFormLayout
-from qfluentwidgets import CardWidget, LineEdit, PushButton
+from qfluentwidgets import CardWidget, ComboBox, LineEdit, PushButton
 
 from app_ado.notifier_telegram import send_telegram_message
 from app_ado.secrets import get_telegram_token, set_telegram_token
