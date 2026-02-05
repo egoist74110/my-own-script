@@ -140,7 +140,8 @@ class AdoReleaseTab(Tab):
                 else:
                     ui(lambda: self.lbl_update_status.setText(f"可更新：落后 {st.behind} 个提交"))
             except Exception as e:
-                ui(lambda: show_error_dialog(self, "检查更新失败", str(e)))
+                msg = str(e)
+                ui(lambda m=msg: show_error_dialog(self, "检查更新失败", m))
             finally:
                 done["v"] = True
                 ui(lambda: set_busy(False))
@@ -185,7 +186,8 @@ class AdoReleaseTab(Tab):
                 ui(lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
                 QtCore.QTimer.singleShot(500, self, restart_self)
             except Exception as e:
-                ui(lambda: show_error_dialog(self, "更新失败", str(e)))
+                msg = str(e)
+                ui(lambda m=msg: show_error_dialog(self, "更新失败", m))
             finally:
                 done["v"] = True
                 ui(lambda: set_busy(False))
