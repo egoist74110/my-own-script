@@ -82,10 +82,11 @@ class TelegramCard(CardWidget):
             try:
                 from app_ado.notifier_telegram_updates import list_chat_candidates
 
-                result = list_chat_candidates(bot_token=token, limit=30)
+                result = list_chat_candidates(bot_token=token, limit=30, long_poll_sec=20)
             except Exception as e:
                 result = e
 
+        self.btn_detect.setEnabled(False)
         th = threading.Thread(target=run, daemon=True)
         th.start()
 
@@ -94,8 +95,20 @@ class TelegramCard(CardWidget):
             if th.is_alive():
                 QtCore.QTimer.singleShot(120, finish)
                 return
+            self.btn_detect.setEnabled(True)
             if isinstance(result, Exception):
-                show_error_dialog(self, "获取失败", str(result))
+                # Friendly hint for 409
+                msg = str(result)
+                if "409" in msg and "getUpdates" in msg:
+                    msg = (
+                        "Telegram 返回 409：当前有另一个 getUpdates 正在长轮询（或你重复点了按钮）。\n\n"
+                        "处理方法：\n"
+                        "1) 等 20 秒后再试（只点一次）\n"
+                        "2) 确认没有其他程序/服务在轮询同一个 bot\n"
+                        "3) 关闭并重启本程序后再试\n\n"
+                        "原始错误：\n" + str(result)
+                    )
+                show_error_dialog(self, "获取失败", msg)
                 return
             candidates = result or []
             if not candidates:

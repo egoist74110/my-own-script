@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import json
 
 
 @dataclass(frozen=True)
@@ -18,8 +19,8 @@ def get_updates(*, bot_token: str, offset: int | None = None, timeout: int = 0, 
     url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
     params: dict[str, Any] = {
         "timeout": int(timeout),
-        # restrict updates for stability
-        "allowed_updates": ["message", "channel_post"],
+        # Telegram expects JSON array string here; avoid repeated query keys.
+        "allowed_updates": json.dumps(["message", "channel_post"], ensure_ascii=False),
     }
     if offset is not None:
         params["offset"] = offset
@@ -33,8 +34,19 @@ def get_updates(*, bot_token: str, offset: int | None = None, timeout: int = 0, 
 
 
 def list_chat_candidates(*, bot_token: str, limit: int = 20, long_poll_sec: int = 20) -> list[TelegramChatCandidate]:
-    # long poll once to reliably receive the latest message
-    data = get_updates(bot_token=bot_token, timeout=long_poll_sec)
+    # First do a non-blocking poll to avoid 409 conflicts when another long poll is active.
+    try:
+        data = get_updates(bot_token=bot_token, timeout=0)
+    except httpx.HTTPStatusError as e:
+        # If another getUpdates request is running, Telegram returns 409.
+        if e.response is not None and e.response.status_code == 409:
+            # Retry once with timeout=0 after a short wait; caller can show friendly message.
+            raise
+        raise
+
+    # If empty, long poll once to reliably receive the latest message.
+    if not (data.get("result") or []) and long_poll_sec > 0:
+        data = get_updates(bot_token=bot_token, timeout=long_poll_sec)
     items = (data.get("result") or [])[-limit:]
 
     seen: set[str] = set()
