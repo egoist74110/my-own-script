@@ -134,7 +134,23 @@ class TasksTab(Tab):
         def should_stop() -> bool:
             return bool(self._stop_event and self._stop_event.is_set())
 
+        def notify_telegram(text: str) -> None:
+            try:
+                from app_ado.store import load_ui_settings
+                from app_ado.secrets import get_telegram_token
+                from app_ado.notifier_telegram import send_telegram_message
+
+                s = load_ui_settings()
+                token = get_telegram_token()
+                if not s.telegram_chat_id or not token:
+                    return
+                send_telegram_message(bot_token=token, chat_id=s.telegram_chat_id, text=text)
+            except Exception:
+                # never break the flow because of notification
+                return
+
         def emit_error(title: str, details: str) -> None:
+            notify_telegram(f"❌ {title}\n{details}")
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
@@ -435,6 +451,13 @@ class TasksTab(Tab):
 
                         emit_log("✅ Release 成功（所选阶段全部 succeeded）")
                         emit_log(rel.url or "")
+                        notify_telegram(
+                            "✅ 发布成功\n"
+                            f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                            f"Build: {flow.build_name or flow.build_id}\n"
+                            f"Release: {flow.release_name or flow.release_id}\n"
+                            f"{rel.url or ''}"
+                        )
                         return
 
                     # sleep in small steps so Stop reacts quickly

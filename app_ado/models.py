@@ -51,6 +51,8 @@ class UiSettings(BaseModel):
     active_library_id: Optional[str] = None
     active_project_id: Optional[str] = None
 
+    telegram_chat_id: str = ""
+
 
 class TaskSettings(BaseModel):
     model_config = ConfigDict(extra="allow")

@@ -5,11 +5,13 @@ import uuid
 from PySide6 import QtCore
 from PySide6 import QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget
+from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget, LineEdit
 
 from app_ado.models import UiSettings
 from app_ado.store import load_ui_settings, save_ui_settings
-from app_ado.ui.dialogs import LibraryDialog, ProjectDialog
+from app_ado.notifier_telegram import send_telegram_message
+from app_ado.secrets import get_telegram_token, set_telegram_token
+from app_ado.ui.dialogs import LibraryDialog, ProjectDialog, show_error_dialog
 from ok.gui.widget.Tab import Tab
 
 
@@ -28,6 +30,7 @@ class AdoReleaseTab(Tab):
 
         self._build_library_card()
         self._build_project_card()
+        self._build_telegram_card()
 
     def _toast(self, title: str, content: str, ok: bool = True) -> None:
         InfoBar.success(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window()) if ok else \
@@ -57,6 +60,12 @@ class AdoReleaseTab(Tab):
 
         self.add_card("代码库（本地配置）", w)
         self._refresh_lib_combo()
+
+    def _build_telegram_card(self) -> None:
+        from app_ado.ui.telegram_card import TelegramCard
+
+        w = TelegramCard(self)
+        self.add_card("Telegram 通知（本地配置）", w)
 
     def _build_project_card(self) -> None:
         w = CardWidget(self)
