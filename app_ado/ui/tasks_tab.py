@@ -86,13 +86,41 @@ class TasksTab(Tab):
         ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
         save_task_settings(ts)
 
-    def run_task(self, flow_id: str, requester_chat_id: str, requester_username: str | None) -> None:
-        # TG-triggered
+    def run_task(self, flow_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+        """TG-triggered run.
+
+        Returns (ok, message) for Telegram reply.
+        """
+        # Single-flight quick reject
+        if self._running:
+            return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
+
+        # Quick config precheck to avoid "收到" but no-op.
+        ts = load_task_settings()
+        flow = next((f for f in ts.flows if f.id == flow_id), None)
+        missing: list[str] = []
+        if not flow:
+            missing.append("- 尚未配置该任务")
+        else:
+            if not flow.local_repo_path:
+                missing.append("- 本地仓库路径")
+            if flow_id == "sync_merge_build_release" and not flow.source_branch:
+                missing.append("- 源分支")
+            if not flow.target_branch:
+                missing.append("- 目标分支")
+            targets = list(getattr(flow, "targets", []) or [])
+            if not targets and not (flow.build_id and flow.release_id and (flow.release_stage_ids or [])):
+                missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+
+        if missing:
+            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            return False, msg
+
         self._last_requester_chat_id = requester_chat_id
         self._last_requester_username = requester_username
         card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
-        # Ensure scheduling happens on Qt main thread
         QtCore.QTimer.singleShot(0, self, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
+        return True, f"收到，开始执行：{flow_id}"
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner

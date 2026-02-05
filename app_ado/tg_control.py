@@ -30,7 +30,7 @@ class TelegramController:
     def __init__(
         self,
         *,
-        on_run: Callable[[str, str, str | None], None],
+        on_run: Callable[[str, str, str | None], tuple[bool, str]],
         on_stop: Callable[[str, str | None], None],
         on_status: Callable[[], str],
     ) -> None:
@@ -231,8 +231,8 @@ class TelegramController:
             if not self._can(role, group, "run", task_id=task_id):
                 self._reply(token, ctx.chat_id, f"无权限：{cmd}")
                 return
-            self._on_run(task_id, ctx.chat_id, ctx.username)
-            self._reply(token, ctx.chat_id, f"收到，开始执行：{task_id}")
+            ok, msg = self._on_run(task_id, ctx.chat_id, ctx.username)
+            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{task_id}" if ok else "执行失败"))
             return
 
         if cmd == "/run":
@@ -267,8 +267,8 @@ class TelegramController:
             if not self._can(role, group, "run", task_id=task_id):
                 self._reply(token, ctx.chat_id, f"无权限：run {task_id}")
                 return
-            self._on_run(task_id, ctx.chat_id, ctx.username)
-            self._reply(token, ctx.chat_id, f"收到，开始执行：{task_id}")
+            ok, msg = self._on_run(task_id, ctx.chat_id, ctx.username)
+            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{task_id}" if ok else "执行失败"))
             return
 
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
