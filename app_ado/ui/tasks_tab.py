@@ -7,6 +7,8 @@ from qfluentwidgets import CardWidget, ComboBox, PushButton
 from app_ado.ui.task_card import TaskCard
 
 from app_ado.store import load_task_settings, save_task_settings
+from app_ado.ui.confirm import show_confirm_dialog
+from app_ado.ui.dialogs import show_error_dialog
 from app_ado.ui.run_log_dialog import RunLogDialog
 from app_ado.ui.task_flow_dialog import FlowTaskConfigDialog
 from ok.gui.widget.Tab import Tab
@@ -66,40 +68,56 @@ class TasksTab(Tab):
         save_task_settings(ts)
 
     def _run(self) -> None:
-        # v1: only verify we can update both branches locally (git fetch + pull)
-        from app_ado.store import load_ui_settings
-
+        # v2: sync both branches, merge source -> target, then push target
         ts = load_task_settings()
         flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
-        if not flow or not flow.project_id or not flow.source_branch or not flow.target_branch:
+        if not flow:
             self._edit()
             ts = load_task_settings()
             flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
         if not flow:
             return
 
+        # basic config validation
+        missing: list[str] = []
+        if not flow.local_repo_path:
+            missing.append("- 本地仓库路径")
+        if not flow.source_branch:
+            missing.append("- 源分支")
+        if not flow.target_branch:
+            missing.append("- 目标分支")
+        if missing:
+            show_error_dialog(self.window(), "配置不完整", "请先在【配置】中补齐：\n" + "\n".join(missing))
+            return
+
         local_path = flow.local_repo_path
-        if not local_path:
-            self._edit()
-            ts = load_task_settings()
-            flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
-            local_path = flow.local_repo_path
-        if not local_path:
+
+        ok = show_confirm_dialog(
+            self.window(),
+            "确认执行合并并推送？",
+            "将执行以下操作：\n"
+            f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
+            f"2) 更新本地分支（ff-only）\n"
+            f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
+            f"4) push origin {flow.target_branch}\n\n"
+            f"repo_path={local_path}",
+        )
+        if not ok:
             return
 
         # clear + start log
         self._clear_run_log()
-        self._append_run_log("运行：更新两个分支")
+        self._append_run_log("运行：合并并推送")
         self._append_run_log(f"repo_path={local_path}")
+        self._append_run_log(f"source={flow.source_branch} target={flow.target_branch}")
 
-        log = RunLogDialog(self.window(), title="运行：更新两个分支")
+        log = RunLogDialog(self.window(), title="运行：合并并推送")
         log.show()
 
         import subprocess
         import shlex
-        import time
 
-        def run_cmd(cmd: list[str]) -> int:
+        def run_cmd(cmd: list[str], *, check: bool = False) -> subprocess.CompletedProcess:
             line = "$ " + " ".join(shlex.quote(x) for x in cmd)
             log.log(line)
             self._append_run_log(line)
@@ -110,24 +128,82 @@ class TasksTab(Tab):
             if cp.stderr:
                 log.log(cp.stderr.strip())
                 self._append_run_log(cp.stderr.strip())
-            return cp.returncode
+            if check and cp.returncode != 0:
+                raise RuntimeError(f"command failed: {cmd} (rc={cp.returncode})")
+            return cp
 
-        # fetch both refs
-        rc = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
-        if rc != 0:
-            log.log("fetch 失败")
+        def fail(msg: str) -> None:
+            log.log(msg)
+            self._append_run_log(msg)
+
+        try:
+            # verify git repo
+            cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
+            if cp.returncode != 0 or "true" not in (cp.stdout or "").lower():
+                show_error_dialog(self.window(), "错误", f"不是有效的 git 仓库：{local_path}")
+                return
+
+            # workspace must be clean
+            cp = run_cmd(["git", "status", "--porcelain"])
+            if cp.returncode != 0:
+                fail("git status 失败")
+                return
+            dirty = (cp.stdout or "").strip()
+            if dirty:
+                show_error_dialog(
+                    self.window(),
+                    "工作区未清理",
+                    "检测到未提交改动，请先处理后再运行：\n\n" + dirty,
+                )
+                return
+
+            # fetch both refs
+            cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
+            if cp.returncode != 0:
+                fail("fetch 失败")
+                return
+
+            # update each branch (ff-only)
+            for br in [flow.source_branch, flow.target_branch]:
+                cp = run_cmd(["git", "checkout", br])
+                if cp.returncode != 0:
+                    fail(f"checkout 失败: {br}")
+                    return
+                cp = run_cmd(["git", "pull", "--ff-only"])
+                if cp.returncode != 0:
+                    fail(f"pull 失败: {br}")
+                    return
+
+            # merge source into target
+            cp = run_cmd(["git", "checkout", flow.target_branch])
+            if cp.returncode != 0:
+                fail(f"checkout 失败: {flow.target_branch}")
+                return
+
+            cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
+            if cp.returncode != 0:
+                # list conflict files if any
+                cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
+                conflicts = (cp2.stdout or "").strip()
+                show_error_dialog(
+                    self.window(),
+                    "合并失败（可能存在冲突）",
+                    "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                )
+                return
+
+            # push target
+            cp = run_cmd(["git", "push", "origin", flow.target_branch])
+            if cp.returncode != 0:
+                show_error_dialog(self.window(), "推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
+                return
+
+            cp = run_cmd(["git", "rev-parse", "HEAD"])
+            head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+            ok_msg = f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
+            log.log(ok_msg)
+            self._append_run_log(ok_msg)
+
+        except Exception as e:
+            show_error_dialog(self.window(), "运行异常", str(e))
             return
-
-        # update each branch (ff-only)
-        for br in [flow.source_branch, flow.target_branch]:
-            rc = run_cmd(["git", "checkout", br])
-            if rc != 0:
-                log.log(f"checkout 失败: {br}")
-                return
-            rc = run_cmd(["git", "pull", "--ff-only"]) 
-            if rc != 0:
-                log.log(f"pull 失败: {br}")
-                return
-
-        log.log("✅ 两个分支已更新（fetch + pull --ff-only）")
-        self._append_run_log("✅ 两个分支已更新（fetch + pull --ff-only）")
