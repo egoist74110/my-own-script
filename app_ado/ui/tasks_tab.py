@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import CardWidget, ComboBox, PushButton
+from qfluentwidgets import (
+    CardWidget,
+    ComboBox,
+    DropDownToolButton,
+    ExpandSettingCard,
+    FluentIcon,
+    PushButton,
+)
 
 from app_ado.store import load_task_settings, save_task_settings
 from app_ado.ui.run_log_dialog import RunLogDialog
@@ -31,19 +38,60 @@ class TasksTab(Tab):
         form = QFormLayout(w)
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
 
+        # left: task selector; right: actions
         self.task_combo = ComboBox(); self.task_combo.setFixedWidth(260)
         self.task_combo.addItem("同步/合并 + 构建 + 发布", userData="sync_merge_build_release")
 
         self.btn_edit = PushButton("配置")
         self.btn_run = PushButton("运行")
 
+        self.btn_run_menu = DropDownToolButton(FluentIcon.CHEVRON_DOWN)
+        self.btn_run_menu.setFixedWidth(34)
+        menu = QtWidgets.QMenu(self)
+        self.action_run = menu.addAction("运行")
+        self.action_run.triggered.connect(self._run)
+        self.action_clear_log = menu.addAction("清空运行日志")
+        self.action_clear_log.triggered.connect(self._clear_run_log)
+        self.btn_run_menu.setMenu(menu)
+
         self.btn_edit.clicked.connect(self._edit)
         self.btn_run.clicked.connect(self._run)
 
-        form.addRow("任务", self.task_combo)
-        form.addRow(self.btn_edit, self.btn_run)
+        row = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(10)
+        h.addWidget(self.task_combo)
+        h.addStretch(1)
+        h.addWidget(self.btn_edit)
+        h.addWidget(self.btn_run)
+        h.addWidget(self.btn_run_menu)
+
+        form.addRow("任务", row)
 
         self.add_card("任务", w)
+
+        # Collapsible run log panel
+        self.run_log_box = QtWidgets.QPlainTextEdit()
+        self.run_log_box.setReadOnly(True)
+        self.run_log_box.setPlaceholderText("运行日志：每次点击运行会清空并写入新的日志")
+
+        self.run_log_card = ExpandSettingCard(
+            FluentIcon.DOCUMENT,
+            "运行日志",
+            "每次运行会清空并重新写入（可折叠）",
+        )
+        self.run_log_card.viewLayout.addWidget(self.run_log_box)
+        self.run_log_card.setExpand(True)
+        self.add_widget(self.run_log_card)
+
+    def _clear_run_log(self) -> None:
+        self.run_log_box.clear()
+
+    def _append_run_log(self, text: str) -> None:
+        self.run_log_box.appendPlainText(text)
+        sb = self.run_log_box.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def _edit(self) -> None:
         ts = load_task_settings()
@@ -88,6 +136,11 @@ class TasksTab(Tab):
         if not local_path:
             return
 
+        # clear + start log
+        self._clear_run_log()
+        self._append_run_log("运行：更新两个分支")
+        self._append_run_log(f"repo_path={local_path}")
+
         log = RunLogDialog(self.window(), title="运行：更新两个分支")
         log.show()
 
@@ -96,12 +149,16 @@ class TasksTab(Tab):
         import time
 
         def run_cmd(cmd: list[str]) -> int:
-            log.log("$ " + " ".join(shlex.quote(x) for x in cmd))
+            line = "$ " + " ".join(shlex.quote(x) for x in cmd)
+            log.log(line)
+            self._append_run_log(line)
             cp = subprocess.run(cmd, cwd=local_path, capture_output=True, text=True)
             if cp.stdout:
                 log.log(cp.stdout.strip())
+                self._append_run_log(cp.stdout.strip())
             if cp.stderr:
                 log.log(cp.stderr.strip())
+                self._append_run_log(cp.stderr.strip())
             return cp.returncode
 
         # fetch both refs
@@ -122,3 +179,4 @@ class TasksTab(Tab):
                 return
 
         log.log("✅ 两个分支已更新（fetch + pull --ff-only）")
+        self._append_run_log("✅ 两个分支已更新（fetch + pull --ff-only）")
