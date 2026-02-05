@@ -11,6 +11,11 @@ fi
 
 source .venv/bin/activate
 python -m pip install -U pip >/dev/null
-python -m pip install -r requirements.txt >/dev/null
+# Install deps; filter Windows-only packages on macOS
+if [[ "$(uname)" == "Darwin" ]]; then
+  python -m pip install -r requirements-mac.txt >/dev/null
+else
+  python -m pip install -r requirements.txt >/dev/null
+fi
 
 python app_main.py

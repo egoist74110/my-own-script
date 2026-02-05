@@ -1,0 +1,7 @@
+typing-extensions>=4.11.0
+PySide6-Essentials>=6.7.0
+PySide6-Fluent-Widgets>=1.5.5
+pydantic>=2.7
+keyring>=25
+httpx>=0.28
+pyyaml>=6
