@@ -30,8 +30,8 @@ class TelegramController:
     def __init__(
         self,
         *,
-        on_run: Callable[[str], None],
-        on_stop: Callable[[], None],
+        on_run: Callable[[str, str, str | None], None],
+        on_stop: Callable[[str, str | None], None],
         on_status: Callable[[], str],
     ) -> None:
         self._on_run = on_run
@@ -80,17 +80,47 @@ class TelegramController:
     def stop(self) -> None:
         self._stop.set()
 
-    def _allowed(self, chat_id: str, username: str | None) -> bool:
+    def _resolve_acl(self, chat_id: str, username: str | None) -> tuple[str, dict | None]:
+        """Return (role, group) where role is 'owner'|'group'|'none'."""
         s = load_ui_settings()
-        # main chat id always allowed
+
+        # owner
         if s.telegram_chat_id and str(chat_id) == str(s.telegram_chat_id):
-            return True
-        # whitelist ids or @username
+            return "owner", None
+
+        # legacy whitelist treated as viewer group
         wl = set(str(x).strip() for x in (s.telegram_whitelist or []) if str(x).strip())
-        if str(chat_id) in wl:
+        if str(chat_id) in wl or (username and ("@" + username) in wl):
+            return "group", {"id": "legacy", "name": "白名单", "can_run": False, "can_stop": False, "can_status": True, "task_ids": []}
+
+        # ACL members
+        for m in s.telegram_acl_members or []:
+            if m.get("chat_id") and str(m.get("chat_id")) == str(chat_id):
+                gid = m.get("group_id")
+                g = next((x for x in (s.telegram_acl_groups or []) if x.get("id") == gid), None)
+                return ("group", g) if g else ("none", None)
+            if username and m.get("username") and str(m.get("username")).lower() == ("@" + username).lower():
+                gid = m.get("group_id")
+                g = next((x for x in (s.telegram_acl_groups or []) if x.get("id") == gid), None)
+                return ("group", g) if g else ("none", None)
+
+        return "none", None
+
+    def _can(self, role: str, group: dict | None, action: str, task_id: str | None = None) -> bool:
+        if role == "owner":
             return True
-        if username and ("@" + username) in wl:
-            return True
+        if role != "group" or not group:
+            return False
+        if action == "status":
+            return bool(group.get("can_status", True))
+        if action == "run":
+            if not bool(group.get("can_run")):
+                return False
+            if task_id is None:
+                return False
+            return task_id in (group.get("task_ids") or [])
+        if action == "stop":
+            return bool(group.get("can_stop"))
         return False
 
     def _bot_token(self) -> str | None:
@@ -115,7 +145,7 @@ class TelegramController:
     def _reply(self, token: str, chat_id: str, text: str) -> None:
         send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
 
-    def _handle(self, token: str, ctx: TgCommandContext) -> None:
+    def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
         if not t.startswith("/"):
             return
@@ -136,12 +166,18 @@ class TelegramController:
             return
 
         if cmd == "/status":
+            if not self._can(role, group, "status"):
+                self._reply(token, ctx.chat_id, "无权限：status")
+                return
             msg = self._on_status()
             self._reply(token, ctx.chat_id, msg)
             return
 
         if cmd == "/stop":
-            self._on_stop()
+            if not self._can(role, group, "stop"):
+                self._reply(token, ctx.chat_id, "无权限：stop")
+                return
+            self._on_stop(ctx.chat_id, ctx.username)
             self._reply(token, ctx.chat_id, "已发送停止请求")
             return
 
@@ -153,7 +189,10 @@ class TelegramController:
             if task_id not in ("sync_build_release", "sync_merge_build_release"):
                 self._reply(token, ctx.chat_id, f"未知任务：{task_id}")
                 return
-            self._on_run(task_id)
+            if not self._can(role, group, "run", task_id=task_id):
+                self._reply(token, ctx.chat_id, f"无权限：run {task_id}")
+                return
+            self._on_run(task_id, ctx.chat_id, ctx.username)
             self._reply(token, ctx.chat_id, f"收到，开始执行：{task_id}")
             return
 
@@ -187,11 +226,12 @@ class TelegramController:
                     username = frm.get("username")
                     text = msg.get("text") or ""
 
-                    if not self._allowed(chat_id, username):
+                    role, group = self._resolve_acl(chat_id, username)
+                    if role == "none":
                         continue
 
                     ctx = TgCommandContext(chat_id=chat_id, username=username, text=text)
-                    self._handle(token, ctx)
+                    self._handle(token, ctx, role=role, group=group)
 
                 if last_id is not None:
                     self._update_offset = int(last_id) + 1

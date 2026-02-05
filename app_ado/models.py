@@ -76,6 +76,10 @@ class UiSettings(BaseModel):
     telegram_whitelist: list[str] = Field(default_factory=list)
     telegram_control_enabled: bool = False
 
+    # ACL groups/members for Telegram control
+    telegram_acl_groups: list[dict] = Field(default_factory=list)
+    telegram_acl_members: list[dict] = Field(default_factory=list)
+
 
 class TaskSettings(BaseModel):
     model_config = ConfigDict(extra="allow")

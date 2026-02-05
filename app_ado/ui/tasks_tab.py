@@ -33,6 +33,11 @@ class TasksTab(Tab):
         self._stop_event = None
         self._running: bool = False
         self._running_task: str = ""
+        self._running_by_chat_id: str = ""
+        self._last_requester_chat_id: str = ""
+        self._last_requester_username: str | None = None
+        self._stop_requester_chat_id: str = ""
+        self._stop_requester_username: str | None = None
 
         # Task 1: sync+merge+build+release
         self.flow_card = TaskCard(
@@ -81,11 +86,17 @@ class TasksTab(Tab):
         ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
         save_task_settings(ts)
 
-    def run_task(self, flow_id: str) -> None:
+    def run_task(self, flow_id: str, requester_chat_id: str, requester_username: str | None) -> None:
+        # TG-triggered
+        self._last_requester_chat_id = requester_chat_id
+        self._last_requester_username = requester_username
         card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
         QtCore.QTimer.singleShot(0, lambda: self._run(flow_id, card))
 
-    def stop_task(self) -> None:
+    def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
+        # only allow stopping own triggered task unless owner
+        self._stop_requester_chat_id = requester_chat_id
+        self._stop_requester_username = requester_username
         QtCore.QTimer.singleShot(0, self._stop)
 
     def status_text(self) -> str:
@@ -167,6 +178,7 @@ class TasksTab(Tab):
         self._stop_event = threading.Event()
         self._running = True
         self._running_task = flow_id
+        self._running_by_chat_id = self._last_requester_chat_id or ""
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
         # ('log'|'error'|'done', payload)
@@ -667,9 +679,30 @@ class TasksTab(Tab):
         QtCore.QTimer.singleShot(120, flush)
 
     def _stop(self) -> None:
+        # If stop requested from TG, only allow same requester (or owner) to stop
+        try:
+            from app_ado.store import load_ui_settings
+
+            s = load_ui_settings()
+            owner = str(s.telegram_chat_id or "")
+        except Exception:
+            owner = ""
+
+        if self._stop_requester_chat_id:
+            if owner and str(self._stop_requester_chat_id) != owner and self._running_by_chat_id and str(self._stop_requester_chat_id) != str(self._running_by_chat_id):
+                # ignore stop
+                try:
+                    self.flow_card.append_log("停止请求被拒绝：只能停止自己触发的任务")
+                except Exception:
+                    pass
+                try:
+                    self.sync_card.append_log("停止请求被拒绝：只能停止自己触发的任务")
+                except Exception:
+                    pass
+                return
+
         if self._stop_event is not None:
             self._stop_event.set()
-            # stop applies to current running task; log into both cards if present
             try:
                 self.flow_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
             except Exception:

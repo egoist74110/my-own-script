@@ -10,7 +10,10 @@ from app_ado.store import load_ui_settings, save_ui_settings
 from app_ado.ui.dialogs import show_error_dialog, toast
 
 
-class TelegramCard(CardWidget):
+from app_ado.ui.telegram_acl_mixin import TelegramAclMixin
+
+
+class TelegramCard(CardWidget, TelegramAclMixin):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -32,9 +35,28 @@ class TelegramCard(CardWidget):
         self.control_enabled = QtWidgets.QCheckBox("启用 Telegram 触发任务（仅程序运行期间有效）")
         self.control_enabled.setChecked(bool(self._settings.telegram_control_enabled))
 
+        # ACL UI
+        self.group_combo = ComboBox(); self.group_combo.setFixedWidth(260)
+        self.btn_new_group = PushButton("新增")
+        self.btn_edit_group = PushButton("编辑")
+        self.btn_del_group = PushButton("删除")
+
+        self.member_combo = ComboBox(); self.member_combo.setFixedWidth(260)
+        self.btn_new_member = PushButton("新增")
+        self.btn_edit_member = PushButton("编辑")
+        self.btn_del_member = PushButton("删除")
+
+        self.btn_new_group.clicked.connect(self._new_group)
+        self.btn_edit_group.clicked.connect(self._edit_group)
+        self.btn_del_group.clicked.connect(self._del_group)
+
+        self.btn_new_member.clicked.connect(self._new_member)
+        self.btn_edit_member.clicked.connect(self._edit_member)
+        self.btn_del_member.clicked.connect(self._del_member)
+
         self.whitelist = QtWidgets.QPlainTextEdit()
-        self.whitelist.setPlaceholderText("白名单（每行一个）：\n- chat_id（如 6399074577 或 -100...）\n- 或 @username\n为空则仅允许 Chat ID 字段里的那个会话")
-        self.whitelist.setFixedHeight(120)
+        self.whitelist.setPlaceholderText("白名单（兼容旧用法，默认仅允许 status/help）：\n每行一个 chat_id 或 @username")
+        self.whitelist.setFixedHeight(80)
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_save)
@@ -47,7 +69,11 @@ class TelegramCard(CardWidget):
         form.addRow("Bot Token", self.token)
         form.addRow(row)
         form.addRow(self.control_enabled)
-        form.addRow("白名单", self.whitelist)
+
+        form.addRow("权限组", self._row(self.group_combo, self._row(self.btn_new_group, self._row(self.btn_edit_group, self.btn_del_group))))
+        form.addRow("组成员", self._row(self.member_combo, self._row(self.btn_new_member, self._row(self.btn_edit_member, self.btn_del_member))))
+
+        form.addRow("白名单(旧)", self.whitelist)
 
         self._load()
 
@@ -72,6 +98,7 @@ class TelegramCard(CardWidget):
         self.chat_id.setText(self._settings.telegram_chat_id or "")
         self.control_enabled.setChecked(bool(self._settings.telegram_control_enabled))
         self.whitelist.setPlainText("\n".join(self._settings.telegram_whitelist or []))
+        self._refresh_acl_ui()
         if get_telegram_token():
             self.token.setText("********")
 
