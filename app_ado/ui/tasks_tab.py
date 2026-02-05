@@ -31,6 +31,8 @@ class TasksTab(Tab):
     def __init__(self):
         super().__init__()
         self._stop_event = None
+        self._running: bool = False
+        self._running_task: str = ""
 
         # Task 1: sync+merge+build+release
         self.flow_card = TaskCard(
@@ -78,6 +80,18 @@ class TasksTab(Tab):
             return
         ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
         save_task_settings(ts)
+
+    def run_task(self, flow_id: str) -> None:
+        card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
+        QtCore.QTimer.singleShot(0, lambda: self._run(flow_id, card))
+
+    def stop_task(self) -> None:
+        QtCore.QTimer.singleShot(0, self._stop)
+
+    def status_text(self) -> str:
+        if self._running:
+            return f"运行中：{self._running_task}"
+        return "空闲"
 
     def _run(self, flow_id: str, card: TaskCard) -> None:
         """Run in a background Python thread to keep UI responsive."""
@@ -151,6 +165,8 @@ class TasksTab(Tab):
 
         # stop support
         self._stop_event = threading.Event()
+        self._running = True
+        self._running_task = flow_id
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
         # ('log'|'error'|'done', payload)
@@ -641,6 +657,8 @@ class TasksTab(Tab):
 
             if finished:
                 card.set_actions_enabled(True)
+                self._running = False
+                self._running_task = ""
                 return
             QtCore.QTimer.singleShot(120, flush)
 

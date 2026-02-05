@@ -73,6 +73,8 @@ class UiSettings(BaseModel):
     active_project_id: Optional[str] = None
 
     telegram_chat_id: str = ""
+    telegram_whitelist: list[str] = Field(default_factory=list)
+    telegram_control_enabled: bool = False
 
 
 class TaskSettings(BaseModel):

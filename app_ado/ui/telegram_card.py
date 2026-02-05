@@ -29,6 +29,13 @@ class TelegramCard(CardWidget):
         self.btn_check = PushButton("检查 Bot Token")
         self.btn_detect = PushButton("获取 Chat ID（短轮询）")
 
+        self.control_enabled = QtWidgets.QCheckBox("启用 Telegram 触发任务（仅程序运行期间有效）")
+        self.control_enabled.setChecked(bool(self._settings.telegram_control_enabled))
+
+        self.whitelist = QtWidgets.QPlainTextEdit()
+        self.whitelist.setPlaceholderText("白名单（每行一个）：\n- chat_id（如 6399074577 或 -100...）\n- 或 @username\n为空则仅允许 Chat ID 字段里的那个会话")
+        self.whitelist.setFixedHeight(120)
+
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_save)
         row.addWidget(self.btn_test)
@@ -39,6 +46,8 @@ class TelegramCard(CardWidget):
         form.addRow("Chat ID", self.chat_id)
         form.addRow("Bot Token", self.token)
         form.addRow(row)
+        form.addRow(self.control_enabled)
+        form.addRow("白名单", self.whitelist)
 
         self._load()
 
@@ -61,6 +70,8 @@ class TelegramCard(CardWidget):
     def _load(self):
         self._settings = load_ui_settings()
         self.chat_id.setText(self._settings.telegram_chat_id or "")
+        self.control_enabled.setChecked(bool(self._settings.telegram_control_enabled))
+        self.whitelist.setPlainText("\n".join(self._settings.telegram_whitelist or []))
         if get_telegram_token():
             self.token.setText("********")
 
@@ -73,12 +84,19 @@ class TelegramCard(CardWidget):
             set_telegram_token(token)
             self.token.setText("********")
 
+        # save settings
+        self._settings = load_ui_settings()
+        self._settings.telegram_control_enabled = bool(self.control_enabled.isChecked())
+        wl = [x.strip() for x in (self.whitelist.toPlainText() or "").splitlines() if x.strip()]
+        self._settings.telegram_whitelist = wl
+
         if not chat_id:
             toast(self, "提示", "Chat ID 为空：你可以先检查 Token，然后发消息后用【获取 Chat ID】自动填入", ok=False)
         else:
             self._settings.telegram_chat_id = chat_id
-            save_ui_settings(self._settings)
-            toast(self, "已保存", "Telegram 配置已保存")
+
+        save_ui_settings(self._settings)
+        toast(self, "已保存", "Telegram 配置已保存")
 
     def _effective_token(self) -> str | None:
         t = self.token.text().strip()

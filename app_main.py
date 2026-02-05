@@ -18,6 +18,12 @@ def main() -> None:
     tasks = TasksTab()
     ado = AdoReleaseTab()
 
+    # Telegram control (polling thread) - only active while app runs
+    from app_ado.tg_control import TelegramController
+
+    tg = TelegramController(on_run=tasks.run_task, on_stop=tasks.stop_task, on_status=tasks.status_text)
+    tg.start()
+
     # Put "任务" first in the left navigation.
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
 
