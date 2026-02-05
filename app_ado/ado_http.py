@@ -17,6 +17,10 @@ class GitRepo:
 class GitBranch:
     name: str  # refs/heads/x
 
+    @property
+    def short(self) -> str:
+        return self.name.removeprefix("refs/heads/")
+
 
 @dataclass(frozen=True)
 class BuildPipeline:
@@ -34,10 +38,6 @@ class ReleaseDefinition:
 class ReleaseStage:
     id: str
     name: str
-
-    @property
-    def short(self) -> str:
-        return self.name.removeprefix("refs/heads/")
 
 
 def _auth_header(pat: str) -> str:

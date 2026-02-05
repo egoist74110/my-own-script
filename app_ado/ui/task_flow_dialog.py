@@ -454,8 +454,16 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             t = self.target_combo.currentText().strip()
             tb = GitBranch(name=f"refs/heads/{t}") if t else None
 
-        if not rr or not sb or not tb:
-            show_error_dialog(self, "错误", "请刷新并选择 Repo/分支")
+        missing: list[str] = []
+        if not rr:
+            missing.append("- 请选择仓库(Repo)（可先点：刷新 Repo/分支）")
+        if not sb:
+            missing.append("- 请选择源分支（可先点：刷新 Repo/分支）")
+        if not tb:
+            missing.append("- 请选择目标分支（可先点：刷新 Repo/分支）")
+
+        if missing:
+            show_error_dialog(self, "表单未完整", "\n".join(missing))
             return
 
         local_path = self.repo_path.text().strip()
@@ -475,6 +483,18 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 if sid:
                     stage_ids.append(sid)
                     stage_names.append(it.text())
+
+        missing2: list[str] = []
+        if not bp or not getattr(bp, "id", ""):
+            missing2.append("- 请选择构建（可先点：刷新构建列表）")
+        if not rd or not getattr(rd, "id", ""):
+            missing2.append("- 请选择发布（可先点：刷新发布/阶段）")
+        if not stage_ids:
+            missing2.append("- 至少选择一个阶段（可先点：刷新发布/阶段）")
+
+        if missing2:
+            show_error_dialog(self, "表单未完整", "\n".join(missing2))
+            return
 
         update = {
             "project_id": proj.id,
