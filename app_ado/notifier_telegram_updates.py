@@ -33,20 +33,12 @@ def get_updates(*, bot_token: str, offset: int | None = None, timeout: int = 0, 
     return data
 
 
-def list_chat_candidates(*, bot_token: str, limit: int = 20, long_poll_sec: int = 20) -> list[TelegramChatCandidate]:
-    # First do a non-blocking poll to avoid 409 conflicts when another long poll is active.
-    try:
-        data = get_updates(bot_token=bot_token, timeout=0)
-    except httpx.HTTPStatusError as e:
-        # If another getUpdates request is running, Telegram returns 409.
-        if e.response is not None and e.response.status_code == 409:
-            # Retry once with timeout=0 after a short wait; caller can show friendly message.
-            raise
-        raise
+def list_chat_candidates(*, bot_token: str, limit: int = 20) -> list[TelegramChatCandidate]:
+    """List chat candidates without long polling (avoid 409 conflicts).
 
-    # If empty, long poll once to reliably receive the latest message.
-    if not (data.get("result") or []) and long_poll_sec > 0:
-        data = get_updates(bot_token=bot_token, timeout=long_poll_sec)
+    User can send a new message to the bot and click again.
+    """
+    data = get_updates(bot_token=bot_token, timeout=0)
     items = (data.get("result") or [])[-limit:]
 
     seen: set[str] = set()

@@ -26,11 +26,13 @@ class TelegramCard(CardWidget):
 
         self.btn_save = PushButton("保存")
         self.btn_test = PushButton("测试通知")
-        self.btn_detect = PushButton("自动获取 Chat ID")
+        self.btn_check = PushButton("检查 Bot Token")
+        self.btn_detect = PushButton("获取 Chat ID（短轮询）")
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_save)
         row.addWidget(self.btn_test)
+        row.addWidget(self.btn_check)
         row.addWidget(self.btn_detect)
         row.addStretch(1)
 
@@ -42,6 +44,7 @@ class TelegramCard(CardWidget):
 
         self.btn_save.clicked.connect(self._save)
         self.btn_test.clicked.connect(self._test)
+        self.btn_check.clicked.connect(self._check)
         self.btn_detect.clicked.connect(self._detect)
 
     def _load(self):
@@ -65,14 +68,32 @@ class TelegramCard(CardWidget):
 
         toast(self, "已保存", "Telegram 配置已保存")
 
+    def _check(self):
+        token = get_telegram_token()
+        if not token:
+            show_error_dialog(self, "错误", "请先填写并保存 Bot Token")
+            return
+        try:
+            from app_ado.notifier_telegram_meta import get_me
+
+            info = get_me(bot_token=token)
+            toast(self, "Token 正常", f"bot_id={info.id} @{info.username or ''}")
+        except Exception as e:
+            show_error_dialog(self, "检查失败", str(e))
+
     def _detect(self):
         token = get_telegram_token()
         if not token:
             show_error_dialog(self, "错误", "请先填写并保存 Bot Token")
             return
 
-        # Tell user what to do
-        toast(self, "提示", "请先在 Telegram 里给你的机器人发一条消息（如：hi），然后再点一次此按钮", ok=True)
+        toast(
+            self,
+            "提示",
+            "请先在 Telegram 里给该机器人发一条新消息（如：hi），然后点此按钮。\n"
+            "（短轮询，不会长时间占用 getUpdates）",
+            ok=True,
+        )
 
         import threading
         result = None
@@ -82,7 +103,7 @@ class TelegramCard(CardWidget):
             try:
                 from app_ado.notifier_telegram_updates import list_chat_candidates
 
-                result = list_chat_candidates(bot_token=token, limit=30, long_poll_sec=20)
+                result = list_chat_candidates(bot_token=token, limit=30)
             except Exception as e:
                 result = e
 
@@ -97,18 +118,7 @@ class TelegramCard(CardWidget):
                 return
             self.btn_detect.setEnabled(True)
             if isinstance(result, Exception):
-                # Friendly hint for 409
-                msg = str(result)
-                if "409" in msg and "getUpdates" in msg:
-                    msg = (
-                        "Telegram 返回 409：当前有另一个 getUpdates 正在长轮询（或你重复点了按钮）。\n\n"
-                        "处理方法：\n"
-                        "1) 等 20 秒后再试（只点一次）\n"
-                        "2) 确认没有其他程序/服务在轮询同一个 bot\n"
-                        "3) 关闭并重启本程序后再试\n\n"
-                        "原始错误：\n" + str(result)
-                    )
-                show_error_dialog(self, "获取失败", msg)
+                show_error_dialog(self, "获取失败", str(result))
                 return
             candidates = result or []
             if not candidates:
