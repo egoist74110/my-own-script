@@ -57,6 +57,18 @@ def main() -> None:
     w.resize(1100, 760)
     w.show()
 
+    # Some frameworks may override the icon after UI init; re-apply to keep Dock icon correct.
+    from PySide6 import QtCore
+
+    def reapply_icon():
+        if icon_path and icon_path.exists():
+            ico = QIcon(str(icon_path))
+            app.setWindowIcon(ico)
+            w.setWindowIcon(ico)
+
+    QtCore.QTimer.singleShot(200, reapply_icon)
+    QtCore.QTimer.singleShot(2000, reapply_icon)
+
     # Auto-update on startup (GitHub): check -> pull(main) -> pip -> restart
     from PySide6 import QtCore
 
