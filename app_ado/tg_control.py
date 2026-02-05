@@ -160,7 +160,10 @@ class TelegramController:
             }
 
             def fmt_direct(task_id: str) -> str:
-                return f"/{task_id}  # {task_help.get(task_id, '')}".rstrip()
+                # Keep command clickable by putting description on the next line
+                desc = task_help.get(task_id, "")
+                cmd_line = f"/{task_id}"
+                return cmd_line + (f"\n  - {desc}" if desc else "")
 
             if role == "owner":
                 msg = (
