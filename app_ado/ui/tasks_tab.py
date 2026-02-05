@@ -91,13 +91,15 @@ class TasksTab(Tab):
         self._last_requester_chat_id = requester_chat_id
         self._last_requester_username = requester_username
         card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
-        QtCore.QTimer.singleShot(0, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
+        # Ensure scheduling happens on Qt main thread
+        QtCore.QTimer.singleShot(0, self, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner
         self._stop_requester_chat_id = requester_chat_id
         self._stop_requester_username = requester_username
-        QtCore.QTimer.singleShot(0, self._stop)
+        # Ensure scheduling happens on Qt main thread
+        QtCore.QTimer.singleShot(0, self, self._stop)
 
     def status_text(self) -> str:
         if self._running:
