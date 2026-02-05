@@ -159,15 +159,15 @@ class TelegramController:
                 "sync_merge_build_release": "聊天分支合并dcr发布",
             }
 
-            def fmt_run(task_id: str) -> str:
-                return f"/run {task_id}  # {task_help.get(task_id, '')}".rstrip()
+            def fmt_direct(task_id: str) -> str:
+                return f"/{task_id}  # {task_help.get(task_id, '')}".rstrip()
 
             if role == "owner":
                 msg = (
-                    "可用命令：\n"
-                    + fmt_run("sync_build_release")
+                    "可用命令（点击即可执行）：\n"
+                    + fmt_direct("sync_build_release")
                     + "\n"
-                    + fmt_run("sync_merge_build_release")
+                    + fmt_direct("sync_merge_build_release")
                     + "\n"
                     + "/status  # 查看当前运行状态\n"
                     + "/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n"
@@ -177,9 +177,9 @@ class TelegramController:
                 # Non-owner: show only runnable tasks
                 lines: list[str] = []
                 if self._can(role, group, "run", task_id="sync_build_release"):
-                    lines.append(fmt_run("sync_build_release"))
+                    lines.append(fmt_direct("sync_build_release"))
                 if self._can(role, group, "run", task_id="sync_merge_build_release"):
-                    lines.append(fmt_run("sync_merge_build_release"))
+                    lines.append(fmt_direct("sync_merge_build_release"))
                 if not lines:
                     msg = "当前无可运行任务权限。请联系管理员分配权限。"
                 else:
@@ -208,10 +208,35 @@ class TelegramController:
             self._reply(token, ctx.chat_id, "已发送停止请求")
             return
 
-        if cmd == "/run":
-            if len(parts) < 2:
-                self._reply(token, ctx.chat_id, "用法：/run sync_build_release 或 /run sync_merge_build_release")
+        # Direct task commands (tap-to-run)
+        direct_map = {
+            "/sync_build_release": "sync_build_release",
+            "/sync_merge_build_release": "sync_merge_build_release",
+        }
+        if cmd in direct_map:
+            task_id = direct_map[cmd]
+            if not self._can(role, group, "run", task_id=task_id):
+                self._reply(token, ctx.chat_id, f"无权限：{cmd}")
                 return
+            self._on_run(task_id, ctx.chat_id, ctx.username)
+            self._reply(token, ctx.chat_id, f"收到，开始执行：{task_id}")
+            return
+
+        if cmd == "/run":
+            # Permission-aware usage
+            allowed: list[str] = []
+            if self._can(role, group, "run", task_id="sync_build_release"):
+                allowed.append("/sync_build_release")
+            if self._can(role, group, "run", task_id="sync_merge_build_release"):
+                allowed.append("/sync_merge_build_release")
+
+            if len(parts) < 2:
+                if allowed:
+                    self._reply(token, ctx.chat_id, "请直接点击执行：\n" + "\n".join(allowed))
+                else:
+                    self._reply(token, ctx.chat_id, "当前无可运行任务权限。请联系管理员分配权限。")
+                return
+
             task_id = parts[1].strip()
             if task_id not in ("sync_build_release", "sync_merge_build_release"):
                 self._reply(token, ctx.chat_id, f"未知任务：{task_id}")
