@@ -118,11 +118,13 @@ def install_app_from_volume(
     *,
     dest_app: Path = Path("/Applications") / "代码工具箱.app",
     app_display_name: str = "代码工具箱",
+    bundle_id: str = "com.egoist.toolsbox",
     relaunch: bool = True,
 ) -> None:
     """Quit app, replace /Applications app, and optionally relaunch."""
 
-    # Ask app to quit (best effort)
+    # Ask app to quit (best effort). Prefer bundle id (more reliable than display name).
+    _run(["/usr/bin/osascript", "-e", f'tell application id "{bundle_id}" to quit'], timeout=30)
     _run(["/usr/bin/osascript", "-e", f'tell application "{app_display_name}" to quit'], timeout=30)
 
     # Build a safe copy script. Use ditto for .app bundles.

@@ -215,7 +215,16 @@ class AdoReleaseTab(Tab):
                 ui(lambda: self.lbl_update_status.setText("安装中…"))
                 install_app_from_volume(src_app)
 
-                ui(lambda: self.lbl_update_status.setText("安装完成"))
+                ui(lambda: self.lbl_update_status.setText("安装完成，正在退出旧版本…"))
+
+                def _exit_old():
+                    # Close current instance to avoid having two apps.
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.instance().quit()
+                    import os
+                    os._exit(0)
+
+                QtCore.QTimer.singleShot(800, self, _exit_old)
             except Exception as e:
                 msg = str(e)
                 ui(lambda m=msg: show_error_dialog(self, "更新失败", m))
