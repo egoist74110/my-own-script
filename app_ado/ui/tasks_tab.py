@@ -150,7 +150,12 @@ class TasksTab(Tab):
                 return
 
         def emit_error(title: str, details: str) -> None:
-            notify_telegram(f"❌ {title}\n{details}")
+            # final result notification (fail)
+            notify_telegram(
+                "❌ 任务失败\n"
+                f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                f"{title}\n{details}"
+            )
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
@@ -241,11 +246,7 @@ class TasksTab(Tab):
                 emit_log(
                     f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
                 )
-                notify_telegram(
-                    "✅ Git 合并并推送完成\n"
-                    f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
-                    + (f"HEAD={head}" if head else "")
-                )
+                # notification policy: only start + final result
 
                 if should_stop():
                     emit_log("已停止：用户取消")
@@ -316,11 +317,7 @@ class TasksTab(Tab):
                         return
 
                 emit_log("✅ 构建成功，开始触发 Release ...")
-                notify_telegram(
-                    "✅ 构建成功\n"
-                    f"Build: {flow.build_name or flow.build_id}\n"
-                    f"branch={flow.target_branch}"
-                )
+                # notification policy: only start + final result
 
                 # ---- Release (v4) ----
                 from app_ado.ado_release_http import create_release_from_build
@@ -358,12 +355,7 @@ class TasksTab(Tab):
                     )
 
                 emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
-                notify_telegram(
-                    "📦 已创建 Release\n"
-                    f"{flow.release_name or flow.release_id}\n"
-                    f"id={rel.id} {rel.name or ''}\n"
-                    f"{rel.url or ''}"
-                )
+                # notification policy: only start + final result
 
                 # Monitor selected stages with progress logs every ~10s
                 from app_ado.ado_release_http import extract_envs, get_release, start_release_environment
@@ -475,7 +467,7 @@ class TasksTab(Tab):
                         emit_log("✅ Release 成功（所选阶段全部 succeeded）")
                         emit_log(rel.url or "")
                         notify_telegram(
-                            "✅ 发布成功\n"
+                            "✅ 任务成功\n"
                             f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
                             f"Build: {flow.build_name or flow.build_id}\n"
                             f"Release: {flow.release_name or flow.release_id}\n"
@@ -487,11 +479,7 @@ class TasksTab(Tab):
                     for _ in range(10):
                         if should_stop():
                             emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
-                            notify_telegram(
-                                "🛑 已停止任务（不会回滚已触发的构建/发布）\n"
-                                f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
-                                f"Release: {flow.release_name or flow.release_id}"
-                            )
+                            # notification policy: only start + final result
                             return
                         time.sleep(1.0)
 
