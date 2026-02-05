@@ -27,6 +27,7 @@ class AdoReleaseTab(Tab):
     def __init__(self):
         super().__init__()
         self._settings: UiSettings = load_ui_settings()
+        self._update_auto_checked = False
 
         self._build_library_card()
         self._build_project_card()
@@ -146,7 +147,7 @@ class AdoReleaseTab(Tab):
         self.btn_do_update.setEnabled(False)
         self.btn_reinstall.setEnabled(False)
 
-        def do_check(done: dict) -> None:
+        def do_check(done: dict, *, auto: bool = False) -> None:
             try:
                 rel = get_latest_release()
                 self._latest_release_url = rel.html_url
@@ -157,8 +158,22 @@ class AdoReleaseTab(Tab):
                     ui(lambda: self.lbl_update_status.setText("已是最新"))
                     ui(lambda: self.btn_do_update.setEnabled(False))
                 else:
-                    ui(lambda: self.lbl_update_status.setText(f"发现新版本：{rel.version}"))
+                    new_ver = rel.version
+                    ui(lambda: self.lbl_update_status.setText(f"发现新版本：{new_ver}"))
                     ui(lambda: self.btn_do_update.setEnabled(True))
+
+                    if auto:
+                        # Auto prompt only once per app launch.
+                        def _prompt(v=new_ver):
+                            ok = QtWidgets.QMessageBox.question(
+                                self,
+                                "发现新版本",
+                                f"发现新版本：{v}\n\n是否现在更新？",
+                            )
+                            if ok == QtWidgets.QMessageBox.Yes:
+                                _start_update(force=False)
+
+                        ui(_prompt)
             except Exception as e:
                 msg = str(e)
                 ui(lambda m=msg: show_error_dialog(self, "无法检查更新", m))
@@ -168,7 +183,7 @@ class AdoReleaseTab(Tab):
                 done["v"] = True
                 ui(lambda: set_busy(False))
 
-        def on_check_clicked() -> None:
+        def on_check_clicked(*, auto: bool = False) -> None:
             set_busy(True)
             self.lbl_update_status.setText("检查中…")
 
@@ -185,7 +200,7 @@ class AdoReleaseTab(Tab):
 
             import threading
 
-            threading.Thread(target=lambda: do_check(done), daemon=True).start()
+            threading.Thread(target=lambda: do_check(done, auto=auto), daemon=True).start()
 
         def do_update(done: dict, *, force: bool = False) -> None:
             mp = None
@@ -298,11 +313,20 @@ class AdoReleaseTab(Tab):
 
             _start_update(force=True)
 
-        self.btn_check_update.clicked.connect(on_check_clicked)
+        self.btn_check_update.clicked.connect(lambda: on_check_clicked(auto=False))
         self.btn_do_update.clicked.connect(on_update_clicked)
         self.btn_reinstall.clicked.connect(on_reinstall_clicked)
 
         self.add_card("更新", w)
+
+        # Auto check once when entering this page.
+        def _auto_check_once():
+            if getattr(self, "_update_auto_checked", False):
+                return
+            self._update_auto_checked = True
+            on_check_clicked(auto=True)
+
+        QtCore.QTimer.singleShot(300, self, _auto_check_once)
 
     # --- libraries ---
     def _refresh_lib_combo(self, *, select_id: str | None = None) -> None:
