@@ -42,22 +42,31 @@ class TelegramController:
         self._thread: threading.Thread | None = None
 
         self._offset_path = config_dir() / "tg_offset.json"
+        self._log_path = config_dir() / "tg_control.log"
         self._update_offset = self._load_offset()
 
     def _load_offset(self) -> int | None:
         try:
             if self._offset_path.exists():
                 j = json.loads(self._offset_path.read_text("utf-8"))
-                v = j.get("last_update_id")
+                v = j.get("next_offset")
                 return int(v) if v is not None else None
         except Exception:
             return None
         return None
 
-    def _save_offset(self, last_update_id: int) -> None:
+    def _save_offset(self, next_offset: int) -> None:
         try:
             self._offset_path.parent.mkdir(parents=True, exist_ok=True)
-            self._offset_path.write_text(json.dumps({"last_update_id": last_update_id}, indent=2), "utf-8")
+            self._offset_path.write_text(json.dumps({"next_offset": int(next_offset)}, indent=2), "utf-8")
+        except Exception:
+            pass
+
+    def _log(self, text: str) -> None:
+        try:
+            self._log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._log_path.open("a", encoding="utf-8") as f:
+                f.write(text.rstrip() + "\n")
         except Exception:
             pass
 
@@ -186,8 +195,8 @@ class TelegramController:
 
                 if last_id is not None:
                     self._update_offset = int(last_id) + 1
-                    self._save_offset(int(last_id))
+                    self._save_offset(self._update_offset)
 
-            except Exception:
-                # avoid noisy loop
+            except Exception as e:
+                self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {e}")
                 time.sleep(2.0)
