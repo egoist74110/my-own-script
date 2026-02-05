@@ -85,6 +85,10 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
+# When launched from .app, pass icon path so Qt uses the masked icns (Dock looks correct)
+APP_RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
+export TOOLBOX_APP_ICON="$APP_RES/AppIcon.icns"
+
 exec "$PY" "$APP"
 LAUNCH
 

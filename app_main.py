@@ -17,14 +17,21 @@ def main() -> None:
     app.setApplicationName("代码工具箱")
 
     base = Path(__file__).resolve().parent
-    # Prefer icon from generated AppIcon assets
-    icon_path = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "256.png"
-    if not icon_path.exists():
-        icon_path = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "512.png"
-    if not icon_path.exists():
-        icon_path = base / "logo.jpg"
 
-    if icon_path.exists():
+    # Prefer icns when launched from our .app wrapper (so Dock icon matches app bundle icon)
+    import os
+
+    icon_path_str = os.environ.get("TOOLBOX_APP_ICON")
+    icon_path = Path(icon_path_str) if icon_path_str else None
+
+    if not icon_path or not icon_path.exists():
+        # fallback to repo assets
+        p1 = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "256.png"
+        p2 = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "512.png"
+        p3 = base / "logo.jpg"
+        icon_path = p1 if p1.exists() else (p2 if p2.exists() else p3)
+
+    if icon_path and icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
     w = MSFluentWindow()
