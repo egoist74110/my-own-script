@@ -16,16 +16,39 @@ class UpdateStatus:
     remote: str
 
 
+def _resolve_git() -> str:
+    """Return an absolute path to git when possible.
+
+    When launched from a macOS .app, PATH can be minimal and `git` may not be found.
+    """
+    candidates = [
+        "/usr/bin/git",
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+    ]
+    for p in candidates:
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+    return "git"
+
+
 def _run(cmd: list[str], cwd: Path, *, timeout: int = 30) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     # Never block on interactive git prompts in GUI context.
     env.setdefault("GIT_TERMINAL_PROMPT", "0")
     # Ensure SSH-based remotes fail fast (no passphrase / no prompts)
     env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=5")
+
+    real_cmd = list(cmd)
+    if real_cmd and real_cmd[0] == "git":
+        real_cmd[0] = _resolve_git()
+
     try:
-        return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env, timeout=timeout)
+        return subprocess.run(real_cmd, cwd=str(cwd), capture_output=True, text=True, env=env, timeout=timeout)
     except FileNotFoundError as e:
-        raise RuntimeError(f"找不到命令：{cmd[0]}（可能是从 .app 启动时 PATH 不包含 git）") from e
+        raise RuntimeError(
+            f"找不到命令：{cmd[0]}（从 .app 启动时 PATH 可能不包含 git；请安装 Xcode Command Line Tools 或使用 Homebrew 安装 git）"
+        ) from e
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(f"命令超时（{timeout}s）：{' '.join(cmd)}") from e
 
