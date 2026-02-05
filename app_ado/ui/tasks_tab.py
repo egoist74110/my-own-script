@@ -45,7 +45,7 @@ class TasksTab(Tab):
         self.btn_edit = PushButton("配置")
         self.btn_run = PushButton("运行")
 
-        self.btn_run_menu = DropDownToolButton(FluentIcon.CHEVRON_DOWN)
+        self.btn_run_menu = DropDownToolButton(FluentIcon.CHEVRON_DOWN_MED)
         self.btn_run_menu.setFixedWidth(34)
         menu = QtWidgets.QMenu(self)
         self.action_run = menu.addAction("运行")
