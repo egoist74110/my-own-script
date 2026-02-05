@@ -117,6 +117,10 @@ class AdoReleaseTab(Tab):
         btn_row.addWidget(self.btn_do_update)
         form.addRow(btn_row)
 
+        def ui(fn) -> None:
+            # Ensure UI updates always happen on the Qt main thread.
+            QtCore.QTimer.singleShot(0, self, fn)
+
         def set_busy(busy: bool) -> None:
             self.btn_check_update.setEnabled(not busy)
             self.btn_do_update.setEnabled(not busy)
@@ -127,18 +131,18 @@ class AdoReleaseTab(Tab):
                 clean, dirty = check_git_clean(root)
                 if not clean:
                     msg = "仓库有未提交改动，已跳过"
-                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText(msg))
-                    QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "无法检查更新", dirty or msg))
+                    ui(lambda: self.lbl_update_status.setText(msg))
+                    ui(lambda: show_error_dialog(self, "无法检查更新", dirty or msg))
                     return
                 st = get_update_status(root, branch="main")
                 if st.behind <= 0:
-                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("已是最新"))
+                    ui(lambda: self.lbl_update_status.setText("已是最新"))
                 else:
-                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText(f"可更新：落后 {st.behind} 个提交"))
+                    ui(lambda: self.lbl_update_status.setText(f"可更新：落后 {st.behind} 个提交"))
             except Exception as e:
-                QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "检查更新失败", str(e)))
+                ui(lambda: show_error_dialog(self, "检查更新失败", str(e)))
             finally:
-                QtCore.QTimer.singleShot(0, lambda: set_busy(False))
+                ui(lambda: set_busy(False))
 
         def on_check_clicked() -> None:
             set_busy(True)
@@ -152,7 +156,7 @@ class AdoReleaseTab(Tab):
                     return
                 watchdog_fired["v"] = True
                 set_busy(False)
-                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：在终端执行 git fetch origin 验证网络/权限；或把报错发我。")
+                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n如果你终端里 git fetch 秒回，这通常是 UI 线程更新没投递成功。请把现象发我。")
 
             QtCore.QTimer.singleShot(12000, watchdog)
 
@@ -168,16 +172,16 @@ class AdoReleaseTab(Tab):
                     raise RuntimeError("仓库有未提交改动，已跳过更新")
                 st = get_update_status(root, branch="main")
                 if st.behind <= 0:
-                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("已是最新"))
+                    ui(lambda: self.lbl_update_status.setText("已是最新"))
                     return
                 pull_ff_only(root, branch="main")
                 pip_sync(root)
-                QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
+                ui(lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
                 QtCore.QTimer.singleShot(500, restart_self)
             except Exception as e:
-                QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "更新失败", str(e)))
+                ui(lambda: show_error_dialog(self, "更新失败", str(e)))
             finally:
-                QtCore.QTimer.singleShot(0, lambda: set_busy(False))
+                ui(lambda: set_busy(False))
 
         def on_update_clicked() -> None:
             ok = QtWidgets.QMessageBox.question(
