@@ -327,89 +327,162 @@ class TasksTab(Tab):
                     emit_error("错误", "该代码库未保存 PAT")
                     return
 
-                branch = flow.target_branch
-                emit_log(f"\n--- Build: kind={flow.build_kind} id={flow.build_id} branch={branch} ---")
-
-                build_run_id: str | None = None
-
-                if flow.build_kind == "pipeline":
-                    pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
-                    build_run_id = pr.run_id
-                    emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
-                    # wait with stop checks
-                    import time
-                    deadline = time.time() + 30 * 60
-                    pr2 = None
-                    while time.time() < deadline:
-                        if should_stop():
-                            emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
-                            return
-                        pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat)
-                        if (pr_cur.state or '').lower() == 'completed':
-                            pr2 = pr_cur
-                            break
-                        time.sleep(4.0)
-                    if pr2 is None:
-                        emit_error("构建超时", f"Pipeline run timeout (run_id={pr.run_id})")
-                        return
-                    emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
-                    if (pr2.result or '').lower() not in ('succeeded', 'success'):
-                        emit_error("构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
-                        return
-                else:
-                    br = trigger_build_definition(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
-                    build_run_id = br.build_id
-                    emit_log(f"已触发 Build：build_id={br.build_id} status={br.status} url={br.url or ''}")
-                    br2 = wait_build(lib.base_url, proj.collection, proj.project, br.build_id, pat=pat, timeout_min=30)
-                    emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
-                    if (br2.result or '').lower() not in ('succeeded', 'success', 'partiallysucceeded'):
-                        emit_error("构建失败", f"Build result={br2.result}\n{br2.url or ''}")
-                        return
-
-                emit_log("✅ 构建成功，开始触发 Release ...")
-                # notification policy: only start + final result
-
-                # ---- Release (v4) ----
+                # ---- Build+Release for each target (serial) ----
                 from app_ado.ado_release_http import create_release_from_build
-
-                if not build_run_id:
-                    emit_error("错误", "未获得 build_id/run_id，无法创建 Release")
-                    return
-
-                stage_ids = flow.release_stage_ids or []
-                emit_log(
-                    f"\n--- Release: def_id={flow.release_id} build_id={build_run_id} stages={','.join(stage_ids)} ---"
-                )
-
-                rel = None
-                # try api-version 6.0 first, fallback to 7.0 if needed
-                try:
-                    rel = create_release_from_build(
-                        lib.base_url,
-                        proj.collection,
-                        proj.project,
-                        flow.release_id,
-                        build_id=build_run_id,
-                        pat=pat,
-                        api_version="6.0",
-                    )
-                except Exception:
-                    rel = create_release_from_build(
-                        lib.base_url,
-                        proj.collection,
-                        proj.project,
-                        flow.release_id,
-                        build_id=build_run_id,
-                        pat=pat,
-                        api_version="7.0",
-                    )
-
-                emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
-                # notification policy: only start + final result
-
-                # Monitor selected stages with progress logs every ~10s
                 from app_ado.ado_release_http import extract_envs, get_release, start_release_environment
                 import time
+
+                branch = flow.target_branch
+
+                for ti, tgt in enumerate(targets, start=1):
+                    if not getattr(tgt, "enabled", True):
+                        emit_log(f"\n--- Target[{ti}] {tgt.name}: skipped (disabled) ---")
+                        continue
+
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
+
+                    emit_log(f"\n=== Target[{ti}] {tgt.name} ===")
+                    emit_log(f"--- Build: kind={tgt.build_kind} id={tgt.build_id} branch={branch} ---")
+
+                    build_run_id: str | None = None
+
+                    if tgt.build_kind == "pipeline":
+                        pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
+                        build_run_id = pr.run_id
+                        emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
+                        deadline = time.time() + 30 * 60
+                        pr2 = None
+                        while time.time() < deadline:
+                            if should_stop():
+                                emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                                return
+                            pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
+                            if (pr_cur.state or "").lower() == "completed":
+                                pr2 = pr_cur
+                                break
+                            time.sleep(4.0)
+                        if pr2 is None:
+                            emit_error("构建超时", f"Pipeline run timeout (run_id={pr.run_id})")
+                            return
+                        emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
+                        if (pr2.result or "").lower() not in ("succeeded", "success"):
+                            emit_error("构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
+                            return
+                    else:
+                        brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
+                        build_run_id = brn.build_id
+                        emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
+                        br2 = wait_build(lib.base_url, proj.collection, proj.project, brn.build_id, pat=pat, timeout_min=30)
+                        emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
+                        if (br2.result or "").lower() not in ("succeeded", "success", "partiallysucceeded"):
+                            emit_error("构建失败", f"Build result={br2.result}\n{br2.url or ''}")
+                            return
+
+                    emit_log("✅ 构建成功，开始触发 Release ...")
+
+                    if not build_run_id:
+                        emit_error("错误", "未获得 build_id/run_id，无法创建 Release")
+                        return
+
+                    stage_ids = list(getattr(tgt, "release_stage_ids", []) or [])
+                    emit_log(f"--- Release: def_id={tgt.release_id} build_id={build_run_id} stages={','.join(stage_ids)} ---")
+
+                    try:
+                        rel = create_release_from_build(
+                            lib.base_url,
+                            proj.collection,
+                            proj.project,
+                            tgt.release_id,
+                            build_id=build_run_id,
+                            pat=pat,
+                            api_version="6.0",
+                        )
+                    except Exception:
+                        rel = create_release_from_build(
+                            lib.base_url,
+                            proj.collection,
+                            proj.project,
+                            tgt.release_id,
+                            build_id=build_run_id,
+                            pat=pat,
+                            api_version="7.0",
+                        )
+
+                    emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
+
+                    def fetch_envs() -> list:
+                        try:
+                            data = get_release(lib.base_url, proj.collection, proj.project, rel.id, pat=pat, api_version="6.0")
+                        except Exception:
+                            data = get_release(lib.base_url, proj.collection, proj.project, rel.id, pat=pat, api_version="7.0")
+                        return extract_envs(data)
+
+                    def is_done(status: str) -> bool:
+                        s = (status or "").lower()
+                        return s in {"succeeded", "rejected", "canceled", "failed"}
+
+                    want_ids = set(stage_ids)
+                    want_names = set(getattr(tgt, "release_stage_names", []) or [])
+                    deadline = time.time() + 60 * 60
+                    last_line = ""
+
+                    def select_envs(envs):
+                        by_def_id = [e for e in envs if (e.definition_environment_id or "") in want_ids]
+                        if by_def_id:
+                            return by_def_id, "definitionEnvironmentId"
+                        by_name = [e for e in envs if e.name in want_names]
+                        if by_name:
+                            return by_name, "name"
+                        return [], "none"
+
+                    while time.time() < deadline:
+                        if should_stop():
+                            emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
+                            return
+
+                        envs = fetch_envs()
+                        selected, mode = select_envs(envs)
+                        parts = [f"{e.name}(defEnvId={e.definition_environment_id}, envId={e.id})={e.status}" for e in selected]
+                        line = f"监控[{tgt.name}](mode={mode})：" + " | ".join(parts) if parts else f"监控[{tgt.name}]：等待阶段进入 release"
+                        if line != last_line:
+                            emit_log(line)
+                            last_line = line
+
+                        for e in selected:
+                            if (e.status or "").lower() == "notstarted":
+                                emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
+                                start_release_environment(lib.base_url, proj.collection, proj.project, rel.id, e.id, pat=pat)
+
+                        if selected and all(is_done(e.status) for e in selected):
+                            failed = [e for e in selected if (e.status or "").lower() not in ("succeeded",)]
+                            if failed:
+                                msg = "Release 完成但存在失败阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
+                                emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
+                                return
+                            emit_log(f"✅ Target {tgt.name} Release 成功")
+                            break
+
+                        for _ in range(10):
+                            if should_stop():
+                                emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
+                                return
+                            time.sleep(1.0)
+
+                    else:
+                        emit_error("发布超时", f"Release 监控超时（60min）：{rel.url or ''}")
+                        return
+
+                # all targets done
+                last_url = rel.url if 'rel' in locals() and rel else ""
+                notify_telegram(
+                    "✅ 任务成功\n"
+                    f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                    f"targets={len(targets)}\n"
+                    f"{last_url}"
+                )
+                return
 
                 def fetch_envs() -> list:
                     # prefer 6.0, fallback 7.0
