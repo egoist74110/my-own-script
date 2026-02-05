@@ -17,46 +17,19 @@ rm -rf "$APP_DIR" "$ICONSET_DIR" "$ICNS_OUT"
 if [ -f "$ICON_SRC" ]; then
   mkdir -p "$ICONSET_DIR"
   BASE_PNG="$OUT_DIR/_icon_base.png"
-  PAD_PNG="$OUT_DIR/_icon_padded.png"
   sips -s format png "$ICON_SRC" --out "$BASE_PNG" >/dev/null
 
-  # add transparent padding so Dock icon looks like macOS squircle style (avoid solid square)
-  if [ -x "$REPO_DIR/.venv/bin/python" ]; then
-    export BASE_PNG PAD_PNG
-    "$REPO_DIR/.venv/bin/python" - <<'PY'
-from PIL import Image
-import os
-
-base = os.environ.get('BASE_PNG')
-out = os.environ.get('PAD_PNG')
-
-im = Image.open(base).convert('RGBA')
-# canvas size
-W = H = 1024
-# scale content to ~86% to leave padding
-scale = 0.86
-nw = int(W * scale)
-nh = int(H * scale)
-im2 = im.resize((nw, nh), Image.LANCZOS)
-canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-canvas.paste(im2, ((W - nw)//2, (H - nh)//2), im2)
-canvas.save(out)
-PY
-  else
-    cp "$BASE_PNG" "$PAD_PNG"
-  fi
-
-  # generate pngs from a padded png to keep iconutil happy
-  sips -z 16 16   "$PAD_PNG" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
-  sips -z 32 32   "$PAD_PNG" --out "$ICONSET_DIR/icon_16x16@2x.png" >/dev/null
-  sips -z 32 32   "$PAD_PNG" --out "$ICONSET_DIR/icon_32x32.png" >/dev/null
-  sips -z 64 64   "$PAD_PNG" --out "$ICONSET_DIR/icon_32x32@2x.png" >/dev/null
-  sips -z 128 128 "$PAD_PNG" --out "$ICONSET_DIR/icon_128x128.png" >/dev/null
-  sips -z 256 256 "$PAD_PNG" --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null
-  sips -z 256 256 "$PAD_PNG" --out "$ICONSET_DIR/icon_256x256.png" >/dev/null
-  sips -z 512 512 "$PAD_PNG" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null
-  sips -z 512 512 "$PAD_PNG" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
-  sips -z 1024 1024 "$PAD_PNG" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null
+  # generate pngs from a real png to keep iconutil happy
+  sips -z 16 16   "$BASE_PNG" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
+  sips -z 32 32   "$BASE_PNG" --out "$ICONSET_DIR/icon_16x16@2x.png" >/dev/null
+  sips -z 32 32   "$BASE_PNG" --out "$ICONSET_DIR/icon_32x32.png" >/dev/null
+  sips -z 64 64   "$BASE_PNG" --out "$ICONSET_DIR/icon_32x32@2x.png" >/dev/null
+  sips -z 128 128 "$BASE_PNG" --out "$ICONSET_DIR/icon_128x128.png" >/dev/null
+  sips -z 256 256 "$BASE_PNG" --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null
+  sips -z 256 256 "$BASE_PNG" --out "$ICONSET_DIR/icon_256x256.png" >/dev/null
+  sips -z 512 512 "$BASE_PNG" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null
+  sips -z 512 512 "$BASE_PNG" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
+  sips -z 1024 1024 "$BASE_PNG" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null
 
   iconutil -c icns "$ICONSET_DIR" -o "$ICNS_OUT"
 else
