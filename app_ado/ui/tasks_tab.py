@@ -255,7 +255,7 @@ class TasksTab(Tab):
                 emit_log("✅ 构建成功，开始触发 Release ...")
 
                 # ---- Release (v4) ----
-                from app_ado.ado_release_http import create_release_from_build, wait_release_environments
+                from app_ado.ado_release_http import create_release_from_build
 
                 if not build_run_id:
                     emit_error("错误", "未获得 build_id/run_id，无法创建 Release")
@@ -291,41 +291,76 @@ class TasksTab(Tab):
 
                 emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
 
-                done_envs = None
-                try:
-                    done_envs = wait_release_environments(
-                        lib.base_url,
-                        proj.collection,
-                        proj.project,
-                        rel.id,
-                        pat=pat,
-                        stage_ids=stage_ids,
-                        timeout_min=60,
-                        poll_sec=10.0,
-                        api_version="6.0",
-                    )
-                except Exception:
-                    done_envs = wait_release_environments(
-                        lib.base_url,
-                        proj.collection,
-                        proj.project,
-                        rel.id,
-                        pat=pat,
-                        stage_ids=stage_ids,
-                        timeout_min=60,
-                        poll_sec=10.0,
-                        api_version="7.0",
-                    )
+                # Monitor selected stages with progress logs every ~10s
+                from app_ado.ado_release_http import extract_envs, get_release
+                import time
 
-                # Evaluate result
-                failed = [e for e in done_envs if e.status.lower() not in ("succeeded",)]
-                if failed:
-                    msg = "Release 完成但存在失败阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
-                    emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
-                    return
+                def fetch_envs() -> list:
+                    # prefer 6.0, fallback 7.0
+                    try:
+                        data = get_release(
+                            lib.base_url,
+                            proj.collection,
+                            proj.project,
+                            rel.id,
+                            pat=pat,
+                            api_version="6.0",
+                        )
+                    except Exception:
+                        data = get_release(
+                            lib.base_url,
+                            proj.collection,
+                            proj.project,
+                            rel.id,
+                            pat=pat,
+                            api_version="7.0",
+                        )
+                    return extract_envs(data)
 
-                emit_log("✅ Release 成功（所选阶段全部 succeeded）")
-                emit_log(rel.url or "")
+                def is_done(status: str) -> bool:
+                    s = (status or "").lower()
+                    return s in {"succeeded", "rejected", "canceled", "failed"}
+
+                want = set(stage_ids)
+                deadline = time.time() + 60 * 60
+                last_line = ""
+
+                while time.time() < deadline:
+                    try:
+                        envs = fetch_envs()
+                    except Exception as e:
+                        emit_error("监控失败", str(e))
+                        return
+
+                    selected = [e for e in envs if e.id in want]
+                    if not selected:
+                        line = "监控：等待阶段进入 release（环境列表尚未出现/未匹配）"
+                    else:
+                        parts = [f"{e.name}({e.id})={e.status}" for e in selected]
+                        line = "监控：" + " | ".join(parts)
+
+                    # avoid spamming identical lines
+                    if line != last_line:
+                        emit_log(line)
+                        last_line = line
+
+                    if selected and all(is_done(e.status) for e in selected):
+                        failed = [e for e in selected if e.status.lower() not in ("succeeded",)]
+                        if failed:
+                            msg = "Release 完成但存在失败阶段：\n" + "\n".join(
+                                [f"- {e.name} ({e.id}) status={e.status}" for e in failed]
+                            )
+                            emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
+                            return
+
+                        emit_log("✅ Release 成功（所选阶段全部 succeeded）")
+                        emit_log(rel.url or "")
+                        return
+
+                    time.sleep(10.0)
+
+                emit_error("发布超时", f"Release 监控超时（60min）：{rel.url or ''}")
+                return
 
             except Exception as e:
                 emit_error("运行异常", str(e))
