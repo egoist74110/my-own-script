@@ -97,7 +97,8 @@ class AdoReleaseTab(Tab):
     def _build_update_card(self) -> None:
         """Manual update UX: check updates + update now."""
         from app_version import __version__
-        from app_ado.release_updater import get_latest_release, open_url
+        from app_ado.release_updater import get_latest_release
+        from app_ado.app_installer import default_update_cache_dir, download_file, find_app_in_volume, install_app_from_volume, mount_dmg, unmount_dmg
 
         w = CardWidget(self)
         form = QFormLayout(w)
@@ -108,14 +109,22 @@ class AdoReleaseTab(Tab):
 
         self.btn_check_update = PushButton("检查更新")
         self.btn_do_update = PushButton("更新")
+        self.btn_reinstall = PushButton("重新安装")
 
         form.addRow("当前版本", self.lbl_version)
         form.addRow("更新状态", self.lbl_update_status)
 
+        self.progress = QtWidgets.QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setVisible(False)
+
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addWidget(self.btn_check_update)
         btn_row.addWidget(self.btn_do_update)
+        btn_row.addWidget(self.btn_reinstall)
         form.addRow(btn_row)
+        form.addRow("进度", self.progress)
 
         def ui(fn) -> None:
             # Ensure UI updates always happen on the Qt main thread.
@@ -123,21 +132,26 @@ class AdoReleaseTab(Tab):
 
         def set_busy(busy: bool) -> None:
             self.btn_check_update.setEnabled(not busy)
-            # update button is enabled only when an update is available
             if busy:
                 self.btn_do_update.setEnabled(False)
+                self.btn_reinstall.setEnabled(False)
             else:
-                self.btn_do_update.setEnabled(bool(self._latest_release_asset_url or self._latest_release_url) and self.lbl_update_status.text().startswith("发现新版本"))
+                has_rel = bool(self._latest_release_asset_url or self._latest_release_url)
+                self.btn_do_update.setEnabled(has_rel and self.lbl_update_status.text().startswith("发现新版本"))
+                self.btn_reinstall.setEnabled(has_rel)
 
         self._latest_release_url: str | None = None
         self._latest_release_asset_url: str | None = None
+        self._latest_release_version: str | None = None
         self.btn_do_update.setEnabled(False)
+        self.btn_reinstall.setEnabled(False)
 
         def do_check(done: dict) -> None:
             try:
                 rel = get_latest_release()
                 self._latest_release_url = rel.html_url
                 self._latest_release_asset_url = rel.asset_url
+                self._latest_release_version = rel.version
 
                 if rel.version == __version__:
                     ui(lambda: self.lbl_update_status.setText("已是最新"))
@@ -173,38 +187,51 @@ class AdoReleaseTab(Tab):
 
             threading.Thread(target=lambda: do_check(done), daemon=True).start()
 
-        def do_update(done: dict) -> None:
+        def do_update(done: dict, *, force: bool = False) -> None:
+            mp = None
             try:
-                url = self._latest_release_asset_url or self._latest_release_url
-                if not url:
+                url = self._latest_release_asset_url
+                ver = self._latest_release_version
+                if not url or not ver:
                     raise RuntimeError("请先点击【检查更新】")
 
-                ui(lambda: self.lbl_update_status.setText("打开下载页面…"))
-                open_url(url)
-                ui(lambda: self.lbl_update_status.setText("已打开下载页面，请安装新版本"))
+                dmg_path = default_update_cache_dir() / f"代码工具箱-{ver}-mac.dmg"
+
+                ui(lambda: self.progress.setVisible(True))
+                ui(lambda: self.progress.setValue(0))
+                ui(lambda: self.lbl_update_status.setText("下载更新中…"))
+
+                def on_prog(p):
+                    if p.total and p.total > 0:
+                        pct = int(p.downloaded * 100 / p.total)
+                        ui(lambda v=pct: self.progress.setValue(max(0, min(100, v))))
+
+                download_file(url, dmg_path, on_progress=on_prog, timeout=30.0)
+
+                ui(lambda: self.lbl_update_status.setText("挂载安装包…"))
+                mp = mount_dmg(dmg_path)
+                src_app = find_app_in_volume(mp)
+
+                ui(lambda: self.lbl_update_status.setText("安装中…"))
+                install_app_from_volume(src_app)
+
+                ui(lambda: self.lbl_update_status.setText("安装完成"))
             except Exception as e:
                 msg = str(e)
                 ui(lambda m=msg: show_error_dialog(self, "更新失败", m))
             finally:
+                if mp is not None:
+                    try:
+                        unmount_dmg(mp)
+                    except Exception:
+                        pass
                 done["v"] = True
+                ui(lambda: self.progress.setVisible(False))
                 ui(lambda: set_busy(False))
 
-        def on_update_clicked() -> None:
-            if not (self._latest_release_asset_url or self._latest_release_url):
-                self._toast("提示", "请先点击【检查更新】", ok=False)
-                return
-
-            ok = QtWidgets.QMessageBox.question(
-                self,
-                "确认更新",
-                "发现新版本，是否现在下载并安装？",
-            )
-            if ok != QtWidgets.QMessageBox.Yes:
-                return
-
-            # open download page (no in-app install yet)
+        def _start_update(*, force: bool) -> None:
             set_busy(True)
-            self.lbl_update_status.setText("打开下载页面…")
+            self.lbl_update_status.setText("更新中…")
 
             done = {"v": False}
 
@@ -212,16 +239,47 @@ class AdoReleaseTab(Tab):
                 if done["v"]:
                     return
                 set_busy(False)
-                show_error_dialog(self, "更新超时", "打开下载页面超时，请稍后再试。")
+                show_error_dialog(self, "更新超时", "更新超过 10 分钟仍未完成。\n\n常见原因：网络慢/DMG 挂载失败/安装需要授权。")
 
-            QtCore.QTimer.singleShot(12000, self, watchdog)
+            QtCore.QTimer.singleShot(600000, self, watchdog)
 
             import threading
 
-            threading.Thread(target=lambda: do_update(done), daemon=True).start()
+            threading.Thread(target=lambda: do_update(done, force=force), daemon=True).start()
+
+        def on_update_clicked() -> None:
+            if not self._latest_release_asset_url:
+                self._toast("提示", "请先点击【检查更新】", ok=False)
+                return
+
+            ok = QtWidgets.QMessageBox.question(
+                self,
+                "确认更新",
+                "发现新版本，是否现在下载并安装？\n\n（将覆盖 /Applications/代码工具箱.app，并可能弹出系统授权）",
+            )
+            if ok != QtWidgets.QMessageBox.Yes:
+                return
+
+            _start_update(force=False)
+
+        def on_reinstall_clicked() -> None:
+            if not self._latest_release_asset_url:
+                self._toast("提示", "请先点击【检查更新】", ok=False)
+                return
+
+            ok = QtWidgets.QMessageBox.question(
+                self,
+                "确认重新安装",
+                "将重新下载并覆盖安装当前最新版本。\n\n确认继续？",
+            )
+            if ok != QtWidgets.QMessageBox.Yes:
+                return
+
+            _start_update(force=True)
 
         self.btn_check_update.clicked.connect(on_check_clicked)
         self.btn_do_update.clicked.connect(on_update_clicked)
+        self.btn_reinstall.clicked.connect(on_reinstall_clicked)
 
         self.add_card("更新", w)
 
