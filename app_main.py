@@ -31,13 +31,30 @@ def main() -> None:
         p3 = base / "logo.jpg"
         icon_path = p1 if p1.exists() else (p2 if p2.exists() else p3)
 
-    if icon_path and icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    fixed_icon = QIcon(str(icon_path)) if icon_path and icon_path.exists() else None
+    if fixed_icon is not None:
+        app.setWindowIcon(fixed_icon)
+
+        # Prevent other modules from overriding the Dock icon later.
+        # (Some upstream components may call setWindowIcon during/after UI init.)
+        from PySide6.QtWidgets import QWidget
+
+        _orig_app_set = QApplication.setWindowIcon
+        _orig_w_set = QWidget.setWindowIcon
+
+        def _app_set(self, _icon):
+            return _orig_app_set(self, fixed_icon)
+
+        def _w_set(self, _icon):
+            return _orig_w_set(self, fixed_icon)
+
+        QApplication.setWindowIcon = _app_set  # type: ignore
+        QWidget.setWindowIcon = _w_set  # type: ignore
 
     w = MSFluentWindow()
     w.setWindowTitle("代码工具箱")
-    if icon_path.exists():
-        w.setWindowIcon(QIcon(str(icon_path)))
+    if fixed_icon is not None:
+        w.setWindowIcon(fixed_icon)
 
     tasks = TasksTab()
     ado = AdoReleaseTab()
