@@ -16,8 +16,11 @@ class UpdateStatus:
     remote: str
 
 
-def _run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
+def _run(cmd: list[str], cwd: Path, *, timeout: int = 60) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    # Never block on interactive git prompts in GUI context.
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env, timeout=timeout)
 
 
 def repo_root() -> Path:
@@ -32,12 +35,17 @@ def check_git_clean(cwd: Path) -> tuple[bool, str]:
 
 
 def fetch(cwd: Path) -> None:
-    cp = _run(["git", "fetch", "origin"], cwd)
+    cp = _run(["git", "fetch", "origin"], cwd, timeout=60)
     if cp.returncode != 0:
         raise RuntimeError(cp.stderr or cp.stdout or "git fetch failed")
 
 
 def get_update_status(cwd: Path, branch: str = "main") -> UpdateStatus:
+    # Ensure this is a git repo
+    cp0 = _run(["git", "rev-parse", "--is-inside-work-tree"], cwd)
+    if cp0.returncode != 0 or cp0.stdout.strip() != "true":
+        raise RuntimeError("当前目录不是 Git 仓库，无法检查更新")
+
     # Ensure remote refs exist
     fetch(cwd)
 

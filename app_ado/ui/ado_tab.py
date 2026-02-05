@@ -126,7 +126,9 @@ class AdoReleaseTab(Tab):
                 root = repo_root()
                 clean, dirty = check_git_clean(root)
                 if not clean:
-                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("仓库有未提交改动，已跳过"))
+                    msg = "仓库有未提交改动，已跳过"
+                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText(msg))
+                    QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "无法检查更新", dirty or msg))
                     return
                 st = get_update_status(root, branch="main")
                 if st.behind <= 0:
