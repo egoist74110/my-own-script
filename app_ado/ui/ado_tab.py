@@ -143,6 +143,19 @@ class AdoReleaseTab(Tab):
         def on_check_clicked() -> None:
             set_busy(True)
             self.lbl_update_status.setText("检查中…")
+
+            # UI watchdog: ensure we never appear "stuck" even if subprocess hangs.
+            watchdog_fired = {"v": False}
+
+            def watchdog():
+                if watchdog_fired["v"]:
+                    return
+                watchdog_fired["v"] = True
+                set_busy(False)
+                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：在终端执行 git fetch origin 验证网络/权限；或把报错发我。")
+
+            QtCore.QTimer.singleShot(12000, watchdog)
+
             import threading
 
             threading.Thread(target=do_check, daemon=True).start()
