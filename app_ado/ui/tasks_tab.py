@@ -2,14 +2,9 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import (
-    CardWidget,
-    ComboBox,
-    DropDownToolButton,
-    ExpandSettingCard,
-    FluentIcon,
-    PushButton,
-)
+from qfluentwidgets import CardWidget, ComboBox, PushButton
+
+from app_ado.ui.task_card import TaskCard
 
 from app_ado.store import load_task_settings, save_task_settings
 from app_ado.ui.run_log_dialog import RunLogDialog
@@ -34,64 +29,20 @@ class TasksTab(Tab):
     def __init__(self):
         super().__init__()
 
-        w = CardWidget(self)
-        form = QFormLayout(w)
-        form.setLabelAlignment(QtCore.Qt.AlignLeft)
-
-        # left: task selector; right: actions
-        self.task_combo = ComboBox(); self.task_combo.setFixedWidth(260)
-        self.task_combo.addItem("同步/合并 + 构建 + 发布", userData="sync_merge_build_release")
-
-        self.btn_edit = PushButton("配置")
-        self.btn_run = PushButton("运行")
-
-        self.btn_run_menu = DropDownToolButton(FluentIcon.CHEVRON_DOWN_MED)
-        self.btn_run_menu.setFixedWidth(34)
-        menu = QtWidgets.QMenu(self)
-        self.action_run = menu.addAction("运行")
-        self.action_run.triggered.connect(self._run)
-        self.action_clear_log = menu.addAction("清空运行日志")
-        self.action_clear_log.triggered.connect(self._clear_run_log)
-        self.btn_run_menu.setMenu(menu)
-
-        self.btn_edit.clicked.connect(self._edit)
-        self.btn_run.clicked.connect(self._run)
-
-        row = QtWidgets.QWidget()
-        h = QtWidgets.QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(10)
-        h.addWidget(self.task_combo)
-        h.addStretch(1)
-        h.addWidget(self.btn_edit)
-        h.addWidget(self.btn_run)
-        h.addWidget(self.btn_run_menu)
-
-        form.addRow("任务", row)
-
-        self.add_card("任务", w)
-
-        # Collapsible run log panel
-        self.run_log_box = QtWidgets.QPlainTextEdit()
-        self.run_log_box.setReadOnly(True)
-        self.run_log_box.setPlaceholderText("运行日志：每次点击运行会清空并写入新的日志")
-
-        self.run_log_card = ExpandSettingCard(
-            FluentIcon.DOCUMENT,
-            "运行日志",
-            "每次运行会清空并重新写入（可折叠）",
+        # One task card for now; can add more later.
+        self.flow_card = TaskCard(
+            title="同步/合并 + 构建 + 发布",
+            subtitle="把源分支合并到目标分支，然后构建并发布（后续会接入ADO流水线）",
         )
-        self.run_log_card.viewLayout.addWidget(self.run_log_box)
-        self.run_log_card.setExpand(True)
-        self.add_widget(self.run_log_card)
+        self.flow_card.config_clicked.connect(self._edit)
+        self.flow_card.run_clicked.connect(self._run)
+        self.add_widget(self.flow_card)
 
     def _clear_run_log(self) -> None:
-        self.run_log_box.clear()
+        self.flow_card.clear_log()
 
     def _append_run_log(self, text: str) -> None:
-        self.run_log_box.appendPlainText(text)
-        sb = self.run_log_box.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        self.flow_card.append_log(text)
 
     def _edit(self) -> None:
         ts = load_task_settings()
