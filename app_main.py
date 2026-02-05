@@ -15,10 +15,14 @@ def main() -> None:
     w = MSFluentWindow()
     w.setWindowTitle("my-own-script (QFluentWidgets)")
 
-    ado = AdoReleaseTab()
     tasks = TasksTab()
-    w.addSubInterface(ado, FluentIcon.APPLICATION, "ADO发布")
+    ado = AdoReleaseTab()
+
+    # Put "任务" first in the left navigation.
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
+
+    # Rename ADO tab to be more intuitive.
+    w.addSubInterface(ado, FluentIcon.APPLICATION, "配置")
 
     w.resize(1100, 760)
     w.show()

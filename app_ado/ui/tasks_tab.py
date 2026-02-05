@@ -42,16 +42,6 @@ class TasksTab(Tab):
         self.flow_card.stop_clicked.connect(self._stop)
         self.add_widget(self.flow_card)
 
-        # One task card for now; can add more later.
-        self.flow_card = TaskCard(
-            title="同步/合并 + 构建 + 发布",
-            subtitle="把源分支合并到目标分支，然后构建并发布（后续会接入ADO流水线）",
-        )
-        self.flow_card.config_clicked.connect(self._edit)
-        self.flow_card.run_clicked.connect(self._run)
-        self.flow_card.stop_clicked.connect(self._stop)
-        self.add_widget(self.flow_card)
-
     def _clear_run_log(self) -> None:
         self.flow_card.clear_log()
 
