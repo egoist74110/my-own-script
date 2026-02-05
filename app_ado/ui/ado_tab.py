@@ -107,7 +107,7 @@ class AdoReleaseTab(Tab):
         self.lbl_update_status = QtWidgets.QLabel("未检查")
 
         self.btn_check_update = PushButton("检查更新")
-        self.btn_do_update = PushButton("下载并安装更新")
+        self.btn_do_update = PushButton("更新")
 
         form.addRow("当前版本", self.lbl_version)
         form.addRow("更新状态", self.lbl_update_status)
@@ -123,10 +123,15 @@ class AdoReleaseTab(Tab):
 
         def set_busy(busy: bool) -> None:
             self.btn_check_update.setEnabled(not busy)
-            self.btn_do_update.setEnabled(not busy)
+            # update button is enabled only when an update is available
+            if busy:
+                self.btn_do_update.setEnabled(False)
+            else:
+                self.btn_do_update.setEnabled(bool(self._latest_release_asset_url or self._latest_release_url) and self.lbl_update_status.text().startswith("发现新版本"))
 
         self._latest_release_url: str | None = None
         self._latest_release_asset_url: str | None = None
+        self.btn_do_update.setEnabled(False)
 
         def do_check(done: dict) -> None:
             try:
@@ -185,15 +190,21 @@ class AdoReleaseTab(Tab):
                 ui(lambda: set_busy(False))
 
         def on_update_clicked() -> None:
+            if not (self._latest_release_asset_url or self._latest_release_url):
+                self._toast("提示", "请先点击【检查更新】", ok=False)
+                return
+
             ok = QtWidgets.QMessageBox.question(
                 self,
                 "确认更新",
-                "将从 GitHub 拉取 main 并重启应用。\n\n确认现在更新？",
+                "发现新版本，是否现在下载并安装？",
             )
             if ok != QtWidgets.QMessageBox.Yes:
                 return
+
+            # open download page (no in-app install yet)
             set_busy(True)
-            self.lbl_update_status.setText("更新中…")
+            self.lbl_update_status.setText("打开下载页面…")
 
             done = {"v": False}
 
@@ -201,9 +212,9 @@ class AdoReleaseTab(Tab):
                 if done["v"]:
                     return
                 set_busy(False)
-                show_error_dialog(self, "更新超时", "更新超过 3 分钟仍未完成。\n\n常见原因：pip 安装依赖卡住/网络慢。建议查看终端输出或稍后再试。")
+                show_error_dialog(self, "更新超时", "打开下载页面超时，请稍后再试。")
 
-            QtCore.QTimer.singleShot(180000, self, watchdog)
+            QtCore.QTimer.singleShot(12000, self, watchdog)
 
             import threading
 
