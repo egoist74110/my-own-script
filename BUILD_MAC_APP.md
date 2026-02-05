@@ -17,6 +17,18 @@ Output:
 
 - `dist/代码工具箱.app`
 
+## Build .dmg (installer)
+
+```bash
+cd ~/my-own-script
+bash pack_mac_app.sh
+bash pack_mac_dmg.sh
+```
+
+Output:
+
+- `dist/代码工具箱-<version>-mac.dmg`
+
 ## Move to Applications (optional)
 
 ```bash
