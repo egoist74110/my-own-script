@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
 
 
 class LibraryEntry(BaseModel):
@@ -19,6 +20,7 @@ class ProjectEntry(BaseModel):
 
 
 class FlowTaskConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     id: str = "sync_merge_build_release"
     enabled: bool = True
 
@@ -51,4 +53,5 @@ class UiSettings(BaseModel):
 
 
 class TaskSettings(BaseModel):
+    model_config = ConfigDict(extra="allow")
     flows: list[FlowTaskConfig] = Field(default_factory=list)

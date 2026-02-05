@@ -6,7 +6,16 @@ from dataclasses import asdict
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import ComboBox, LineEdit, PushButton
 
-from app_ado.ado_http import GitBranch, GitRepo, list_branches, list_repos
+from app_ado.ado_http import (
+    BuildPipeline,
+    GitBranch,
+    GitRepo,
+    list_branches,
+    list_build_definitions,
+    list_build_pipelines,
+    list_repos,
+)
+from app_ado.ado_release_http import ReleaseDefinition, ReleaseStage, get_release_stages, list_release_definitions
 from app_ado.models import FlowTaskConfig, UiSettings
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings
@@ -45,11 +54,25 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         self.source_combo = combo()
         self.target_combo = combo()
 
+        self.build_combo = combo()
+        self.release_combo = combo()
+
+        self.stage_list = QtWidgets.QListWidget()
+        self.stage_list.setFixedHeight(180)
+
         self.repo_path = LineEdit(); self.repo_path.setFixedWidth(420)
         self.btn_pick_path = PushButton("选择...")
 
         self.btn_refresh = PushButton("刷新 Repo/分支")
         self.btn_refresh.clicked.connect(self._refresh_repos_and_branches)
+
+        self.btn_refresh_build = PushButton("刷新构建列表")
+        self.btn_refresh_build.clicked.connect(self._refresh_builds)
+
+        self.btn_refresh_release = PushButton("刷新发布/阶段")
+        self.btn_refresh_release.clicked.connect(self._refresh_releases)
+
+        self.release_combo.currentIndexChanged.connect(self._on_release_changed)
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
@@ -59,6 +82,10 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("仓库(Repo)", self.repo_combo)
         form.addRow("源分支（要合并的）", self.source_combo)
         form.addRow("目标分支（合并到）", self.target_combo)
+
+        form.addRow("构建", self._row(self.build_combo, self.btn_refresh_build))
+        form.addRow("发布", self._row(self.release_combo, self.btn_refresh_release))
+        form.addRow("阶段（多选）", self.stage_list)
 
         root.addWidget(self.btn_refresh)
         root.addWidget(self.status)
@@ -91,6 +118,23 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 self.target_combo.addItem(flow.target_branch, userData=GitBranch(name=f"refs/heads/{flow.target_branch}"))
             self.target_combo.setCurrentIndex(0)
 
+        if flow.build_name:
+            if self.build_combo.count() == 0:
+                self.build_combo.addItem(flow.build_name, userData=BuildPipeline(id=flow.build_id or "", name=flow.build_name))
+            self.build_combo.setCurrentIndex(0)
+        if flow.release_name:
+            if self.release_combo.count() == 0:
+                self.release_combo.addItem(flow.release_name, userData=ReleaseDefinition(id=flow.release_id or "", name=flow.release_name))
+            self.release_combo.setCurrentIndex(0)
+
+        # stages prefill: just show names, will map after refresh
+        for sid, sname in zip(flow.release_stage_ids or [], flow.release_stage_names or [], strict=False):
+            it = QtWidgets.QListWidgetItem(sname)
+            it.setData(QtCore.Qt.UserRole, sid)
+            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+            it.setCheckState(QtCore.Qt.Checked)
+            self.stage_list.addItem(it)
+
         self.repo_path.setText(flow.local_repo_path)
 
     def _row(self, a: QtWidgets.QWidget, b: QtWidgets.QWidget) -> QtWidgets.QWidget:
@@ -120,6 +164,8 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
 
     def _set_loading(self, on: bool, msg: str = "") -> None:
         self.btn_refresh.setEnabled(not on)
+        self.btn_refresh_build.setEnabled(not on)
+        self.btn_refresh_release.setEnabled(not on)
         if msg:
             self.status.setText(msg)
 
@@ -137,7 +183,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
 
-        self._set_loading(True, "刷新中...")
+        self._set_loading(True, "刷新 Repo/分支...")
 
         import threading
 
@@ -147,17 +193,12 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             nonlocal result
             try:
                 repos = list_repos(lib.base_url, proj.collection, proj.project, pat=pat)
-                # pick repo
                 want_repo_id = self._flow.repo_id
                 rid = want_repo_id or (repos[0].id if repos else None)
                 branches: list[GitBranch] = []
                 if rid:
                     branches = list_branches(lib.base_url, proj.collection, proj.project, rid, pat=pat)
-                result = {
-                    "repos": repos,
-                    "repo_id": rid,
-                    "branches": branches,
-                }
+                result = {"repos": repos, "repo_id": rid, "branches": branches}
             except Exception as e:
                 result = e
 
@@ -195,6 +236,166 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             self.status.setText(f"刷新完成：repos={len(repos)} branches={len(branches)}")
 
         QtCore.QTimer.singleShot(80, finish)
+
+    def _refresh_builds(self) -> None:
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先新增并选择项目")
+            return
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return
+
+        self._set_loading(True, "刷新构建列表...")
+        import threading
+
+        result: dict | Exception | None = None
+
+        def run():
+            nonlocal result
+            try:
+                try:
+                    items = list_build_pipelines(lib.base_url, proj.collection, proj.project, pat=pat)
+                    kind = "pipeline"
+                except Exception:
+                    items = list_build_definitions(lib.base_url, proj.collection, proj.project, pat=pat)
+                    kind = "build_definition"
+                result = {"items": items, "kind": kind}
+            except Exception as e:
+                result = e
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish():
+            nonlocal result
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._set_loading(False)
+            if isinstance(result, Exception):
+                show_error_dialog(self, "刷新失败", str(result))
+                return
+            assert isinstance(result, dict)
+            items: list[BuildPipeline] = result.get("items") or []
+            kind = result.get("kind")
+
+            self.build_combo.clear()
+            for it in items:
+                self.build_combo.addItem(it.name, userData=it)
+
+            # preserve selection
+            want_id = self._flow.build_id
+            if items:
+                idx = 0
+                if want_id:
+                    for i in range(self.build_combo.count()):
+                        bb: BuildPipeline = self.build_combo.itemData(i)
+                        if bb and bb.id == want_id:
+                            idx = i
+                            break
+                self.build_combo.setCurrentIndex(idx)
+
+            self.status.setText(f"刷新完成：builds={len(items)} ({kind})")
+
+        QtCore.QTimer.singleShot(80, finish)
+
+    def _refresh_releases(self) -> None:
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先新增并选择项目")
+            return
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return
+
+        self._set_loading(True, "刷新发布/阶段...")
+        import threading
+
+        result: dict | Exception | None = None
+
+        def run():
+            nonlocal result
+            try:
+                # some servers require api-version=6.0 for release
+                try:
+                    defs = list_release_definitions(lib.base_url, proj.collection, proj.project, pat=pat, api_version="7.0")
+                    api_used = "7.0"
+                except Exception:
+                    defs = list_release_definitions(lib.base_url, proj.collection, proj.project, pat=pat, api_version="6.0")
+                    api_used = "6.0"
+
+                rid = self._flow.release_id or (defs[0].id if defs else None)
+                stages: list[ReleaseStage] = []
+                if rid:
+                    try:
+                        stages = get_release_stages(lib.base_url, proj.collection, proj.project, rid, pat=pat, api_version=api_used)
+                    except Exception:
+                        # try 6.0 fallback
+                        stages = get_release_stages(lib.base_url, proj.collection, proj.project, rid, pat=pat, api_version="6.0")
+                result = {"defs": defs, "rid": rid, "stages": stages}
+            except Exception as e:
+                result = e
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish():
+            nonlocal result
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._set_loading(False)
+            if isinstance(result, Exception):
+                show_error_dialog(self, "刷新失败", str(result))
+                return
+            assert isinstance(result, dict)
+            defs: list[ReleaseDefinition] = result.get("defs") or []
+            rid = result.get("rid")
+            stages: list[ReleaseStage] = result.get("stages") or []
+
+            self.release_combo.clear()
+            for d in defs:
+                self.release_combo.addItem(d.name, userData=d)
+
+            if defs:
+                idx = 0
+                if rid:
+                    for i in range(self.release_combo.count()):
+                        dd: ReleaseDefinition = self.release_combo.itemData(i)
+                        if dd and dd.id == rid:
+                            idx = i
+                            break
+                self.release_combo.setCurrentIndex(idx)
+
+            self._fill_stages(stages)
+            self.status.setText(f"刷新完成：releases={len(defs)} stages={len(stages)}")
+
+        QtCore.QTimer.singleShot(80, finish)
+
+    def _on_release_changed(self) -> None:
+        # stages are loaded on refresh; change selection doesn't auto-fetch in v1.
+        pass
+
+    def _fill_stages(self, stages: list[ReleaseStage]) -> None:
+        want_ids = set(self._flow.release_stage_ids or [])
+        self.stage_list.clear()
+        for s in stages:
+            it = QtWidgets.QListWidgetItem(s.name)
+            it.setData(QtCore.Qt.UserRole, s.id)
+            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
+            it.setCheckState(QtCore.Qt.Checked if s.id in want_ids else QtCore.Qt.Unchecked)
+            self.stage_list.addItem(it)
 
     def _fill_branches(self, branches: list[GitBranch]) -> None:
         want_src = self.source_combo.currentText().strip() or self._flow.source_branch
@@ -262,15 +463,34 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             show_error_dialog(self, "错误", "请选择本地仓库路径")
             return
 
-        updated = self._flow.model_copy(
-            update={
-                "project_id": proj.id,
-                "local_repo_path": local_path,
-                "repo_id": rr.id,
-                "repo_name": rr.name,
-                "source_branch": sb.short,
-                "target_branch": tb.short,
-            }
-        )
+        bp: BuildPipeline | None = self.build_combo.currentData()
+        rd: ReleaseDefinition | None = self.release_combo.currentData()
+
+        stage_ids: list[str] = []
+        stage_names: list[str] = []
+        for i in range(self.stage_list.count()):
+            it = self.stage_list.item(i)
+            if it.checkState() == QtCore.Qt.Checked:
+                sid = str(it.data(QtCore.Qt.UserRole) or "")
+                if sid:
+                    stage_ids.append(sid)
+                    stage_names.append(it.text())
+
+        update = {
+            "project_id": proj.id,
+            "local_repo_path": local_path,
+            "repo_id": rr.id,
+            "repo_name": rr.name,
+            "source_branch": sb.short,
+            "target_branch": tb.short,
+        }
+
+        if bp:
+            update.update({"build_kind": "pipeline", "build_id": bp.id, "build_name": bp.name})
+        if rd:
+            update.update({"release_id": rd.id, "release_name": rd.name})
+        update.update({"release_stage_ids": stage_ids, "release_stage_names": stage_names})
+
+        updated = self._flow.model_copy(update=update)
         self._result = updated
         super().accept()

@@ -17,6 +17,24 @@ class GitRepo:
 class GitBranch:
     name: str  # refs/heads/x
 
+
+@dataclass(frozen=True)
+class BuildPipeline:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class ReleaseDefinition:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class ReleaseStage:
+    id: str
+    name: str
+
     @property
     def short(self) -> str:
         return self.name.removeprefix("refs/heads/")
@@ -72,4 +90,58 @@ def list_branches(
         if name and str(name).startswith("refs/heads/"):
             out.append(GitBranch(name=str(name)))
     out.sort(key=lambda b: b.short.lower())
+    return out
+
+
+def list_build_pipelines(
+    base_url: str,
+    collection: str,
+    project: str,
+    *,
+    pat: str,
+    api_version: str = "7.0",
+) -> list[BuildPipeline]:
+    """List build pipelines.
+
+    Prefer the modern pipelines endpoint. Some servers may not support it; callers can
+    handle exceptions and use build definitions fallback if needed.
+    """
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines"
+    with _client(pat) as c:
+        r = c.get(url, params={"api-version": api_version})
+        r.raise_for_status()
+        data: Any = r.json()
+
+    out: list[BuildPipeline] = []
+    for x in data.get("value") or []:
+        pid = x.get("id")
+        name = x.get("name")
+        if pid is not None and name:
+            out.append(BuildPipeline(id=str(pid), name=str(name)))
+    out.sort(key=lambda p: p.name.lower())
+    return out
+
+
+def list_build_definitions(
+    base_url: str,
+    collection: str,
+    project: str,
+    *,
+    pat: str,
+    api_version: str = "7.0",
+) -> list[BuildPipeline]:
+    """Fallback: list classic build definitions."""
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/definitions"
+    with _client(pat) as c:
+        r = c.get(url, params={"api-version": api_version})
+        r.raise_for_status()
+        data: Any = r.json()
+
+    out: list[BuildPipeline] = []
+    for x in data.get("value") or []:
+        bid = x.get("id")
+        name = x.get("name")
+        if bid is not None and name:
+            out.append(BuildPipeline(id=str(bid), name=str(name)))
+    out.sort(key=lambda p: p.name.lower())
     return out
