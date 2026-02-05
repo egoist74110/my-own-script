@@ -204,6 +204,56 @@ class TasksTab(Tab):
             log.log(ok_msg)
             self._append_run_log(ok_msg)
 
+            # ---- Build (v3) ----
+            from app_ado.store import load_ui_settings
+            from app_ado.secrets import get_pat
+            from app_ado.ado_build_http import (
+                trigger_build_definition,
+                trigger_pipeline_run,
+                wait_build,
+                wait_pipeline,
+            )
+
+            settings = load_ui_settings()
+            proj = next((p for p in settings.projects if p.id == flow.project_id), None)
+            if not proj:
+                show_error_dialog(self.window(), "错误", "找不到项目配置（project_id）")
+                return
+            lib = next((l for l in settings.libraries if l.id == proj.library_id), None)
+            if not lib:
+                show_error_dialog(self.window(), "错误", "找不到代码库配置（library_id）")
+                return
+            pat = get_pat(lib.id)
+            if not pat:
+                show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
+                return
+
+            if not flow.build_id or not flow.build_kind:
+                show_error_dialog(self.window(), "配置不完整", "请先在【配置】里选择构建，并保存")
+                return
+
+            branch = flow.target_branch
+            self._append_run_log(f"\n--- Build: kind={flow.build_kind} id={flow.build_id} branch={branch} ---")
+
+            if flow.build_kind == "pipeline":
+                pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                self._append_run_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
+                pr2 = wait_pipeline(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat, timeout_min=30)
+                self._append_run_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
+                if (pr2.result or '').lower() not in ('succeeded', 'success'):
+                    show_error_dialog(self.window(), "构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
+                    return
+            else:
+                br = trigger_build_definition(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                self._append_run_log(f"已触发 Build：build_id={br.build_id} status={br.status} url={br.url or ''}")
+                br2 = wait_build(lib.base_url, proj.collection, proj.project, br.build_id, pat=pat, timeout_min=30)
+                self._append_run_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
+                if (br2.result or '').lower() not in ('succeeded', 'success', 'partiallysucceeded'):
+                    show_error_dialog(self.window(), "构建失败", f"Build result={br2.result}\n{br2.url or ''}")
+                    return
+
+            self._append_run_log("✅ 构建成功（下一步：接入 Release 触发+监控）")
+
         except Exception as e:
             show_error_dialog(self.window(), "运行异常", str(e))
             return

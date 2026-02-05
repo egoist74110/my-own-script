@@ -26,6 +26,7 @@ class GitBranch:
 class BuildPipeline:
     id: str
     name: str
+    kind: str  # pipeline | build_definition
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,7 @@ def list_build_pipelines(
         pid = x.get("id")
         name = x.get("name")
         if pid is not None and name:
-            out.append(BuildPipeline(id=str(pid), name=str(name)))
+            out.append(BuildPipeline(id=str(pid), name=str(name), kind="pipeline"))
     out.sort(key=lambda p: p.name.lower())
     return out
 
@@ -142,6 +143,6 @@ def list_build_definitions(
         bid = x.get("id")
         name = x.get("name")
         if bid is not None and name:
-            out.append(BuildPipeline(id=str(bid), name=str(name)))
+            out.append(BuildPipeline(id=str(bid), name=str(name), kind="build_definition"))
     out.sort(key=lambda p: p.name.lower())
     return out

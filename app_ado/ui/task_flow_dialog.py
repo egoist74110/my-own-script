@@ -120,7 +120,10 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
 
         if flow.build_name:
             if self.build_combo.count() == 0:
-                self.build_combo.addItem(flow.build_name, userData=BuildPipeline(id=flow.build_id or "", name=flow.build_name))
+                self.build_combo.addItem(
+                    flow.build_name,
+                    userData=BuildPipeline(id=flow.build_id or "", name=flow.build_name, kind=flow.build_kind or "pipeline"),
+                )
             self.build_combo.setCurrentIndex(0)
         if flow.release_name:
             if self.release_combo.count() == 0:
@@ -506,7 +509,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         }
 
         if bp:
-            update.update({"build_kind": "pipeline", "build_id": bp.id, "build_name": bp.name})
+            update.update({"build_kind": bp.kind, "build_id": bp.id, "build_name": bp.name})
         if rd:
             update.update({"release_id": rd.id, "release_name": rd.name})
         update.update({"release_stage_ids": stage_ids, "release_stage_names": stage_names})
