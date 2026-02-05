@@ -6,9 +6,9 @@ REPO_DIR="${REPO_DIR:-$HOME/my-own-script}"
 OUT_DIR="${OUT_DIR:-$REPO_DIR/dist}"
 APP_PATH="$OUT_DIR/$APP_NAME.app"
 
-# Version from source (optional)
-VERSION="0.1.0"
-if [ -f "$REPO_DIR/app_version.py" ]; then
+# Version: env VERSION overrides, else from source
+VERSION="${VERSION:-0.1.0}"
+if [ -z "${VERSION:-}" ] && [ -f "$REPO_DIR/app_version.py" ]; then
   if [ -x "$REPO_DIR/.venv/bin/python" ]; then
     VERSION=$(cd "$REPO_DIR" && "$REPO_DIR/.venv/bin/python" -c 'import app_version; print(app_version.__version__)' 2>/dev/null || echo "$VERSION")
   else
