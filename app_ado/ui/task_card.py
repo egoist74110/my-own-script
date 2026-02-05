@@ -36,9 +36,17 @@ class TaskCard(ExpandSettingCard):
         self.log_box = QtWidgets.QPlainTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setPlaceholderText("运行日志（每次运行会清空并写入新日志）")
+        # prevent the card from looking "extra long" when collapsed/expanded
+        self.log_box.setFixedHeight(220)
         self.viewLayout.addWidget(self.log_box)
 
+        # Make header actions less cramped
+        self.btn_config.setFixedWidth(72)
+        self.btn_run.setFixedWidth(72)
+        self.card.hBoxLayout.setSpacing(12)
+
         self.setExpand(False)
+        self._adjustViewSize()
 
     def clear_log(self) -> None:
         self.log_box.clear()
