@@ -4,6 +4,17 @@ set -euo pipefail
 APP_NAME="代码工具箱"
 REPO_DIR="${REPO_DIR:-$HOME/my-own-script}"
 OUT_DIR="${OUT_DIR:-$REPO_DIR/dist}"
+
+# Version from source
+VERSION="0.1.0"
+if [ -x "$REPO_DIR/.venv/bin/python" ]; then
+  VERSION=$(
+    cd "$REPO_DIR" && "$REPO_DIR/.venv/bin/python" -c 'import app_version; print(app_version.__version__)' 2>/dev/null || echo "0.1.0"
+  )
+else
+  VERSION=$(cd "$REPO_DIR" && python3 -c 'import app_version; print(app_version.__version__)' 2>/dev/null || echo "0.1.0")
+fi
+
 APP_DIR="$OUT_DIR/$APP_NAME.app"
 
 # Use repo logo.png as the icon source (1024 preferred)
@@ -52,8 +63,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSUIElement</key><false/>
 PLIST

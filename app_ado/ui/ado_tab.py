@@ -5,7 +5,7 @@ import uuid
 from PySide6 import QtCore
 from PySide6 import QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget, LineEdit
+from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget
 
 from app_ado.models import UiSettings
 from app_ado.store import load_ui_settings, save_ui_settings
@@ -31,6 +31,7 @@ class AdoReleaseTab(Tab):
         self._build_library_card()
         self._build_project_card()
         self._build_telegram_card()
+        self._build_update_card()
 
     def _toast(self, title: str, content: str, ok: bool = True) -> None:
         InfoBar.success(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window()) if ok else \
@@ -92,6 +93,95 @@ class AdoReleaseTab(Tab):
 
         self.add_card("项目（本地配置）", w)
         self._refresh_proj_combo()
+
+    def _build_update_card(self) -> None:
+        """Manual update UX: check updates + update now."""
+        from app_version import __version__
+        from app_ado.updater import check_git_clean, get_update_status, pip_sync, pull_ff_only, repo_root, restart_self
+
+        w = CardWidget(self)
+        form = QFormLayout(w)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        self.lbl_version = QtWidgets.QLabel(__version__)
+        self.lbl_update_status = QtWidgets.QLabel("未检查")
+
+        self.btn_check_update = PushButton("检查更新")
+        self.btn_do_update = PushButton("立即更新并重启")
+
+        form.addRow("当前版本", self.lbl_version)
+        form.addRow("更新状态", self.lbl_update_status)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addWidget(self.btn_check_update)
+        btn_row.addWidget(self.btn_do_update)
+        form.addRow(btn_row)
+
+        def set_busy(busy: bool) -> None:
+            self.btn_check_update.setEnabled(not busy)
+            self.btn_do_update.setEnabled(not busy)
+
+        def do_check() -> None:
+            try:
+                root = repo_root()
+                clean, dirty = check_git_clean(root)
+                if not clean:
+                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("仓库有未提交改动，已跳过"))
+                    return
+                st = get_update_status(root, branch="main")
+                if st.behind <= 0:
+                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("已是最新"))
+                else:
+                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText(f"可更新：落后 {st.behind} 个提交"))
+            except Exception as e:
+                QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "检查更新失败", str(e)))
+            finally:
+                QtCore.QTimer.singleShot(0, lambda: set_busy(False))
+
+        def on_check_clicked() -> None:
+            set_busy(True)
+            self.lbl_update_status.setText("检查中…")
+            import threading
+
+            threading.Thread(target=do_check, daemon=True).start()
+
+        def do_update() -> None:
+            try:
+                root = repo_root()
+                clean, _dirty = check_git_clean(root)
+                if not clean:
+                    raise RuntimeError("仓库有未提交改动，已跳过更新")
+                st = get_update_status(root, branch="main")
+                if st.behind <= 0:
+                    QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("已是最新"))
+                    return
+                pull_ff_only(root, branch="main")
+                pip_sync(root)
+                QtCore.QTimer.singleShot(0, lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
+                QtCore.QTimer.singleShot(500, restart_self)
+            except Exception as e:
+                QtCore.QTimer.singleShot(0, lambda: show_error_dialog(self, "更新失败", str(e)))
+            finally:
+                QtCore.QTimer.singleShot(0, lambda: set_busy(False))
+
+        def on_update_clicked() -> None:
+            ok = QtWidgets.QMessageBox.question(
+                self,
+                "确认更新",
+                "将从 GitHub 拉取 main 并重启应用。\n\n确认现在更新？",
+            )
+            if ok != QtWidgets.QMessageBox.Yes:
+                return
+            set_busy(True)
+            self.lbl_update_status.setText("更新中…")
+            import threading
+
+            threading.Thread(target=do_update, daemon=True).start()
+
+        self.btn_check_update.clicked.connect(on_check_clicked)
+        self.btn_do_update.clicked.connect(on_update_clicked)
+
+        self.add_card("更新", w)
 
     # --- libraries ---
     def _refresh_lib_combo(self, *, select_id: str | None = None) -> None:
