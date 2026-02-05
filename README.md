@@ -1,3 +1,67 @@
+# my-own-script
+
+这个仓库目前包含两部分：
+
+1) **代码工具箱（macOS）**：面向日常研发/运维的桌面工具（当前主要是 Azure DevOps Server 的“同步/构建/发布”一键执行器），支持 UI 配置、任务日志、Telegram 通知与指令控制、以及从 GitHub `main` 拉取更新后自动重启。
+2) **ok-script**：基于图像识别的纯 Python 自动化测试框架（Windows/模拟器/ADB）。
+
+---
+
+# 代码工具箱（macOS）
+
+## 功能概览
+
+- Azure DevOps Server：
+  - PAT（Keychain/keyring）安全存储
+  - 支持项目/代码库配置
+  - 任务：
+    - 同步 + 合并 + 构建 + 发布（支持多 target 串行执行，失败即停）
+    - 同步 + 构建 + 发布（无合并，同样支持多 target）
+  - Build：兼容 Pipelines 与 Build Definitions
+  - Release：创建 Release、自动启动 notStarted 环境、监控选定 stages
+- UI/UX：
+  - PySide6 + Fluent 风格，任务卡片、实时日志、停止按钮（非回滚）
+  - 错误统一弹窗（可滚动详情）
+- Telegram：
+  - 通知：仅 **开始** + **最终结果** 两条
+  - 控制：/help、/run、/stop、/status、以及直接任务命令（含 ACL）
+- 更新：
+  - 配置页提供 **检查更新** / **立即更新并重启**（基于 `git pull --ff-only origin main`）
+
+## 技术栈
+
+- Python 3.14（本机 venv）
+- UI：PySide6、PySide6-Fluent-Widgets（qfluentwidgets）
+- 网络：httpx
+- 配置/模型：PyYAML、pydantic
+- Secrets：keyring（macOS Keychain）
+- 打包：wrapper `.app` + `.dmg`（非 standalone，依赖本机 repo+venv）
+
+## 本地运行（macOS）
+
+```bash
+cd ~/my-own-script
+bash dev_run.sh
+```
+
+> macOS 依赖使用 `requirements-mac.txt`（避免 Windows-only 依赖）。
+
+## 构建 macOS App / DMG
+
+```bash
+cd ~/my-own-script
+bash pack_mac_app.sh
+bash pack_mac_dmg.sh
+```
+
+输出：
+- `dist/代码工具箱.app`
+- `dist/代码工具箱-<version>-mac.dmg`
+
+入口：`app_main.py`
+
+---
+
 # ok-script
 * ok-script 是基于图像识别技术, 纯Python实现的, 支持Windows窗口和模拟器的自动化测试框架。
 * 框架包含UI, 截图, 输入, 设备控制, OCR, 模板匹配, 框框Debug浮层, 基于Github Action的测试, 打包, 升级/降级。
