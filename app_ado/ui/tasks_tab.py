@@ -107,7 +107,25 @@ class TasksTab(Tab):
         return "空闲"
 
     def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None) -> None:
-        """Run in a background Python thread to keep UI responsive."""
+        """Run in a background Python thread to keep UI responsive.
+
+        Note: single-flight. Only one task can run at a time.
+        """
+
+        if self._running:
+            msg = f"已有任务运行中：{self._running_task}。请等待完成或先 /stop"
+            if tg_reply_chat_id:
+                try:
+                    from app_ado.secrets import get_telegram_token
+                    from app_ado.notifier_telegram import send_telegram_message
+
+                    token = get_telegram_token()
+                    if token:
+                        send_telegram_message(bot_token=token, chat_id=tg_reply_chat_id, text="⛔ 无法执行\n" + msg)
+                except Exception:
+                    pass
+            show_error_dialog(self.window(), "无法执行", msg)
+            return
         ts = load_task_settings()
         flow = next((f for f in ts.flows if f.id == flow_id), None)
         if not flow:
