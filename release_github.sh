@@ -24,6 +24,25 @@ DMG_PATH="$OUT_DIR/$APP_NAME-$VERSION-mac.dmg"
 
 cd "$REPO_DIR"
 
+# Ensure app_version matches the release version to avoid always-prompting updates.
+if [ -f "$REPO_DIR/app_version.py" ]; then
+  echo "==> Sync app_version.py -> $VERSION"
+  cat > "$REPO_DIR/app_version.py" <<PY
+"""Single source of truth for the app version.
+
+Keep this in sync with release notes / packaging.
+"""
+
+__version__ = "$VERSION"
+PY
+  # Commit version bump if needed
+  if ! git diff --quiet -- app_version.py; then
+    git add app_version.py
+    git commit -m "chore: bump version to $VERSION" || true
+    git push || true
+  fi
+fi
+
 if ! command -v gh >/dev/null 2>&1; then
   echo "[ERR] gh CLI not found. Install it first: https://cli.github.com/"
   exit 1
