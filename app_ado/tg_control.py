@@ -154,26 +154,41 @@ class TelegramController:
         cmd = parts[0].lower()
 
         if cmd in ("/help", "/start"):
+            task_help = {
+                "sync_build_release": "CG_Vue_Front全平台发布",
+                "sync_merge_build_release": "聊天分支合并dcr发布",
+            }
+
+            def fmt_run(task_id: str) -> str:
+                return f"/run {task_id}  # {task_help.get(task_id, '')}".rstrip()
+
             if role == "owner":
                 msg = (
                     "可用命令：\n"
-                    "/run sync_build_release\n"
-                    "/run sync_merge_build_release\n"
-                    "/status\n"
-                    "/stop\n"
-                    "/help"
+                    + fmt_run("sync_build_release")
+                    + "\n"
+                    + fmt_run("sync_merge_build_release")
+                    + "\n"
+                    + "/status  # 查看当前运行状态\n"
+                    + "/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n"
+                    + "/help"
                 )
             else:
                 # Non-owner: show only runnable tasks
-                allowed_tasks = []
+                lines: list[str] = []
                 if self._can(role, group, "run", task_id="sync_build_release"):
-                    allowed_tasks.append("/run sync_build_release")
+                    lines.append(fmt_run("sync_build_release"))
                 if self._can(role, group, "run", task_id="sync_merge_build_release"):
-                    allowed_tasks.append("/run sync_merge_build_release")
-                if not allowed_tasks:
+                    lines.append(fmt_run("sync_merge_build_release"))
+                if not lines:
                     msg = "当前无可运行任务权限。请联系管理员分配权限。"
                 else:
-                    msg = "可用任务命令：\n" + "\n".join(allowed_tasks)
+                    msg = "可用任务命令：\n" + "\n".join(lines)
+
+                # only show /stop if allowed
+                if self._can(role, group, "stop"):
+                    msg += "\n/stop  # 停止自己触发的任务"
+
             self._reply(token, ctx.chat_id, msg)
             return
 
