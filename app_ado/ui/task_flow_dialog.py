@@ -77,12 +77,19 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 if self.project_combo.itemData(i) == flow.project_id:
                     self.project_combo.setCurrentIndex(i)
                     break
+        # QFluentWidgets ComboBox is selection-only; to "echo" saved values we must ensure they exist as items.
         if flow.repo_name:
-            self.repo_combo.setCurrentText(flow.repo_name)
+            if self.repo_combo.count() == 0:
+                self.repo_combo.addItem(flow.repo_name, userData=GitRepo(id=flow.repo_id or "", name=flow.repo_name))
+            self.repo_combo.setCurrentIndex(0)
         if flow.source_branch:
-            self.source_combo.setCurrentText(flow.source_branch)
+            if self.source_combo.count() == 0:
+                self.source_combo.addItem(flow.source_branch, userData=GitBranch(name=f"refs/heads/{flow.source_branch}"))
+            self.source_combo.setCurrentIndex(0)
         if flow.target_branch:
-            self.target_combo.setCurrentText(flow.target_branch)
+            if self.target_combo.count() == 0:
+                self.target_combo.addItem(flow.target_branch, userData=GitBranch(name=f"refs/heads/{flow.target_branch}"))
+            self.target_combo.setCurrentIndex(0)
 
         self.repo_path.setText(flow.local_repo_path)
 
