@@ -321,9 +321,20 @@ class TasksTab(Tab):
                     s = (status or "").lower()
                     return s in {"succeeded", "rejected", "canceled", "failed"}
 
-                want = set(stage_ids)
+                want_ids = set(stage_ids)
+                want_names = set(flow.release_stage_names or [])
                 deadline = time.time() + 60 * 60
                 last_line = ""
+                printed_debug = False
+
+                def select_envs(envs):
+                    by_id = [e for e in envs if e.id in want_ids]
+                    if by_id:
+                        return by_id, "id"
+                    by_name = [e for e in envs if e.name in want_names]
+                    if by_name:
+                        return by_name, "name"
+                    return [], "none"
 
                 while time.time() < deadline:
                     try:
@@ -332,12 +343,19 @@ class TasksTab(Tab):
                         emit_error("监控失败", str(e))
                         return
 
-                    selected = [e for e in envs if e.id in want]
+                    selected, mode = select_envs(envs)
                     if not selected:
                         line = "监控：等待阶段进入 release（环境列表尚未出现/未匹配）"
+                        if not printed_debug:
+                            avail = "\n".join([f"- {e.name} (id={e.id}) status={e.status}" for e in envs])
+                            emit_log("调试：期望阶段IDs=" + ",".join(sorted(want_ids)))
+                            if want_names:
+                                emit_log("调试：期望阶段Names=" + " | ".join(flow.release_stage_names or []))
+                            emit_log("调试：当前Release environments：\n" + (avail or "(空)"))
+                            printed_debug = True
                     else:
                         parts = [f"{e.name}({e.id})={e.status}" for e in selected]
-                        line = "监控：" + " | ".join(parts)
+                        line = f"监控(mode={mode})：" + " | ".join(parts)
 
                     # avoid spamming identical lines
                     if line != last_line:
