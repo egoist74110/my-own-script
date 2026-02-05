@@ -84,7 +84,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
         form.addRow("仓库(Repo)", self.repo_combo)
         form.addRow("源分支（要合并的）", self.source_combo)
-        form.addRow("目标分支（合并到）", self.target_combo)
+        form.addRow("分支" if not self._needs_merge else "目标分支", self.target_combo)
 
         if not self._needs_merge:
             # Hide source branch row for sync+build+release task
@@ -317,6 +317,10 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(80, finish)
 
     def _refresh_releases(self) -> None:
+        # Preserve current release selection when refreshing
+        current_def: ReleaseDefinition | None = self.release_combo.currentData()
+        want_release_id = (current_def.id if current_def and current_def.id else None) or self._flow.release_id
+
         proj = self._selected_project()
         if not proj:
             show_error_dialog(self, "错误", "请先新增并选择项目")
@@ -346,7 +350,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                     defs = list_release_definitions(lib.base_url, proj.collection, proj.project, pat=pat, api_version="6.0")
                     api_used = "6.0"
 
-                rid = self._flow.release_id or (defs[0].id if defs else None)
+                rid = want_release_id or (defs[0].id if defs else None)
                 stages: list[ReleaseStage] = []
                 if rid:
                     try:
