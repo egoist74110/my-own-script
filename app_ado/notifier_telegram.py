@@ -6,7 +6,7 @@ import httpx
 def send_telegram_message(*, bot_token: str, chat_id: str, text: str, timeout_sec: float = 10.0) -> None:
     """Send Telegram message via Bot API.
 
-    Raises exception on non-2xx.
+    Raises RuntimeError with readable Telegram error payload.
     """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
@@ -15,8 +15,13 @@ def send_telegram_message(*, bot_token: str, chat_id: str, text: str, timeout_se
         "disable_web_page_preview": True,
     }
     with httpx.Client(timeout=httpx.Timeout(timeout_sec, connect=5.0), follow_redirects=False) as c:
-        r = c.post(url, data=payload)
-        r.raise_for_status()
+        try:
+            r = c.post(url, data=payload)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            body = e.response.text if e.response is not None else ""
+            raise RuntimeError(f"Telegram HTTP {e.response.status_code if e.response else ''}: {body}") from e
+
         data = r.json()
         if not data.get("ok"):
             raise RuntimeError(f"telegram send failed: {data}")
