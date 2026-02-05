@@ -14,9 +14,13 @@ class TelegramChatCandidate:
     username: str | None = None
 
 
-def get_updates(*, bot_token: str, offset: int | None = None, timeout_sec: float = 8.0) -> dict[str, Any]:
+def get_updates(*, bot_token: str, offset: int | None = None, timeout: int = 0, timeout_sec: float = 25.0) -> dict[str, Any]:
     url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-    params: dict[str, Any] = {"timeout": 0}
+    params: dict[str, Any] = {
+        "timeout": int(timeout),
+        # restrict updates for stability
+        "allowed_updates": ["message", "channel_post"],
+    }
     if offset is not None:
         params["offset"] = offset
     with httpx.Client(timeout=httpx.Timeout(timeout_sec, connect=5.0), follow_redirects=False) as c:
@@ -28,8 +32,9 @@ def get_updates(*, bot_token: str, offset: int | None = None, timeout_sec: float
     return data
 
 
-def list_chat_candidates(*, bot_token: str, limit: int = 20) -> list[TelegramChatCandidate]:
-    data = get_updates(bot_token=bot_token)
+def list_chat_candidates(*, bot_token: str, limit: int = 20, long_poll_sec: int = 20) -> list[TelegramChatCandidate]:
+    # long poll once to reliably receive the latest message
+    data = get_updates(bot_token=bot_token, timeout=long_poll_sec)
     items = (data.get("result") or [])[-limit:]
 
     seen: set[str] = set()
