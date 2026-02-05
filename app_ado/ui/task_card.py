@@ -9,12 +9,15 @@ class TaskCard(ExpandSettingCard):
 
     run_clicked = QtCore.Signal()
     config_clicked = QtCore.Signal()
+    stop_clicked = QtCore.Signal()
 
     def __init__(self, *, title: str, subtitle: str = "") -> None:
         super().__init__(FluentIcon.APPLICATION, title, subtitle)
 
         self.btn_config = PushButton("配置")
         self.btn_run = PushButton("运行")
+        self.btn_stop = PushButton("停止")
+        self.btn_stop.setEnabled(False)
 
         # Use the card's built-in expand button; do NOT add extra dropdown arrow.
         # Put action buttons on the right, just to the left of the expand button.
@@ -25,12 +28,15 @@ class TaskCard(ExpandSettingCard):
             # fallback
             layout.addWidget(self.btn_config)
             layout.addWidget(self.btn_run)
+            layout.addWidget(self.btn_stop)
         else:
+            layout.insertWidget(idx, self.btn_stop, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_run, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_config, 0, QtCore.Qt.AlignRight)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
+        self.btn_stop.clicked.connect(self.stop_clicked.emit)
 
         # Per-task log box in expandable panel
         self.log_box = QtWidgets.QPlainTextEdit()
@@ -51,6 +57,7 @@ class TaskCard(ExpandSettingCard):
     def set_actions_enabled(self, on: bool) -> None:
         self.btn_config.setEnabled(on)
         self.btn_run.setEnabled(on)
+        self.btn_stop.setEnabled(not on)
 
     def clear_log(self) -> None:
         self.log_box.clear()

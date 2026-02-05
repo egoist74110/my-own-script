@@ -30,6 +30,7 @@ class TasksTab(Tab):
 
     def __init__(self):
         super().__init__()
+        self._stop_event = None
 
         # One task card for now; can add more later.
         self.flow_card = TaskCard(
@@ -38,6 +39,17 @@ class TasksTab(Tab):
         )
         self.flow_card.config_clicked.connect(self._edit)
         self.flow_card.run_clicked.connect(self._run)
+        self.flow_card.stop_clicked.connect(self._stop)
+        self.add_widget(self.flow_card)
+
+        # One task card for now; can add more later.
+        self.flow_card = TaskCard(
+            title="同步/合并 + 构建 + 发布",
+            subtitle="把源分支合并到目标分支，然后构建并发布（后续会接入ADO流水线）",
+        )
+        self.flow_card.config_clicked.connect(self._edit)
+        self.flow_card.run_clicked.connect(self._run)
+        self.flow_card.stop_clicked.connect(self._stop)
         self.add_widget(self.flow_card)
 
     def _clear_run_log(self) -> None:
@@ -117,6 +129,9 @@ class TasksTab(Tab):
         import subprocess
         import shlex
 
+        # stop support
+        self._stop_event = threading.Event()
+
         q: queue.Queue[tuple[str, str]] = queue.Queue()
         # ('log'|'error'|'done', payload)
 
@@ -125,6 +140,9 @@ class TasksTab(Tab):
 
         def emit_log(text: str) -> None:
             q.put(("log", text))
+
+        def should_stop() -> bool:
+            return bool(self._stop_event and self._stop_event.is_set())
 
         def emit_error(title: str, details: str) -> None:
             q.put(("error", title + "\n" + details))
@@ -144,6 +162,10 @@ class TasksTab(Tab):
                     if cp.stderr:
                         emit_log(cp.stderr.strip())
                     return cp
+
+                if should_stop():
+                    emit_log("已停止：用户取消")
+                    return
 
                 # verify git repo
                 cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
@@ -168,6 +190,9 @@ class TasksTab(Tab):
                     return
 
                 for br in [flow.source_branch, flow.target_branch]:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
                     cp = run_cmd(["git", "checkout", br])
                     if cp.returncode != 0:
                         emit_error("错误", f"checkout 失败: {br}")
@@ -204,10 +229,15 @@ class TasksTab(Tab):
                     f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
                 )
 
+                if should_stop():
+                    emit_log("已停止：用户取消")
+                    return
+
                 # ---- Build (v3) ----
                 from app_ado.store import load_ui_settings
                 from app_ado.secrets import get_pat
                 from app_ado.ado_build_http import (
+                    get_pipeline_run,
                     trigger_build_definition,
                     trigger_pipeline_run,
                     wait_build,
@@ -237,7 +267,22 @@ class TasksTab(Tab):
                     pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
                     build_run_id = pr.run_id
                     emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
-                    pr2 = wait_pipeline(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat, timeout_min=30)
+                    # wait with stop checks
+                    import time
+                    deadline = time.time() + 30 * 60
+                    pr2 = None
+                    while time.time() < deadline:
+                        if should_stop():
+                            emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                            return
+                        pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat)
+                        if (pr_cur.state or '').lower() == 'completed':
+                            pr2 = pr_cur
+                            break
+                        time.sleep(4.0)
+                    if pr2 is None:
+                        emit_error("构建超时", f"Pipeline run timeout (run_id={pr.run_id})")
+                        return
                     emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
                     if (pr2.result or '').lower() not in ('succeeded', 'success'):
                         emit_error("构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
@@ -402,7 +447,12 @@ class TasksTab(Tab):
                         emit_log(rel.url or "")
                         return
 
-                    time.sleep(10.0)
+                    # sleep in small steps so Stop reacts quickly
+                    for _ in range(10):
+                        if should_stop():
+                            emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
+                            return
+                        time.sleep(1.0)
 
                 emit_error("发布超时", f"Release 监控超时（60min）：{rel.url or ''}")
                 return
@@ -445,3 +495,8 @@ class TasksTab(Tab):
         th = threading.Thread(target=worker, daemon=True)
         th.start()
         QtCore.QTimer.singleShot(120, flush)
+
+    def _stop(self) -> None:
+        if self._stop_event is not None:
+            self._stop_event.set()
+            self._append_run_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
