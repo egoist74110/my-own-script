@@ -29,6 +29,20 @@ Output:
 
 - `dist/代码工具箱-<version>-mac.dmg`
 
+## Publish to GitHub Releases (auto upload)
+
+Prerequisite: install and login `gh` CLI.
+
+```bash
+cd ~/my-own-script
+bash release_github.sh
+```
+
+This will:
+- build `.app` + `.dmg`
+- create or update release tag `v<version>`
+- upload the `.dmg` as release asset
+
 ## Move to Applications (optional)
 
 ```bash
