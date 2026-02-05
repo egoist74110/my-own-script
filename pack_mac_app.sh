@@ -21,7 +21,38 @@ rm -rf "$APP_DIR" "$ICONSET_DIR" "$ICNS_OUT"
 if [ -f "$ICON_SRC" ]; then
   mkdir -p "$ICONSET_DIR"
   BASE_PNG="$OUT_DIR/_icon_base.png"
-  sips -s format png "$ICON_SRC" --out "$BASE_PNG" >/dev/null
+  # Create a rounded (circle masked) base png so Dock icon looks round
+  if [ -x "$REPO_DIR/.venv/bin/python" ]; then
+    export ICON_SRC BASE_PNG
+    "$REPO_DIR/.venv/bin/python" - <<'PY'
+from PIL import Image, ImageDraw
+import os
+
+src = os.environ['ICON_SRC']
+out = os.environ['BASE_PNG']
+
+im = Image.open(src).convert('RGBA')
+# ensure square
+size = max(im.size)
+canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+canvas.paste(im, ((size - im.size[0])//2, (size - im.size[1])//2), im)
+
+# circle mask
+mask = Image.new('L', (size, size), 0)
+d = ImageDraw.Draw(mask)
+d.ellipse((0, 0, size-1, size-1), fill=255)
+
+rounded = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+rounded.paste(canvas, (0, 0), mask)
+
+# output 1024 png for sips
+rounded = rounded.resize((1024, 1024), Image.LANCZOS)
+rounded.save(out)
+PY
+  else
+    # fallback
+    sips -s format png "$ICON_SRC" --out "$BASE_PNG" >/dev/null
+  fi
 
   # generate pngs from a real png to keep iconutil happy
   sips -z 16 16   "$BASE_PNG" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
