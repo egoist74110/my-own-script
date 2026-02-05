@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,48 +14,20 @@ from app_ado.ui.tasks_tab import TasksTab
 
 def main() -> None:
     app = QApplication(sys.argv)
-    # macOS menu bar app name
     app.setApplicationName("代码工具箱")
 
     base = Path(__file__).resolve().parent
 
-    # Prefer icns when launched from our .app wrapper (so Dock icon matches app bundle icon)
-    import os
-
-    icon_path_str = os.environ.get("TOOLBOX_APP_ICON")
-    icon_path = Path(icon_path_str) if icon_path_str else None
-
-    if not icon_path or not icon_path.exists():
-        # fallback to repo assets
-        p1 = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "256.png"
-        p2 = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "512.png"
-        p3 = base / "logo.jpg"
-        icon_path = p1 if p1.exists() else (p2 if p2.exists() else p3)
-
-    fixed_icon = QIcon(str(icon_path)) if icon_path and icon_path.exists() else None
-    if fixed_icon is not None:
-        app.setWindowIcon(fixed_icon)
-
-        # Prevent other modules from overriding the Dock icon later.
-        # (Some upstream components may call setWindowIcon during/after UI init.)
-        from PySide6.QtWidgets import QWidget
-
-        _orig_app_set = QApplication.setWindowIcon
-        _orig_w_set = QWidget.setWindowIcon
-
-        def _app_set(self, _icon):
-            return _orig_app_set(self, fixed_icon)
-
-        def _w_set(self, _icon):
-            return _orig_w_set(self, fixed_icon)
-
-        QApplication.setWindowIcon = _app_set  # type: ignore
-        QWidget.setWindowIcon = _w_set  # type: ignore
+    # Keep icon logic simple: prefer bundled icns when launched from .app wrapper.
+    icon_path = Path(os.environ.get("TOOLBOX_APP_ICON") or (base / "logo.png"))
+    if icon_path.exists():
+        ico = QIcon(str(icon_path))
+        app.setWindowIcon(ico)
 
     w = MSFluentWindow()
     w.setWindowTitle("代码工具箱")
-    if fixed_icon is not None:
-        w.setWindowIcon(fixed_icon)
+    if icon_path.exists():
+        w.setWindowIcon(QIcon(str(icon_path)))
 
     tasks = TasksTab()
     ado = AdoReleaseTab()
@@ -65,26 +38,11 @@ def main() -> None:
     tg = TelegramController(on_run=tasks.run_task, on_stop=tasks.stop_task, on_status=tasks.status_text)
     tg.start()
 
-    # Put "任务" first in the left navigation.
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
-
-    # Rename ADO tab to be more intuitive.
     w.addSubInterface(ado, FluentIcon.APPLICATION, "配置")
 
     w.resize(1100, 760)
     w.show()
-
-    # Some frameworks may override the icon after UI init; re-apply to keep Dock icon correct.
-    from PySide6 import QtCore
-
-    def reapply_icon():
-        if icon_path and icon_path.exists():
-            ico = QIcon(str(icon_path))
-            app.setWindowIcon(ico)
-            w.setWindowIcon(ico)
-
-    QtCore.QTimer.singleShot(200, reapply_icon)
-    QtCore.QTimer.singleShot(2000, reapply_icon)
 
     # Auto-update on startup (GitHub): check -> pull(main) -> pip -> restart
     from PySide6 import QtCore

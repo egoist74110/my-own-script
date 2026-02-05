@@ -6,11 +6,8 @@ REPO_DIR="${REPO_DIR:-$HOME/my-own-script}"
 OUT_DIR="${OUT_DIR:-$REPO_DIR/dist}"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
 
-# Prefer generated iconset PNG if present
-ICON_SRC="$REPO_DIR/logo/Assets.xcassets/AppIcon.appiconset/1024.png"
-if [ ! -f "$ICON_SRC" ]; then
-  ICON_SRC="$REPO_DIR/logo.jpg"
-fi
+# Use repo logo.png as the icon source (1024 preferred)
+ICON_SRC="$REPO_DIR/logo.png"
 ICONSET_DIR="$OUT_DIR/AppIcon.iconset"
 ICNS_OUT="$OUT_DIR/AppIcon.icns"
 
@@ -21,50 +18,7 @@ rm -rf "$APP_DIR" "$ICONSET_DIR" "$ICNS_OUT"
 if [ -f "$ICON_SRC" ]; then
   mkdir -p "$ICONSET_DIR"
   BASE_PNG="$OUT_DIR/_icon_base.png"
-  # Create a rounded (circle masked) base png so Dock icon looks round
-  if [ -x "$REPO_DIR/.venv/bin/python" ]; then
-    export ICON_SRC BASE_PNG
-    "$REPO_DIR/.venv/bin/python" - <<'PY'
-from PIL import Image, ImageDraw
-import os
-
-src = os.environ['ICON_SRC']
-out = os.environ['BASE_PNG']
-
-im = Image.open(src).convert('RGBA')
-
-# target canvas
-W = H = 1024
-# scale content down a bit to match macOS icon safe area
-scale = float(os.environ.get('ICON_SCALE', '0.90'))
-# rounded-rect corner radius (px on 1024 canvas)
-radius = int(os.environ.get('ICON_RADIUS', '230'))
-
-# fit image into square
-size = max(im.size)
-canvas0 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-canvas0.paste(im, ((size - im.size[0])//2, (size - im.size[1])//2), im)
-
-# resize into final canvas with padding
-nw = int(W * scale)
-nh = int(H * scale)
-content = canvas0.resize((nw, nh), Image.LANCZOS)
-canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-canvas.paste(content, ((W - nw)//2, (H - nh)//2), content)
-
-# rounded-rect mask (macOS-style)
-mask = Image.new('L', (W, H), 0)
-d = ImageDraw.Draw(mask)
-d.rounded_rectangle((0, 0, W-1, H-1), radius=radius, fill=255)
-
-out_im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-out_im.paste(canvas, (0, 0), mask)
-out_im.save(out)
-PY
-  else
-    # fallback
-    sips -s format png "$ICON_SRC" --out "$BASE_PNG" >/dev/null
-  fi
+  sips -s format png "$ICON_SRC" --out "$BASE_PNG" >/dev/null
 
   # generate pngs from a real png to keep iconutil happy
   sips -z 16 16   "$BASE_PNG" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
