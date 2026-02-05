@@ -32,22 +32,34 @@ src = os.environ['ICON_SRC']
 out = os.environ['BASE_PNG']
 
 im = Image.open(src).convert('RGBA')
-# ensure square
+
+# target canvas
+W = H = 1024
+# scale content down a bit to match macOS icon safe area
+scale = float(os.environ.get('ICON_SCALE', '0.90'))
+# rounded-rect corner radius (px on 1024 canvas)
+radius = int(os.environ.get('ICON_RADIUS', '230'))
+
+# fit image into square
 size = max(im.size)
-canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-canvas.paste(im, ((size - im.size[0])//2, (size - im.size[1])//2), im)
+canvas0 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+canvas0.paste(im, ((size - im.size[0])//2, (size - im.size[1])//2), im)
 
-# circle mask
-mask = Image.new('L', (size, size), 0)
+# resize into final canvas with padding
+nw = int(W * scale)
+nh = int(H * scale)
+content = canvas0.resize((nw, nh), Image.LANCZOS)
+canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+canvas.paste(content, ((W - nw)//2, (H - nh)//2), content)
+
+# rounded-rect mask (macOS-style)
+mask = Image.new('L', (W, H), 0)
 d = ImageDraw.Draw(mask)
-d.ellipse((0, 0, size-1, size-1), fill=255)
+d.rounded_rectangle((0, 0, W-1, H-1), radius=radius, fill=255)
 
-rounded = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-rounded.paste(canvas, (0, 0), mask)
-
-# output 1024 png for sips
-rounded = rounded.resize((1024, 1024), Image.LANCZOS)
-rounded.save(out)
+out_im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+out_im.paste(canvas, (0, 0), mask)
+out_im.save(out)
 PY
   else
     # fallback
