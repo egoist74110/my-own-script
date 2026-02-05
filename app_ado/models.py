@@ -21,7 +21,7 @@ class ProjectEntry(BaseModel):
 
 class FlowTaskConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    id: str = "sync_merge_build_release"
+    id: str = "sync_merge_build_release"  # or sync_build_release
     enabled: bool = True
 
     project_id: Optional[str] = None

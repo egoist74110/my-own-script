@@ -28,8 +28,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         self._settings = settings
         self._flow = flow
         self._result: FlowTaskConfig | None = None
+        self._needs_merge = flow.id != "sync_build_release"
 
-        self.setWindowTitle("配置任务：同步/合并 + 构建 + 发布")
+        self.setWindowTitle(
+            "配置任务：同步/合并 + 构建 + 发布" if self._needs_merge else "配置任务：同步 + 构建 + 发布"
+        )
         self.setModal(True)
         self.resize(760, 560)
 
@@ -82,6 +85,13 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("仓库(Repo)", self.repo_combo)
         form.addRow("源分支（要合并的）", self.source_combo)
         form.addRow("目标分支（合并到）", self.target_combo)
+
+        if not self._needs_merge:
+            # Hide source branch row for sync+build+release task
+            lbl = form.labelForField(self.source_combo)
+            if lbl:
+                lbl.setVisible(False)
+            self.source_combo.setVisible(False)
 
         form.addRow("构建", self._row(self.build_combo, self.btn_refresh_build))
         form.addRow("发布", self._row(self.release_combo, self.btn_refresh_release))
@@ -458,7 +468,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         missing: list[str] = []
         if not rr:
             missing.append("- 请选择仓库(Repo)（可先点：刷新 Repo/分支）")
-        if not sb:
+        if self._needs_merge and not sb:
             missing.append("- 请选择源分支（可先点：刷新 Repo/分支）")
         if not tb:
             missing.append("- 请选择目标分支（可先点：刷新 Repo/分支）")
@@ -502,7 +512,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             "local_repo_path": local_path,
             "repo_id": rr.id,
             "repo_name": rr.name,
-            "source_branch": sb.short,
+            "source_branch": sb.short if self._needs_merge else "",
             "target_branch": tb.short,
         }
 

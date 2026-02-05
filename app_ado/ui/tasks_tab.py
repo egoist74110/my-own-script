@@ -32,29 +32,39 @@ class TasksTab(Tab):
         super().__init__()
         self._stop_event = None
 
-        # One task card for now; can add more later.
+        # Task 1: sync+merge+build+release
         self.flow_card = TaskCard(
             title="同步/合并 + 构建 + 发布",
-            subtitle="把源分支合并到目标分支，然后构建并发布（后续会接入ADO流水线）",
+            subtitle="把源分支合并到目标分支，然后构建并发布",
         )
-        self.flow_card.config_clicked.connect(self._edit)
-        self.flow_card.run_clicked.connect(self._run)
+        self.flow_card.config_clicked.connect(lambda: self._edit("sync_merge_build_release"))
+        self.flow_card.run_clicked.connect(lambda: self._run("sync_merge_build_release", self.flow_card))
         self.flow_card.stop_clicked.connect(self._stop)
         self.add_widget(self.flow_card)
 
-    def _clear_run_log(self) -> None:
-        self.flow_card.clear_log()
+        # Task 2: sync+build+release (no merge)
+        self.sync_card = TaskCard(
+            title="同步 + 构建 + 发布",
+            subtitle="同步目标分支到最新，然后构建并发布（不做分支合并）",
+        )
+        self.sync_card.config_clicked.connect(lambda: self._edit("sync_build_release"))
+        self.sync_card.run_clicked.connect(lambda: self._run("sync_build_release", self.sync_card))
+        self.sync_card.stop_clicked.connect(self._stop)
+        self.add_widget(self.sync_card)
 
-    def _append_run_log(self, text: str) -> None:
-        self.flow_card.append_log(text)
+    def _clear_run_log(self, card: TaskCard) -> None:
+        card.clear_log()
 
-    def _edit(self) -> None:
+    def _append_run_log(self, card: TaskCard, text: str) -> None:
+        card.append_log(text)
+
+    def _edit(self, flow_id: str) -> None:
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
+        flow = next((f for f in ts.flows if f.id == flow_id), None)
         if flow is None:
             from app_ado.models import FlowTaskConfig
 
-            flow = FlowTaskConfig()
+            flow = FlowTaskConfig(id=flow_id)
             ts.flows.append(flow)
 
         from app_ado.store import load_ui_settings
@@ -69,14 +79,14 @@ class TasksTab(Tab):
         ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
         save_task_settings(ts)
 
-    def _run(self) -> None:
+    def _run(self, flow_id: str, card: TaskCard) -> None:
         """Run in a background Python thread to keep UI responsive."""
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
+        flow = next((f for f in ts.flows if f.id == flow_id), None)
         if not flow:
-            self._edit()
+            self._edit(flow_id)
             ts = load_task_settings()
-            flow = next((f for f in ts.flows if f.id == "sync_merge_build_release"), None)
+            flow = next((f for f in ts.flows if f.id == flow_id), None)
         if not flow:
             return
 
@@ -84,7 +94,7 @@ class TasksTab(Tab):
         missing: list[str] = []
         if not flow.local_repo_path:
             missing.append("- 本地仓库路径")
-        if not flow.source_branch:
+        if flow_id == "sync_merge_build_release" and not flow.source_branch:
             missing.append("- 源分支")
         if not flow.target_branch:
             missing.append("- 目标分支")
@@ -95,21 +105,25 @@ class TasksTab(Tab):
         if not (flow.release_stage_ids or []):
             missing.append("- 阶段（至少选择一个）")
         if missing:
-            show_error_dialog(self.window(), "配置不完整", "请先在【配置】中补齐：\n" + "\n".join(missing))
+            show_error_dialog(self.window(), "配置不完整", f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing))
             return
 
         local_path = flow.local_repo_path
 
         ok = show_confirm_dialog(
             self.window(),
-            "确认执行合并并推送 + 构建？",
+            "确认执行任务？",
             "将执行以下操作：\n"
-            f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
-            f"2) 更新本地分支（ff-only）\n"
-            f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
-            f"4) push origin {flow.target_branch}\n"
-            f"5) 触发构建（目标分支：{flow.target_branch}）并等待完成\n\n"
-            f"repo_path={local_path}",
+            + (
+                f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
+                f"2) 更新本地分支（ff-only）\n"
+                f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
+                f"4) push origin {flow.target_branch}\n"
+                if flow_id == "sync_merge_build_release"
+                else f"1) fetch origin {flow.target_branch}\n2) 更新本地分支（ff-only）\n"
+            )
+            + f"触发构建（目标分支：{flow.target_branch}）并等待完成\n"
+            + f"触发发布并监控所选阶段\n\nrepo_path={local_path}",
         )
         if not ok:
             return
@@ -202,50 +216,71 @@ class TasksTab(Tab):
                     return
 
                 # fetch + update branches
-                cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
-                if cp.returncode != 0:
-                    emit_error("错误", "fetch 失败")
-                    return
-
-                for br in [flow.source_branch, flow.target_branch]:
-                    if should_stop():
-                        emit_log("已停止：用户取消")
-                        return
-                    cp = run_cmd(["git", "checkout", br])
+                if flow_id == "sync_merge_build_release":
+                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
                     if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {br}")
+                        emit_error("错误", "fetch 失败")
                         return
+
+                    for br in [flow.source_branch, flow.target_branch]:
+                        if should_stop():
+                            emit_log("已停止：用户取消")
+                            return
+                        cp = run_cmd(["git", "checkout", br])
+                        if cp.returncode != 0:
+                            emit_error("错误", f"checkout 失败: {br}")
+                            return
+                        cp = run_cmd(["git", "pull", "--ff-only"])
+                        if cp.returncode != 0:
+                            emit_error("错误", f"pull 失败: {br}")
+                            return
+
+                    # merge source into target
+                    cp = run_cmd(["git", "checkout", flow.target_branch])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
+                        return
+
+                    cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
+                    if cp.returncode != 0:
+                        cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
+                        conflicts = (cp2.stdout or "").strip()
+                        emit_error(
+                            "合并失败（可能存在冲突）",
+                            "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                        )
+                        return
+
+                    cp = run_cmd(["git", "push", "origin", flow.target_branch])
+                    if cp.returncode != 0:
+                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
+                        return
+
+                    cp = run_cmd(["git", "rev-parse", "HEAD"])
+                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                    emit_log(
+                        f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}"
+                        + (f"\nHEAD={head}" if head else "")
+                    )
+                else:
+                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.target_branch])
+                    if cp.returncode != 0:
+                        emit_error("错误", "fetch 失败")
+                        return
+
+                    cp = run_cmd(["git", "checkout", flow.target_branch])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
+                        return
+
                     cp = run_cmd(["git", "pull", "--ff-only"])
                     if cp.returncode != 0:
-                        emit_error("错误", f"pull 失败: {br}")
+                        emit_error("错误", f"pull 失败: {flow.target_branch}")
                         return
 
-                # merge source into target
-                cp = run_cmd(["git", "checkout", flow.target_branch])
-                if cp.returncode != 0:
-                    emit_error("错误", f"checkout 失败: {flow.target_branch}")
-                    return
-
-                cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
-                if cp.returncode != 0:
-                    cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
-                    conflicts = (cp2.stdout or "").strip()
-                    emit_error(
-                        "合并失败（可能存在冲突）",
-                        "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
-                    )
-                    return
-
-                cp = run_cmd(["git", "push", "origin", flow.target_branch])
-                if cp.returncode != 0:
-                    emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
-                    return
-
-                cp = run_cmd(["git", "rev-parse", "HEAD"])
-                head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                emit_log(
-                    f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}" + (f"\nHEAD={head}" if head else "")
-                )
+                    cp = run_cmd(["git", "rev-parse", "HEAD"])
+                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                    emit_log(f"✅ 同步完成：{flow.target_branch}" + (f"\nHEAD={head}" if head else ""))
                 # notification policy: only start + final result
 
                 if should_stop():
