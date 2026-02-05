@@ -229,13 +229,23 @@ class TelegramController:
             # Permission-aware usage
             allowed: list[str] = []
             if self._can(role, group, "run", task_id="sync_build_release"):
-                allowed.append("/sync_build_release")
+                allowed.append("sync_build_release")
             if self._can(role, group, "run", task_id="sync_merge_build_release"):
-                allowed.append("/sync_merge_build_release")
+                allowed.append("sync_merge_build_release")
 
             if len(parts) < 2:
                 if allowed:
-                    self._reply(token, ctx.chat_id, "请直接点击执行：\n" + "\n".join(allowed))
+                    task_help = {
+                        "sync_build_release": "CG_Vue_Front全平台发布",
+                        "sync_merge_build_release": "聊天分支合并dcr发布",
+                    }
+                    lines: list[str] = []
+                    for tid in allowed:
+                        lines.append(f"/{tid}")
+                        desc = task_help.get(tid, "")
+                        if desc:
+                            lines.append(f"  - {desc}")
+                    self._reply(token, ctx.chat_id, "请直接点击执行：\n" + "\n".join(lines))
                 else:
                     self._reply(token, ctx.chat_id, "当前无可运行任务权限。请联系管理员分配权限。")
                 return
