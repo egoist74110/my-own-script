@@ -292,7 +292,7 @@ class TasksTab(Tab):
                 emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
 
                 # Monitor selected stages with progress logs every ~10s
-                from app_ado.ado_release_http import extract_envs, get_release
+                from app_ado.ado_release_http import extract_envs, get_release, start_release_environment
                 import time
 
                 def fetch_envs() -> list:
@@ -371,6 +371,23 @@ class TasksTab(Tab):
                     if line != last_line:
                         emit_log(line)
                         last_line = line
+
+                    # auto-start notStarted environments
+                    for e in selected:
+                        if (e.status or '').lower() == 'notstarted':
+                            try:
+                                emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
+                                start_release_environment(
+                                    lib.base_url,
+                                    proj.collection,
+                                    proj.project,
+                                    rel.id,
+                                    e.id,
+                                    pat=pat,
+                                )
+                            except Exception as ex:
+                                emit_error("触发部署失败", str(ex))
+                                return
 
                     if selected and all(is_done(e.status) for e in selected):
                         failed = [e for e in selected if e.status.lower() not in ("succeeded",)]

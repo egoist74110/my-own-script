@@ -214,36 +214,31 @@ def extract_envs(release_json: dict[str, Any]) -> list[ReleaseEnv]:
     return out
 
 
-def wait_release_environments(
+def start_release_environment(
     base_url: str,
     collection: str,
     project: str,
     release_id: str,
+    env_id: str,
     *,
     pat: str,
-    stage_ids: list[str],
-    timeout_min: int = 60,
-    poll_sec: float = 10.0,
-    api_version: str = "6.0",
-) -> list[ReleaseEnv]:
-    deadline = time.time() + timeout_min * 60
-    want = set(stage_ids)
+) -> dict[str, Any]:
+    """Start deployment of a release environment.
 
-    last_envs: list[ReleaseEnv] = []
+    On some ADO Server setups, environments won't auto-start and require an explicit
+    transition to InProgress.
 
-    def is_done(status: str) -> bool:
-        s = (status or "").lower()
-        return s in {"succeeded", "rejected", "canceled", "failed"}
-
-    while time.time() < deadline:
-        data = get_release(base_url, collection, project, release_id, pat=pat, api_version=api_version)
-        envs = extract_envs(data)
-        last_envs = envs
-
-        selected = [e for e in envs if e.id in want]
-        if selected and all(is_done(e.status) for e in selected):
-            return selected
-
-        time.sleep(poll_sec)
-
-    raise TimeoutError(f"release timeout after {timeout_min}min (release={release_id}) last_envs={last_envs}")
+    We use api-version=6.0-preview.6 as it supports status transition.
+    """
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/releases/{release_id}/environments/{env_id}"
+    with _client(pat) as c:
+        r = c.patch(
+            url,
+            params={"api-version": "6.0-preview.6"},
+            json={"status": "inProgress", "comment": "Triggered by my-own-script"},
+        )
+        # Some servers may return 400 with a status-transition message even though it proceeds;
+        # let callers decide based on subsequent GET.
+        if r.status_code >= 400:
+            raise httpx.HTTPStatusError(r.text, request=r.request, response=r)
+        return r.json()
