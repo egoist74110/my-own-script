@@ -17,10 +17,17 @@ class TaskCard(ExpandSettingCard):
         self.btn_run = PushButton("运行")
 
         # Use the card's built-in expand button; do NOT add extra dropdown arrow.
-        # Buttons belong to the header card layout.
-        self.card.hBoxLayout.addStretch(1)
-        self.card.hBoxLayout.addWidget(self.btn_config)
-        self.card.hBoxLayout.addWidget(self.btn_run)
+        # Put action buttons on the right, just to the left of the expand button.
+        layout = self.card.hBoxLayout
+        expand_btn = self.card.expandButton
+        idx = layout.indexOf(expand_btn)
+        if idx < 0:
+            # fallback
+            layout.addWidget(self.btn_config)
+            layout.addWidget(self.btn_run)
+        else:
+            layout.insertWidget(idx, self.btn_run, 0, QtCore.Qt.AlignRight)
+            layout.insertWidget(idx, self.btn_config, 0, QtCore.Qt.AlignRight)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
