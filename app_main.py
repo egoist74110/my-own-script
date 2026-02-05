@@ -43,6 +43,31 @@ def main() -> None:
     w.resize(1100, 760)
     w.show()
 
+    # Auto-update on startup (GitHub): check -> pull(main) -> pip -> restart
+    from PySide6 import QtCore
+
+    from app_ado.updater import check_git_clean, get_update_status, pip_sync, pull_ff_only, repo_root, restart_self
+    from app_ado.ui.dialogs import show_error_dialog
+
+    import threading
+
+    def do_update():
+        try:
+            root = repo_root()
+            clean, _dirty = check_git_clean(root)
+            if not clean:
+                return
+            st = get_update_status(root, branch="main")
+            if st.behind <= 0:
+                return
+            pull_ff_only(root, branch="main")
+            pip_sync(root)
+            QtCore.QTimer.singleShot(500, restart_self)
+        except Exception as e:
+            QtCore.QTimer.singleShot(0, lambda: show_error_dialog(w, "自动更新失败", str(e)))
+
+    threading.Thread(target=do_update, daemon=True).start()
+
     sys.exit(app.exec())
 
 
