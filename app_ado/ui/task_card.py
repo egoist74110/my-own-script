@@ -17,9 +17,10 @@ class TaskCard(ExpandSettingCard):
         self.btn_run = PushButton("运行")
 
         # Use the card's built-in expand button; do NOT add extra dropdown arrow.
-        self.hBoxLayout.addStretch(1)
-        self.hBoxLayout.addWidget(self.btn_config)
-        self.hBoxLayout.addWidget(self.btn_run)
+        # Buttons belong to the header card layout.
+        self.card.hBoxLayout.addStretch(1)
+        self.card.hBoxLayout.addWidget(self.btn_config)
+        self.card.hBoxLayout.addWidget(self.btn_run)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
