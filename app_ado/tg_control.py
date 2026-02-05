@@ -126,6 +126,16 @@ class TelegramController:
     def _bot_token(self) -> str | None:
         return get_telegram_token()
 
+    def _delete_webhook(self, token: str) -> None:
+        """Ensure polling works by removing webhook if it was set elsewhere."""
+        try:
+            url = f"https://api.telegram.org/bot{token}/deleteWebhook"
+            with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False) as c:
+                r = c.post(url, data={"drop_pending_updates": "false"})
+                r.raise_for_status()
+        except Exception:
+            return
+
     def _get_updates(self, token: str, *, timeout: int = 20) -> dict[str, Any]:
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         params: dict[str, Any] = {
@@ -275,6 +285,11 @@ class TelegramController:
                 time.sleep(2.0)
                 continue
 
+            # Make sure webhook is not set (getUpdates will 409 if webhook is active)
+            if getattr(self, "_webhook_cleared", False) is False:
+                self._delete_webhook(token)
+                self._webhook_cleared = True
+
             try:
                 data = self._get_updates(token, timeout=20)
                 items = data.get("result") or []
@@ -303,5 +318,12 @@ class TelegramController:
                     self._save_offset(self._update_offset)
 
             except Exception as e:
-                self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {e}")
-                time.sleep(2.0)
+                msg = str(e)
+                self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {msg}")
+
+                # 409 can happen if webhook is set or another poller is active.
+                if "409" in msg or "Conflict" in msg:
+                    self._delete_webhook(token)
+                    time.sleep(5.0)
+                else:
+                    time.sleep(2.0)
