@@ -16,7 +16,14 @@ def main() -> None:
     # macOS menu bar app name
     app.setApplicationName("代码工具箱")
 
-    icon_path = Path(__file__).resolve().parent / "logo.jpg"
+    base = Path(__file__).resolve().parent
+    # Prefer icon from generated AppIcon assets
+    icon_path = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "256.png"
+    if not icon_path.exists():
+        icon_path = base / "logo" / "Assets.xcassets" / "AppIcon.appiconset" / "512.png"
+    if not icon_path.exists():
+        icon_path = base / "logo.jpg"
+
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 

@@ -6,7 +6,11 @@ REPO_DIR="${REPO_DIR:-$HOME/my-own-script}"
 OUT_DIR="${OUT_DIR:-$REPO_DIR/dist}"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
 
-ICON_SRC="$REPO_DIR/logo.jpg"
+# Prefer generated iconset PNG if present
+ICON_SRC="$REPO_DIR/logo/Assets.xcassets/AppIcon.appiconset/1024.png"
+if [ ! -f "$ICON_SRC" ]; then
+  ICON_SRC="$REPO_DIR/logo.jpg"
+fi
 ICONSET_DIR="$OUT_DIR/AppIcon.iconset"
 ICNS_OUT="$OUT_DIR/AppIcon.icns"
 
