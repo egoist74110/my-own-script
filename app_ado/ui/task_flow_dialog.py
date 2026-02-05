@@ -618,7 +618,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         }
 
         # save targets and keep back-compat fields in sync with first target
-        update.update({"targets": [t.model_dump() for t in self._targets]})
+        update.update({"targets": self._targets})
         if self._targets:
             t0 = self._targets[0]
             update.update(

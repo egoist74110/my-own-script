@@ -542,8 +542,8 @@ class TasksTab(Tab):
                 q.put(("done", ""))
 
         # UI init
-        self.flow_card.set_actions_enabled(False)
-        self._clear_run_log()
+        card.set_actions_enabled(False)
+        self._clear_run_log(card)
         log = RunLogDialog(self.window(), title="运行：合并并推送 + 构建")
         log.show()
 
@@ -553,7 +553,7 @@ class TasksTab(Tab):
                 while True:
                     kind, payload = q.get_nowait()
                     if kind == "log":
-                        self._append_run_log(payload)
+                        self._append_run_log(card, payload)
                         log.log(payload)
                     elif kind == "error":
                         # payload = title + '\n' + details
@@ -567,7 +567,7 @@ class TasksTab(Tab):
                 pass
 
             if finished:
-                self.flow_card.set_actions_enabled(True)
+                card.set_actions_enabled(True)
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -578,4 +578,12 @@ class TasksTab(Tab):
     def _stop(self) -> None:
         if self._stop_event is not None:
             self._stop_event.set()
-            self._append_run_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+            # stop applies to current running task; log into both cards if present
+            try:
+                self.flow_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+            except Exception:
+                pass
+            try:
+                self.sync_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+            except Exception:
+                pass
