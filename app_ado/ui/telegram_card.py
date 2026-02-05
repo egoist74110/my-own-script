@@ -80,8 +80,14 @@ class TelegramCard(CardWidget):
             save_ui_settings(self._settings)
             toast(self, "已保存", "Telegram 配置已保存")
 
+    def _effective_token(self) -> str | None:
+        t = self.token.text().strip()
+        if t and t != "********":
+            return t
+        return get_telegram_token()
+
     def _check(self):
-        token = get_telegram_token()
+        token = self._effective_token()
         if not token:
             show_error_dialog(self, "错误", "请先填写并保存 Bot Token")
             return
@@ -89,12 +95,12 @@ class TelegramCard(CardWidget):
             from app_ado.notifier_telegram_meta import get_me
 
             info = get_me(bot_token=token)
-            toast(self, "Token 正常", f"请去 Telegram 打开 @{info.username or ''} 并发一条消息，然后点【获取 Chat ID】")
+            toast(self, "Token 正常", f"bot_id={info.id} @{info.username or ''}\n请去 Telegram 打开 @{info.username or ''} 并发一条消息，然后点【获取 Chat ID】")
         except Exception as e:
             show_error_dialog(self, "检查失败", str(e))
 
     def _detect(self):
-        token = get_telegram_token()
+        token = self._effective_token()
         if not token:
             show_error_dialog(self, "错误", "请先填写并保存 Bot Token")
             return
