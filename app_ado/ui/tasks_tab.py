@@ -98,12 +98,28 @@ class TasksTab(Tab):
             missing.append("- 源分支")
         if not flow.target_branch:
             missing.append("- 目标分支")
-        if not flow.build_id or not flow.build_kind:
-            missing.append("- 构建")
-        if not flow.release_id:
-            missing.append("- 发布")
-        if not (flow.release_stage_ids or []):
-            missing.append("- 阶段（至少选择一个）")
+        # multi targets
+        targets = list(getattr(flow, "targets", []) or [])
+        if not targets and (flow.build_id or flow.release_id or (flow.release_stage_ids or [])):
+            # back-compat single target
+            from app_ado.models import DeployTarget
+
+            targets = [
+                DeployTarget(
+                    name="目标1",
+                    enabled=True,
+                    build_kind=flow.build_kind,
+                    build_id=flow.build_id,
+                    build_name=flow.build_name,
+                    release_id=flow.release_id,
+                    release_name=flow.release_name,
+                    release_stage_ids=list(flow.release_stage_ids or []),
+                    release_stage_names=list(flow.release_stage_names or []),
+                )
+            ]
+
+        if not targets:
+            missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
         if missing:
             show_error_dialog(self.window(), "配置不完整", f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing))
             return
@@ -181,8 +197,7 @@ class TasksTab(Tab):
                 notify_telegram(
                     "🚀 开始执行任务\n"
                     f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
-                    f"Build: {flow.build_name or flow.build_id}\n"
-                    f"Release: {flow.release_name or flow.release_id}"
+                    f"targets={len(targets)}"
                 )
 
                 def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -287,7 +302,7 @@ class TasksTab(Tab):
                     emit_log("已停止：用户取消")
                     return
 
-                # ---- Build (v3) ----
+                # ---- Build+Release for each target (serial) ----
                 from app_ado.store import load_ui_settings
                 from app_ado.secrets import get_pat
                 from app_ado.ado_build_http import (

@@ -63,6 +63,16 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         self.stage_list = QtWidgets.QListWidget()
         self.stage_list.setFixedHeight(180)
 
+        # deploy targets (multi): handled via separate dialogs; selection + CRUD
+        self.deploy_target_combo = combo()
+        self.btn_new_target = PushButton("新增")
+        self.btn_edit_target = PushButton("编辑")
+        self.btn_del_target = PushButton("删除")
+
+        self.btn_new_target.clicked.connect(self._new_deploy_target)
+        self.btn_edit_target.clicked.connect(self._edit_deploy_target)
+        self.btn_del_target.clicked.connect(self._delete_deploy_target)
+
         self.repo_path = LineEdit(); self.repo_path.setFixedWidth(420)
         self.btn_pick_path = PushButton("选择...")
 
@@ -93,9 +103,8 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 lbl.setVisible(False)
             self.source_combo.setVisible(False)
 
-        form.addRow("构建", self._row(self.build_combo, self.btn_refresh_build))
-        form.addRow("发布", self._row(self.release_combo, self.btn_refresh_release))
-        form.addRow("阶段（多选）", self.stage_list)
+        # Deploy targets (multiple build+release+stages)
+        form.addRow("发布目标", self._row(self.deploy_target_combo, self._row(self.btn_new_target, self._row(self.btn_edit_target, self.btn_del_target))))
 
         root.addWidget(self.btn_refresh)
         root.addWidget(self.status)
@@ -128,25 +137,25 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 self.target_combo.addItem(flow.target_branch, userData=GitBranch(name=f"refs/heads/{flow.target_branch}"))
             self.target_combo.setCurrentIndex(0)
 
-        if flow.build_name:
-            if self.build_combo.count() == 0:
-                self.build_combo.addItem(
-                    flow.build_name,
-                    userData=BuildPipeline(id=flow.build_id or "", name=flow.build_name, kind=flow.build_kind or "pipeline"),
-                )
-            self.build_combo.setCurrentIndex(0)
-        if flow.release_name:
-            if self.release_combo.count() == 0:
-                self.release_combo.addItem(flow.release_name, userData=ReleaseDefinition(id=flow.release_id or "", name=flow.release_name))
-            self.release_combo.setCurrentIndex(0)
+        # migrate single-target fields into targets if needed
+        from app_ado.models import DeployTarget
 
-        # stages prefill: just show names, will map after refresh
-        for sid, sname in zip(flow.release_stage_ids or [], flow.release_stage_names or [], strict=False):
-            it = QtWidgets.QListWidgetItem(sname)
-            it.setData(QtCore.Qt.UserRole, sid)
-            it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)
-            it.setCheckState(QtCore.Qt.Checked)
-            self.stage_list.addItem(it)
+        self._targets = list(flow.targets or [])
+        if not self._targets and (flow.build_id or flow.release_id or (flow.release_stage_ids or [])):
+            self._targets = [
+                DeployTarget(
+                    name="目标1",
+                    enabled=True,
+                    build_kind=flow.build_kind,
+                    build_id=flow.build_id,
+                    build_name=flow.build_name,
+                    release_id=flow.release_id,
+                    release_name=flow.release_name,
+                    release_stage_ids=list(flow.release_stage_ids or []),
+                    release_stage_names=list(flow.release_stage_names or []),
+                )
+            ]
+        self._refresh_target_combo()
 
         self.repo_path.setText(flow.local_repo_path)
 
@@ -441,6 +450,102 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             else:
                 self.target_combo.setCurrentIndex(0)
 
+    def _refresh_target_combo(self, *, select_name: str | None = None) -> None:
+        self.deploy_target_combo.blockSignals(True)
+        self.deploy_target_combo.clear()
+        idx = 0
+        for i, t in enumerate(self._targets):
+            self.deploy_target_combo.addItem(t.name, userData=i)
+            if select_name and t.name == select_name:
+                idx = i
+        if self._targets:
+            self.deploy_target_combo.setCurrentIndex(idx)
+        self.deploy_target_combo.blockSignals(False)
+
+    def _current_target_index(self) -> int | None:
+        v = self.deploy_target_combo.currentData()
+        return int(v) if v is not None else None
+
+    def _new_deploy_target(self) -> None:
+        # need project+pat context
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先选择项目")
+            return
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return
+
+        from app_ado.models import DeployTarget
+        from app_ado.ui.deploy_target_dialog import DeployTargetDialog
+
+        # name auto increment
+        n = 1
+        existing = {t.name for t in self._targets}
+        while True:
+            name = f"目标{n}"
+            if name not in existing:
+                break
+            n += 1
+
+        target = DeployTarget(name=name)
+        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=proj.collection, project=proj.project, pat=pat, target=target)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        res = dlg.result_target()
+        if not res:
+            return
+        self._targets.append(res)
+        self._refresh_target_combo(select_name=res.name)
+
+    def _edit_deploy_target(self) -> None:
+        idx = self._current_target_index()
+        if idx is None or idx < 0 or idx >= len(self._targets):
+            show_error_dialog(self, "错误", "请先选择发布目标")
+            return
+
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先选择项目")
+            return
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return
+
+        from app_ado.ui.deploy_target_dialog import DeployTargetDialog
+
+        cur = self._targets[idx]
+        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=proj.collection, project=proj.project, pat=pat, target=cur)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        res = dlg.result_target()
+        if not res:
+            return
+        self._targets[idx] = res
+        self._refresh_target_combo(select_name=res.name)
+
+    def _delete_deploy_target(self) -> None:
+        idx = self._current_target_index()
+        if idx is None or idx < 0 or idx >= len(self._targets):
+            show_error_dialog(self, "错误", "请先选择发布目标")
+            return
+        t = self._targets[idx]
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除发布目标：{t.name} ？")
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+        self._targets.pop(idx)
+        self._refresh_target_combo()
+
     def _on_repo_changed(self) -> None:
         # In v1 we refresh full list for simplicity
         pass
@@ -499,16 +604,8 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                     stage_ids.append(sid)
                     stage_names.append(it.text())
 
-        missing2: list[str] = []
-        if not bp or not getattr(bp, "id", ""):
-            missing2.append("- 请选择构建（可先点：刷新构建列表）")
-        if not rd or not getattr(rd, "id", ""):
-            missing2.append("- 请选择发布（可先点：刷新发布/阶段）")
-        if not stage_ids:
-            missing2.append("- 至少选择一个阶段（可先点：刷新发布/阶段）")
-
-        if missing2:
-            show_error_dialog(self, "表单未完整", "\n".join(missing2))
+        if not self._targets:
+            show_error_dialog(self, "表单未完整", "- 请至少新增一个发布目标")
             return
 
         update = {
@@ -520,11 +617,21 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             "target_branch": tb.short,
         }
 
-        if bp:
-            update.update({"build_kind": bp.kind, "build_id": bp.id, "build_name": bp.name})
-        if rd:
-            update.update({"release_id": rd.id, "release_name": rd.name})
-        update.update({"release_stage_ids": stage_ids, "release_stage_names": stage_names})
+        # save targets and keep back-compat fields in sync with first target
+        update.update({"targets": [t.model_dump() for t in self._targets]})
+        if self._targets:
+            t0 = self._targets[0]
+            update.update(
+                {
+                    "build_kind": t0.build_kind,
+                    "build_id": t0.build_id,
+                    "build_name": t0.build_name,
+                    "release_id": t0.release_id,
+                    "release_name": t0.release_name,
+                    "release_stage_ids": list(t0.release_stage_ids or []),
+                    "release_stage_names": list(t0.release_stage_names or []),
+                }
+            )
 
         updated = self._flow.model_copy(update=update)
         self._result = updated

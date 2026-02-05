@@ -19,6 +19,23 @@ class ProjectEntry(BaseModel):
     project: str
 
 
+class DeployTarget(BaseModel):
+    """One deployment unit: build + release + stages."""
+
+    name: str = "目标1"
+    enabled: bool = True
+
+    build_kind: Optional[str] = None
+    build_id: Optional[str] = None
+    build_name: Optional[str] = None
+
+    release_id: Optional[str] = None
+    release_name: Optional[str] = None
+
+    release_stage_ids: list[str] = Field(default_factory=list)
+    release_stage_names: list[str] = Field(default_factory=list)
+
+
 class FlowTaskConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str = "sync_merge_build_release"  # or sync_build_release
@@ -34,6 +51,10 @@ class FlowTaskConfig(BaseModel):
     source_branch: str = ""
     target_branch: str = ""
 
+    # New: multiple deploy targets (build+release+stages)
+    targets: list[DeployTarget] = Field(default_factory=list)
+
+    # Back-compat (single target) fields (will be migrated into targets)
     build_kind: Optional[str] = None
     build_id: Optional[str] = None
     build_name: Optional[str] = None
