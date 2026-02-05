@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import time
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,10 +55,12 @@ def _run(cmd: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess:
 
 
 def mount_dmg(dmg_path: Path) -> Path:
-    """Mount DMG and return mount point."""
-    mp = Path("/Volumes") / f"代码工具箱-Update-{int(time.time())}"
-    mp_str = str(mp)
-    mp.mkdir(parents=True, exist_ok=True)
+    """Mount DMG and return mount point.
+
+    We mount under /tmp to avoid permission issues creating directories under /Volumes.
+    """
+    mp_str = tempfile.mkdtemp(prefix="toolbox-update-")
+    mp = Path(mp_str)
 
     cp = _run([
         "/usr/bin/hdiutil",
@@ -78,6 +81,10 @@ def unmount_dmg(mount_point: Path) -> None:
     # Best effort
     if cp.returncode != 0:
         _run(["/usr/bin/hdiutil", "detach", str(mount_point), "-force", "-quiet"], timeout=60)
+    try:
+        mount_point.rmdir()
+    except Exception:
+        pass
 
 
 def find_app_in_volume(mount_point: Path, *, app_name: str = "代码工具箱.app") -> Path:
