@@ -125,7 +125,7 @@ class AdoReleaseTab(Tab):
             self.btn_check_update.setEnabled(not busy)
             self.btn_do_update.setEnabled(not busy)
 
-        def do_check() -> None:
+        def do_check(done: dict) -> None:
             try:
                 root = repo_root()
                 clean, dirty = check_git_clean(root)
@@ -162,7 +162,7 @@ class AdoReleaseTab(Tab):
 
             import threading
 
-            threading.Thread(target=do_check, daemon=True).start()
+            threading.Thread(target=lambda: do_check(done), daemon=True).start()
 
         def do_update() -> None:
             try:
