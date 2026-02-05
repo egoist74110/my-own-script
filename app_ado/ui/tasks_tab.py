@@ -91,7 +91,7 @@ class TasksTab(Tab):
         self._last_requester_chat_id = requester_chat_id
         self._last_requester_username = requester_username
         card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
-        QtCore.QTimer.singleShot(0, lambda: self._run(flow_id, card))
+        QtCore.QTimer.singleShot(0, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner
@@ -104,7 +104,7 @@ class TasksTab(Tab):
             return f"运行中：{self._running_task}"
         return "空闲"
 
-    def _run(self, flow_id: str, card: TaskCard) -> None:
+    def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None) -> None:
         """Run in a background Python thread to keep UI responsive."""
         ts = load_task_settings()
         flow = next((f for f in ts.flows if f.id == flow_id), None)
@@ -146,28 +146,43 @@ class TasksTab(Tab):
         if not targets:
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
         if missing:
-            show_error_dialog(self.window(), "配置不完整", f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing))
+            msg = f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            if tg_reply_chat_id:
+                try:
+                    from app_ado.secrets import get_telegram_token
+                    from app_ado.notifier_telegram import send_telegram_message
+
+                    token = get_telegram_token()
+                    if token:
+                        send_telegram_message(bot_token=token, chat_id=tg_reply_chat_id, text="⚠️ 配置不完整\n" + msg)
+                except Exception:
+                    pass
+            show_error_dialog(self.window(), "配置不完整", msg)
             return
 
         local_path = flow.local_repo_path
 
-        ok = show_confirm_dialog(
-            self.window(),
-            "确认执行任务？",
-            "将执行以下操作：\n"
-            + (
-                f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
-                f"2) 更新本地分支（ff-only）\n"
-                f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
-                f"4) push origin {flow.target_branch}\n"
-                if flow_id == "sync_merge_build_release"
-                else f"1) fetch origin {flow.target_branch}\n2) 更新本地分支（ff-only）\n"
+        if not skip_confirm:
+            ok = show_confirm_dialog(
+                self.window(),
+                "确认执行任务？",
+                "将执行以下操作：\n"
+                + (
+                    f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
+                    f"2) 更新本地分支（ff-only）\n"
+                    f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
+                    f"4) push origin {flow.target_branch}\n"
+                    if flow_id == "sync_merge_build_release"
+                    else f"1) fetch origin {flow.target_branch}\n2) 更新本地分支（ff-only）\n"
+                )
+                + f"触发构建（目标分支：{flow.target_branch}）并等待完成\n"
+                + f"触发发布并监控所选阶段\n\nrepo_path={local_path}",
             )
-            + f"触发构建（目标分支：{flow.target_branch}）并等待完成\n"
-            + f"触发发布并监控所选阶段\n\nrepo_path={local_path}",
-        )
-        if not ok:
-            return
+            if not ok:
+                return
+        else:
+            # TG-triggered: skip modal confirm.
+            self._append_run_log(card, "[TG] 已跳过确认弹窗，开始执行…")
 
         import queue
         import threading
