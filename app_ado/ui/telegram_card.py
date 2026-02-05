@@ -47,6 +47,17 @@ class TelegramCard(CardWidget):
         self.btn_check.clicked.connect(self._check)
         self.btn_detect.clicked.connect(self._detect)
 
+        # hint
+        self.hint = QtWidgets.QLabel(
+            "说明：\n"
+            "1) 先保存 Bot Token，然后点【检查 Bot Token】确认 @username。\n"
+            "2) 去 Telegram 打开该机器人，发一条消息（hi / /start）。\n"
+            "3) 回来点【获取 Chat ID】即可自动填入。\n"
+            "（私聊时 Chat ID 会是你的数字 id；群聊则是群 id -100...）"
+        )
+        self.hint.setWordWrap(True)
+        form.addRow(self.hint)
+
     def _load(self):
         self._settings = load_ui_settings()
         self.chat_id.setText(self._settings.telegram_chat_id or "")
@@ -56,17 +67,18 @@ class TelegramCard(CardWidget):
     def _save(self):
         chat_id = self.chat_id.text().strip()
         token = self.token.text().strip()
-        if not chat_id:
-            toast(self, "错误", "Chat ID 不能为空", ok=False)
-            return
-        self._settings.telegram_chat_id = chat_id
-        save_ui_settings(self._settings)
 
+        # Save token first
         if token and token != "********":
             set_telegram_token(token)
             self.token.setText("********")
 
-        toast(self, "已保存", "Telegram 配置已保存")
+        if not chat_id:
+            toast(self, "提示", "Chat ID 为空：你可以先检查 Token，然后发消息后用【获取 Chat ID】自动填入", ok=False)
+        else:
+            self._settings.telegram_chat_id = chat_id
+            save_ui_settings(self._settings)
+            toast(self, "已保存", "Telegram 配置已保存")
 
     def _check(self):
         token = get_telegram_token()
@@ -77,7 +89,7 @@ class TelegramCard(CardWidget):
             from app_ado.notifier_telegram_meta import get_me
 
             info = get_me(bot_token=token)
-            toast(self, "Token 正常", f"bot_id={info.id} @{info.username or ''}")
+            toast(self, "Token 正常", f"请去 Telegram 打开 @{info.username or ''} 并发一条消息，然后点【获取 Chat ID】")
         except Exception as e:
             show_error_dialog(self, "检查失败", str(e))
 
