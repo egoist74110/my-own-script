@@ -142,23 +142,23 @@ class AdoReleaseTab(Tab):
             except Exception as e:
                 ui(lambda: show_error_dialog(self, "检查更新失败", str(e)))
             finally:
+                done["v"] = True
                 ui(lambda: set_busy(False))
 
         def on_check_clicked() -> None:
             set_busy(True)
             self.lbl_update_status.setText("检查中…")
 
-            # UI watchdog: ensure we never appear "stuck" even if subprocess hangs.
-            watchdog_fired = {"v": False}
+            # UI watchdog: avoid perceived "stuck" if the worker never returns.
+            done = {"v": False}
 
             def watchdog():
-                if watchdog_fired["v"]:
+                if done["v"]:
                     return
-                watchdog_fired["v"] = True
                 set_busy(False)
-                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n如果你终端里 git fetch 秒回，这通常是 UI 线程更新没投递成功。请把现象发我。")
+                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：把终端/日志里的报错发我。")
 
-            QtCore.QTimer.singleShot(12000, watchdog)
+            QtCore.QTimer.singleShot(12000, self, watchdog)
 
             import threading
 
