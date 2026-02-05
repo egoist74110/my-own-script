@@ -16,11 +16,16 @@ class UpdateStatus:
     remote: str
 
 
-def _run(cmd: list[str], cwd: Path, *, timeout: int = 60) -> subprocess.CompletedProcess:
+def _run(cmd: list[str], cwd: Path, *, timeout: int = 15) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     # Never block on interactive git prompts in GUI context.
     env.setdefault("GIT_TERMINAL_PROMPT", "0")
-    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env, timeout=timeout)
+    # Ensure SSH-based remotes fail fast (no passphrase / no prompts)
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=5")
+    try:
+        return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"命令超时（{timeout}s）：{' '.join(cmd)}") from e
 
 
 def repo_root() -> Path:
@@ -35,7 +40,7 @@ def check_git_clean(cwd: Path) -> tuple[bool, str]:
 
 
 def fetch(cwd: Path) -> None:
-    cp = _run(["git", "fetch", "origin"], cwd, timeout=60)
+    cp = _run(["git", "fetch", "origin"], cwd, timeout=15)
     if cp.returncode != 0:
         raise RuntimeError(cp.stderr or cp.stdout or "git fetch failed")
 
