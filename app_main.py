@@ -11,9 +11,11 @@ from app_ado.ui.tasks_tab import TasksTab
 
 def main() -> None:
     app = QApplication(sys.argv)
+    # macOS menu bar app name
+    app.setApplicationName("代码工具箱")
 
     w = MSFluentWindow()
-    w.setWindowTitle("my-own-script (QFluentWidgets)")
+    w.setWindowTitle("代码工具箱")
 
     tasks = TasksTab()
     ado = AdoReleaseTab()

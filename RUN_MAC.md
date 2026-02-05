@@ -27,6 +27,14 @@ pip install pyyaml
 
 ## 3) Run
 
+### One-liner (recommended)
+
+```bash
+cd ~/my-own-script && bash dev_run.sh
+```
+
+### Manual
+
 ```bash
 python app_main.py
 ```
