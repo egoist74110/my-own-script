@@ -97,7 +97,7 @@ class AdoReleaseTab(Tab):
     def _build_update_card(self) -> None:
         """Manual update UX: check updates + update now."""
         from app_version import __version__
-        from app_ado.updater import check_git_clean, get_update_status, pip_sync, pull_ff_only, repo_root, restart_self
+        from app_ado.release_updater import get_latest_release, open_url
 
         w = CardWidget(self)
         form = QFormLayout(w)
@@ -107,7 +107,7 @@ class AdoReleaseTab(Tab):
         self.lbl_update_status = QtWidgets.QLabel("未检查")
 
         self.btn_check_update = PushButton("检查更新")
-        self.btn_do_update = PushButton("立即更新并重启")
+        self.btn_do_update = PushButton("下载并安装更新")
 
         form.addRow("当前版本", self.lbl_version)
         form.addRow("更新状态", self.lbl_update_status)
@@ -125,23 +125,26 @@ class AdoReleaseTab(Tab):
             self.btn_check_update.setEnabled(not busy)
             self.btn_do_update.setEnabled(not busy)
 
+        self._latest_release_url: str | None = None
+        self._latest_release_asset_url: str | None = None
+
         def do_check(done: dict) -> None:
             try:
-                root = repo_root()
-                clean, dirty = check_git_clean(root)
-                if not clean:
-                    msg = "仓库有未提交改动，已跳过"
-                    ui(lambda: self.lbl_update_status.setText(msg))
-                    ui(lambda: show_error_dialog(self, "无法检查更新", dirty or msg))
-                    return
-                st = get_update_status(root, branch="main")
-                if st.behind <= 0:
+                rel = get_latest_release()
+                self._latest_release_url = rel.html_url
+                self._latest_release_asset_url = rel.asset_url
+
+                if rel.version == __version__:
                     ui(lambda: self.lbl_update_status.setText("已是最新"))
+                    ui(lambda: self.btn_do_update.setEnabled(False))
                 else:
-                    ui(lambda: self.lbl_update_status.setText(f"可更新：落后 {st.behind} 个提交"))
+                    ui(lambda: self.lbl_update_status.setText(f"发现新版本：{rel.version}"))
+                    ui(lambda: self.btn_do_update.setEnabled(True))
             except Exception as e:
                 msg = str(e)
-                ui(lambda m=msg: show_error_dialog(self, "检查更新失败", m))
+                ui(lambda m=msg: show_error_dialog(self, "无法检查更新", m))
+                ui(lambda: self.lbl_update_status.setText("检查失败"))
+                ui(lambda: self.btn_do_update.setEnabled(False))
             finally:
                 done["v"] = True
                 ui(lambda: set_busy(False))
@@ -150,14 +153,14 @@ class AdoReleaseTab(Tab):
             set_busy(True)
             self.lbl_update_status.setText("检查中…")
 
-            # UI watchdog: avoid perceived "stuck" if the worker never returns.
+            # watchdog
             done = {"v": False}
 
             def watchdog():
                 if done["v"]:
                     return
                 set_busy(False)
-                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：把终端/日志里的报错发我。")
+                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：稍后再试或检查网络。")
 
             QtCore.QTimer.singleShot(12000, self, watchdog)
 
@@ -167,24 +170,13 @@ class AdoReleaseTab(Tab):
 
         def do_update(done: dict) -> None:
             try:
-                root = repo_root()
-                clean, _dirty = check_git_clean(root)
-                if not clean:
-                    raise RuntimeError("仓库有未提交改动，已跳过更新")
+                url = self._latest_release_asset_url or self._latest_release_url
+                if not url:
+                    raise RuntimeError("请先点击【检查更新】")
 
-                st = get_update_status(root, branch="main")
-                if st.behind <= 0:
-                    ui(lambda: self.lbl_update_status.setText("已是最新"))
-                    return
-
-                ui(lambda: self.lbl_update_status.setText("拉取代码中…"))
-                pull_ff_only(root, branch="main")
-
-                ui(lambda: self.lbl_update_status.setText("安装依赖中…"))
-                pip_sync(root)
-
-                ui(lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
-                QtCore.QTimer.singleShot(500, self, restart_self)
+                ui(lambda: self.lbl_update_status.setText("打开下载页面…"))
+                open_url(url)
+                ui(lambda: self.lbl_update_status.setText("已打开下载页面，请安装新版本"))
             except Exception as e:
                 msg = str(e)
                 ui(lambda m=msg: show_error_dialog(self, "更新失败", m))
