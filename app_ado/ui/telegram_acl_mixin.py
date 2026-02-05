@@ -8,6 +8,16 @@ from app_ado.ui.dialogs import show_error_dialog, toast
 
 
 class TelegramAclMixin:
+    def _row(self, a: QtWidgets.QWidget, b: QtWidgets.QWidget) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        h.addWidget(a)
+        h.addWidget(b)
+        h.addStretch(1)
+        return w
+
     def _refresh_acl_ui(self):
         self._settings = load_ui_settings()
 
