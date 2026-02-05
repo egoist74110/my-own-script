@@ -164,23 +164,30 @@ class AdoReleaseTab(Tab):
 
             threading.Thread(target=lambda: do_check(done), daemon=True).start()
 
-        def do_update() -> None:
+        def do_update(done: dict) -> None:
             try:
                 root = repo_root()
                 clean, _dirty = check_git_clean(root)
                 if not clean:
                     raise RuntimeError("仓库有未提交改动，已跳过更新")
+
                 st = get_update_status(root, branch="main")
                 if st.behind <= 0:
                     ui(lambda: self.lbl_update_status.setText("已是最新"))
                     return
+
+                ui(lambda: self.lbl_update_status.setText("拉取代码中…"))
                 pull_ff_only(root, branch="main")
+
+                ui(lambda: self.lbl_update_status.setText("安装依赖中…"))
                 pip_sync(root)
+
                 ui(lambda: self.lbl_update_status.setText("更新完成，准备重启…"))
-                QtCore.QTimer.singleShot(500, restart_self)
+                QtCore.QTimer.singleShot(500, self, restart_self)
             except Exception as e:
                 ui(lambda: show_error_dialog(self, "更新失败", str(e)))
             finally:
+                done["v"] = True
                 ui(lambda: set_busy(False))
 
         def on_update_clicked() -> None:
@@ -193,9 +200,20 @@ class AdoReleaseTab(Tab):
                 return
             set_busy(True)
             self.lbl_update_status.setText("更新中…")
+
+            done = {"v": False}
+
+            def watchdog():
+                if done["v"]:
+                    return
+                set_busy(False)
+                show_error_dialog(self, "更新超时", "更新超过 3 分钟仍未完成。\n\n常见原因：pip 安装依赖卡住/网络慢。建议查看终端输出或稍后再试。")
+
+            QtCore.QTimer.singleShot(180000, self, watchdog)
+
             import threading
 
-            threading.Thread(target=do_update, daemon=True).start()
+            threading.Thread(target=lambda: do_update(done), daemon=True).start()
 
         self.btn_check_update.clicked.connect(on_check_clicked)
         self.btn_do_update.clicked.connect(on_update_clicked)
