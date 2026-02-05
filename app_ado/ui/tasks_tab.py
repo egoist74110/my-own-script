@@ -88,6 +88,10 @@ class TasksTab(Tab):
             missing.append("- 目标分支")
         if not flow.build_id or not flow.build_kind:
             missing.append("- 构建")
+        if not flow.release_id:
+            missing.append("- 发布")
+        if not (flow.release_stage_ids or []):
+            missing.append("- 阶段（至少选择一个）")
         if missing:
             show_error_dialog(self.window(), "配置不完整", "请先在【配置】中补齐：\n" + "\n".join(missing))
             return
@@ -227,8 +231,11 @@ class TasksTab(Tab):
                 branch = flow.target_branch
                 emit_log(f"\n--- Build: kind={flow.build_kind} id={flow.build_id} branch={branch} ---")
 
+                build_run_id: str | None = None
+
                 if flow.build_kind == "pipeline":
                     pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                    build_run_id = pr.run_id
                     emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
                     pr2 = wait_pipeline(lib.base_url, proj.collection, proj.project, flow.build_id, pr.run_id, pat=pat, timeout_min=30)
                     emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
@@ -237,6 +244,7 @@ class TasksTab(Tab):
                         return
                 else:
                     br = trigger_build_definition(lib.base_url, proj.collection, proj.project, flow.build_id, branch=branch, pat=pat)
+                    build_run_id = br.build_id
                     emit_log(f"已触发 Build：build_id={br.build_id} status={br.status} url={br.url or ''}")
                     br2 = wait_build(lib.base_url, proj.collection, proj.project, br.build_id, pat=pat, timeout_min=30)
                     emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
@@ -244,7 +252,80 @@ class TasksTab(Tab):
                         emit_error("构建失败", f"Build result={br2.result}\n{br2.url or ''}")
                         return
 
-                emit_log("✅ 构建成功（下一步：接入 Release 触发+监控）")
+                emit_log("✅ 构建成功，开始触发 Release ...")
+
+                # ---- Release (v4) ----
+                from app_ado.ado_release_http import create_release_from_build, wait_release_environments
+
+                if not build_run_id:
+                    emit_error("错误", "未获得 build_id/run_id，无法创建 Release")
+                    return
+
+                stage_ids = flow.release_stage_ids or []
+                emit_log(
+                    f"\n--- Release: def_id={flow.release_id} build_id={build_run_id} stages={','.join(stage_ids)} ---"
+                )
+
+                rel = None
+                # try api-version 6.0 first, fallback to 7.0 if needed
+                try:
+                    rel = create_release_from_build(
+                        lib.base_url,
+                        proj.collection,
+                        proj.project,
+                        flow.release_id,
+                        build_id=build_run_id,
+                        pat=pat,
+                        api_version="6.0",
+                    )
+                except Exception:
+                    rel = create_release_from_build(
+                        lib.base_url,
+                        proj.collection,
+                        proj.project,
+                        flow.release_id,
+                        build_id=build_run_id,
+                        pat=pat,
+                        api_version="7.0",
+                    )
+
+                emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
+
+                done_envs = None
+                try:
+                    done_envs = wait_release_environments(
+                        lib.base_url,
+                        proj.collection,
+                        proj.project,
+                        rel.id,
+                        pat=pat,
+                        stage_ids=stage_ids,
+                        timeout_min=60,
+                        poll_sec=10.0,
+                        api_version="6.0",
+                    )
+                except Exception:
+                    done_envs = wait_release_environments(
+                        lib.base_url,
+                        proj.collection,
+                        proj.project,
+                        rel.id,
+                        pat=pat,
+                        stage_ids=stage_ids,
+                        timeout_min=60,
+                        poll_sec=10.0,
+                        api_version="7.0",
+                    )
+
+                # Evaluate result
+                failed = [e for e in done_envs if e.status.lower() not in ("succeeded",)]
+                if failed:
+                    msg = "Release 完成但存在失败阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
+                    emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
+                    return
+
+                emit_log("✅ Release 成功（所选阶段全部 succeeded）")
+                emit_log(rel.url or "")
 
             except Exception as e:
                 emit_error("运行异常", str(e))

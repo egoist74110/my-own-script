@@ -264,11 +264,9 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             try:
                 try:
                     items = list_build_pipelines(lib.base_url, proj.collection, proj.project, pat=pat)
-                    kind = "pipeline"
                 except Exception:
                     items = list_build_definitions(lib.base_url, proj.collection, proj.project, pat=pat)
-                    kind = "build_definition"
-                result = {"items": items, "kind": kind}
+                result = {"items": items}
             except Exception as e:
                 result = e
 
@@ -286,7 +284,6 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                 return
             assert isinstance(result, dict)
             items: list[BuildPipeline] = result.get("items") or []
-            kind = result.get("kind")
 
             self.build_combo.clear()
             for it in items:
@@ -304,7 +301,8 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
                             break
                 self.build_combo.setCurrentIndex(idx)
 
-            self.status.setText(f"刷新完成：builds={len(items)} ({kind})")
+            kinds = {it.kind for it in items}
+            self.status.setText(f"刷新完成：builds={len(items)} ({', '.join(sorted(kinds))})")
 
         QtCore.QTimer.singleShot(80, finish)
 

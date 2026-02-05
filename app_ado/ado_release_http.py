@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-"""ADO classic Release endpoints.
+"""ADO classic Release endpoints (trigger + monitor).
 
-On Azure DevOps Server, release endpoints sometimes require api-version 6.0.
-We keep api-version configurable and default to 7.0, with callers free to retry.
+Azure DevOps Server often needs `api-version=6.0` for release APIs.
+We keep api-version configurable and callers can retry with 6.0.
+
+This module tries to be "transparent": errors bubble up to UI which will show
+modal dialogs.
 """
 
 import base64
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,12 +29,26 @@ class ReleaseStage:
     name: str
 
 
+@dataclass(frozen=True)
+class ReleaseRun:
+    id: str
+    name: str | None
+    url: str | None
+
+
+@dataclass(frozen=True)
+class ReleaseEnv:
+    id: str
+    name: str
+    status: str
+
+
 def _auth_header(pat: str) -> str:
     token = base64.b64encode(f":{pat}".encode("utf-8")).decode("utf-8")
     return f"Basic {token}"
 
 
-def _client(pat: str, *, timeout_sec: float = 10.0) -> httpx.Client:
+def _client(pat: str, *, timeout_sec: float = 15.0) -> httpx.Client:
     timeout = httpx.Timeout(timeout_sec, connect=5.0)
     return httpx.Client(
         timeout=timeout,
@@ -45,13 +63,14 @@ def list_release_definitions(
     project: str,
     *,
     pat: str,
-    api_version: str = "7.0",
+    api_version: str = "6.0",
 ) -> list[ReleaseDefinition]:
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/definitions"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
         r.raise_for_status()
         data: Any = r.json()
+
     out: list[ReleaseDefinition] = []
     for x in data.get("value") or []:
         rid = x.get("id")
@@ -62,6 +81,22 @@ def list_release_definitions(
     return out
 
 
+def get_release_definition(
+    base_url: str,
+    collection: str,
+    project: str,
+    release_def_id: str,
+    *,
+    pat: str,
+    api_version: str = "6.0",
+) -> dict[str, Any]:
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/definitions/{release_def_id}"
+    with _client(pat) as c:
+        r = c.get(url, params={"api-version": api_version})
+        r.raise_for_status()
+        return r.json()
+
+
 def get_release_stages(
     base_url: str,
     collection: str,
@@ -69,14 +104,9 @@ def get_release_stages(
     release_def_id: str,
     *,
     pat: str,
-    api_version: str = "7.0",
+    api_version: str = "6.0",
 ) -> list[ReleaseStage]:
-    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/definitions/{release_def_id}"
-    with _client(pat) as c:
-        r = c.get(url, params={"api-version": api_version})
-        r.raise_for_status()
-        data: Any = r.json()
-
+    data = get_release_definition(base_url, collection, project, release_def_id, pat=pat, api_version=api_version)
     envs = data.get("environments") or []
     out: list[ReleaseStage] = []
     for e in envs:
@@ -85,3 +115,126 @@ def get_release_stages(
         if eid is not None and name:
             out.append(ReleaseStage(id=str(eid), name=str(name)))
     return out
+
+
+def create_release_from_build(
+    base_url: str,
+    collection: str,
+    project: str,
+    release_def_id: str,
+    *,
+    build_id: str,
+    pat: str,
+    api_version: str = "6.0",
+    description: str | None = None,
+) -> ReleaseRun:
+    """Create a release using the release definition's artifact template.
+
+    We fetch the release definition to reuse its artifact "definitionReference" and alias.
+    Then we fill instanceReference with the given build_id.
+
+    NOTE: Different ADO Server setups may require additional fields. If this fails,
+    the UI will show the response details and we will tune the payload.
+    """
+    definition = get_release_definition(base_url, collection, project, release_def_id, pat=pat, api_version=api_version)
+    artifacts = definition.get("artifacts") or []
+    if not artifacts:
+        raise RuntimeError("Release definition has no artifacts; cannot create release")
+
+    # Use the first artifact template by default
+    a0 = artifacts[0]
+    alias = a0.get("alias")
+    definition_ref = a0.get("definitionReference") or {}
+    artifact_type = a0.get("type")
+
+    body: dict[str, Any] = {
+        "definitionId": int(release_def_id),
+        "description": description or f"Triggered by my-own-script (build {build_id})",
+        "artifacts": [
+            {
+                "alias": alias,
+                "type": artifact_type,
+                "definitionReference": definition_ref,
+                "instanceReference": {
+                    "id": str(build_id),
+                    "name": str(build_id),
+                },
+            }
+        ],
+    }
+
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/releases"
+    with _client(pat) as c:
+        r = c.post(url, params={"api-version": api_version}, json=body)
+        r.raise_for_status()
+        data: Any = r.json()
+
+    rid = data.get("id")
+    name = data.get("name")
+    web = (data.get("_links") or {}).get("web") or {}
+    href = web.get("href")
+    return ReleaseRun(id=str(rid), name=str(name) if name else None, url=str(href) if href else None)
+
+
+def get_release(
+    base_url: str,
+    collection: str,
+    project: str,
+    release_id: str,
+    *,
+    pat: str,
+    api_version: str = "6.0",
+) -> dict[str, Any]:
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/releases/{release_id}"
+    with _client(pat) as c:
+        r = c.get(url, params={"api-version": api_version})
+        r.raise_for_status()
+        return r.json()
+
+
+def extract_envs(release_json: dict[str, Any]) -> list[ReleaseEnv]:
+    out: list[ReleaseEnv] = []
+    envs = release_json.get("environments") or []
+    for e in envs:
+        eid = e.get("id")
+        name = e.get("name")
+        status = e.get("status")
+        if eid is None or not name:
+            continue
+        out.append(ReleaseEnv(id=str(eid), name=str(name), status=str(status or "")))
+    return out
+
+
+def wait_release_environments(
+    base_url: str,
+    collection: str,
+    project: str,
+    release_id: str,
+    *,
+    pat: str,
+    stage_ids: list[str],
+    timeout_min: int = 60,
+    poll_sec: float = 10.0,
+    api_version: str = "6.0",
+) -> list[ReleaseEnv]:
+    deadline = time.time() + timeout_min * 60
+    want = set(stage_ids)
+
+    last_envs: list[ReleaseEnv] = []
+
+    def is_done(status: str) -> bool:
+        s = (status or "").lower()
+        return s in {"succeeded", "rejected", "canceled", "failed"}
+
+    while time.time() < deadline:
+        data = get_release(base_url, collection, project, release_id, pat=pat, api_version=api_version)
+        envs = extract_envs(data)
+        last_envs = envs
+
+        selected = [e for e in envs if e.id in want]
+        if selected and all(is_done(e.status) for e in selected):
+            return selected
+
+        time.sleep(poll_sec)
+
+    raise TimeoutError(f"release timeout after {timeout_min}min (release={release_id}) last_envs={last_envs}")
