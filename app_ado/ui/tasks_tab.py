@@ -255,17 +255,30 @@ class TasksTab(Tab):
         def should_stop() -> bool:
             return bool(self._stop_event and self._stop_event.is_set())
 
+        # Notify policy:
+        # - TG triggered: notify ONLY the requester chat.
+        # - UI triggered: notify owner chat_id (ui_settings.telegram_chat_id) if configured.
+        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
+
         def notify_telegram(text: str) -> None:
             try:
                 from app_ado.store import load_ui_settings
                 from app_ado.secrets import get_telegram_token
                 from app_ado.notifier_telegram import send_telegram_message
 
-                s = load_ui_settings()
                 token = get_telegram_token()
-                if not s.telegram_chat_id or not token:
+                if not token:
                     return
-                send_telegram_message(bot_token=token, chat_id=s.telegram_chat_id, text=text)
+
+                chat_id = notify_chat_id
+                if not chat_id:
+                    s = load_ui_settings()
+                    chat_id = str(getattr(s, "telegram_chat_id", "") or "").strip()
+
+                if not chat_id:
+                    return
+
+                send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
             except Exception:
                 # never break the flow because of notification
                 return
