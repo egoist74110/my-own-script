@@ -19,6 +19,106 @@ _CMD_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 
 
 class DynamicTaskConfigDialog(QtWidgets.QDialog):
+    def _set_list(self, w: QtWidgets.QListWidget, items: list[str]) -> None:
+        w.clear()
+        for s in items or []:
+            s2 = str(s).strip()
+            if not s2:
+                continue
+            it = QtWidgets.QListWidgetItem(s2)
+            it.setData(QtCore.Qt.UserRole, s2)
+            w.addItem(it)
+
+    def _get_list(self, w: QtWidgets.QListWidget) -> list[str]:
+        out: list[str] = []
+        for i in range(w.count()):
+            it = w.item(i)
+            v = str(it.data(QtCore.Qt.UserRole) or it.text() or "").strip()
+            if v:
+                out.append(v)
+        return out
+
+    def _set_merge_list(self, w: QtWidgets.QListWidget, merges: list[GitMergeRule]) -> None:
+        w.clear()
+        for mr in merges or []:
+            src = (mr.source or "").strip()
+            tgt = (mr.target or "").strip()
+            if not src or not tgt:
+                continue
+            txt = f"{src} -> {tgt}"
+            it = QtWidgets.QListWidgetItem(txt)
+            it.setData(QtCore.Qt.UserRole, {"source": src, "target": tgt})
+            w.addItem(it)
+
+    def _get_merge_list(self, w: QtWidgets.QListWidget) -> list[GitMergeRule]:
+        out: list[GitMergeRule] = []
+        for i in range(w.count()):
+            it = w.item(i)
+            d = it.data(QtCore.Qt.UserRole)
+            if isinstance(d, dict):
+                src = str(d.get("source") or "").strip()
+                tgt = str(d.get("target") or "").strip()
+            else:
+                # fallback parse
+                txt = (it.text() or "")
+                if "->" in txt:
+                    src, tgt = [x.strip() for x in txt.split("->", 1)]
+                else:
+                    continue
+            if src and tgt:
+                out.append(GitMergeRule(source=src, target=tgt))
+        return out
+
+    def _pick_branch(self, title: str) -> str | None:
+        if not self._branches:
+            show_error_dialog(self, "提示", "请先点击【刷新 Repo/分支】获取分支列表")
+            return None
+        choice, ok = QtWidgets.QInputDialog.getItem(self, title, "选择分支：", self._branches, 0, False)
+        if not ok or not choice:
+            return None
+        return str(choice).strip()
+
+    def _add_update_branch(self) -> None:
+        br = self._pick_branch("新增更新分支")
+        if not br:
+            return
+        cur = self._get_list(self.update_list)
+        cur.append(br)
+        self._set_list(self.update_list, cur)
+
+    def _del_update_branch(self) -> None:
+        row = self.update_list.currentRow()
+        if row >= 0:
+            self.update_list.takeItem(row)
+
+    def _add_push_branch(self) -> None:
+        br = self._pick_branch("新增推送分支")
+        if not br:
+            return
+        cur = self._get_list(self.push_list)
+        cur.append(br)
+        self._set_list(self.push_list, cur)
+
+    def _del_push_branch(self) -> None:
+        row = self.push_list.currentRow()
+        if row >= 0:
+            self.push_list.takeItem(row)
+
+    def _add_merge_rule(self) -> None:
+        src = self._pick_branch("选择合并源分支")
+        if not src:
+            return
+        tgt = self._pick_branch("选择合并目标分支")
+        if not tgt:
+            return
+        merges = self._get_merge_list(self.merge_list)
+        merges.append(GitMergeRule(source=src, target=tgt))
+        self._set_merge_list(self.merge_list, merges)
+
+    def _del_merge_rule(self) -> None:
+        row = self.merge_list.currentRow()
+        if row >= 0:
+            self.merge_list.takeItem(row)
     """Configure a dynamic task.
 
     v1: git_flow UI is compatible with existing two modes:
@@ -64,10 +164,19 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_pick_path = PushButton("选择...")
 
         self.repo_combo = combo()
-        self.source_combo = combo()
-        self.target_combo = combo()
 
-        self.chk_merge = QtWidgets.QCheckBox("包含合并（source -> target）")
+        # GitFlow (list)
+        self.update_list = QtWidgets.QListWidget(); self.update_list.setFixedHeight(110)
+        self.btn_add_update = PushButton("新增")
+        self.btn_del_update = PushButton("删除")
+
+        self.merge_list = QtWidgets.QListWidget(); self.merge_list.setFixedHeight(130)
+        self.btn_add_merge = PushButton("新增")
+        self.btn_del_merge = PushButton("删除")
+
+        self.push_list = QtWidgets.QListWidget(); self.push_list.setFixedHeight(110)
+        self.btn_add_push = PushButton("新增")
+        self.btn_del_push = PushButton("删除")
 
         # targets
         self.deploy_target_combo = combo()
@@ -76,8 +185,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_del_target = PushButton("删除")
 
         self.btn_refresh = PushButton("刷新 Repo/分支")
-        self.btn_refresh_build = PushButton("刷新构建列表")
-        self.btn_refresh_release = PushButton("刷新发布/阶段")
+        self._branches: list[str] = []
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
@@ -90,9 +198,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("项目", self.project_combo)
         form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
         form.addRow("仓库(Repo)", self.repo_combo)
-        form.addRow("Git 流程", self.chk_merge)
-        form.addRow("源分支（要合并的）", self.source_combo)
-        form.addRow("目标分支" , self.target_combo)
+
+        form.addRow("更新分支（按顺序 checkout + pull --ff-only）", self._row(self.update_list, self._row(self.btn_add_update, self.btn_del_update)))
+        form.addRow("合并规则（按顺序 merge origin/<source> -> <target>）", self._row(self.merge_list, self._row(self.btn_add_merge, self.btn_del_merge)))
+        form.addRow("推送分支（按顺序 push origin <branch>）", self._row(self.push_list, self._row(self.btn_add_push, self.btn_del_push)))
+
         form.addRow(
             "发布目标",
             self._row(
@@ -113,7 +223,13 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_pick_path.clicked.connect(self._pick_path)
         self.btn_refresh.clicked.connect(self._refresh_repos_and_branches)
         self.repo_combo.currentIndexChanged.connect(self._on_repo_changed)
-        self.chk_merge.stateChanged.connect(self._on_merge_toggle)
+
+        self.btn_add_update.clicked.connect(self._add_update_branch)
+        self.btn_del_update.clicked.connect(self._del_update_branch)
+        self.btn_add_merge.clicked.connect(self._add_merge_rule)
+        self.btn_del_merge.clicked.connect(self._del_merge_rule)
+        self.btn_add_push.clicked.connect(self._add_push_branch)
+        self.btn_del_push.clicked.connect(self._del_push_branch)
 
         self.btn_new_target.clicked.connect(self._new_deploy_target)
         self.btn_edit_target.clicked.connect(self._edit_deploy_target)
@@ -135,9 +251,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                     self.project_combo.setCurrentIndex(i)
                     break
 
-        # infer merge mode
-        has_merge = bool(getattr(task.git_flow, "merges", []) or [])
-        self.chk_merge.setChecked(has_merge)
+        # prefill git_flow lists
+        self._set_list(self.update_list, list(task.git_flow.update_branches or []))
+        self._set_merge_list(self.merge_list, list(task.git_flow.merges or []))
+        self._set_list(self.push_list, list(task.git_flow.push_branches or []))
 
         # echo saved values if not yet loaded
         if task.repo_name:
@@ -145,27 +262,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                 self.repo_combo.addItem(task.repo_name, userData=GitRepo(id=task.repo_id or "", name=task.repo_name))
             self.repo_combo.setCurrentIndex(0)
 
-        # fill branches from git_flow
-        src = ""
-        tgt = ""
-        if has_merge and task.git_flow.merges:
-            src = task.git_flow.merges[0].source
-            tgt = task.git_flow.merges[0].target
-        else:
-            # pick first update branch as target
-            if task.git_flow.update_branches:
-                tgt = task.git_flow.update_branches[0]
-
-        if src:
-            if self.source_combo.count() == 0:
-                self.source_combo.addItem(src, userData=GitBranch(name=f"refs/heads/{src}"))
-            self.source_combo.setCurrentIndex(0)
-        if tgt:
-            if self.target_combo.count() == 0:
-                self.target_combo.addItem(tgt, userData=GitBranch(name=f"refs/heads/{tgt}"))
-            self.target_combo.setCurrentIndex(0)
-
-        self._on_merge_toggle()
+        # Note: branch pickers are driven by the lists above; refresh Repo/分支
+        # will populate self._branches for selection.
 
     def result_task(self) -> DynamicTaskConfig | None:
         return self._result
@@ -266,22 +364,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(80, self, finish)
 
     def _fill_branches(self, branches: list[GitBranch]) -> None:
-        self.source_combo.clear()
-        self.target_combo.clear()
-        for b in branches:
-            self.source_combo.addItem(b.short, userData=b)
-            self.target_combo.addItem(b.short, userData=b)
+        self._branches = [b.short for b in (branches or []) if getattr(b, "short", None)]
 
     def _on_repo_changed(self) -> None:
         # require explicit refresh to pull branches
         return
-
-    def _on_merge_toggle(self) -> None:
-        needs = self.chk_merge.isChecked()
-        lbl = self.layout().itemAt(0).layout().labelForField(self.source_combo)  # type: ignore
-        if lbl:
-            lbl.setVisible(needs)
-        self.source_combo.setVisible(needs)
 
     def _deploy_target_args(self) -> dict | None:
         proj = self._selected_project()
@@ -382,29 +469,24 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         repo_id = repo.id if repo else None
         repo_name = repo.name if repo else None
 
-        needs_merge = self.chk_merge.isChecked()
-        src: GitBranch | None = self.source_combo.currentData() if needs_merge else None
-        tgt: GitBranch | None = self.target_combo.currentData()
+        update_branches = self._get_list(self.update_list)
+        push_branches = self._get_list(self.push_list)
+        merges = self._get_merge_list(self.merge_list)
 
-        if needs_merge and not src:
-            show_error_dialog(self, "错误", "请选择源分支")
+        if not update_branches:
+            show_error_dialog(self, "错误", "请至少新增一个【更新分支】")
             return
-        if not tgt:
-            show_error_dialog(self, "错误", "请选择目标分支")
-            return
+
+        for i, mr in enumerate(merges, start=1):
+            if not mr.source or not mr.target:
+                show_error_dialog(self, "错误", f"第 {i} 条合并规则不完整")
+                return
 
         if not self._targets:
             show_error_dialog(self, "错误", "请至少新增一个发布目标")
             return
 
-        if needs_merge:
-            git_flow = GitFlow(
-                update_branches=[src.short, tgt.short],
-                merges=[GitMergeRule(source=src.short, target=tgt.short)],
-                push_branches=[tgt.short],
-            )
-        else:
-            git_flow = GitFlow(update_branches=[tgt.short], merges=[], push_branches=[])
+        git_flow = GitFlow(update_branches=update_branches, merges=merges, push_branches=push_branches)
 
         self._result = DynamicTaskConfig(
             id=self._task.id or str(uuid.uuid4()),
