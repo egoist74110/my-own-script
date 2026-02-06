@@ -10,9 +10,7 @@ from qfluentwidgets import CardWidget, ComboBox, LineEdit, PushButton
 from app_ado.ado_http import GitBranch, GitRepo, list_branches, list_repos
 from app_ado.models import DeployTarget, DynamicTaskConfig, GitFlow, GitMergeRule, UiSettings
 from app_ado.secrets import get_pat
-from app_ado.ado_build_http import BuildPipeline
-from app_ado.ado_http import list_build_definitions, list_build_pipelines
-from app_ado.ado_release_http import get_release_stages, list_release_definitions
+# (build/release discovery is handled in DeployTargetDialog; no need to import build/release http here)
 from app_ado.ui.deploy_target_dialog import DeployTargetDialog
 from app_ado.ui.dialogs import show_error_dialog
 
