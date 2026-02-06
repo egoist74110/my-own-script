@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
-from qfluentwidgets import CardWidget, ComboBox, PushButton
+from qfluentwidgets import CardWidget, ComboBox, PushButton, LineEdit
 
 from app_ado.ui.task_card import TaskCard
 
@@ -50,17 +50,23 @@ class TasksTab(QtWidgets.QWidget):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(8)
 
+        self.search = LineEdit(); self.search.setPlaceholderText("搜索任务（命令/说明）")
+        self.search.setClearButtonEnabled(True)
+        self.search.setFixedWidth(260)
+
         self.btn_new_task = PushButton("新增任务")
         self.btn_new_task.setFixedWidth(96)
         self.btn_refresh_tasks = PushButton("刷新")
         self.btn_refresh_tasks.setFixedWidth(72)
 
+        header_row.addWidget(self.search)
         header_row.addWidget(self.btn_new_task)
         header_row.addWidget(self.btn_refresh_tasks)
         header_row.addStretch(1)
 
         self.btn_new_task.clicked.connect(self._new_task)
         self.btn_refresh_tasks.clicked.connect(self._render_tasks)
+        self.search.textChanged.connect(lambda: self._render_tasks())
 
         root.addWidget(header, 0)
 
@@ -105,6 +111,14 @@ class TasksTab(QtWidgets.QWidget):
 
         ts = load_task_settings()
         tasks = list(getattr(ts, "tasks", []) or [])
+
+        q = (self.search.text() or "").strip().lower() if hasattr(self, "search") else ""
+        if q:
+            def match(t):
+                cmd = (t.tg_command or "").strip().lower()
+                desc = (t.tg_desc or "").strip().lower()
+                return q in cmd or q in desc
+            tasks = [t for t in tasks if match(t)]
 
         if not tasks:
             hint = QtWidgets.QLabel("暂无任务。点击【新增任务】创建。")
