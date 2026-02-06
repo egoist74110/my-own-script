@@ -33,6 +33,7 @@ class AdoReleaseTab(Tab):
         self._build_project_card()
         self._build_telegram_card()
         self._build_update_card()
+        self._build_tg_status_card()
 
     def _toast(self, title: str, content: str, ok: bool = True) -> None:
         InfoBar.success(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window()) if ok else \
@@ -94,6 +95,47 @@ class AdoReleaseTab(Tab):
 
         self.add_card("项目（本地配置）", w)
         self._refresh_proj_combo()
+
+    def _build_tg_status_card(self) -> None:
+        w = CardWidget(self)
+        form = QFormLayout(w)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        self.lbl_tg_state = QtWidgets.QLabel("未知")
+        self.lbl_tg_last = QtWidgets.QLabel("-")
+        self.lbl_tg_err = QtWidgets.QLabel("-")
+        self.lbl_tg_err.setWordWrap(True)
+
+        self.btn_tg_refresh = PushButton("刷新")
+
+        form.addRow("TG 控制状态", self.lbl_tg_state)
+        form.addRow("最近轮询", self.lbl_tg_last)
+        form.addRow("最后错误", self.lbl_tg_err)
+        form.addRow(self.btn_tg_refresh)
+
+        def refresh() -> None:
+            try:
+                from app_ado.store import config_dir
+
+                p = config_dir() / "tg_control_state.json"
+                if not p.exists():
+                    self.lbl_tg_state.setText("未运行")
+                    self.lbl_tg_last.setText("-")
+                    self.lbl_tg_err.setText("-")
+                    return
+                import json
+
+                j = json.loads(p.read_text("utf-8"))
+                self.lbl_tg_state.setText(j.get("state") or "未知")
+                self.lbl_tg_last.setText(j.get("last_poll") or "-")
+                self.lbl_tg_err.setText(j.get("last_error") or "-")
+            except Exception as e:
+                self.lbl_tg_err.setText(str(e))
+
+        self.btn_tg_refresh.clicked.connect(refresh)
+        refresh()
+
+        self.add_card("TG 控制（状态）", w)
 
     def _build_update_card(self) -> None:
         """Manual update UX: check updates + update now."""

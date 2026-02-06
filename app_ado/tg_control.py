@@ -43,6 +43,7 @@ class TelegramController:
 
         self._offset_path = config_dir() / "tg_offset.json"
         self._log_path = config_dir() / "tg_control.log"
+        self._state_path = config_dir() / "tg_control_state.json"
         self._update_offset = self._load_offset()
 
     def _load_offset(self) -> int | None:
@@ -59,6 +60,15 @@ class TelegramController:
         try:
             self._offset_path.parent.mkdir(parents=True, exist_ok=True)
             self._offset_path.write_text(json.dumps({"next_offset": int(next_offset)}, indent=2), "utf-8")
+        except Exception:
+            pass
+
+    def _write_state(self, **kv) -> None:
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            import json
+
+            self._state_path.write_text(json.dumps(kv, ensure_ascii=False, indent=2), "utf-8")
         except Exception:
             pass
 
@@ -254,9 +264,11 @@ class TelegramController:
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
 
     def _run_loop(self) -> None:
+        self._write_state(state="启动中", last_poll="-", last_error="-")
         while not self._stop.is_set():
             s = load_ui_settings()
             if not s.telegram_control_enabled:
+                self._write_state(state="未启用", last_poll="-", last_error="-")
                 time.sleep(1.0)
                 continue
 
@@ -272,6 +284,7 @@ class TelegramController:
 
             try:
                 data = self._get_updates(token, timeout=20)
+                self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error="-")
                 items = data.get("result") or []
                 last_id: int | None = None
 
@@ -300,6 +313,7 @@ class TelegramController:
             except Exception as e:
                 msg = str(e)
                 self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {msg}")
+                self._write_state(state="错误", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=msg)
 
                 # 409 can happen if webhook is set or another poller is active.
                 if "409" in msg or "Conflict" in msg:
