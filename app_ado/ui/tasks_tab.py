@@ -11,18 +11,13 @@ from app_ado.ui.confirm import show_confirm_dialog
 from app_ado.ui.dialogs import show_error_dialog
 from app_ado.ui.run_log_dialog import RunLogDialog
 from app_ado.ui.task_flow_dialog import FlowTaskConfigDialog
-from ok.gui.widget.Tab import Tab
+from qfluentwidgets import ScrollArea
 
 
-class TasksTab(Tab):
-    """Task page placeholder.
+class TasksTab(QtWidgets.QWidget):
+    """Tasks tab.
 
-    Next step: implement FlowTask config + execution:
-    - repo/branches dropdown discovery
-    - merge/push
-    - build trigger + monitor
-    - release trigger + monitor (multi-stage)
-    - logs
+    Now supports dynamic tasks (CRUD) stored in tasks.yaml.
     """
 
     icon = None
@@ -30,6 +25,14 @@ class TasksTab(Tab):
 
     def __init__(self):
         super().__init__()
+        # Required by qfluentwidgets FluentWindow.addSubInterface
+        if not self.objectName():
+            self.setObjectName("TasksTab")
+
+        # Root layout: fixed header + scrollable task list
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(8)
         self._stop_event = None
         self._running: bool = False
         self._running_task: str = ""
@@ -39,25 +42,48 @@ class TasksTab(Tab):
         self._stop_requester_chat_id: str = ""
         self._stop_requester_username: str | None = None
 
-        # Task 1: sync+merge+build+release
-        self.flow_card = TaskCard(
-            title="同步/合并 + 构建 + 发布",
-            subtitle="把源分支合并到目标分支，然后构建并发布",
-        )
-        self.flow_card.config_clicked.connect(lambda: self._edit("sync_merge_build_release"))
-        self.flow_card.run_clicked.connect(lambda: self._run("sync_merge_build_release", self.flow_card))
-        self.flow_card.stop_clicked.connect(self._stop)
-        self.add_widget(self.flow_card)
+        self._task_cards: dict[str, TaskCard] = {}
 
-        # Task 2: sync+build+release (no merge)
-        self.sync_card = TaskCard(
-            title="同步 + 构建 + 发布",
-            subtitle="同步目标分支到最新，然后构建并发布（不做分支合并）",
+        # Header (fixed)
+        header = QtWidgets.QWidget(self)
+        header_row = QtWidgets.QHBoxLayout(header)
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(8)
+
+        self.btn_new_task = PushButton("新增任务")
+        self.btn_new_task.setFixedWidth(96)
+        self.btn_refresh_tasks = PushButton("刷新")
+        self.btn_refresh_tasks.setFixedWidth(72)
+
+        header_row.addWidget(self.btn_new_task)
+        header_row.addWidget(self.btn_refresh_tasks)
+        header_row.addStretch(1)
+
+        self.btn_new_task.clicked.connect(self._new_task)
+        self.btn_refresh_tasks.clicked.connect(self._render_tasks)
+
+        root.addWidget(header, 0)
+
+        # Scrollable list area
+        self.list_area = ScrollArea(self)
+        self.list_area.setWidgetResizable(True)
+        self.list_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        # Remove scroll area border/frame for a cleaner list look
+        self.list_area.setStyleSheet(
+            "QScrollArea{border:0px;background:transparent;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
         )
-        self.sync_card.config_clicked.connect(lambda: self._edit("sync_build_release"))
-        self.sync_card.run_clicked.connect(lambda: self._run("sync_build_release", self.sync_card))
-        self.sync_card.stop_clicked.connect(self._stop)
-        self.add_widget(self.sync_card)
+
+        self.list_view = QtWidgets.QWidget(self.list_area)
+        self.list_layout = QtWidgets.QVBoxLayout(self.list_view)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(8)
+        self.list_layout.setAlignment(QtCore.Qt.AlignTop)
+
+        self.list_area.setWidget(self.list_view)
+        root.addWidget(self.list_area, 1)
+
+        self._render_tasks()
 
     def _clear_run_log(self, card: TaskCard) -> None:
         card.clear_log()
@@ -65,62 +91,147 @@ class TasksTab(Tab):
     def _append_run_log(self, card: TaskCard, text: str) -> None:
         card.append_log(text)
 
-    def _edit(self, flow_id: str) -> None:
+    def _render_tasks(self) -> None:
+        """Render task cards from dynamic tasks config."""
+        # remove old cards
+        for card in list(self._task_cards.values()):
+            try:
+                self.list_layout.removeWidget(card)
+                card.setParent(None)
+                card.deleteLater()
+            except Exception:
+                pass
+        self._task_cards.clear()
+
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if flow is None:
-            from app_ado.models import FlowTaskConfig
+        tasks = list(getattr(ts, "tasks", []) or [])
 
-            flow = FlowTaskConfig(id=flow_id)
-            ts.flows.append(flow)
+        if not tasks:
+            hint = QtWidgets.QLabel("暂无任务。点击【新增任务】创建。")
+            hint.setStyleSheet("color: #666;")
+            self.list_layout.addWidget(hint)
+            self._task_cards["__hint__"] = hint  # type: ignore
+            return
 
+        for t in tasks:
+            title = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
+            subtitle = ("TG命令：/" + (t.tg_command or ""))
+            card = TaskCard(title=title, subtitle=subtitle, show_delete=True)
+
+            card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
+            card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
+            card.stop_clicked.connect(self._stop)
+            card.delete_clicked.connect(lambda _=None, tid=t.id: self._delete_task(tid))
+
+            self.list_layout.addWidget(card)
+            self._task_cards[t.id] = card
+
+    def _new_task(self) -> None:
+        from app_ado.models import DynamicTaskConfig
         from app_ado.store import load_ui_settings
+        from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
 
+        ts = load_task_settings()
         settings = load_ui_settings()
-        dlg = FlowTaskConfigDialog(self.window(), settings=settings, flow=flow)
+        t = DynamicTaskConfig(id="")
+        dlg = DynamicTaskConfigDialog(self.window(), settings=settings, task=t)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
-        updated = dlg.result_config()
-        if not updated:
+        rt = dlg.result_task()
+        if not rt:
             return
-        ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
+        ts.tasks.append(rt)
         save_task_settings(ts)
+        self._render_tasks()
 
-    def run_task(self, flow_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+    def _delete_task(self, task_id: str) -> None:
+        ts = load_task_settings()
+        t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
+        if not t:
+            return
+        label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
+        from app_ado.ui.confirm import show_confirm_dialog
+
+        ok = show_confirm_dialog(self.window(), "确认删除", f"删除任务：{label}？")
+        if not ok:
+            return
+        ts.tasks = [x for x in (ts.tasks or []) if x.id != task_id]
+        save_task_settings(ts)
+        self._render_tasks()
+
+    def _edit_task(self, task_id: str) -> None:
+        from app_ado.store import load_ui_settings
+        from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
+
+        ts = load_task_settings()
+        t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
+        if not t:
+            show_error_dialog(self.window(), "错误", "任务不存在")
+            return
+
+        settings = load_ui_settings()
+        dlg = DynamicTaskConfigDialog(self.window(), settings=settings, task=t)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        rt = dlg.result_task()
+        if not rt:
+            return
+
+        # enforce command uniqueness
+        cmd = (rt.tg_command or "").strip().lower()
+        for x in ts.tasks:
+            if x.id != rt.id and (x.tg_command or "").strip().lower() == cmd:
+                show_error_dialog(self.window(), "错误", f"TG 命令已被占用：/{cmd}")
+                return
+
+        ts.tasks = [rt if x.id == rt.id else x for x in ts.tasks]
+        save_task_settings(ts)
+        self._render_tasks()
+
+    def run_task(self, key: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
         """TG-triggered run.
 
+        key can be task_id or tg_command.
         Returns (ok, message) for Telegram reply.
         """
-        # Single-flight quick reject
         if self._running:
             return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
 
-        # Quick config precheck to avoid "收到" but no-op.
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
+        tasks = list(getattr(ts, "tasks", []) or [])
+        k = (key or "").strip().lstrip("/")
+        t = next((x for x in tasks if x.id == k), None) or next(
+            (x for x in tasks if (x.tg_command or "").strip().lower() == k.lower()),
+            None,
+        )
+        if not t:
+            return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        # basic precheck
         missing: list[str] = []
-        if not flow:
-            missing.append("- 尚未配置该任务")
-        else:
-            if not flow.local_repo_path:
-                missing.append("- 本地仓库路径")
-            if flow_id == "sync_merge_build_release" and not flow.source_branch:
-                missing.append("- 源分支")
-            if not flow.target_branch:
-                missing.append("- 目标分支")
-            targets = list(getattr(flow, "targets", []) or [])
-            if not targets and not (flow.build_id and flow.release_id and (flow.release_stage_ids or [])):
-                missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+        if not t.local_repo_path:
+            missing.append("- 本地仓库路径")
+        if not t.targets:
+            missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+        if not t.git_flow.update_branches:
+            missing.append("- Git流程：至少选择一个更新分支")
+        if t.git_flow.merges:
+            r = t.git_flow.merges[0]
+            if not r.source or not r.target:
+                missing.append("- Git流程：合并规则不完整")
 
         if missing:
-            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{t.name}）：\n" + "\n".join(missing)
             return False, msg
 
         self._last_requester_chat_id = requester_chat_id
         self._last_requester_username = requester_username
-        card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
-        QtCore.QTimer.singleShot(0, self, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
-        return True, f"收到，开始执行：{flow_id}"
+        card = self._task_cards.get(t.id)
+        if not card:
+            return False, "⚠️ 任务卡片未加载，请打开应用后再试"
+
+        QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
+        return True, f"收到，开始执行：{t.name}"
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner
@@ -155,46 +266,37 @@ class TasksTab(Tab):
             show_error_dialog(self.window(), "无法执行", msg)
             return
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if not flow:
-            self._edit(flow_id)
-            ts = load_task_settings()
-            flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if not flow:
+        task = next((t for t in (ts.tasks or []) if t.id == flow_id), None)
+        if not task:
+            show_error_dialog(self.window(), "错误", "任务不存在")
             return
+
+        task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
 
         # basic config validation (UI thread)
         missing: list[str] = []
-        if not flow.local_repo_path:
+        local_path = (task.local_repo_path or "").strip()
+        if not local_path:
             missing.append("- 本地仓库路径")
-        if flow_id == "sync_merge_build_release" and not flow.source_branch:
-            missing.append("- 源分支")
-        if not flow.target_branch:
-            missing.append("- 目标分支")
-        # multi targets
-        targets = list(getattr(flow, "targets", []) or [])
-        if not targets and (flow.build_id or flow.release_id or (flow.release_stage_ids or [])):
-            # back-compat single target
-            from app_ado.models import DeployTarget
 
-            targets = [
-                DeployTarget(
-                    name="目标1",
-                    enabled=True,
-                    build_kind=flow.build_kind,
-                    build_id=flow.build_id,
-                    build_name=flow.build_name,
-                    release_id=flow.release_id,
-                    release_name=flow.release_name,
-                    release_stage_ids=list(flow.release_stage_ids or []),
-                    release_stage_names=list(flow.release_stage_names or []),
-                )
-            ]
+        update_branches = [x.strip() for x in (task.git_flow.update_branches or []) if str(x).strip()]
+        merges = list(task.git_flow.merges or [])
+        push_branches = [x.strip() for x in (task.git_flow.push_branches or []) if str(x).strip()]
 
+        if not update_branches:
+            missing.append("- Git流程：更新分支（至少 1 个）")
+
+        for i, mr in enumerate(merges):
+            if not (mr.source and mr.target):
+                missing.append(f"- Git流程：第 {i+1} 条合并规则不完整")
+                break
+
+        targets = list(task.targets or [])
         if not targets:
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+
         if missing:
-            msg = f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            msg = f"请先在【配置】中补齐（{task_label}）：\n" + "\n".join(missing)
             if tg_reply_chat_id:
                 try:
                     from app_ado.secrets import get_telegram_token
@@ -208,23 +310,30 @@ class TasksTab(Tab):
             show_error_dialog(self.window(), "配置不完整", msg)
             return
 
-        local_path = flow.local_repo_path
+        # Determine the branch used for build/release association.
+        deploy_branch = merges[-1].target if merges else update_branches[-1]
 
         if not skip_confirm:
+            steps: list[str] = []
+            steps.append("Git 流程：")
+            steps.append("1) fetch origin（涉及分支）")
+            for i, br in enumerate(update_branches, start=2):
+                steps.append(f"{i}) 更新分支（ff-only）：{br}")
+            base_idx = 2 + len(update_branches)
+            for j, mr in enumerate(merges, start=0):
+                steps.append(f"{base_idx + j}) 合并：{mr.source} -> {mr.target}")
+            base_idx = base_idx + len(merges)
+            for k, br in enumerate(push_branches, start=0):
+                steps.append(f"{base_idx + k}) 推送：{br}")
+
+            steps.append("")
+            steps.append(f"触发构建（分支：{deploy_branch}）并等待完成")
+            steps.append("触发发布并监控所选阶段")
+
             ok = show_confirm_dialog(
                 self.window(),
                 "确认执行任务？",
-                "将执行以下操作：\n"
-                + (
-                    f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
-                    f"2) 更新本地分支（ff-only）\n"
-                    f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
-                    f"4) push origin {flow.target_branch}\n"
-                    if flow_id == "sync_merge_build_release"
-                    else f"1) fetch origin {flow.target_branch}\n2) 更新本地分支（ff-only）\n"
-                )
-                + f"触发构建（目标分支：{flow.target_branch}）并等待完成\n"
-                + f"触发发布并监控所选阶段\n\nrepo_path={local_path}",
+                "\n".join(steps) + f"\n\nrepo_path={local_path}",
             )
             if not ok:
                 return
@@ -287,20 +396,20 @@ class TasksTab(Tab):
             # final result notification (fail)
             notify_telegram(
                 "❌ 任务失败\n"
-                f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                f"{task.repo_name or ''} branch={deploy_branch}\n"
                 f"{title}\n{details}"
             )
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
             try:
-                emit_log("运行：合并并推送 + 构建")
+                emit_log(f"运行：{task_label}")
                 emit_log(f"repo_path={local_path}")
-                emit_log(f"source={flow.source_branch} target={flow.target_branch}")
+                emit_log(f"deploy_branch={deploy_branch}")
 
                 notify_telegram(
                     "🚀 开始执行任务\n"
-                    f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                    f"{task.repo_name or ''} branch={deploy_branch}\n"
                     f"targets={len(targets)}"
                 )
 
@@ -334,72 +443,68 @@ class TasksTab(Tab):
                     emit_error("工作区未清理", "检测到未提交改动，请先处理后再运行：\n\n" + dirty)
                     return
 
-                # fetch + update branches
-                if flow_id == "sync_merge_build_release":
-                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
+                # --- git flow ---
+                branches: list[str] = []
+                seen = set()
+                for br in update_branches + push_branches:
+                    if br and br not in seen:
+                        branches.append(br); seen.add(br)
+                for mr in merges:
+                    for br in [mr.source, mr.target]:
+                        if br and br not in seen:
+                            branches.append(br); seen.add(br)
+                if deploy_branch and deploy_branch not in seen:
+                    branches.append(deploy_branch); seen.add(deploy_branch)
+
+                fetch_cmd = ["git", "fetch", "--prune", "origin"] + branches
+                cp = run_cmd(fetch_cmd)
+                if cp.returncode != 0:
+                    emit_error("错误", "fetch 失败")
+                    return
+
+                for br in update_branches:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
+                    cp = run_cmd(["git", "checkout", br])
                     if cp.returncode != 0:
-                        emit_error("错误", "fetch 失败")
+                        emit_error("错误", f"checkout 失败: {br}")
+                        return
+                    cp = run_cmd(["git", "pull", "--ff-only"])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"pull 失败: {br}")
                         return
 
-                    for br in [flow.source_branch, flow.target_branch]:
-                        if should_stop():
-                            emit_log("已停止：用户取消")
-                            return
-                        cp = run_cmd(["git", "checkout", br])
-                        if cp.returncode != 0:
-                            emit_error("错误", f"checkout 失败: {br}")
-                            return
-                        cp = run_cmd(["git", "pull", "--ff-only"])
-                        if cp.returncode != 0:
-                            emit_error("错误", f"pull 失败: {br}")
-                            return
-
-                    # merge source into target
-                    cp = run_cmd(["git", "checkout", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
+                for mr in merges:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
                         return
-
-                    cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
+                    cp = run_cmd(["git", "checkout", mr.target])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"checkout 失败: {mr.target}")
+                        return
+                    cp = run_cmd(["git", "merge", f"origin/{mr.source}"])
                     if cp.returncode != 0:
                         cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
                         conflicts = (cp2.stdout or "").strip()
                         emit_error(
                             "合并失败（可能存在冲突）",
-                            "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                            f"merge 失败：{mr.source} -> {mr.target}\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
                         )
                         return
 
-                    cp = run_cmd(["git", "push", "origin", flow.target_branch])
+                for br in push_branches:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
+                    cp = run_cmd(["git", "push", "origin", br])
                     if cp.returncode != 0:
-                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
+                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={br}")
                         return
 
-                    cp = run_cmd(["git", "rev-parse", "HEAD"])
-                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                    emit_log(
-                        f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}"
-                        + (f"\nHEAD={head}" if head else "")
-                    )
-                else:
-                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", "fetch 失败")
-                        return
-
-                    cp = run_cmd(["git", "checkout", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
-                        return
-
-                    cp = run_cmd(["git", "pull", "--ff-only"])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"pull 失败: {flow.target_branch}")
-                        return
-
-                    cp = run_cmd(["git", "rev-parse", "HEAD"])
-                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                    emit_log(f"✅ 同步完成：{flow.target_branch}" + (f"\nHEAD={head}" if head else ""))
+                cp = run_cmd(["git", "rev-parse", "HEAD"])
+                head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                emit_log("✅ Git 流程完成" + (f"\nHEAD={head}" if head else ""))
                 # notification policy: only start + final result
 
                 if should_stop():
@@ -418,7 +523,7 @@ class TasksTab(Tab):
                 )
 
                 settings = load_ui_settings()
-                proj = next((p for p in settings.projects if p.id == flow.project_id), None)
+                proj = next((p for p in settings.projects if p.id == task.project_id), None)
                 if not proj:
                     emit_error("错误", "找不到项目配置（project_id）")
                     return
@@ -436,7 +541,7 @@ class TasksTab(Tab):
                 from app_ado.ado_release_http import extract_envs, get_release, start_release_environment
                 import time
 
-                branch = flow.target_branch
+                branch = deploy_branch
 
                 for ti, tgt in enumerate(targets, start=1):
                     if not getattr(tgt, "enabled", True):
@@ -582,135 +687,10 @@ class TasksTab(Tab):
                 last_url = rel.url if 'rel' in locals() and rel else ""
                 notify_telegram(
                     "✅ 任务成功\n"
-                    f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                    f"{task.repo_name or ''} branch={deploy_branch}\n"
                     f"targets={len(targets)}\n"
                     f"{last_url}"
                 )
-                return
-
-                def fetch_envs() -> list:
-                    # prefer 6.0, fallback 7.0
-                    try:
-                        data = get_release(
-                            lib.base_url,
-                            proj.collection,
-                            proj.project,
-                            rel.id,
-                            pat=pat,
-                            api_version="6.0",
-                        )
-                    except Exception:
-                        data = get_release(
-                            lib.base_url,
-                            proj.collection,
-                            proj.project,
-                            rel.id,
-                            pat=pat,
-                            api_version="7.0",
-                        )
-                    return extract_envs(data)
-
-                def is_done(status: str) -> bool:
-                    s = (status or "").lower()
-                    return s in {"succeeded", "rejected", "canceled", "failed"}
-
-                want_ids = set(stage_ids)
-                want_names = set(flow.release_stage_names or [])
-                deadline = time.time() + 60 * 60
-                last_line = ""
-                printed_debug = False
-
-                def select_envs(envs):
-                    # IMPORTANT: release environment id != definition environment id.
-                    # The selected stage ids are definition environment ids.
-                    by_def_id = [e for e in envs if (e.definition_environment_id or "") in want_ids]
-                    if by_def_id:
-                        return by_def_id, "definitionEnvironmentId"
-                    by_name = [e for e in envs if e.name in want_names]
-                    if by_name:
-                        return by_name, "name"
-                    return [], "none"
-
-                while time.time() < deadline:
-                    try:
-                        envs = fetch_envs()
-                    except Exception as e:
-                        emit_error("监控失败", str(e))
-                        return
-
-                    selected, mode = select_envs(envs)
-                    if not selected:
-                        line = "监控：等待阶段进入 release（环境列表尚未出现/未匹配）"
-                        if not printed_debug:
-                            avail = "\n".join(
-                                [
-                                    f"- {e.name} (envId={e.id}, defEnvId={e.definition_environment_id}) status={e.status}"
-                                    for e in envs
-                                ]
-                            )
-                            emit_log("调试：期望阶段IDs=" + ",".join(sorted(want_ids)))
-                            if want_names:
-                                emit_log("调试：期望阶段Names=" + " | ".join(flow.release_stage_names or []))
-                            emit_log("调试：当前Release environments：\n" + (avail or "(空)"))
-                            printed_debug = True
-                    else:
-                        parts = [
-                            f"{e.name}(defEnvId={e.definition_environment_id}, envId={e.id})={e.status}"
-                            for e in selected
-                        ]
-                        line = f"监控(mode={mode})：" + " | ".join(parts)
-
-                    # avoid spamming identical lines
-                    if line != last_line:
-                        emit_log(line)
-                        last_line = line
-
-                    # auto-start notStarted environments
-                    for e in selected:
-                        if (e.status or '').lower() == 'notstarted':
-                            try:
-                                emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
-                                start_release_environment(
-                                    lib.base_url,
-                                    proj.collection,
-                                    proj.project,
-                                    rel.id,
-                                    e.id,
-                                    pat=pat,
-                                )
-                            except Exception as ex:
-                                emit_error("触发部署失败", str(ex))
-                                return
-
-                    if selected and all(is_done(e.status) for e in selected):
-                        failed = [e for e in selected if e.status.lower() not in ("succeeded",)]
-                        if failed:
-                            msg = "Release 完成但存在失败阶段：\n" + "\n".join(
-                                [f"- {e.name} ({e.id}) status={e.status}" for e in failed]
-                            )
-                            emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
-                            return
-
-                        emit_log("✅ Release 成功（所选阶段全部 succeeded）")
-                        emit_log(rel.url or "")
-                        notify_telegram(
-                            "✅ 任务成功\n"
-                            f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
-                            f"Build: {flow.build_name or flow.build_id}\n"
-                            f"Release: {flow.release_name or flow.release_id}\n"
-                            f"{rel.url or ''}"
-                        )
-                        return
-
-                    # sleep in small steps so Stop reacts quickly
-                    for _ in range(10):
-                        if should_stop():
-                            emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
-                            # notification policy: only start + final result
-                            return
-                        time.sleep(1.0)
-
-                emit_error("发布超时", f"Release 监控超时（60min）：{rel.url or ''}")
                 return
 
             except Exception as e:
@@ -721,7 +701,7 @@ class TasksTab(Tab):
         # UI init
         card.set_actions_enabled(False)
         self._clear_run_log(card)
-        log = RunLogDialog(self.window(), title="运行：合并并推送 + 构建")
+        log = RunLogDialog(self.window(), title=f"运行：{task_label}")
         log.show()
 
         def flush():

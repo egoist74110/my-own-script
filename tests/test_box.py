@@ -1,11 +1,16 @@
 import unittest
 
-from ok import Logger
-from ok.feature.Box import Box, sort_boxes
+try:
+    from ok import Logger  # type: ignore
+    from ok.feature.Box import Box, sort_boxes  # type: ignore
 
-logger = Logger.get_logger(__name__)
+    logger = Logger.get_logger(__name__)  # type: ignore
+    _OK = True
+except Exception:
+    _OK = False
 
 
+@unittest.skipUnless(_OK, "ok-script symbols not available in this build")
 class TestBox(unittest.TestCase):
 
     def test_sort_box(self):
