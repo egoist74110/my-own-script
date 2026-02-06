@@ -10,13 +10,16 @@ class TaskCard(ExpandSettingCard):
     run_clicked = QtCore.Signal()
     config_clicked = QtCore.Signal()
     stop_clicked = QtCore.Signal()
+    delete_clicked = QtCore.Signal()
 
-    def __init__(self, *, title: str, subtitle: str = "") -> None:
+    def __init__(self, *, title: str, subtitle: str = "", show_delete: bool = False) -> None:
         super().__init__(FluentIcon.APPLICATION, title, subtitle)
 
         self.btn_config = PushButton("配置")
         self.btn_run = PushButton("运行")
         self.btn_stop = PushButton("停止")
+        self.btn_delete = PushButton("删除")
+        self.btn_delete.setVisible(bool(show_delete))
         self.btn_stop.setEnabled(False)
 
         # Use the card's built-in expand button; do NOT add extra dropdown arrow.
@@ -33,10 +36,12 @@ class TaskCard(ExpandSettingCard):
             layout.insertWidget(idx, self.btn_stop, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_run, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_config, 0, QtCore.Qt.AlignRight)
+            layout.insertWidget(idx, self.btn_delete, 0, QtCore.Qt.AlignRight)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
         self.btn_stop.clicked.connect(self.stop_clicked.emit)
+        self.btn_delete.clicked.connect(self.delete_clicked.emit)
 
         # Per-task log box in expandable panel
         self.log_box = QtWidgets.QPlainTextEdit()
@@ -49,6 +54,7 @@ class TaskCard(ExpandSettingCard):
         # Make header actions less cramped
         self.btn_config.setFixedWidth(72)
         self.btn_run.setFixedWidth(72)
+        self.btn_delete.setFixedWidth(72)
         self.card.hBoxLayout.setSpacing(12)
 
         self.setExpand(False)

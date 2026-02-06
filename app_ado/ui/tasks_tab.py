@@ -116,11 +116,12 @@ class TasksTab(QtWidgets.QWidget):
         for t in tasks:
             title = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
             subtitle = ("TG命令：/" + (t.tg_command or ""))
-            card = TaskCard(title=title, subtitle=subtitle)
+            card = TaskCard(title=title, subtitle=subtitle, show_delete=True)
 
             card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
             card.stop_clicked.connect(self._stop)
+            card.delete_clicked.connect(lambda _=None, tid=t.id: self._delete_task(tid))
 
             self.list_layout.addWidget(card)
             self._task_cards[t.id] = card
@@ -140,6 +141,19 @@ class TasksTab(QtWidgets.QWidget):
         if not rt:
             return
         ts.tasks.append(rt)
+        save_task_settings(ts)
+        self._render_tasks()
+
+    def _delete_task(self, task_id: str) -> None:
+        ts = load_task_settings()
+        t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
+        if not t:
+            return
+        label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
+        ok = QtWidgets.QMessageBox.question(self.window(), "确认删除", f"删除任务：{label}？")
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+        ts.tasks = [x for x in (ts.tasks or []) if x.id != task_id]
         save_task_settings(ts)
         self._render_tasks()
 
