@@ -5,7 +5,7 @@
 
 ## P0 / 核心功能完善
 
-- [ ] **GitFlow 配置 UI 列表化**（支持多 update_branches / 多 merges / 多 push_branches）
+- [x] **GitFlow 配置 UI 列表化**（支持多 update_branches / 多 merges / 多 push_branches）
   - 目标：不再局限于“是否合并”的单一规则。
   - UI：可增删行；每行用分支下拉；提供“预览将执行的步骤”。
   - 影响文件：`app_ado/ui/dynamic_task_dialog.py`（或拆分新文件）。
