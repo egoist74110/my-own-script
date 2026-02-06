@@ -11,10 +11,10 @@ from app_ado.ui.confirm import show_confirm_dialog
 from app_ado.ui.dialogs import show_error_dialog
 from app_ado.ui.run_log_dialog import RunLogDialog
 from app_ado.ui.task_flow_dialog import FlowTaskConfigDialog
-from ok.gui.widget.Tab import Tab
+from qfluentwidgets import ScrollArea
 
 
-class TasksTab(Tab):
+class TasksTab(QtWidgets.QWidget):
     """Tasks tab.
 
     Now supports dynamic tasks (CRUD) stored in tasks.yaml.
@@ -25,6 +25,11 @@ class TasksTab(Tab):
 
     def __init__(self):
         super().__init__()
+
+        # Root layout: fixed header + scrollable task list
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(8)
         self._stop_event = None
         self._running: bool = False
         self._running_task: str = ""
@@ -36,22 +41,39 @@ class TasksTab(Tab):
 
         self._task_cards: dict[str, TaskCard] = {}
 
-        # Top actions
-        top = QtWidgets.QWidget(self)
-        top_row = QtWidgets.QHBoxLayout(top)
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(8)
+        # Header (fixed)
+        header = QtWidgets.QWidget(self)
+        header_row = QtWidgets.QHBoxLayout(header)
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(8)
 
         self.btn_new_task = PushButton("新增任务")
+        self.btn_new_task.setFixedWidth(96)
         self.btn_refresh_tasks = PushButton("刷新")
-        top_row.addWidget(self.btn_new_task)
-        top_row.addWidget(self.btn_refresh_tasks)
-        top_row.addStretch(1)
+        self.btn_refresh_tasks.setFixedWidth(72)
+
+        header_row.addWidget(self.btn_new_task)
+        header_row.addWidget(self.btn_refresh_tasks)
+        header_row.addStretch(1)
 
         self.btn_new_task.clicked.connect(self._new_task)
         self.btn_refresh_tasks.clicked.connect(self._render_tasks)
 
-        self.add_widget(top)
+        root.addWidget(header, 0)
+
+        # Scrollable list area
+        self.list_area = ScrollArea(self)
+        self.list_area.setWidgetResizable(True)
+        self.list_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+        self.list_view = QtWidgets.QWidget(self.list_area)
+        self.list_layout = QtWidgets.QVBoxLayout(self.list_view)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(8)
+        self.list_layout.setAlignment(QtCore.Qt.AlignTop)
+
+        self.list_area.setWidget(self.list_view)
+        root.addWidget(self.list_area, 1)
 
         self._render_tasks()
 
@@ -66,7 +88,7 @@ class TasksTab(Tab):
         # remove old cards
         for card in list(self._task_cards.values()):
             try:
-                self.removeWidget(card)
+                self.list_layout.removeWidget(card)
                 card.setParent(None)
                 card.deleteLater()
             except Exception:
@@ -79,7 +101,7 @@ class TasksTab(Tab):
         if not tasks:
             hint = QtWidgets.QLabel("暂无任务。点击【新增任务】创建。")
             hint.setStyleSheet("color: #666;")
-            self.add_widget(hint)
+            self.list_layout.addWidget(hint)
             self._task_cards["__hint__"] = hint  # type: ignore
             return
 
@@ -91,7 +113,7 @@ class TasksTab(Tab):
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
             card.stop_clicked.connect(self._stop)
 
-            self.add_widget(card)
+            self.list_layout.addWidget(card)
             self._task_cards[t.id] = card
 
     def _new_task(self) -> None:
