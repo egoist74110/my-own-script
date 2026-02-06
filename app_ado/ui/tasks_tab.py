@@ -25,6 +25,9 @@ class TasksTab(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
+        # Required by qfluentwidgets FluentWindow.addSubInterface
+        if not self.objectName():
+            self.setObjectName("TasksTab")
 
         # Root layout: fixed header + scrollable task list
         root = QtWidgets.QVBoxLayout(self)
