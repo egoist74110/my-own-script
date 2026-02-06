@@ -150,8 +150,10 @@ class TasksTab(QtWidgets.QWidget):
         if not t:
             return
         label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
-        ok = QtWidgets.QMessageBox.question(self.window(), "确认删除", f"删除任务：{label}？")
-        if ok != QtWidgets.QMessageBox.Yes:
+        from app_ado.ui.confirm import show_confirm_dialog
+
+        ok = show_confirm_dialog(self.window(), "确认删除", f"删除任务：{label}？")
+        if not ok:
             return
         ts.tasks = [x for x in (ts.tasks or []) if x.id != task_id]
         save_task_settings(ts)
