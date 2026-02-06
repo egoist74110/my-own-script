@@ -283,6 +283,27 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             lbl.setVisible(needs)
         self.source_combo.setVisible(needs)
 
+    def _deploy_target_args(self) -> dict | None:
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先选择项目")
+            return None
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return None
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return None
+        return {
+            "parent": self,
+            "base_url": lib.base_url,
+            "collection": proj.collection,
+            "project": proj.project,
+            "pat": pat,
+        }
+
     def _refresh_target_combo(self, *, select_name: str | None = None) -> None:
         self.deploy_target_combo.blockSignals(True)
         self.deploy_target_combo.clear()
@@ -300,7 +321,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         return int(v) if v is not None else None
 
     def _new_deploy_target(self) -> None:
-        dlg = DeployTargetDialog(self, target=None)
+        args = self._deploy_target_args()
+        if not args:
+            return
+        # DeployTargetDialog expects target (required)
+        dlg = DeployTargetDialog(**args, target=DeployTarget())
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         t = dlg.result_target()
@@ -314,7 +339,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         if idx is None:
             return
         existing = self._targets[idx]
-        dlg = DeployTargetDialog(self, target=existing)
+        args = self._deploy_target_args()
+        if not args:
+            return
+        dlg = DeployTargetDialog(**args, target=existing)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         t = dlg.result_target()
