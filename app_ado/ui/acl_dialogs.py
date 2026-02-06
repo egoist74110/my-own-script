@@ -8,14 +8,8 @@ from qfluentwidgets import CheckBox, ComboBox, LineEdit, PushButton
 from app_ado.ui.dialogs import show_error_dialog, toast
 
 
-TASK_OPTIONS = [
-    ("sync_build_release", "同步 + 构建 + 发布"),
-    ("sync_merge_build_release", "同步/合并 + 构建 + 发布"),
-]
-
-
 class AclGroupDialog(QtWidgets.QDialog):
-    def __init__(self, parent, *, existing: dict | None = None):
+    def __init__(self, parent, *, task_options: list[tuple[str, str]] | None = None, existing: dict | None = None):
         super().__init__(parent)
         self._existing = existing
         self._result: dict | None = None
@@ -60,7 +54,7 @@ class AclGroupDialog(QtWidgets.QDialog):
             self.can_status.setChecked(True)
             allowed = set()
 
-        for tid, label in TASK_OPTIONS:
+        for tid, label in (task_options or []):
             it = QtWidgets.QListWidgetItem(label)
             it.setData(QtCore.Qt.UserRole, tid)
             it.setFlags(it.flags() | QtCore.Qt.ItemIsUserCheckable)

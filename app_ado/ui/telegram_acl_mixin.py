@@ -50,8 +50,23 @@ class TelegramAclMixin:
             self.member_combo.setCurrentIndex(0)
         self.member_combo.blockSignals(False)
 
+    def _task_options(self) -> list[tuple[str, str]]:
+        from app_ado.store import load_task_settings
+
+        ts = load_task_settings()
+        opts: list[tuple[str, str]] = []
+        for t in (ts.tasks or []):
+            tid = str(t.id)
+            cmd = (t.tg_command or "").strip()
+            desc = (t.tg_desc or "").strip()
+            label = (desc or ("/" + cmd) or tid)
+            if cmd:
+                label = f"{label}  (/{cmd})"
+            opts.append((tid, label))
+        return opts
+
     def _new_group(self):
-        dlg = AclGroupDialog(self)
+        dlg = AclGroupDialog(self, task_options=self._task_options())
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         g = dlg.result_group()
@@ -74,7 +89,7 @@ class TelegramAclMixin:
         if not g0:
             show_error_dialog(self, "错误", "请先选择权限组")
             return
-        dlg = AclGroupDialog(self, existing=g0)
+        dlg = AclGroupDialog(self, task_options=self._task_options(), existing=g0)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         g = dlg.result_group()
