@@ -73,7 +73,11 @@ class TelegramCard(CardWidget, TelegramAclMixin):
         form.addRow("权限组", self._row(self.group_combo, self._row(self.btn_new_group, self._row(self.btn_edit_group, self.btn_del_group))))
         form.addRow("组成员", self._row(self.member_combo, self._row(self.btn_new_member, self._row(self.btn_edit_member, self.btn_del_member))))
 
+        self.notify_details = QtWidgets.QCheckBox("通知包含细节（repo/分支/URL 等，可能泄露信息）")
+        self.notify_details.setChecked(bool(getattr(self._settings, "telegram_notify_include_details", False)))
+
         form.addRow("白名单(旧)", self.whitelist)
+        form.addRow(self.notify_details)
 
         self._load()
 
@@ -97,6 +101,7 @@ class TelegramCard(CardWidget, TelegramAclMixin):
         self._settings = load_ui_settings()
         self.chat_id.setText(self._settings.telegram_chat_id or "")
         self.control_enabled.setChecked(bool(self._settings.telegram_control_enabled))
+        self.notify_details.setChecked(bool(getattr(self._settings, "telegram_notify_include_details", False)))
         self.whitelist.setPlainText("\n".join(self._settings.telegram_whitelist or []))
         self._refresh_acl_ui()
         if get_telegram_token():
@@ -114,6 +119,7 @@ class TelegramCard(CardWidget, TelegramAclMixin):
         # save settings
         self._settings = load_ui_settings()
         self._settings.telegram_control_enabled = bool(self.control_enabled.isChecked())
+        self._settings.telegram_notify_include_details = bool(self.notify_details.isChecked())
         wl = [x.strip() for x in (self.whitelist.toPlainText() or "").splitlines() if x.strip()]
         self._settings.telegram_whitelist = wl
 

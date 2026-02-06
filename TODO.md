@@ -15,7 +15,7 @@
 
 - [x] 删除任务时同步清理 ACL 引用（ui_settings.telegram_acl_groups[*].task_ids）
 
-- [ ] TG 通知脱敏开关（是否包含 repo/path/url 等敏感信息）
+- [x] TG 通知脱敏开关（是否包含 repo/path/url 等敏感信息）
 
 ## P1 / 稳定性与体验
 

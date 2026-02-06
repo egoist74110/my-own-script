@@ -391,7 +391,12 @@ class TasksTab(QtWidgets.QWidget):
         # - UI triggered: notify owner chat_id (ui_settings.telegram_chat_id) if configured.
         notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
 
-        def notify_telegram(text: str) -> None:
+        def notify_telegram(kind: str, *, details: str = "", summary: str = "") -> None:
+            """Send TG notification.
+
+            kind: 'start'|'success'|'fail'
+            If ui_settings.telegram_notify_include_details is False, only send summary.
+            """
             try:
                 from app_ado.store import load_ui_settings
                 from app_ado.secrets import get_telegram_token
@@ -402,24 +407,28 @@ class TasksTab(QtWidgets.QWidget):
                     return
 
                 chat_id = notify_chat_id
+                s = load_ui_settings()
+                include = bool(getattr(s, "telegram_notify_include_details", False))
+
                 if not chat_id:
-                    s = load_ui_settings()
                     chat_id = str(getattr(s, "telegram_chat_id", "") or "").strip()
 
                 if not chat_id:
                     return
 
+                text = summary
+                if include and details:
+                    text = summary + "\n" + details
+
                 send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
             except Exception:
-                # never break the flow because of notification
                 return
 
         def emit_error(title: str, details: str) -> None:
-            # final result notification (fail)
             notify_telegram(
-                "❌ 任务失败\n"
-                f"{task.repo_name or ''} branch={deploy_branch}\n"
-                f"{title}\n{details}"
+                "fail",
+                summary="❌ 任务失败",
+                details=f"{task_label}\n{title}\n{details}",
             )
             q.put(("error", title + "\n" + details))
 
@@ -430,9 +439,9 @@ class TasksTab(QtWidgets.QWidget):
                 emit_log(f"deploy_branch={deploy_branch}")
 
                 notify_telegram(
-                    "🚀 开始执行任务\n"
-                    f"{task.repo_name or ''} branch={deploy_branch}\n"
-                    f"targets={len(targets)}"
+                    "start",
+                    summary="🚀 开始执行任务",
+                    details=f"{task_label}\nbranch={deploy_branch}\ntargets={len(targets)}",
                 )
 
                 def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -708,10 +717,9 @@ class TasksTab(QtWidgets.QWidget):
                 # all targets done
                 last_url = rel.url if 'rel' in locals() and rel else ""
                 notify_telegram(
-                    "✅ 任务成功\n"
-                    f"{task.repo_name or ''} branch={deploy_branch}\n"
-                    f"targets={len(targets)}\n"
-                    f"{last_url}"
+                    "success",
+                    summary="✅ 任务成功",
+                    details=f"{task_label}\nbranch={deploy_branch}\ntargets={len(targets)}\n{last_url}",
                 )
                 return
 
