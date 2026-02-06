@@ -114,8 +114,9 @@ class TasksTab(QtWidgets.QWidget):
             return
 
         for t in tasks:
-            subtitle = (t.tg_desc or "").strip() or ("TG命令：/" + (t.tg_command or ""))
-            card = TaskCard(title=t.name or "(未命名)", subtitle=subtitle)
+            title = (t.tg_desc or "").strip() or (t.name or "").strip() or ("/" + (t.tg_command or ""))
+            subtitle = ("TG命令：/" + (t.tg_command or ""))
+            card = TaskCard(title=title, subtitle=subtitle)
 
             card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))

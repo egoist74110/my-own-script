@@ -49,6 +49,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             return cb
 
         # meta
+        # We keep a display name in config for UI, but you can just use TG command/desc.
+        # In this dialog we make name optional and auto-derived from tg_command.
         self.name_edit = LineEdit(); self.name_edit.setFixedWidth(420)
         self.cmd_edit = LineEdit(); self.cmd_edit.setFixedWidth(260)
         self.desc_edit = LineEdit(); self.desc_edit.setFixedWidth(420)
@@ -80,9 +82,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
 
-        form.addRow("任务名称", self.name_edit)
         form.addRow("TG 命令（/xxx）", self.cmd_edit)
-        form.addRow("TG 说明", self.desc_edit)
+        form.addRow("中文说明（显示在 /help）", self.desc_edit)
+        # Optional UI label; if left empty, we will use tg_command.
+        form.addRow("显示名称（可留空）", self.name_edit)
         form.addRow("项目", self.project_combo)
         form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
         form.addRow("仓库(Repo)", self.repo_combo)
@@ -331,13 +334,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self._refresh_target_combo()
 
     def accept(self) -> None:
-        name = (self.name_edit.text() or "").strip()
         cmd = (self.cmd_edit.text() or "").strip().lower()
         desc = (self.desc_edit.text() or "").strip()
+        name = (self.name_edit.text() or "").strip() or cmd
 
-        if not name:
-            show_error_dialog(self, "错误", "请输入任务名称")
-            return
         if not cmd or not _CMD_RE.match(cmd):
             show_error_dialog(self, "错误", "TG 命令只允许 a-z0-9_，长度 1-32")
             return
