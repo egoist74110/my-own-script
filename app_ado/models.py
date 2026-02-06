@@ -81,6 +81,50 @@ class UiSettings(BaseModel):
     telegram_acl_members: list[dict] = Field(default_factory=list)
 
 
+class GitMergeRule(BaseModel):
+    source: str
+    target: str
+
+
+class GitFlow(BaseModel):
+    """Configurable git branch flow."""
+
+    update_branches: list[str] = Field(default_factory=list)
+    merges: list[GitMergeRule] = Field(default_factory=list)
+    push_branches: list[str] = Field(default_factory=list)
+
+
+class DynamicTaskConfig(BaseModel):
+    """Dynamic task definition (CRUD) with configurable git flow."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    enabled: bool = True
+
+    name: str = ""
+    tg_command: str = ""  # a-z0-9_
+    tg_desc: str = ""
+
+    project_id: Optional[str] = None
+
+    # local repo folder to run git commands
+    local_repo_path: str = ""
+
+    repo_id: Optional[str] = None
+    repo_name: Optional[str] = None
+
+    git_flow: GitFlow = Field(default_factory=GitFlow)
+
+    # deploy targets (build+release+stages)
+    targets: list[DeployTarget] = Field(default_factory=list)
+
+
 class TaskSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+    # New dynamic tasks
+    tasks: list[DynamicTaskConfig] = Field(default_factory=list)
+
+    # Legacy fixed tasks (kept for back-compat; will be migrated into tasks)
     flows: list[FlowTaskConfig] = Field(default_factory=list)

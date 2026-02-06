@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app_ado.models import TaskSettings, UiSettings
+from app_ado.task_migrate import migrate_task_settings
 
 APP_ID = "my-own-script"
 
@@ -68,7 +69,12 @@ def load_task_settings() -> TaskSettings:
     if not p.exists():
         return TaskSettings()
     raw = _load_yaml_like(_load_text(p)) or {}
-    return TaskSettings.model_validate(raw)
+
+    s, changed = migrate_task_settings(raw)
+    if changed:
+        # Persist migration so subsequent runs are stable.
+        save_task_settings(s)
+    return s
 
 
 def save_task_settings(s: TaskSettings) -> Path:
