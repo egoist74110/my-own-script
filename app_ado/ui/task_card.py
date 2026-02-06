@@ -11,14 +11,17 @@ class TaskCard(ExpandSettingCard):
     config_clicked = QtCore.Signal()
     stop_clicked = QtCore.Signal()
     delete_clicked = QtCore.Signal()
+    history_clicked = QtCore.Signal()
 
-    def __init__(self, *, title: str, subtitle: str = "", show_delete: bool = False) -> None:
+    def __init__(self, *, title: str, subtitle: str = "", show_delete: bool = False, show_history: bool = False) -> None:
         super().__init__(FluentIcon.APPLICATION, title, subtitle)
 
         self.btn_config = PushButton("配置")
         self.btn_run = PushButton("运行")
         self.btn_stop = PushButton("停止")
+        self.btn_history = PushButton("历史")
         self.btn_delete = PushButton("删除")
+        self.btn_history.setVisible(bool(show_history))
         self.btn_delete.setVisible(bool(show_delete))
         self.btn_stop.setEnabled(False)
 
@@ -36,11 +39,13 @@ class TaskCard(ExpandSettingCard):
             layout.insertWidget(idx, self.btn_stop, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_run, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_config, 0, QtCore.Qt.AlignRight)
+            layout.insertWidget(idx, self.btn_history, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_delete, 0, QtCore.Qt.AlignRight)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
         self.btn_stop.clicked.connect(self.stop_clicked.emit)
+        self.btn_history.clicked.connect(self.history_clicked.emit)
         self.btn_delete.clicked.connect(self.delete_clicked.emit)
 
         # Per-task log box in expandable panel
@@ -54,6 +59,7 @@ class TaskCard(ExpandSettingCard):
         # Make header actions less cramped
         self.btn_config.setFixedWidth(72)
         self.btn_run.setFixedWidth(72)
+        self.btn_history.setFixedWidth(72)
         self.btn_delete.setFixedWidth(72)
         self.card.hBoxLayout.setSpacing(12)
 

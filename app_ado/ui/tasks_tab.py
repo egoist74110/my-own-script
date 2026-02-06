@@ -130,11 +130,12 @@ class TasksTab(QtWidgets.QWidget):
         for t in tasks:
             title = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
             subtitle = ("TG命令：/" + (t.tg_command or ""))
-            card = TaskCard(title=title, subtitle=subtitle, show_delete=True)
+            card = TaskCard(title=title, subtitle=subtitle, show_delete=True, show_history=True)
 
             card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
             card.stop_clicked.connect(self._stop)
+            card.history_clicked.connect(lambda _=None, tid=t.id: self._show_history(tid))
             card.delete_clicked.connect(lambda _=None, tid=t.id: self._delete_task(tid))
 
             self.list_layout.addWidget(card)
@@ -157,6 +158,29 @@ class TasksTab(QtWidgets.QWidget):
         ts.tasks.append(rt)
         save_task_settings(ts)
         self._render_tasks()
+
+    def _show_history(self, task_id: str) -> None:
+        from app_ado.task_history import read_recent, fmt_ts
+
+        ts = load_task_settings()
+        t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
+        label = (t.tg_desc or "").strip() if t else task_id
+
+        items = read_recent(task_id=task_id, limit=50)
+        if not items:
+            show_error_dialog(self.window(), "任务历史", f"暂无历史记录：{label}")
+            return
+
+        dlg = RunLogDialog(self.window(), title=f"历史：{label}")
+        for j in items:
+            dlg.log(
+                f"[{fmt_ts(int(j.get('ts') or 0))}] {j.get('result') or ''}"
+                f"\n触发者: {j.get('requester_username') or ''} ({j.get('requester_chat_id') or ''})"
+                f"\n来源: {j.get('triggered_by') or ''}"
+                f"\n概要: {j.get('summary') or ''}"
+                f"\n"
+            )
+        dlg.exec()
 
     def _delete_task(self, task_id: str) -> None:
         ts = load_task_settings()
@@ -444,6 +468,24 @@ class TasksTab(QtWidgets.QWidget):
                 summary="❌ 任务失败",
                 details=f"{task_label}\n{title}\n{details}",
             )
+            try:
+                from app_ado.task_history import TaskRunRecord, append_record
+                import time as _time
+
+                append_record(
+                    TaskRunRecord(
+                        ts=int(_time.time()),
+                        task_id=str(task.id),
+                        task_label=task_label,
+                        triggered_by=("tg" if notify_chat_id else "ui"),
+                        requester_chat_id=str(self._last_requester_chat_id or ""),
+                        requester_username=str(self._last_requester_username or ""),
+                        result="fail",
+                        summary=f"{title}",
+                    )
+                )
+            except Exception:
+                pass
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
@@ -735,6 +777,26 @@ class TasksTab(QtWidgets.QWidget):
                     summary="✅ 任务成功",
                     details=f"{task_label}\nbranch={deploy_branch}\ntargets={len(targets)}\n{last_url}",
                 )
+
+                try:
+                    from app_ado.task_history import TaskRunRecord, append_record
+                    import time as _time
+
+                    append_record(
+                        TaskRunRecord(
+                            ts=int(_time.time()),
+                            task_id=str(task.id),
+                            task_label=task_label,
+                            triggered_by=("tg" if notify_chat_id else "ui"),
+                            requester_chat_id=str(self._last_requester_chat_id or ""),
+                            requester_username=str(self._last_requester_username or ""),
+                            result="success",
+                            summary=f"GitFlow完成; 发布targets={len(targets)}",
+                        )
+                    )
+                except Exception:
+                    pass
+
                 return
 
             except Exception as e:
