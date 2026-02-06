@@ -15,18 +15,19 @@
   - PAT（Keychain/keyring）安全存储
   - 支持项目/代码库配置
   - 任务：
-    - 同步 + 合并 + 构建 + 发布（支持多 target 串行执行，失败即停）
-    - 同步 + 构建 + 发布（无合并，同样支持多 target）
+    - 动态任务（支持新增/编辑/删除）
+    - GitFlow 可配置：更新分支 / 合并规则 / 推送分支
+    - 发布目标 targets：支持多目标串行执行，失败即停
   - Build：兼容 Pipelines 与 Build Definitions
   - Release：创建 Release、自动启动 notStarted 环境、监控选定 stages
 - UI/UX：
   - PySide6 + Fluent 风格，任务卡片、实时日志、停止按钮（非回滚）
   - 错误统一弹窗（可滚动详情）
 - Telegram：
-  - 通知：仅 **开始** + **最终结果** 两条
-  - 控制：/help、/run、/stop、/status、以及直接任务命令（含 ACL）
+  - 通知：默认仅 **摘要**（开始/最终结果），可选开启“包含细节”（有泄露风险）
+  - 控制：/help、/stop、/status、以及动态任务命令（含 ACL；仅触发者收到通知）
 - 更新：
-  - 配置页提供 **检查更新** / **立即更新并重启**（基于 `git pull --ff-only origin main`）
+  - 配置页提供 **检查更新** / **更新/重新安装**（基于 GitHub Releases：下载 DMG → 覆盖安装 → 重启）
 
 ## 技术栈
 
@@ -35,7 +36,8 @@
 - 网络：httpx
 - 配置/模型：PyYAML、pydantic
 - Secrets：keyring（macOS Keychain）
-- 打包：wrapper `.app` + `.dmg`（非 standalone，依赖本机 repo+venv）
+- 打包：wrapper `.app` + `.dmg`
+  - 可发布到 GitHub Releases（用于应用内更新）
 
 ## 本地运行（macOS）
 
@@ -43,6 +45,8 @@
 cd ~/my-own-script
 bash dev_run.sh
 ```
+
+更多安全建议见：`docs/SECURITY.md`
 
 > macOS 依赖使用 `requirements-mac.txt`（避免 Windows-only 依赖）。
 
@@ -59,6 +63,15 @@ bash pack_mac_dmg.sh
 - `dist/代码工具箱-<version>-mac.dmg`
 
 入口：`app_main.py`
+
+## 发布到 GitHub Releases（用于应用内更新）
+
+依赖：安装并登录 `gh` CLI。
+
+```bash
+cd ~/my-own-script
+VERSION=0.1.2 bash release_github.sh
+```
 
 ---
 
