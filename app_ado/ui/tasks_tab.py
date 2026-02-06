@@ -15,14 +15,9 @@ from ok.gui.widget.Tab import Tab
 
 
 class TasksTab(Tab):
-    """Task page placeholder.
+    """Tasks tab.
 
-    Next step: implement FlowTask config + execution:
-    - repo/branches dropdown discovery
-    - merge/push
-    - build trigger + monitor
-    - release trigger + monitor (multi-stage)
-    - logs
+    Now supports dynamic tasks (CRUD) stored in tasks.yaml.
     """
 
     icon = None
@@ -39,25 +34,26 @@ class TasksTab(Tab):
         self._stop_requester_chat_id: str = ""
         self._stop_requester_username: str | None = None
 
-        # Task 1: sync+merge+build+release
-        self.flow_card = TaskCard(
-            title="同步/合并 + 构建 + 发布",
-            subtitle="把源分支合并到目标分支，然后构建并发布",
-        )
-        self.flow_card.config_clicked.connect(lambda: self._edit("sync_merge_build_release"))
-        self.flow_card.run_clicked.connect(lambda: self._run("sync_merge_build_release", self.flow_card))
-        self.flow_card.stop_clicked.connect(self._stop)
-        self.add_widget(self.flow_card)
+        self._task_cards: dict[str, TaskCard] = {}
 
-        # Task 2: sync+build+release (no merge)
-        self.sync_card = TaskCard(
-            title="同步 + 构建 + 发布",
-            subtitle="同步目标分支到最新，然后构建并发布（不做分支合并）",
-        )
-        self.sync_card.config_clicked.connect(lambda: self._edit("sync_build_release"))
-        self.sync_card.run_clicked.connect(lambda: self._run("sync_build_release", self.sync_card))
-        self.sync_card.stop_clicked.connect(self._stop)
-        self.add_widget(self.sync_card)
+        # Top actions
+        top = QtWidgets.QWidget(self)
+        top_row = QtWidgets.QHBoxLayout(top)
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
+
+        self.btn_new_task = PushButton("新增任务")
+        self.btn_refresh_tasks = PushButton("刷新")
+        top_row.addWidget(self.btn_new_task)
+        top_row.addWidget(self.btn_refresh_tasks)
+        top_row.addStretch(1)
+
+        self.btn_new_task.clicked.connect(self._new_task)
+        self.btn_refresh_tasks.clicked.connect(self._render_tasks)
+
+        self.add_widget(top)
+
+        self._render_tasks()
 
     def _clear_run_log(self, card: TaskCard) -> None:
         card.clear_log()
@@ -65,62 +61,130 @@ class TasksTab(Tab):
     def _append_run_log(self, card: TaskCard, text: str) -> None:
         card.append_log(text)
 
-    def _edit(self, flow_id: str) -> None:
+    def _render_tasks(self) -> None:
+        """Render task cards from dynamic tasks config."""
+        # remove old cards
+        for card in list(self._task_cards.values()):
+            try:
+                self.removeWidget(card)
+                card.setParent(None)
+                card.deleteLater()
+            except Exception:
+                pass
+        self._task_cards.clear()
+
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if flow is None:
-            from app_ado.models import FlowTaskConfig
+        tasks = list(getattr(ts, "tasks", []) or [])
 
-            flow = FlowTaskConfig(id=flow_id)
-            ts.flows.append(flow)
+        if not tasks:
+            hint = QtWidgets.QLabel("暂无任务。点击【新增任务】创建。")
+            hint.setStyleSheet("color: #666;")
+            self.add_widget(hint)
+            self._task_cards["__hint__"] = hint  # type: ignore
+            return
 
+        for t in tasks:
+            subtitle = (t.tg_desc or "").strip() or ("TG命令：/" + (t.tg_command or ""))
+            card = TaskCard(title=t.name or "(未命名)", subtitle=subtitle)
+
+            card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
+            card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
+            card.stop_clicked.connect(self._stop)
+
+            self.add_widget(card)
+            self._task_cards[t.id] = card
+
+    def _new_task(self) -> None:
+        from app_ado.models import DynamicTaskConfig
         from app_ado.store import load_ui_settings
+        from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
 
+        ts = load_task_settings()
         settings = load_ui_settings()
-        dlg = FlowTaskConfigDialog(self.window(), settings=settings, flow=flow)
+        t = DynamicTaskConfig(id="")
+        dlg = DynamicTaskConfigDialog(self.window(), settings=settings, task=t)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
-        updated = dlg.result_config()
-        if not updated:
+        rt = dlg.result_task()
+        if not rt:
             return
-        ts.flows = [updated if f.id == updated.id else f for f in ts.flows]
+        ts.tasks.append(rt)
         save_task_settings(ts)
+        self._render_tasks()
 
-    def run_task(self, flow_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+    def _edit_task(self, task_id: str) -> None:
+        from app_ado.store import load_ui_settings
+        from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
+
+        ts = load_task_settings()
+        t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
+        if not t:
+            show_error_dialog(self.window(), "错误", "任务不存在")
+            return
+
+        settings = load_ui_settings()
+        dlg = DynamicTaskConfigDialog(self.window(), settings=settings, task=t)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        rt = dlg.result_task()
+        if not rt:
+            return
+
+        # enforce command uniqueness
+        cmd = (rt.tg_command or "").strip().lower()
+        for x in ts.tasks:
+            if x.id != rt.id and (x.tg_command or "").strip().lower() == cmd:
+                show_error_dialog(self.window(), "错误", f"TG 命令已被占用：/{cmd}")
+                return
+
+        ts.tasks = [rt if x.id == rt.id else x for x in ts.tasks]
+        save_task_settings(ts)
+        self._render_tasks()
+
+    def run_task(self, key: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
         """TG-triggered run.
 
+        key can be task_id or tg_command.
         Returns (ok, message) for Telegram reply.
         """
-        # Single-flight quick reject
         if self._running:
             return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
 
-        # Quick config precheck to avoid "收到" but no-op.
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
+        tasks = list(getattr(ts, "tasks", []) or [])
+        k = (key or "").strip().lstrip("/")
+        t = next((x for x in tasks if x.id == k), None) or next(
+            (x for x in tasks if (x.tg_command or "").strip().lower() == k.lower()),
+            None,
+        )
+        if not t:
+            return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        # basic precheck
         missing: list[str] = []
-        if not flow:
-            missing.append("- 尚未配置该任务")
-        else:
-            if not flow.local_repo_path:
-                missing.append("- 本地仓库路径")
-            if flow_id == "sync_merge_build_release" and not flow.source_branch:
-                missing.append("- 源分支")
-            if not flow.target_branch:
-                missing.append("- 目标分支")
-            targets = list(getattr(flow, "targets", []) or [])
-            if not targets and not (flow.build_id and flow.release_id and (flow.release_stage_ids or [])):
-                missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+        if not t.local_repo_path:
+            missing.append("- 本地仓库路径")
+        if not t.targets:
+            missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+        if not t.git_flow.update_branches:
+            missing.append("- Git流程：至少选择一个更新分支")
+        if t.git_flow.merges:
+            r = t.git_flow.merges[0]
+            if not r.source or not r.target:
+                missing.append("- Git流程：合并规则不完整")
 
         if missing:
-            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{t.name}）：\n" + "\n".join(missing)
             return False, msg
 
         self._last_requester_chat_id = requester_chat_id
         self._last_requester_username = requester_username
-        card = self.flow_card if flow_id == "sync_merge_build_release" else self.sync_card
-        QtCore.QTimer.singleShot(0, self, lambda: self._run(flow_id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
-        return True, f"收到，开始执行：{flow_id}"
+        card = self._task_cards.get(t.id)
+        if not card:
+            return False, "⚠️ 任务卡片未加载，请打开应用后再试"
+
+        QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
+        return True, f"收到，开始执行：{t.name}"
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner
@@ -155,13 +219,38 @@ class TasksTab(Tab):
             show_error_dialog(self.window(), "无法执行", msg)
             return
         ts = load_task_settings()
-        flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if not flow:
-            self._edit(flow_id)
-            ts = load_task_settings()
-            flow = next((f for f in ts.flows if f.id == flow_id), None)
-        if not flow:
+        task = next((t for t in (ts.tasks or []) if t.id == flow_id), None)
+        if not task:
+            show_error_dialog(self.window(), "错误", "任务不存在")
             return
+
+        # Map dynamic task -> legacy flow-like object for execution logic reuse.
+        from app_ado.models import FlowTaskConfig
+
+        legacy_flow_id = "sync_build_release"
+        source_branch = ""
+        target_branch = ""
+        if getattr(task.git_flow, "merges", []) and task.git_flow.merges:
+            mr = task.git_flow.merges[0]
+            legacy_flow_id = "sync_merge_build_release"
+            source_branch = mr.source
+            target_branch = mr.target
+        else:
+            # pick first update branch as target
+            if task.git_flow.update_branches:
+                target_branch = task.git_flow.update_branches[0]
+
+        flow = FlowTaskConfig(
+            id=legacy_flow_id,
+            enabled=task.enabled,
+            project_id=task.project_id,
+            local_repo_path=task.local_repo_path,
+            repo_id=task.repo_id,
+            repo_name=task.repo_name,
+            source_branch=source_branch,
+            target_branch=target_branch,
+            targets=list(task.targets or []),
+        )
 
         # basic config validation (UI thread)
         missing: list[str] = []
