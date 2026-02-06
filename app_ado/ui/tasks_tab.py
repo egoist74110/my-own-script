@@ -68,6 +68,11 @@ class TasksTab(QtWidgets.QWidget):
         self.list_area = ScrollArea(self)
         self.list_area.setWidgetResizable(True)
         self.list_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        # Remove scroll area border/frame for a cleaner list look
+        self.list_area.setStyleSheet(
+            "QScrollArea{border:0px;background:transparent;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+        )
 
         self.list_view = QtWidgets.QWidget(self.list_area)
         self.list_layout = QtWidgets.QVBoxLayout(self.list_view)
