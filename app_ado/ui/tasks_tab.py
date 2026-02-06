@@ -255,6 +255,8 @@ class TasksTab(QtWidgets.QWidget):
             show_error_dialog(self.window(), "错误", "任务不存在")
             return
 
+        task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
+
         # Map dynamic task -> legacy flow-like object for execution logic reuse.
         from app_ado.models import FlowTaskConfig
 
@@ -414,7 +416,7 @@ class TasksTab(QtWidgets.QWidget):
 
         def worker() -> None:
             try:
-                emit_log("运行：合并并推送 + 构建")
+                emit_log(f"运行：{task_label}")
                 emit_log(f"repo_path={local_path}")
                 emit_log(f"source={flow.source_branch} target={flow.target_branch}")
 
@@ -841,7 +843,7 @@ class TasksTab(QtWidgets.QWidget):
         # UI init
         card.set_actions_enabled(False)
         self._clear_run_log(card)
-        log = RunLogDialog(self.window(), title="运行：合并并推送 + 构建")
+        log = RunLogDialog(self.window(), title=f"运行：{task_label}")
         log.show()
 
         def flush():
