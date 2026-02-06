@@ -271,66 +271,30 @@ class TasksTab(QtWidgets.QWidget):
 
         task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
 
-        # Map dynamic task -> legacy flow-like object for execution logic reuse.
-        from app_ado.models import FlowTaskConfig
-
-        legacy_flow_id = "sync_build_release"
-        source_branch = ""
-        target_branch = ""
-        if getattr(task.git_flow, "merges", []) and task.git_flow.merges:
-            mr = task.git_flow.merges[0]
-            legacy_flow_id = "sync_merge_build_release"
-            source_branch = mr.source
-            target_branch = mr.target
-        else:
-            # pick first update branch as target
-            if task.git_flow.update_branches:
-                target_branch = task.git_flow.update_branches[0]
-
-        flow = FlowTaskConfig(
-            id=legacy_flow_id,
-            enabled=task.enabled,
-            project_id=task.project_id,
-            local_repo_path=task.local_repo_path,
-            repo_id=task.repo_id,
-            repo_name=task.repo_name,
-            source_branch=source_branch,
-            target_branch=target_branch,
-            targets=list(task.targets or []),
-        )
-
         # basic config validation (UI thread)
         missing: list[str] = []
-        if not flow.local_repo_path:
+        local_path = (task.local_repo_path or "").strip()
+        if not local_path:
             missing.append("- 本地仓库路径")
-        if flow_id == "sync_merge_build_release" and not flow.source_branch:
-            missing.append("- 源分支")
-        if not flow.target_branch:
-            missing.append("- 目标分支")
-        # multi targets
-        targets = list(getattr(flow, "targets", []) or [])
-        if not targets and (flow.build_id or flow.release_id or (flow.release_stage_ids or [])):
-            # back-compat single target
-            from app_ado.models import DeployTarget
 
-            targets = [
-                DeployTarget(
-                    name="目标1",
-                    enabled=True,
-                    build_kind=flow.build_kind,
-                    build_id=flow.build_id,
-                    build_name=flow.build_name,
-                    release_id=flow.release_id,
-                    release_name=flow.release_name,
-                    release_stage_ids=list(flow.release_stage_ids or []),
-                    release_stage_names=list(flow.release_stage_names or []),
-                )
-            ]
+        update_branches = [x.strip() for x in (task.git_flow.update_branches or []) if str(x).strip()]
+        merges = list(task.git_flow.merges or [])
+        push_branches = [x.strip() for x in (task.git_flow.push_branches or []) if str(x).strip()]
 
+        if not update_branches:
+            missing.append("- Git流程：更新分支（至少 1 个）")
+
+        for i, mr in enumerate(merges):
+            if not (mr.source and mr.target):
+                missing.append(f"- Git流程：第 {i+1} 条合并规则不完整")
+                break
+
+        targets = list(task.targets or [])
         if not targets:
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
+
         if missing:
-            msg = f"请先在【配置】中补齐（{flow_id}）：\n" + "\n".join(missing)
+            msg = f"请先在【配置】中补齐（{task_label}）：\n" + "\n".join(missing)
             if tg_reply_chat_id:
                 try:
                     from app_ado.secrets import get_telegram_token
@@ -344,23 +308,30 @@ class TasksTab(QtWidgets.QWidget):
             show_error_dialog(self.window(), "配置不完整", msg)
             return
 
-        local_path = flow.local_repo_path
+        # Determine the branch used for build/release association.
+        deploy_branch = merges[-1].target if merges else update_branches[-1]
 
         if not skip_confirm:
+            steps: list[str] = []
+            steps.append("Git 流程：")
+            steps.append("1) fetch origin（涉及分支）")
+            for i, br in enumerate(update_branches, start=2):
+                steps.append(f"{i}) 更新分支（ff-only）：{br}")
+            base_idx = 2 + len(update_branches)
+            for j, mr in enumerate(merges, start=0):
+                steps.append(f"{base_idx + j}) 合并：{mr.source} -> {mr.target}")
+            base_idx = base_idx + len(merges)
+            for k, br in enumerate(push_branches, start=0):
+                steps.append(f"{base_idx + k}) 推送：{br}")
+
+            steps.append("")
+            steps.append(f"触发构建（分支：{deploy_branch}）并等待完成")
+            steps.append("触发发布并监控所选阶段")
+
             ok = show_confirm_dialog(
                 self.window(),
                 "确认执行任务？",
-                "将执行以下操作：\n"
-                + (
-                    f"1) fetch origin {flow.source_branch} / {flow.target_branch}\n"
-                    f"2) 更新本地分支（ff-only）\n"
-                    f"3) merge origin/{flow.source_branch} -> {flow.target_branch}\n"
-                    f"4) push origin {flow.target_branch}\n"
-                    if flow_id == "sync_merge_build_release"
-                    else f"1) fetch origin {flow.target_branch}\n2) 更新本地分支（ff-only）\n"
-                )
-                + f"触发构建（目标分支：{flow.target_branch}）并等待完成\n"
-                + f"触发发布并监控所选阶段\n\nrepo_path={local_path}",
+                "\n".join(steps) + f"\n\nrepo_path={local_path}",
             )
             if not ok:
                 return
@@ -423,7 +394,7 @@ class TasksTab(QtWidgets.QWidget):
             # final result notification (fail)
             notify_telegram(
                 "❌ 任务失败\n"
-                f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                f"{task.repo_name or ''} branch={deploy_branch}\n"
                 f"{title}\n{details}"
             )
             q.put(("error", title + "\n" + details))
@@ -432,11 +403,11 @@ class TasksTab(QtWidgets.QWidget):
             try:
                 emit_log(f"运行：{task_label}")
                 emit_log(f"repo_path={local_path}")
-                emit_log(f"source={flow.source_branch} target={flow.target_branch}")
+                emit_log(f"deploy_branch={deploy_branch}")
 
                 notify_telegram(
                     "🚀 开始执行任务\n"
-                    f"{flow.repo_name or ''} {flow.source_branch}->{flow.target_branch}\n"
+                    f"{task.repo_name or ''} branch={deploy_branch}\n"
                     f"targets={len(targets)}"
                 )
 
@@ -470,72 +441,68 @@ class TasksTab(QtWidgets.QWidget):
                     emit_error("工作区未清理", "检测到未提交改动，请先处理后再运行：\n\n" + dirty)
                     return
 
-                # fetch + update branches
-                if flow_id == "sync_merge_build_release":
-                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.source_branch, flow.target_branch])
+                # --- git flow ---
+                branches: list[str] = []
+                seen = set()
+                for br in update_branches + push_branches:
+                    if br and br not in seen:
+                        branches.append(br); seen.add(br)
+                for mr in merges:
+                    for br in [mr.source, mr.target]:
+                        if br and br not in seen:
+                            branches.append(br); seen.add(br)
+                if deploy_branch and deploy_branch not in seen:
+                    branches.append(deploy_branch); seen.add(deploy_branch)
+
+                fetch_cmd = ["git", "fetch", "--prune", "origin"] + branches
+                cp = run_cmd(fetch_cmd)
+                if cp.returncode != 0:
+                    emit_error("错误", "fetch 失败")
+                    return
+
+                for br in update_branches:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
+                    cp = run_cmd(["git", "checkout", br])
                     if cp.returncode != 0:
-                        emit_error("错误", "fetch 失败")
+                        emit_error("错误", f"checkout 失败: {br}")
+                        return
+                    cp = run_cmd(["git", "pull", "--ff-only"])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"pull 失败: {br}")
                         return
 
-                    for br in [flow.source_branch, flow.target_branch]:
-                        if should_stop():
-                            emit_log("已停止：用户取消")
-                            return
-                        cp = run_cmd(["git", "checkout", br])
-                        if cp.returncode != 0:
-                            emit_error("错误", f"checkout 失败: {br}")
-                            return
-                        cp = run_cmd(["git", "pull", "--ff-only"])
-                        if cp.returncode != 0:
-                            emit_error("错误", f"pull 失败: {br}")
-                            return
-
-                    # merge source into target
-                    cp = run_cmd(["git", "checkout", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
+                for mr in merges:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
                         return
-
-                    cp = run_cmd(["git", "merge", f"origin/{flow.source_branch}"])
+                    cp = run_cmd(["git", "checkout", mr.target])
+                    if cp.returncode != 0:
+                        emit_error("错误", f"checkout 失败: {mr.target}")
+                        return
+                    cp = run_cmd(["git", "merge", f"origin/{mr.source}"])
                     if cp.returncode != 0:
                         cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
                         conflicts = (cp2.stdout or "").strip()
                         emit_error(
                             "合并失败（可能存在冲突）",
-                            "merge 失败。请手动处理冲突后再运行。\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                            f"merge 失败：{mr.source} -> {mr.target}\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
                         )
                         return
 
-                    cp = run_cmd(["git", "push", "origin", flow.target_branch])
+                for br in push_branches:
+                    if should_stop():
+                        emit_log("已停止：用户取消")
+                        return
+                    cp = run_cmd(["git", "push", "origin", br])
                     if cp.returncode != 0:
-                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={flow.target_branch}")
+                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={br}")
                         return
 
-                    cp = run_cmd(["git", "rev-parse", "HEAD"])
-                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                    emit_log(
-                        f"✅ 合并并推送完成：{flow.source_branch} -> {flow.target_branch}"
-                        + (f"\nHEAD={head}" if head else "")
-                    )
-                else:
-                    cp = run_cmd(["git", "fetch", "--prune", "origin", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", "fetch 失败")
-                        return
-
-                    cp = run_cmd(["git", "checkout", flow.target_branch])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {flow.target_branch}")
-                        return
-
-                    cp = run_cmd(["git", "pull", "--ff-only"])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"pull 失败: {flow.target_branch}")
-                        return
-
-                    cp = run_cmd(["git", "rev-parse", "HEAD"])
-                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                    emit_log(f"✅ 同步完成：{flow.target_branch}" + (f"\nHEAD={head}" if head else ""))
+                cp = run_cmd(["git", "rev-parse", "HEAD"])
+                head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                emit_log("✅ Git 流程完成" + (f"\nHEAD={head}" if head else ""))
                 # notification policy: only start + final result
 
                 if should_stop():
@@ -554,7 +521,7 @@ class TasksTab(QtWidgets.QWidget):
                 )
 
                 settings = load_ui_settings()
-                proj = next((p for p in settings.projects if p.id == flow.project_id), None)
+                proj = next((p for p in settings.projects if p.id == task.project_id), None)
                 if not proj:
                     emit_error("错误", "找不到项目配置（project_id）")
                     return
@@ -572,7 +539,7 @@ class TasksTab(QtWidgets.QWidget):
                 from app_ado.ado_release_http import extract_envs, get_release, start_release_environment
                 import time
 
-                branch = flow.target_branch
+                branch = deploy_branch
 
                 for ti, tgt in enumerate(targets, start=1):
                     if not getattr(tgt, "enabled", True):
