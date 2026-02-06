@@ -11,7 +11,7 @@ import httpx
 
 from app_ado.notifier_telegram import send_telegram_message
 from app_ado.secrets import get_telegram_token
-from app_ado.store import config_dir, load_ui_settings
+from app_ado.store import config_dir, load_ui_settings, load_task_settings
 
 
 @dataclass
@@ -164,41 +164,36 @@ class TelegramController:
         cmd = parts[0].lower()
 
         if cmd in ("/help", "/start"):
-            task_help = {
-                "sync_build_release": "CG_Vue_Front全平台发布",
-                "sync_merge_build_release": "聊天分支合并dcr发布",
-            }
+            ts = load_task_settings()
+            tasks = list(getattr(ts, "tasks", []) or [])
 
-            def fmt_direct(task_id: str) -> str:
+            def fmt_direct(t) -> str:
                 # Keep command clickable by putting description on the next line
-                desc = task_help.get(task_id, "")
-                cmd_line = f"/{task_id}"
+                cmd_line = f"/{(t.tg_command or '').strip()}"
+                desc = (t.tg_desc or "").strip()
                 return cmd_line + (f"\n  - {desc}" if desc else "")
 
+            lines: list[str] = []
             if role == "owner":
-                msg = (
-                    "可用命令（点击即可执行）：\n"
-                    + fmt_direct("sync_build_release")
-                    + "\n"
-                    + fmt_direct("sync_merge_build_release")
-                    + "\n"
-                    + "/status  # 查看当前运行状态\n"
-                    + "/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n"
-                    + "/help"
-                )
+                for t in tasks:
+                    if not (t.tg_command or "").strip():
+                        continue
+                    lines.append(fmt_direct(t))
             else:
-                # Non-owner: show only runnable tasks
-                lines: list[str] = []
-                if self._can(role, group, "run", task_id="sync_build_release"):
-                    lines.append(fmt_direct("sync_build_release"))
-                if self._can(role, group, "run", task_id="sync_merge_build_release"):
-                    lines.append(fmt_direct("sync_merge_build_release"))
+                for t in tasks:
+                    if not (t.tg_command or "").strip():
+                        continue
+                    if self._can(role, group, "run", task_id=str(t.id)):
+                        lines.append(fmt_direct(t))
+
+            if role == "owner":
+                msg = "可用命令（点击即可执行）：\n" + ("\n".join(lines) if lines else "（暂无任务）")
+                msg += "\n/status  # 查看当前运行状态\n/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n/help"
+            else:
                 if not lines:
                     msg = "当前无可运行任务权限。请联系管理员分配权限。"
                 else:
                     msg = "可用任务命令：\n" + "\n".join(lines)
-
-                # only show /stop if allowed
                 if self._can(role, group, "stop"):
                     msg += "\n/stop  # 停止自己触发的任务"
 
@@ -221,54 +216,39 @@ class TelegramController:
             self._reply(token, ctx.chat_id, "已发送停止请求")
             return
 
-        # Direct task commands (tap-to-run)
-        direct_map = {
-            "/sync_build_release": "sync_build_release",
-            "/sync_merge_build_release": "sync_merge_build_release",
-        }
-        if cmd in direct_map:
-            task_id = direct_map[cmd]
-            if not self._can(role, group, "run", task_id=task_id):
-                self._reply(token, ctx.chat_id, f"无权限：{cmd}")
+        # Direct task commands (tap-to-run): /<tg_command>
+        ts = load_task_settings()
+        tasks = list(getattr(ts, "tasks", []) or [])
+        cmd_key = cmd.lstrip("/")
+        hit = next((t for t in tasks if (t.tg_command or "").strip().lower() == cmd_key), None)
+        if hit is not None:
+            if not self._can(role, group, "run", task_id=str(hit.id)):
+                self._reply(token, ctx.chat_id, f"无权限：/{cmd_key}")
                 return
-            ok, msg = self._on_run(task_id, ctx.chat_id, ctx.username)
-            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{task_id}" if ok else "执行失败"))
+            ok, msg = self._on_run(str(hit.id), ctx.chat_id, ctx.username)
+            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{(hit.tg_desc or hit.tg_command)}" if ok else "执行失败"))
             return
 
         if cmd == "/run":
-            # Permission-aware usage
-            allowed: list[str] = []
-            if self._can(role, group, "run", task_id="sync_build_release"):
-                allowed.append("sync_build_release")
-            if self._can(role, group, "run", task_id="sync_merge_build_release"):
-                allowed.append("sync_merge_build_release")
+            # Back-compat helper: /run <tg_command>
+            ts = load_task_settings()
+            tasks = list(getattr(ts, "tasks", []) or [])
 
             if len(parts) < 2:
-                if allowed:
-                    task_help = {
-                        "sync_build_release": "CG_Vue_Front全平台发布",
-                        "sync_merge_build_release": "聊天分支合并dcr发布",
-                    }
-                    lines: list[str] = []
-                    for tid in allowed:
-                        lines.append(f"/{tid}")
-                        desc = task_help.get(tid, "")
-                        if desc:
-                            lines.append(f"  - {desc}")
-                    self._reply(token, ctx.chat_id, "请直接点击执行：\n" + "\n".join(lines))
-                else:
-                    self._reply(token, ctx.chat_id, "当前无可运行任务权限。请联系管理员分配权限。")
+                self._reply(token, ctx.chat_id, "请直接点击任务命令执行：\n发 /help 查看")
                 return
 
-            task_id = parts[1].strip()
-            if task_id not in ("sync_build_release", "sync_merge_build_release"):
-                self._reply(token, ctx.chat_id, f"未知任务：{task_id}")
+            key = parts[1].strip().lstrip("/").lower()
+            hit = next((t for t in tasks if (t.tg_command or "").strip().lower() == key), None)
+            if not hit:
+                self._reply(token, ctx.chat_id, f"未知任务：{key}")
                 return
-            if not self._can(role, group, "run", task_id=task_id):
-                self._reply(token, ctx.chat_id, f"无权限：run {task_id}")
+            if not self._can(role, group, "run", task_id=str(hit.id)):
+                self._reply(token, ctx.chat_id, f"无权限：run {key}")
                 return
-            ok, msg = self._on_run(task_id, ctx.chat_id, ctx.username)
-            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{task_id}" if ok else "执行失败"))
+
+            ok, msg = self._on_run(str(hit.id), ctx.chat_id, ctx.username)
+            self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{(hit.tg_desc or hit.tg_command)}" if ok else "执行失败"))
             return
 
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
