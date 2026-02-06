@@ -102,9 +102,12 @@ class DynamicTaskConfig(BaseModel):
     id: str
     enabled: bool = True
 
-    name: str = ""
+    # Use tg_command as the only "name" for identity; tg_desc is human-friendly label.
     tg_command: str = ""  # a-z0-9_
     tg_desc: str = ""
+
+    # Legacy/optional display name (deprecated; kept for backward compatibility)
+    name: str = ""
 
     project_id: Optional[str] = None
 

@@ -114,7 +114,7 @@ class TasksTab(QtWidgets.QWidget):
             return
 
         for t in tasks:
-            title = (t.tg_desc or "").strip() or (t.name or "").strip() or ("/" + (t.tg_command or ""))
+            title = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
             subtitle = ("TG命令：/" + (t.tg_command or ""))
             card = TaskCard(title=title, subtitle=subtitle)
 

@@ -84,8 +84,9 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         form.addRow("TG 命令（/xxx）", self.cmd_edit)
         form.addRow("中文说明（显示在 /help）", self.desc_edit)
-        # Optional UI label; if left empty, we will use tg_command.
-        form.addRow("显示名称（可留空）", self.name_edit)
+        # No separate name: tg_command is the identity; tg_desc is the human label.
+        # (Keep name_edit hidden for back-compat; not shown to user.)
+        self.name_edit.setVisible(False)
         form.addRow("项目", self.project_combo)
         form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
         form.addRow("仓库(Repo)", self.repo_combo)
@@ -336,7 +337,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
     def accept(self) -> None:
         cmd = (self.cmd_edit.text() or "").strip().lower()
         desc = (self.desc_edit.text() or "").strip()
-        name = (self.name_edit.text() or "").strip() or cmd
+        # No separate name; keep for back-compat but derive from cmd.
+        name = cmd
 
         if not cmd or not _CMD_RE.match(cmd):
             show_error_dialog(self, "错误", "TG 命令只允许 a-z0-9_，长度 1-32")
