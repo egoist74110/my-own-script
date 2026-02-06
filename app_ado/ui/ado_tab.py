@@ -255,6 +255,7 @@ class AdoReleaseTab(Tab):
                 dmg_path = default_update_cache_dir() / f"代码工具箱-{ver}-mac.dmg"
 
                 ui(lambda: self.progress.setVisible(True))
+                ui(lambda: self.progress.setRange(0, 100))
                 ui(lambda: self.progress.setValue(0))
                 ui(lambda: self.lbl_update_status.setText("下载更新中…"))
 
@@ -265,11 +266,12 @@ class AdoReleaseTab(Tab):
 
                 download_file(url, dmg_path, on_progress=on_prog, timeout=30.0)
 
+                ui(lambda: self.progress.setRange(0, 0))
                 ui(lambda: self.lbl_update_status.setText("挂载安装包…"))
                 mp = mount_dmg(dmg_path)
                 src_app = find_app_in_volume(mp)
 
-                ui(lambda: self.lbl_update_status.setText("安装中…"))
+                ui(lambda: self.lbl_update_status.setText("安装中…（可能会弹出系统授权）"))
                 install_app_from_volume(src_app)
 
                 ui(lambda: self.lbl_update_status.setText("安装完成，正在退出旧版本…"))
@@ -296,7 +298,16 @@ class AdoReleaseTab(Tab):
                 ui(_soft_exit)
             except Exception as e:
                 msg = str(e)
-                ui(lambda m=msg: show_error_dialog(self, "更新失败", m))
+                ui(
+                    lambda m=msg: show_error_dialog(
+                        self,
+                        "更新失败",
+                        m
+                        + "\n\n你可以：\n1) 打开 GitHub Releases 手动下载并安装\n2) 或点击【重新安装】重试\n",
+                    )
+                )
+                if self._latest_release_url:
+                    ui(lambda: open_url(self._latest_release_url))
             finally:
                 if mp is not None:
                     try:
