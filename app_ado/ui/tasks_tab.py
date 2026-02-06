@@ -157,6 +157,28 @@ class TasksTab(QtWidgets.QWidget):
             return
         ts.tasks = [x for x in (ts.tasks or []) if x.id != task_id]
         save_task_settings(ts)
+
+        # Also remove references from Telegram ACL groups
+        try:
+            from app_ado.store import load_ui_settings, save_ui_settings
+
+            s = load_ui_settings()
+            changed = False
+            new_groups: list[dict] = []
+            for g in (s.telegram_acl_groups or []):
+                tids = list(g.get("task_ids") or [])
+                tids2 = [x for x in tids if str(x) != str(task_id)]
+                if tids2 != tids:
+                    changed = True
+                gg = dict(g)
+                gg["task_ids"] = tids2
+                new_groups.append(gg)
+            if changed:
+                s.telegram_acl_groups = new_groups
+                save_ui_settings(s)
+        except Exception:
+            pass
+
         self._render_tasks()
 
     def _edit_task(self, task_id: str) -> None:

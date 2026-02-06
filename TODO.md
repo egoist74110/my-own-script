@@ -13,7 +13,7 @@
     - 新建任务：update 2 个分支 + 2 条 merge + push 2 个分支，保存后 tasks.yaml 正确落盘
     - 运行任务：日志顺序与配置一致
 
-- [ ] 删除任务时同步清理 ACL 引用（ui_settings.telegram_acl_groups[*].task_ids）
+- [x] 删除任务时同步清理 ACL 引用（ui_settings.telegram_acl_groups[*].task_ids）
 
 - [ ] TG 通知脱敏开关（是否包含 repo/path/url 等敏感信息）
 
