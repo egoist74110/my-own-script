@@ -201,7 +201,12 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         form.addRow("更新分支（按顺序 checkout + pull --ff-only）", self._row(self.update_list, self._row(self.btn_add_update, self.btn_del_update)))
         form.addRow("合并规则（按顺序 merge origin/<source> -> <target>）", self._row(self.merge_list, self._row(self.btn_add_merge, self.btn_del_merge)))
+        self.push_hint = QtWidgets.QLabel("提示：Push 仅在填写【本地仓库路径】时可用；未填写时将禁用（避免远程推送带来的风险）。")
+        self.push_hint.setWordWrap(True)
+        self.push_hint.setStyleSheet("color:#666;")
+
         form.addRow("推送分支（按顺序 push origin <branch>）", self._row(self.push_list, self._row(self.btn_add_push, self.btn_del_push)))
+        form.addRow(self.push_hint)
 
         form.addRow(
             "发布目标",
@@ -231,6 +236,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_add_push.clicked.connect(self._add_push_branch)
         self.btn_del_push.clicked.connect(self._del_push_branch)
 
+        self.repo_path.textChanged.connect(self._update_push_enabled)
+
         self.btn_new_target.clicked.connect(self._new_deploy_target)
         self.btn_edit_target.clicked.connect(self._edit_deploy_target)
         self.btn_del_target.clicked.connect(self._delete_deploy_target)
@@ -255,6 +262,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self._set_list(self.update_list, list(task.git_flow.update_branches or []))
         self._set_merge_list(self.merge_list, list(task.git_flow.merges or []))
         self._set_list(self.push_list, list(task.git_flow.push_branches or []))
+
+        self._update_push_enabled()
 
         # echo saved values if not yet loaded
         if task.repo_name:
@@ -365,6 +374,13 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
     def _fill_branches(self, branches: list[GitBranch]) -> None:
         self._branches = [b.short for b in (branches or []) if getattr(b, "short", None)]
+
+    def _update_push_enabled(self) -> None:
+        has_local = bool((self.repo_path.text() or "").strip())
+        self.push_list.setEnabled(has_local)
+        self.btn_add_push.setEnabled(has_local)
+        self.btn_del_push.setEnabled(has_local)
+        self.push_hint.setVisible(True)
 
     def _on_repo_changed(self) -> None:
         # require explicit refresh to pull branches
