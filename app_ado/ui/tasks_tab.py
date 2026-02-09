@@ -519,7 +519,9 @@ class TasksTab(QtWidgets.QWidget):
                         time.sleep(0.8)
 
                     # monitor selected envs until done
-                    deadline = time.time() + 60 * 60
+                    timeout_sec = 60 * 60
+                    start_wait = time.time()
+                    deadline = start_wait + timeout_sec
                     last_line = ""
                     while time.time() < deadline:
                         if should_stop():
@@ -553,7 +555,15 @@ class TasksTab(QtWidgets.QWidget):
                         time.sleep(4.0)
 
                     else:
-                        emit_error("发布超时", f"Rollback Release 监控超时（60min）：{sel.url or ''}")
+                        waited = int(time.time() - start_wait)
+                        emit_error(
+                            "发布超时",
+                            "ADO 平台超时：等待回退 Release 阶段完成超时\n"
+                            + f"target={tgt.name}\n"
+                            + f"release_def_id={tgt.release_id} release_id={sel.id}\n"
+                            + f"已等待={waited}s（超时={timeout_sec}s）\n"
+                            + f"url={sel.url or ''}",
+                        )
                         return
 
                 q.put(("log", "\n✅ 回退完成"))
@@ -1039,7 +1049,9 @@ class TasksTab(QtWidgets.QWidget):
                         build_kind = "pipeline"
                         build_ident = pr.run_id
                         emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
-                        deadline = time.time() + 30 * 60
+                        timeout_sec = 30 * 60
+                        start_wait = time.time()
+                        deadline = start_wait + timeout_sec
                         pr2 = None
                         while time.time() < deadline:
                             if should_stop():
@@ -1062,7 +1074,16 @@ class TasksTab(QtWidgets.QWidget):
                                 break
                             time.sleep(4.0)
                         if pr2 is None:
-                            emit_error("构建超时", f"Pipeline run timeout (run_id={pr.run_id})")
+                            waited = int(time.time() - start_wait)
+                            emit_error(
+                                "构建超时",
+                                "ADO 平台超时：等待 Pipeline 完成超时\n"
+                                + f"target={tgt.name}\n"
+                                + f"pipeline_id={tgt.build_id} run_id={pr.run_id}\n"
+                                + f"branch={branch}\n"
+                                + f"已等待={waited}s（超时={timeout_sec}s）\n"
+                                + f"url={pr.url or ''}",
+                            )
                             return
                         emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
                         res_raw = (pr2.result or "")
@@ -1088,7 +1109,9 @@ class TasksTab(QtWidgets.QWidget):
                         emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
 
                         # wait build with cancel support
-                        deadline = time.time() + 30 * 60
+                        timeout_sec = 30 * 60
+                        start_wait = time.time()
+                        deadline = start_wait + timeout_sec
                         br2 = None
                         while time.time() < deadline:
                             if should_stop():
@@ -1110,7 +1133,16 @@ class TasksTab(QtWidgets.QWidget):
                             time.sleep(4.0)
 
                         if br2 is None:
-                            emit_error("构建超时", f"Build timeout (build_id={brn.build_id})")
+                            waited = int(time.time() - start_wait)
+                            emit_error(
+                                "构建超时",
+                                "ADO 平台超时：等待 Build 完成超时\n"
+                                + f"target={tgt.name}\n"
+                                + f"build_def_id={tgt.build_id} build_id={brn.build_id}\n"
+                                + f"branch={branch}\n"
+                                + f"已等待={waited}s（超时={timeout_sec}s）\n"
+                                + f"url={brn.url or ''}",
+                            )
                             return
 
                         emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
@@ -1175,7 +1207,9 @@ class TasksTab(QtWidgets.QWidget):
 
                     want_ids = set(stage_ids)
                     want_names = set(getattr(tgt, "release_stage_names", []) or [])
-                    deadline = time.time() + 60 * 60
+                    timeout_sec = 60 * 60
+                    start_wait = time.time()
+                    deadline = start_wait + timeout_sec
                     last_line = ""
 
                     def select_envs(envs):
@@ -1226,7 +1260,17 @@ class TasksTab(QtWidgets.QWidget):
                             time.sleep(1.0)
 
                     else:
-                        emit_error("发布超时", f"Release 监控超时（60min）：{rel.url or ''}")
+                        waited = int(time.time() - start_wait)
+                        stages = ",".join(stage_ids)
+                        emit_error(
+                            "发布超时",
+                            "ADO 平台超时：等待 Release 阶段完成超时\n"
+                            + f"target={tgt.name}\n"
+                            + f"release_def_id={tgt.release_id} release_id={rel.id}\n"
+                            + f"stages={stages}\n"
+                            + f"已等待={waited}s（超时={timeout_sec}s）\n"
+                            + f"url={rel.url or ''}",
+                        )
                         return
 
                 # all targets done
