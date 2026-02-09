@@ -109,6 +109,9 @@ class DynamicTaskConfig(BaseModel):
     id: str
     enabled: bool = True
 
+    # sort order for UI + Telegram /help list
+    sort_order: int = 0
+
     # Use tg_command as the only "name" for identity; tg_desc is human-friendly label.
     tg_command: str = ""  # a-z0-9_
     tg_desc: str = ""

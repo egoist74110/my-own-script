@@ -57,15 +57,19 @@ class TasksTab(QtWidgets.QWidget):
 
         self.btn_new_task = PushButton("新增任务")
         self.btn_new_task.setFixedWidth(96)
+        self.btn_sort_tasks = PushButton("排序")
+        self.btn_sort_tasks.setFixedWidth(72)
         self.btn_refresh_tasks = PushButton("刷新")
         self.btn_refresh_tasks.setFixedWidth(72)
 
         header_row.addWidget(self.search)
         header_row.addWidget(self.btn_new_task)
+        header_row.addWidget(self.btn_sort_tasks)
         header_row.addWidget(self.btn_refresh_tasks)
         header_row.addStretch(1)
 
         self.btn_new_task.clicked.connect(self._new_task)
+        self.btn_sort_tasks.clicked.connect(self._sort_tasks)
         self.btn_refresh_tasks.clicked.connect(self._render_tasks)
         self.search.textChanged.connect(lambda: self._render_tasks())
 
@@ -98,6 +102,29 @@ class TasksTab(QtWidgets.QWidget):
     def _append_run_log(self, card: TaskCard, text: str) -> None:
         card.append_log(text)
 
+    def _sort_tasks(self) -> None:
+        ts = load_task_settings()
+        tasks = list(getattr(ts, "tasks", []) or [])
+        if not tasks:
+            show_error_dialog(self.window(), "提示", "暂无任务可排序")
+            return
+
+        from app_ado.ui.task_sort_dialog import TaskSortDialog
+
+        dlg = TaskSortDialog(self.window(), tasks)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+
+        order = dlg.result_order()
+        for t in tasks:
+            if str(t.id) in order:
+                t.sort_order = int(order[str(t.id)])
+
+        # persist and rerender
+        ts.tasks = tasks
+        save_task_settings(ts)
+        self._render_tasks()
+
     def _render_tasks(self) -> None:
         """Render task cards from dynamic tasks config."""
         # remove old cards
@@ -112,6 +139,7 @@ class TasksTab(QtWidgets.QWidget):
 
         ts = load_task_settings()
         tasks = list(getattr(ts, "tasks", []) or [])
+        tasks.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
 
         q = (self.search.text() or "").strip().lower() if hasattr(self, "search") else ""
         if q:
@@ -156,6 +184,9 @@ class TasksTab(QtWidgets.QWidget):
         rt = dlg.result_task()
         if not rt:
             return
+        if int(getattr(rt, "sort_order", 0) or 0) == 0:
+            cur = [int(getattr(x, "sort_order", 0) or 0) for x in (ts.tasks or [])]
+            rt.sort_order = (max(cur) + 10) if cur else 10
         ts.tasks.append(rt)
         save_task_settings(ts)
         self._render_tasks()

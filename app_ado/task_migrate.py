@@ -67,6 +67,20 @@ def migrate_task_settings(raw: Any) -> tuple[TaskSettings, bool]:
     # If tasks already exist, still run light migrations (schema evolution).
     if s.tasks:
         changed = False
+
+        # ensure sort_order is stable for older configs
+        try:
+            all_zero = all(int(getattr(t, "sort_order", 0) or 0) == 0 for t in (s.tasks or []))
+        except Exception:
+            all_zero = False
+        if all_zero and s.tasks:
+            for i, t in enumerate(s.tasks):
+                try:
+                    t.sort_order = (i + 1) * 10
+                    changed = True
+                except Exception:
+                    pass
+
         for t in (s.tasks or []):
             try:
                 gf = t.git_flow
@@ -81,6 +95,7 @@ def migrate_task_settings(raw: Any) -> tuple[TaskSettings, bool]:
                         changed = True
             except Exception:
                 continue
+
         return s, changed
 
     changed = False

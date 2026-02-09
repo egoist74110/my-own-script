@@ -176,6 +176,7 @@ class TelegramController:
         if cmd in ("/help", "/start"):
             ts = load_task_settings()
             tasks = list(getattr(ts, "tasks", []) or [])
+            tasks.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
 
             def fmt_direct(t) -> str:
                 # Keep command clickable by putting description on the next line
@@ -229,6 +230,7 @@ class TelegramController:
         # Direct task commands (tap-to-run): /<tg_command>
         ts = load_task_settings()
         tasks = list(getattr(ts, "tasks", []) or [])
+        tasks.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
         cmd_key = cmd.lstrip("/")
         hit = next((t for t in tasks if (t.tg_command or "").strip().lower() == cmd_key), None)
         if hit is not None:
@@ -243,6 +245,7 @@ class TelegramController:
             # Back-compat helper: /run <tg_command>
             ts = load_task_settings()
             tasks = list(getattr(ts, "tasks", []) or [])
+            tasks.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
 
             if len(parts) < 2:
                 self._reply(token, ctx.chat_id, "请直接点击任务命令执行：\n发 /help 查看")
