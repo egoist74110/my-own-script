@@ -521,6 +521,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self._result = DynamicTaskConfig(
             id=self._task.id or str(uuid.uuid4()),
             enabled=self._task.enabled,
+            sort_order=int(getattr(self._task, "sort_order", 0) or 0),
             name=name,
             tg_command=cmd,
             tg_desc=desc,
