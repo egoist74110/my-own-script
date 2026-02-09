@@ -167,6 +167,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         self.repo_path = LineEdit(); self.repo_path.setFixedWidth(420)
         self.btn_pick_path = PushButton("选择...")
+        self.btn_clear_path = PushButton("清空")
+        self.btn_clear_path.setFixedWidth(72)
 
         self.repo_combo = combo()
 
@@ -205,7 +207,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         # (Keep name_edit hidden for back-compat; not shown to user.)
         self.name_edit.setVisible(False)
         form.addRow("项目", self.project_combo)
-        form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
+        form.addRow("本地仓库路径", self._row(self.repo_path, self._row(self.btn_pick_path, self.btn_clear_path)))
         form.addRow("仓库(Repo)", self.repo_combo)
         form.addRow("构建分支", self._row(self.build_branch, self.btn_pick_build_branch))
 
@@ -236,6 +238,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         # signals
         self.btn_pick_path.clicked.connect(self._pick_path)
+        self.btn_clear_path.clicked.connect(lambda: self.repo_path.setText(""))
         self.btn_refresh.clicked.connect(self._refresh_repos_and_branches)
         self.repo_combo.currentIndexChanged.connect(self._on_repo_changed)
         self.btn_pick_build_branch.clicked.connect(self._pick_build_branch)
