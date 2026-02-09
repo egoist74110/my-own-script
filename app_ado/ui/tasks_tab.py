@@ -33,10 +33,9 @@ class TasksTab(QtWidgets.QWidget):
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(8)
-        self._stop_event = None
-        self._running: bool = False
-        self._running_task: str = ""
-        self._running_by_chat_id: str = ""
+        # Per-task running contexts: task_id -> ctx
+        # ctx keys: stop_event, by_chat_id, by_username, kind ('run'|'rollback'), label
+        self._running_tasks: dict[str, dict] = {}
         self._last_requester_chat_id: str = ""
         self._last_requester_username: str | None = None
         self._stop_requester_chat_id: str = ""
@@ -164,7 +163,7 @@ class TasksTab(QtWidgets.QWidget):
             card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
             card.rollback_clicked.connect(lambda _=None, tid=t.id, c=card: self._rollback(tid, c))
-            card.stop_clicked.connect(self._stop)
+            card.stop_clicked.connect(lambda _=None, tid=t.id: self._stop_task_ui(tid))
             card.history_clicked.connect(lambda _=None, tid=t.id: self._show_history(tid))
             card.delete_clicked.connect(lambda _=None, tid=t.id: self._delete_task(tid))
 
@@ -281,15 +280,15 @@ class TasksTab(QtWidgets.QWidget):
         save_task_settings(ts)
         self._render_tasks()
 
+    def _is_task_running(self, task_id: str) -> bool:
+        return str(task_id) in self._running_tasks
+
     def run_task(self, key: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
         """TG-triggered run.
 
         key can be task_id or tg_command.
         Returns (ok, message) for Telegram reply.
         """
-        if self._running:
-            return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
-
         ts = load_task_settings()
         tasks = list(getattr(ts, "tasks", []) or [])
         k = (key or "").strip().lstrip("/")
@@ -299,6 +298,10 @@ class TasksTab(QtWidgets.QWidget):
         )
         if not t:
             return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        if self._is_task_running(str(t.id)):
+            label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or "").strip()) or str(t.id)
+            return False, f"⛔ 无法执行\n该任务正在运行中：{label}。请等待完成或先 /stop"
 
         # basic precheck
         missing: list[str] = []
@@ -332,13 +335,14 @@ class TasksTab(QtWidgets.QWidget):
 
         Returns (ok, message) for Telegram reply.
         """
-        if self._running:
-            return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
-
         ts = load_task_settings()
         task = next((t for t in (ts.tasks or []) if str(t.id) == str(task_id)), None)
         if not task:
             return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        if self._is_task_running(str(task.id)):
+            label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or str(task.id)
+            return False, f"⛔ 无法执行\n该任务正在运行中：{label}。请等待完成或先 /stop"
 
         if offset < 1:
             return False, "⚠️ offset 必须 >= 1（请先发 /rollback 开始交互式选择）"
@@ -354,16 +358,20 @@ class TasksTab(QtWidgets.QWidget):
         return True, f"收到，开始回退：{(task.tg_desc or task.tg_command or task.id)}（offset={offset}）"
 
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
-        # only allow stopping own triggered task unless owner
+        # TG stop: best-effort stop tasks triggered by requester (or owner stops all)
         self._stop_requester_chat_id = requester_chat_id
         self._stop_requester_username = requester_username
-        # Ensure scheduling happens on Qt main thread
-        QtCore.QTimer.singleShot(0, self, self._stop)
+        QtCore.QTimer.singleShot(0, self, self._stop_tasks_from_tg)
 
     def status_text(self) -> str:
-        if self._running:
-            return f"运行中：{self._running_task}"
-        return "空闲"
+        if not self._running_tasks:
+            return "空闲"
+        parts = []
+        for tid, ctx in list(self._running_tasks.items()):
+            label = ctx.get("label") or tid
+            kind = ctx.get("kind") or "run"
+            parts.append(f"- {label} ({kind})")
+        return "运行中：\n" + "\n".join(parts)
 
     def _rollback_tg(self, task_id: str, card: TaskCard, offset: int, *, tg_reply_chat_id: str) -> None:
         """TG rollback execution (no dialogs)."""
@@ -372,8 +380,8 @@ class TasksTab(QtWidgets.QWidget):
 
     def _rollback(self, task_id: str, card: TaskCard) -> None:
         """Rollback: redeploy previous classic releases for each target."""
-        if self._running:
-            show_error_dialog(self.window(), "无法执行", f"已有任务运行中：{self._running_task}。请等待完成或先停止")
+        if self._is_task_running(str(task_id)):
+            show_error_dialog(self.window(), "无法执行", "该任务正在运行中，请等待完成或先停止")
             return
 
         ts = load_task_settings()
@@ -534,11 +542,16 @@ class TasksTab(QtWidgets.QWidget):
             show_error_dialog(self.window(), "无法回退", f"offset 超出范围：1~{max_offset}")
             return
 
-        # stop support
-        self._stop_event = threading.Event()
-        self._running = True
-        self._running_task = f"rollback:{task_id}"
-        self._running_by_chat_id = self._last_requester_chat_id or ""
+        # stop support (per task)
+        stop_event = threading.Event()
+        self._running_tasks[str(task_id)] = {
+            "stop_event": stop_event,
+            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_username": str(self._last_requester_username or ""),
+            "kind": "rollback",
+            "label": task_label,
+            "card": card,
+        }
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
 
@@ -546,7 +559,7 @@ class TasksTab(QtWidgets.QWidget):
             q.put(("log", text))
 
         def should_stop() -> bool:
-            return bool(self._stop_event and self._stop_event.is_set())
+            return bool(stop_event.is_set())
 
         notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
 
@@ -700,8 +713,7 @@ class TasksTab(QtWidgets.QWidget):
 
             if finished:
                 card.set_actions_enabled(True)
-                self._running = False
-                self._running_task = ""
+                self._running_tasks.pop(str(task_id), None)
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -718,8 +730,8 @@ class TasksTab(QtWidgets.QWidget):
         Note: single-flight. Only one task can run at a time.
         """
 
-        if self._running:
-            msg = f"已有任务运行中：{self._running_task}。请等待完成或先 /stop"
+        if self._is_task_running(str(flow_id)):
+            msg = "该任务正在运行中，请等待完成或先停止"
             if tg_reply_chat_id:
                 try:
                     from app_ado.secrets import get_telegram_token
@@ -813,11 +825,16 @@ class TasksTab(QtWidgets.QWidget):
         import subprocess
         import shlex
 
-        # stop support
-        self._stop_event = threading.Event()
-        self._running = True
-        self._running_task = flow_id
-        self._running_by_chat_id = self._last_requester_chat_id or ""
+        # stop support (per task)
+        stop_event = threading.Event()
+        self._running_tasks[str(flow_id)] = {
+            "stop_event": stop_event,
+            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_username": str(self._last_requester_username or ""),
+            "kind": "run",
+            "label": task_label,
+            "card": card,
+        }
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
         # ('log'|'error'|'done', payload)
@@ -829,7 +846,7 @@ class TasksTab(QtWidgets.QWidget):
             q.put(("log", text))
 
         def should_stop() -> bool:
-            return bool(self._stop_event and self._stop_event.is_set())
+            return bool(stop_event.is_set())
 
         # Notify policy:
         # - TG triggered: notify ONLY the requester chat.
@@ -1444,8 +1461,7 @@ class TasksTab(QtWidgets.QWidget):
 
             if finished:
                 card.set_actions_enabled(True)
-                self._running = False
-                self._running_task = ""
+                self._running_tasks.pop(str(flow_id), None)
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -1453,8 +1469,26 @@ class TasksTab(QtWidgets.QWidget):
         th.start()
         QtCore.QTimer.singleShot(120, flush)
 
-    def _stop(self) -> None:
-        # If stop requested from TG, only allow same requester (or owner) to stop
+    def _stop_task_ui(self, task_id: str) -> None:
+        ctx = self._running_tasks.get(str(task_id))
+        if not ctx:
+            return
+        ctx["stop_source"] = "ui"
+        try:
+            ev = ctx.get("stop_event")
+            if ev:
+                ev.set()
+        except Exception:
+            pass
+        try:
+            card = ctx.get("card")
+            if card:
+                card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+        except Exception:
+            pass
+
+    def _stop_tasks_from_tg(self) -> None:
+        """Stop tasks triggered by requester (or owner stops all)."""
         try:
             from app_ado.store import load_ui_settings
 
@@ -1463,28 +1497,25 @@ class TasksTab(QtWidgets.QWidget):
         except Exception:
             owner = ""
 
-        if self._stop_requester_chat_id:
-            if owner and str(self._stop_requester_chat_id) != owner and self._running_by_chat_id and str(self._stop_requester_chat_id) != str(self._running_by_chat_id):
-                # ignore stop
-                try:
-                    self.flow_card.append_log("停止请求被拒绝：只能停止自己触发的任务")
-                except Exception:
-                    pass
-                try:
-                    self.sync_card.append_log("停止请求被拒绝：只能停止自己触发的任务")
-                except Exception:
-                    pass
-                return
+        req = str(self._stop_requester_chat_id or "")
+        is_owner = bool(owner and req and req == owner)
 
-        if self._stop_event is not None:
-            # record stop source for clearer final message
-            self._stop_source = "tg" if self._stop_requester_chat_id else "ui"
-            self._stop_event.set()
+        for tid, ctx in list(self._running_tasks.items()):
+            by_chat = str(ctx.get("by_chat_id") or "")
+            if not is_owner and (not req or req != by_chat):
+                continue
+            ctx["stop_source"] = "tg"
+            ctx["stop_requester_chat_id"] = req
+            ctx["stop_requester_username"] = str(self._stop_requester_username or "")
             try:
-                self.flow_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+                ev = ctx.get("stop_event")
+                if ev:
+                    ev.set()
             except Exception:
                 pass
             try:
-                self.sync_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
+                card = ctx.get("card")
+                if card:
+                    card.append_log("收到停止请求[TG]：将尽快停止（不回滚已触发的构建/发布）")
             except Exception:
                 pass
