@@ -461,9 +461,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         proj_id = self.project_combo.currentData()
         local_repo_path = (self.repo_path.text() or "").strip()
-        if not local_repo_path:
-            show_error_dialog(self, "错误", "请填写本地仓库路径")
-            return
+        # local repo path is optional: if empty, task may run git flow via PAT (remote) or skip git.
 
         repo: GitRepo | None = self.repo_combo.currentData()
         repo_id = repo.id if repo else None

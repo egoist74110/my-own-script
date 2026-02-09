@@ -269,8 +269,7 @@ class TasksTab(QtWidgets.QWidget):
 
         # basic precheck
         missing: list[str] = []
-        if not t.local_repo_path:
-            missing.append("- 本地仓库路径")
+        # local repo path is optional
         if not t.targets:
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
         if not t.git_flow.update_branches:
@@ -336,8 +335,7 @@ class TasksTab(QtWidgets.QWidget):
         # basic config validation (UI thread)
         missing: list[str] = []
         local_path = (task.local_repo_path or "").strip()
-        if not local_path:
-            missing.append("- 本地仓库路径")
+        # local repo path is optional
 
         update_branches = [x.strip() for x in (task.git_flow.update_branches or []) if str(x).strip()]
         merges = list(task.git_flow.merges or [])
@@ -531,67 +529,117 @@ class TasksTab(QtWidgets.QWidget):
                     return
 
                 # --- git flow ---
-                branches: list[str] = []
-                seen = set()
-                for br in update_branches + push_branches:
-                    if br and br not in seen:
-                        branches.append(br); seen.add(br)
-                for mr in merges:
-                    for br in [mr.source, mr.target]:
+                if local_path:
+                    branches: list[str] = []
+                    seen = set()
+                    for br in update_branches + push_branches:
                         if br and br not in seen:
                             branches.append(br); seen.add(br)
-                if deploy_branch and deploy_branch not in seen:
-                    branches.append(deploy_branch); seen.add(deploy_branch)
+                    for mr in merges:
+                        for br in [mr.source, mr.target]:
+                            if br and br not in seen:
+                                branches.append(br); seen.add(br)
+                    if deploy_branch and deploy_branch not in seen:
+                        branches.append(deploy_branch); seen.add(deploy_branch)
 
-                fetch_cmd = ["git", "fetch", "--prune", "origin"] + branches
-                cp = run_cmd(fetch_cmd)
-                if cp.returncode != 0:
-                    emit_error("错误", "fetch 失败")
-                    return
-
-                for br in update_branches:
-                    if should_stop():
-                        emit_log("已停止：用户取消")
-                        return
-                    cp = run_cmd(["git", "checkout", br])
+                    fetch_cmd = ["git", "fetch", "--prune", "origin"] + branches
+                    cp = run_cmd(fetch_cmd)
                     if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {br}")
-                        return
-                    cp = run_cmd(["git", "pull", "--ff-only"])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"pull 失败: {br}")
+                        emit_error("错误", "fetch 失败")
                         return
 
-                for mr in merges:
-                    if should_stop():
-                        emit_log("已停止：用户取消")
-                        return
-                    cp = run_cmd(["git", "checkout", mr.target])
-                    if cp.returncode != 0:
-                        emit_error("错误", f"checkout 失败: {mr.target}")
-                        return
-                    cp = run_cmd(["git", "merge", f"origin/{mr.source}"])
-                    if cp.returncode != 0:
-                        cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
-                        conflicts = (cp2.stdout or "").strip()
-                        emit_error(
-                            "合并失败（可能存在冲突）",
-                            f"merge 失败：{mr.source} -> {mr.target}\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
-                        )
-                        return
+                    for br in update_branches:
+                        if should_stop():
+                            emit_log("已停止：用户取消")
+                            return
+                        cp = run_cmd(["git", "checkout", br])
+                        if cp.returncode != 0:
+                            emit_error("错误", f"checkout 失败: {br}")
+                            return
+                        cp = run_cmd(["git", "pull", "--ff-only"])
+                        if cp.returncode != 0:
+                            emit_error("错误", f"pull 失败: {br}")
+                            return
 
-                for br in push_branches:
-                    if should_stop():
-                        emit_log("已停止：用户取消")
-                        return
-                    cp = run_cmd(["git", "push", "origin", br])
-                    if cp.returncode != 0:
-                        emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={br}")
-                        return
+                    for mr in merges:
+                        if should_stop():
+                            emit_log("已停止：用户取消")
+                            return
+                        cp = run_cmd(["git", "checkout", mr.target])
+                        if cp.returncode != 0:
+                            emit_error("错误", f"checkout 失败: {mr.target}")
+                            return
+                        cp = run_cmd(["git", "merge", f"origin/{mr.source}"])
+                        if cp.returncode != 0:
+                            cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
+                            conflicts = (cp2.stdout or "").strip()
+                            emit_error(
+                                "合并失败（可能存在冲突）",
+                                f"merge 失败：{mr.source} -> {mr.target}\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                            )
+                            return
 
-                cp = run_cmd(["git", "rev-parse", "HEAD"])
-                head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
-                emit_log("✅ Git 流程完成" + (f"\nHEAD={head}" if head else ""))
+                    for br in push_branches:
+                        if should_stop():
+                            emit_log("已停止：用户取消")
+                            return
+                        cp = run_cmd(["git", "push", "origin", br])
+                        if cp.returncode != 0:
+                            emit_error("推送失败", f"push 失败，请检查权限/分支保护。\n\nbranch={br}")
+                            return
+
+                    cp = run_cmd(["git", "rev-parse", "HEAD"])
+                    head = (cp.stdout or "").strip() if cp.returncode == 0 else ""
+                    emit_log("✅ Git 流程完成" + (f"\nHEAD={head}" if head else ""))
+                else:
+                    # No local repo. Try remote merge via ADO API if git rules exist.
+                    if push_branches:
+                        emit_error("无法执行", "未配置本地仓库路径时，暂不支持远程 push_branches。请清空 push_branches 或配置本地仓库路径。")
+                        return
+                    if merges:
+                        try:
+                            from app_ado.store import load_ui_settings
+                            from app_ado.secrets import get_pat
+                            from app_ado.ado_git_ops import merge_via_pr
+
+                            settings2 = load_ui_settings()
+                            proj2 = next((p for p in settings2.projects if p.id == task.project_id), None)
+                            if not proj2:
+                                emit_error("无法执行", "找不到项目配置（project_id）")
+                                return
+                            lib2 = next((l for l in settings2.libraries if l.id == proj2.library_id), None)
+                            if not lib2:
+                                emit_error("无法执行", "项目未关联代码库")
+                                return
+                            pat2 = get_pat(lib2.id)
+                            if not pat2:
+                                emit_error("无法执行", "未找到 PAT（无法使用远程合并）")
+                                return
+                            if not task.repo_id:
+                                emit_error("无法执行", "未选择 Repo（repo_id），无法使用远程合并")
+                                return
+
+                            for mr in merges:
+                                if should_stop():
+                                    emit_log("已停止：用户取消")
+                                    return
+                                emit_log(f"远程合并(PR)：{mr.source} -> {mr.target}")
+                                pr = merge_via_pr(
+                                    lib2.base_url,
+                                    proj2.collection,
+                                    proj2.project,
+                                    task.repo_id,
+                                    source_branch=mr.source,
+                                    target_branch=mr.target,
+                                    pat=pat2,
+                                )
+                                emit_log(f"✅ 已完成远程合并 PR#{pr.id}")
+                        except Exception as ex:
+                            emit_error("远程合并失败", str(ex))
+                            return
+                    else:
+                        emit_log("跳过 Git 流程：未配置本地仓库路径，且没有 merge/push 规则")
+
                 # notification policy: only start + final result
 
                 if should_stop():
