@@ -35,7 +35,13 @@ def main() -> None:
     # Telegram control (polling thread) - only active while app runs
     from app_ado.tg_control import TelegramController
 
-    tg = TelegramController(on_run=tasks.run_task, on_rollback=tasks.rollback_task, on_stop=tasks.stop_task, on_status=tasks.status_text)
+    tg = TelegramController(
+        on_run=tasks.run_task,
+        on_rollback=tasks.rollback_task,
+        on_stop_menu=tasks.list_stoppable_tasks,
+        on_stop_one=tasks.stop_one_task,
+        on_status=tasks.status_text,
+    )
     tg.start()
 
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")

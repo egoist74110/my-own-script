@@ -32,12 +32,14 @@ class TelegramController:
         *,
         on_run: Callable[[str, str, str | None], tuple[bool, str]],
         on_rollback: Callable[[str, int, str, str | None], tuple[bool, str]],
-        on_stop: Callable[[str, str | None], None],
+        on_stop_menu: Callable[[str, str | None], list[tuple[str, str]]],
+        on_stop_one: Callable[[str, str, str | None], tuple[bool, str]],
         on_status: Callable[[], str],
     ) -> None:
         self._on_run = on_run
         self._on_rollback = on_rollback
-        self._on_stop = on_stop
+        self._on_stop_menu = on_stop_menu
+        self._on_stop_one = on_stop_one
         self._on_status = on_status
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
@@ -438,8 +440,13 @@ class TelegramController:
             if not self._can(role, group, "stop"):
                 self._reply(token, ctx.chat_id, "无权限：stop")
                 return
-            self._on_stop(ctx.chat_id, ctx.username)
-            self._reply(token, ctx.chat_id, "已发送停止请求")
+            items = self._on_stop_menu(ctx.chat_id, ctx.username)
+            if not items:
+                self._reply(token, ctx.chat_id, "当前没有可停止的任务")
+                return
+            from app_ado.tg_stop_inline import stop_task_buttons
+
+            self._reply(token, ctx.chat_id, "请选择要停止的任务：", reply_markup=stop_task_buttons(items))
             return
 
         if cmd == "/cancelrollback":
@@ -583,8 +590,13 @@ class TelegramController:
                                     if not self._can(role2, group2, "stop"):
                                         self._reply(token, chat_id2, "无权限：stop")
                                     else:
-                                        self._on_stop(chat_id2, username2)
-                                        self._reply(token, chat_id2, "已发送停止请求")
+                                        items = self._on_stop_menu(chat_id2, username2)
+                                        if not items:
+                                            self._reply(token, chat_id2, "当前没有可停止的任务")
+                                        else:
+                                            from app_ado.tg_stop_inline import stop_task_buttons
+
+                                            self._reply(token, chat_id2, "请选择要停止的任务：", reply_markup=stop_task_buttons(items))
                                     continue
                                 if op == "rollback":
                                     # reuse /rollback flow
@@ -622,6 +634,18 @@ class TelegramController:
                                 ok, msg = self._on_rollback(task_id2, off2, chat_id2, username2)
                                 self._reply(token, chat_id2, msg)
                                 continue
+                            if data2.startswith("stp:"):
+                                if not self._can(role2, group2, "stop"):
+                                    self._reply(token, chat_id2, "无权限：stop")
+                                    continue
+                                tid = data2.split(":", 1)[1]
+                                ok, msg = self._on_stop_one(str(tid), chat_id2, username2)
+                                self._reply(token, chat_id2, msg)
+                                continue
+                            if data2 == "stp_cancel":
+                                self._reply(token, chat_id2, "已取消停止")
+                                continue
+
                             if data2 == "rb_cancel":
                                 self._rollback_wizard.pop(str(chat_id2), None)
                                 self._reply(token, chat_id2, "已取消回退流程")

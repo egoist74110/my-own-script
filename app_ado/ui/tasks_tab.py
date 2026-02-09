@@ -357,8 +357,62 @@ class TasksTab(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, self, lambda: self._rollback_tg(str(task.id), card, offset, tg_reply_chat_id=requester_chat_id))
         return True, f"收到，开始回退：{(task.tg_desc or task.tg_command or task.id)}（offset={offset}）"
 
+    def list_stoppable_tasks(self, requester_chat_id: str, requester_username: str | None) -> list[tuple[str, str]]:
+        """Return [(task_id, label)] tasks that requester can stop."""
+        try:
+            from app_ado.store import load_ui_settings
+
+            s = load_ui_settings()
+            owner = str(s.telegram_chat_id or "")
+        except Exception:
+            owner = ""
+
+        req = str(requester_chat_id or "")
+        is_owner = bool(owner and req and req == owner)
+
+        out: list[tuple[str, str]] = []
+        for tid, ctx in list(self._running_tasks.items()):
+            by_chat = str(ctx.get("by_chat_id") or "")
+            if is_owner or (req and req == by_chat):
+                label = str(ctx.get("label") or tid)
+                kind = str(ctx.get("kind") or "run")
+                out.append((str(tid), f"{label} ({kind})"))
+        return out
+
+    def stop_one_task(self, task_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+        """Stop a specific running task (TG)."""
+        ctx = self._running_tasks.get(str(task_id))
+        if not ctx:
+            return False, "该任务当前不在运行中"
+
+        # permission: owner or same requester
+        try:
+            from app_ado.store import load_ui_settings
+
+            s = load_ui_settings()
+            owner = str(s.telegram_chat_id or "")
+        except Exception:
+            owner = ""
+
+        req = str(requester_chat_id or "")
+        is_owner = bool(owner and req and req == owner)
+        by_chat = str(ctx.get("by_chat_id") or "")
+        if not is_owner and (not req or req != by_chat):
+            return False, "停止请求被拒绝：只能停止自己触发的任务"
+
+        ctx["stop_source"] = "tg"
+        ctx["stop_requester_chat_id"] = req
+        ctx["stop_requester_username"] = str(requester_username or "")
+        try:
+            ev = ctx.get("stop_event")
+            if ev:
+                ev.set()
+        except Exception:
+            pass
+        return True, "已发送停止请求"
+
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
-        # TG stop: best-effort stop tasks triggered by requester (or owner stops all)
+        # Deprecated: keep for backward compatibility.
         self._stop_requester_chat_id = requester_chat_id
         self._stop_requester_username = requester_username
         QtCore.QTimer.singleShot(0, self, self._stop_tasks_from_tg)
