@@ -327,6 +327,32 @@ class TasksTab(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
         return True, f"收到，开始执行：{t.name}"
 
+    def rollback_task(self, task_id: str, offset: int, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+        """TG-triggered rollback.
+
+        Returns (ok, message) for Telegram reply.
+        """
+        if self._running:
+            return False, f"⛔ 无法执行\n已有任务运行中：{self._running_task}。请等待完成或先 /stop"
+
+        ts = load_task_settings()
+        task = next((t for t in (ts.tasks or []) if str(t.id) == str(task_id)), None)
+        if not task:
+            return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        if offset < 1:
+            return False, "⚠️ offset 必须 >= 1（请先发 /rollback 开始交互式选择）"
+
+        card = self._task_cards.get(str(task.id))
+        if not card:
+            return False, "⚠️ 任务卡片未加载，请打开应用后再试"
+
+        # schedule on Qt main thread
+        self._last_requester_chat_id = requester_chat_id
+        self._last_requester_username = requester_username
+        QtCore.QTimer.singleShot(0, self, lambda: self._rollback_tg(str(task.id), card, offset, tg_reply_chat_id=requester_chat_id))
+        return True, f"收到，开始回退：{(task.tg_desc or task.tg_command or task.id)}（offset={offset}）"
+
     def stop_task(self, requester_chat_id: str, requester_username: str | None) -> None:
         # only allow stopping own triggered task unless owner
         self._stop_requester_chat_id = requester_chat_id
@@ -339,11 +365,13 @@ class TasksTab(QtWidgets.QWidget):
             return f"运行中：{self._running_task}"
         return "空闲"
 
-    def _rollback(self, task_id: str, card: TaskCard) -> None:
-        """Rollback: redeploy previous classic releases for each target.
+    def _rollback_tg(self, task_id: str, card: TaskCard, offset: int, *, tg_reply_chat_id: str) -> None:
+        """TG rollback execution (no dialogs)."""
+        # Reuse the same underlying implementation as UI, but skip dialogs.
+        return self._rollback_impl(task_id, card, offset=offset, skip_confirm=True, tg_reply_chat_id=tg_reply_chat_id)
 
-        UI only (button on task card).
-        """
+    def _rollback(self, task_id: str, card: TaskCard) -> None:
+        """Rollback: redeploy previous classic releases for each target."""
         if self._running:
             show_error_dialog(self.window(), "无法执行", f"已有任务运行中：{self._running_task}。请等待完成或先停止")
             return
@@ -386,22 +414,19 @@ class TasksTab(QtWidgets.QWidget):
             show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
             return
 
-        # Fetch releases for each target to compute common offsets
+        # UI chooses offset in dialog, then delegates to implementation
         from app_ado.ado_release_http import list_recent_releases
 
         per_target: list[tuple[str, list]] = []
         for tgt in targets:
-            # Need latest+previous 5 => top=6
             try:
                 rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="6.0")
             except Exception:
                 rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="7.0")
             per_target.append((tgt.name, rels))
 
-        # Determine max selectable offset across all targets
         max_offset = 5
         for _, rels in per_target:
-            # require index 1..k exists
             max_offset = min(max_offset, max(0, len(rels) - 1))
         if max_offset <= 0:
             show_error_dialog(self.window(), "无法回退", "Release 历史不足（需要至少 2 个 Release 才能回退）。")
@@ -431,8 +456,8 @@ class TasksTab(QtWidgets.QWidget):
             lines = [f"回退 offset={k}："]
             for tgt, rels in per_target:
                 r = rels[k]
-                ts = fmt_time(r.created_on)
-                lines.append(f"- {tgt}: {r.name or r.id}" + (f" ({ts})" if ts else ""))
+                ts2 = fmt_time(r.created_on)
+                lines.append(f"- {tgt}: {r.name or r.id}" + (f" ({ts2})" if ts2 else ""))
             preview[k] = lines
 
         from app_ado.ui.rollback_dialog import RollbackDialog
@@ -449,31 +474,116 @@ class TasksTab(QtWidgets.QWidget):
         if not ok:
             return
 
-        # Run rollback in background thread
+        self._rollback_impl(task_id, card, offset=offset, skip_confirm=False, tg_reply_chat_id=None)
+        return
+
+    def _rollback_impl(self, task_id: str, card: TaskCard, *, offset: int, skip_confirm: bool, tg_reply_chat_id: str | None) -> None:
+        """Shared rollback implementation for UI and TG."""
         import queue
         import threading
         import time
 
+        # re-load task/settings inside impl (avoid capturing stale objects)
+        ts = load_task_settings()
+        task = next((t for t in (ts.tasks or []) if str(t.id) == str(task_id)), None)
+        if not task:
+            show_error_dialog(self.window(), "错误", "任务不存在")
+            return
+
+        task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
+
+        from app_ado.store import load_ui_settings
+        from app_ado.secrets import get_pat
+
+        ui = load_ui_settings()
+        proj = next((p for p in ui.projects if p.id == task.project_id), None)
+        if not proj:
+            show_error_dialog(self.window(), "错误", "找不到项目配置（project_id）")
+            return
+        lib = next((l for l in ui.libraries if l.id == proj.library_id), None)
+        if not lib:
+            show_error_dialog(self.window(), "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
+            return
+
+        targets = list(task.targets or [])
+        if not targets:
+            show_error_dialog(self.window(), "配置不完整", "回退需要配置发布目标")
+            return
+
+        from app_ado.ado_release_http import list_recent_releases
+
+        per_target: list[tuple[str, list]] = []
+        for tgt in targets:
+            try:
+                rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="6.0")
+            except Exception:
+                rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="7.0")
+            per_target.append((tgt.name, rels))
+
+        max_offset = 5
+        for _, rels in per_target:
+            max_offset = min(max_offset, max(0, len(rels) - 1))
+        if max_offset <= 0:
+            show_error_dialog(self.window(), "无法回退", "Release 历史不足（需要至少 2 个 Release 才能回退）。")
+            return
+        if offset < 1 or offset > max_offset:
+            show_error_dialog(self.window(), "无法回退", f"offset 超出范围：1~{max_offset}")
+            return
+
+        # stop support
         self._stop_event = threading.Event()
-        self._stop_source = "ui"
         self._running = True
         self._running_task = f"rollback:{task_id}"
-        self._running_by_chat_id = ""
+        self._running_by_chat_id = self._last_requester_chat_id or ""
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
 
         def emit_log(text: str) -> None:
             q.put(("log", text))
 
-        def emit_error(title: str, details: str) -> None:
-            q.put(("error", title + "\n" + details))
-
         def should_stop() -> bool:
             return bool(self._stop_event and self._stop_event.is_set())
 
+        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
+
+        def notify_telegram(summary: str, details: str = "") -> None:
+            try:
+                from app_ado.store import load_ui_settings
+                from app_ado.secrets import get_telegram_token
+                from app_ado.notifier_telegram import send_telegram_message
+
+                token = get_telegram_token()
+                if not token:
+                    return
+                s = load_ui_settings()
+                include = bool(getattr(s, "telegram_notify_include_details", False))
+
+                chat_id = notify_chat_id
+                if not chat_id:
+                    chat_id = str(getattr(s, "telegram_chat_id", "") or "").strip()
+                if not chat_id:
+                    return
+
+                text = summary
+                if include and details:
+                    text = summary + "\n" + details
+                send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
+            except Exception:
+                return
+
+        def emit_error(title: str, details: str) -> None:
+            notify_telegram(f"❌ 回退失败：{title}", f"{task_label}\noffset={offset}\n{title}\n{details}")
+            q.put(("error", title + "\n" + details))
+
         def worker() -> None:
             try:
-                emit_log(f"回退：{task_label}")
+                emit_log(f"回退：{task_label} (offset={offset})")
+                notify_telegram("🚧 开始回退", f"{task_label}\noffset={offset}\ntargets={len(targets)}")
+
                 from app_ado.ado_release_http import get_release, extract_envs, start_release_environment
 
                 def fetch_envs(release_id: str):
@@ -489,7 +599,7 @@ class TasksTab(QtWidgets.QWidget):
 
                 for idx, tgt in enumerate(targets, start=1):
                     if should_stop():
-                        emit_error("已取消", f"由程序界面取消\n阶段：Target[{idx}] {tgt.name}")
+                        emit_error("已取消", "由用户停止")
                         return
 
                     rels = next((x for n, x in per_target if n == tgt.name), [])
@@ -512,20 +622,19 @@ class TasksTab(QtWidgets.QWidget):
 
                     for e in selected:
                         if should_stop():
-                            emit_error("已取消", f"由程序界面取消\n阶段：{tgt.name}/{e.name}")
+                            emit_error("已取消", "由用户停止")
                             return
                         emit_log(f"触发回退部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
                         start_release_environment(lib.base_url, proj.collection, proj.project, sel.id, e.id, pat=pat)
                         time.sleep(0.8)
 
-                    # monitor selected envs until done
                     timeout_sec = 60 * 60
                     start_wait = time.time()
                     deadline = start_wait + timeout_sec
                     last_line = ""
                     while time.time() < deadline:
                         if should_stop():
-                            emit_error("已取消", f"由程序界面取消\n阶段：等待回退发布({tgt.name})")
+                            emit_error("已取消", "由用户停止")
                             return
 
                         envs2 = fetch_envs(sel.id)
@@ -566,10 +675,11 @@ class TasksTab(QtWidgets.QWidget):
                         )
                         return
 
-                q.put(("log", "\n✅ 回退完成"))
+                notify_telegram("✅ 回退成功", f"{task_label}\noffset={offset}\ntargets={len(targets)}")
                 q.put(("done", ""))
             except Exception as ex:
                 emit_error("回退失败", str(ex))
+                q.put(("done", ""))
 
         def flush() -> None:
             finished = False

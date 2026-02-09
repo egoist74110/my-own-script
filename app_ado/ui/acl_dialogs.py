@@ -30,12 +30,22 @@ class AclGroupDialog(QtWidgets.QDialog):
         self.can_run = CheckBox("允许运行任务")
         self.can_stop = CheckBox("允许停止自己触发的任务")
         self.can_status = CheckBox("允许查询状态")
+        self.can_rollback = CheckBox("允许回退版本")
 
         self.tasks_box = QtWidgets.QListWidget()
         self.tasks_box.setFixedHeight(140)
 
         form.addRow("组名", self.name)
-        form.addRow("权限", self._row(self.can_run, self._row(self.can_stop, self.can_status)))
+        perm = QtWidgets.QWidget()
+        pv = QtWidgets.QVBoxLayout(perm)
+        pv.setContentsMargins(0, 0, 0, 0)
+        pv.setSpacing(6)
+        pv.addWidget(self.can_run)
+        pv.addWidget(self.can_stop)
+        pv.addWidget(self.can_status)
+        pv.addWidget(self.can_rollback)
+        pv.addStretch(1)
+        form.addRow("权限", perm)
         form.addRow("允许的任务", self.tasks_box)
 
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Save)
@@ -49,9 +59,11 @@ class AclGroupDialog(QtWidgets.QDialog):
             self.can_run.setChecked(bool(existing.get("can_run")))
             self.can_stop.setChecked(bool(existing.get("can_stop")))
             self.can_status.setChecked(bool(existing.get("can_status", True)))
+            self.can_rollback.setChecked(bool(existing.get("can_rollback")))
             allowed = set(existing.get("task_ids") or [])
         else:
             self.can_status.setChecked(True)
+            self.can_rollback.setChecked(False)
             allowed = set()
 
         for tid, label in (task_options or []):
@@ -99,6 +111,7 @@ class AclGroupDialog(QtWidgets.QDialog):
             "can_run": bool(self.can_run.isChecked()),
             "can_stop": bool(self.can_stop.isChecked()),
             "can_status": bool(self.can_status.isChecked()),
+            "can_rollback": bool(self.can_rollback.isChecked()),
             "task_ids": task_ids,
         }
         super().accept()
