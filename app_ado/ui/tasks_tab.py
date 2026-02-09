@@ -762,7 +762,14 @@ class TasksTab(QtWidgets.QWidget):
                             emit_error("构建超时", f"Pipeline run timeout (run_id={pr.run_id})")
                             return
                         emit_log(f"Pipeline 完成：state={pr2.state} result={pr2.result} url={pr2.url or ''}")
-                        if (pr2.result or "").lower() not in ("succeeded", "success"):
+                        res = (pr2.result or "").lower()
+                        if res in ("canceled", "cancelled"):
+                            emit_error(
+                                "构建已取消",
+                                "检测到 Azure DevOps Pipeline 被取消（通常是平台上手动取消）。\n" + f"Pipeline result={pr2.result}\n{pr2.url or ''}",
+                            )
+                            return
+                        if res not in ("succeeded", "success"):
                             emit_error("构建失败", f"Pipeline result={pr2.result}\n{pr2.url or ''}")
                             return
                     else:
@@ -771,7 +778,14 @@ class TasksTab(QtWidgets.QWidget):
                         emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
                         br2 = wait_build(lib.base_url, proj.collection, proj.project, brn.build_id, pat=pat, timeout_min=30)
                         emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
-                        if (br2.result or "").lower() not in ("succeeded", "success", "partiallysucceeded"):
+                        res = (br2.result or "").lower()
+                        if res in ("canceled", "cancelled"):
+                            emit_error(
+                                "构建已取消",
+                                "检测到 Azure DevOps Build 被取消（通常是平台上手动取消）。\n" + f"Build result={br2.result}\n{br2.url or ''}",
+                            )
+                            return
+                        if res not in ("succeeded", "success", "partiallysucceeded"):
                             emit_error("构建失败", f"Build result={br2.result}\n{br2.url or ''}")
                             return
 
@@ -854,8 +868,12 @@ class TasksTab(QtWidgets.QWidget):
                         if selected and all(is_done(e.status) for e in selected):
                             failed = [e for e in selected if (e.status or "").lower() not in ("succeeded",)]
                             if failed:
+                                any_canceled = any((e.status or "").lower() in {"canceled", "cancelled"} for e in failed)
                                 msg = "Release 完成但存在失败阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
-                                emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
+                                if any_canceled:
+                                    emit_error("发布已取消", "检测到 Release 阶段被取消（通常是平台上手动取消）。\n" + msg + (f"\n\n{rel.url or ''}"))
+                                else:
+                                    emit_error("发布失败", msg + (f"\n\n{rel.url or ''}"))
                                 return
                             emit_log(f"✅ Target {tgt.name} Release 成功")
                             break
