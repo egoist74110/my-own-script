@@ -404,11 +404,10 @@ class TelegramController:
                 show_status = (role == "owner") or self._can(role, group, "status")
                 show_rollback = (role == "owner") or any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks)
 
-                text = "🔹 任务 🔹\n\n🔸 系统操作 🔸"
                 self._reply(
                     token,
                     ctx.chat_id,
-                    text,
+                    "",
                     reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
                 )
                 return
