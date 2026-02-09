@@ -404,10 +404,11 @@ class TelegramController:
                 show_status = (role == "owner") or self._can(role, group, "status")
                 show_rollback = (role == "owner") or any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks)
 
+                # Telegram does not allow empty text; use a zero-width placeholder.
                 self._reply(
                     token,
                     ctx.chat_id,
-                    "",
+                    "\u200b",
                     reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
                 )
                 return
