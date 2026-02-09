@@ -39,7 +39,13 @@ class AclGroupDialog(QtWidgets.QDialog):
         perm = QtWidgets.QWidget()
         pv = QtWidgets.QVBoxLayout(perm)
         pv.setContentsMargins(0, 0, 0, 0)
-        pv.setSpacing(6)
+        pv.setSpacing(10)
+        # add a little vertical breathing room for each checkbox
+        for cb in (self.can_run, self.can_stop, self.can_status, self.can_rollback):
+            try:
+                cb.setStyleSheet("margin-bottom: 5px;")
+            except Exception:
+                pass
         pv.addWidget(self.can_run)
         pv.addWidget(self.can_stop)
         pv.addWidget(self.can_status)
