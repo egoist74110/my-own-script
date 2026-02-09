@@ -41,6 +41,7 @@ class TasksTab(QtWidgets.QWidget):
         self._last_requester_username: str | None = None
         self._stop_requester_chat_id: str = ""
         self._stop_requester_username: str | None = None
+        self._stop_source: str = ""  # 'tg'|'ui'
 
         self._task_cards: dict[str, TaskCard] = {}
 
@@ -464,9 +465,10 @@ class TasksTab(QtWidgets.QWidget):
                 return
 
         def emit_error(title: str, details: str) -> None:
+            # Always include short reason in summary (even when details are masked)
             notify_telegram(
                 "fail",
-                summary="❌ 任务失败",
+                summary=f"❌ 任务失败：{title}",
                 details=f"{task_label}\n{title}\n{details}",
             )
             try:
@@ -491,6 +493,42 @@ class TasksTab(QtWidgets.QWidget):
 
         def worker() -> None:
             try:
+                stop_source = self._stop_source
+
+                def stop_detail(where: str) -> str:
+                    if stop_source == "tg":
+                        u = self._stop_requester_username or ""
+                        cid = self._stop_requester_chat_id or ""
+                        return f"由 TG 取消 {('@'+u) if u else ''} ({cid})\n阶段：{where}".strip()
+                    if stop_source == "ui":
+                        return f"由程序界面取消\n阶段：{where}"
+                    return f"已取消\n阶段：{where}"
+
+                def emit_stopped(where: str) -> None:
+                    notify_telegram(
+                        "stopped",
+                        summary="⏹ 任务已取消",
+                        details=f"{task_label}\n" + stop_detail(where),
+                    )
+                    try:
+                        from app_ado.task_history import TaskRunRecord, append_record
+                        import time as _time
+
+                        append_record(
+                            TaskRunRecord(
+                                ts=int(_time.time()),
+                                task_id=str(task.id),
+                                task_label=task_label,
+                                triggered_by=("tg" if notify_chat_id else "ui"),
+                                requester_chat_id=str(self._last_requester_chat_id or ""),
+                                requester_username=str(self._last_requester_username or ""),
+                                result="stopped",
+                                summary=stop_detail(where),
+                            )
+                        )
+                    except Exception:
+                        pass
+                    q.put(("error", "已取消\n" + stop_detail(where)))
                 emit_log(f"运行：{task_label}")
                 emit_log(f"repo_path={local_path}")
                 emit_log(f"deploy_branch={deploy_branch}")
@@ -514,6 +552,7 @@ class TasksTab(QtWidgets.QWidget):
 
                 if should_stop():
                     emit_log("已停止：用户取消")
+                    emit_stopped("开始前")
                     return
 
                 if local_path:
@@ -558,6 +597,7 @@ class TasksTab(QtWidgets.QWidget):
                     for br in update_branches:
                         if should_stop():
                             emit_log("已停止：用户取消")
+                            emit_stopped(f"更新分支：{br}")
                             return
                         cp = run_cmd(["git", "checkout", br])
                         if cp.returncode != 0:
@@ -571,6 +611,7 @@ class TasksTab(QtWidgets.QWidget):
                     for mr in merges:
                         if should_stop():
                             emit_log("已停止：用户取消")
+                            emit_stopped(f"合并：{mr.source}->{mr.target}")
                             return
                         cp = run_cmd(["git", "checkout", mr.target])
                         if cp.returncode != 0:
@@ -589,6 +630,7 @@ class TasksTab(QtWidgets.QWidget):
                     for br in push_branches:
                         if should_stop():
                             emit_log("已停止：用户取消")
+                            emit_stopped(f"推送：{br}")
                             return
                         cp = run_cmd(["git", "push", "origin", br])
                         if cp.returncode != 0:
@@ -692,6 +734,7 @@ class TasksTab(QtWidgets.QWidget):
 
                     if should_stop():
                         emit_log("已停止：用户取消")
+                        emit_stopped("远程合并")
                         return
 
                     emit_log(f"\n=== Target[{ti}] {tgt.name} ===")
@@ -708,6 +751,7 @@ class TasksTab(QtWidgets.QWidget):
                         while time.time() < deadline:
                             if should_stop():
                                 emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                                emit_stopped("等待构建")
                                 return
                             pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
                             if (pr_cur.state or "").lower() == "completed":
@@ -791,6 +835,7 @@ class TasksTab(QtWidgets.QWidget):
                     while time.time() < deadline:
                         if should_stop():
                             emit_log("已停止：用户取消（发布已触发，停止后不会回滚）")
+                            emit_stopped("等待发布")
                             return
 
                         envs = fetch_envs()
@@ -919,6 +964,8 @@ class TasksTab(QtWidgets.QWidget):
                 return
 
         if self._stop_event is not None:
+            # record stop source for clearer final message
+            self._stop_source = "tg" if self._stop_requester_chat_id else "ui"
             self._stop_event.set()
             try:
                 self.flow_card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
