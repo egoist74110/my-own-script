@@ -408,7 +408,7 @@ class TelegramController:
                 self._reply(
                     token,
                     ctx.chat_id,
-                    "\u3164",  # HANGUL FILLER
+                    "代码工具箱",
                     reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
                 )
                 return
