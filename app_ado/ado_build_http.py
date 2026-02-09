@@ -195,6 +195,41 @@ def wait_pipeline(
     raise TimeoutError(f"pipeline run timeout after {timeout_min}min (pipeline={pipeline_id} run={run_id}) last={last}")
 
 
+def cancel_pipeline_run(
+    base_url: str,
+    collection: str,
+    project: str,
+    pipeline_id: str,
+    run_id: str,
+    *,
+    pat: str,
+    api_version: str = "7.0",
+) -> None:
+    """Best-effort cancel a pipeline run."""
+    # ADO supports POST cancel for pipeline runs.
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}/cancel"
+    with _client(pat) as c:
+        r = c.post(url, params={"api-version": api_version})
+        r.raise_for_status()
+
+
+def cancel_build(
+    base_url: str,
+    collection: str,
+    project: str,
+    build_id: str,
+    *,
+    pat: str,
+    api_version: str = "7.0",
+) -> None:
+    """Best-effort cancel a classic build."""
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/builds/{build_id}"
+    body = {"status": "cancelling"}
+    with _client(pat) as c:
+        r = c.patch(url, params={"api-version": api_version}, json=body)
+        r.raise_for_status()
+
+
 def wait_build(
     base_url: str,
     collection: str,

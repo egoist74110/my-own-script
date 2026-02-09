@@ -728,6 +728,11 @@ class TasksTab(QtWidgets.QWidget):
                 branch = deploy_branch
 
                 for ti, tgt in enumerate(targets, start=1):
+                    release_started = False
+                    build_started = False
+                    build_kind = ""
+                    build_ident = ""  # run_id or build_id
+
                     if not getattr(tgt, "enabled", True):
                         emit_log(f"\n--- Target[{ti}] {tgt.name}: skipped (disabled) ---")
                         continue
@@ -745,12 +750,24 @@ class TasksTab(QtWidgets.QWidget):
                     if tgt.build_kind == "pipeline":
                         pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
                         build_run_id = pr.run_id
+                        build_started = True
+                        build_kind = "pipeline"
+                        build_ident = pr.run_id
                         emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
                         deadline = time.time() + 30 * 60
                         pr2 = None
                         while time.time() < deadline:
                             if should_stop():
                                 emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                                # try cancel build on ADO if release not started
+                                if build_started and not release_started:
+                                    try:
+                                        from app_ado.ado_build_http import cancel_pipeline_run
+
+                                        cancel_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
+                                        emit_log("✅ 已向 ADO 请求取消 Pipeline")
+                                    except Exception as ex:
+                                        emit_log(f"⚠️ ADO 取消 Pipeline 失败：{ex}")
                                 emit_stopped("等待构建")
                                 return
                             pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
@@ -779,8 +796,37 @@ class TasksTab(QtWidgets.QWidget):
                     else:
                         brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
                         build_run_id = brn.build_id
+                        build_started = True
+                        build_kind = "build_definition"
+                        build_ident = brn.build_id
                         emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
-                        br2 = wait_build(lib.base_url, proj.collection, proj.project, brn.build_id, pat=pat, timeout_min=30)
+
+                        # wait build with cancel support
+                        deadline = time.time() + 30 * 60
+                        br2 = None
+                        while time.time() < deadline:
+                            if should_stop():
+                                emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                                if build_started and not release_started:
+                                    try:
+                                        from app_ado.ado_build_http import cancel_build
+
+                                        cancel_build(lib.base_url, proj.collection, proj.project, brn.build_id, pat=pat)
+                                        emit_log("✅ 已向 ADO 请求取消 Build")
+                                    except Exception as ex:
+                                        emit_log(f"⚠️ ADO 取消 Build 失败：{ex}")
+                                emit_stopped("等待构建")
+                                return
+                            cur = get_build(lib.base_url, proj.collection, proj.project, brn.build_id, pat=pat)
+                            if (cur.status or "").lower() == "completed":
+                                br2 = cur
+                                break
+                            time.sleep(4.0)
+
+                        if br2 is None:
+                            emit_error("构建超时", f"Build timeout (build_id={brn.build_id})")
+                            return
+
                         emit_log(f"Build 完成：status={br2.status} result={br2.result} url={br2.url or ''}")
                         res_raw = (br2.result or "")
                         res = res_raw.lower()
@@ -798,6 +844,7 @@ class TasksTab(QtWidgets.QWidget):
                             return
 
                     emit_log("✅ 构建成功，开始触发 Release ...")
+                    release_started = True
 
                     if not build_run_id:
                         emit_error("错误", "未获得 build_id/run_id，无法创建 Release")
