@@ -42,6 +42,14 @@ class TelegramController:
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
 
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+        self._offset_path = config_dir() / "tg_offset.json"
+        self._log_path = config_dir() / "tg_control.log"
+        self._state_path = config_dir() / "tg_control_state.json"
+        self._update_offset = self._load_offset()
+
     def _answer_callback(self, token: str, callback_query_id: str, *, text: str = "") -> None:
         try:
             url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
