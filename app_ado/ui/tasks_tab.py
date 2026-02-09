@@ -504,7 +504,8 @@ class TasksTab(QtWidgets.QWidget):
                 def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
                     line = "$ " + " ".join(shlex.quote(x) for x in cmd)
                     emit_log(line)
-                    cp = subprocess.run(cmd, cwd=local_path, capture_output=True, text=True)
+                    # local_path may be empty (remote-only mode). In that case, do not set cwd.
+                    cp = subprocess.run(cmd, cwd=(local_path or None), capture_output=True, text=True)
                     if cp.stdout:
                         emit_log(cp.stdout.strip())
                     if cp.stderr:
@@ -515,21 +516,24 @@ class TasksTab(QtWidgets.QWidget):
                     emit_log("已停止：用户取消")
                     return
 
-                # verify git repo
-                cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
-                if cp.returncode != 0 or "true" not in (cp.stdout or "").lower():
-                    emit_error("错误", f"不是有效的 git 仓库：{local_path}")
-                    return
+                if local_path:
+                    # verify git repo
+                    cp = run_cmd(["git", "rev-parse", "--is-inside-work-tree"])
+                    if cp.returncode != 0 or "true" not in (cp.stdout or "").lower():
+                        emit_error("错误", f"不是有效的 git 仓库：{local_path}")
+                        return
 
-                # workspace must be clean
-                cp = run_cmd(["git", "status", "--porcelain"])
-                if cp.returncode != 0:
-                    emit_error("错误", "git status 失败")
-                    return
-                dirty = (cp.stdout or "").strip()
-                if dirty:
-                    emit_error("工作区未清理", "检测到未提交改动，请先处理后再运行：\n\n" + dirty)
-                    return
+                    # workspace must be clean
+                    cp = run_cmd(["git", "status", "--porcelain"])
+                    if cp.returncode != 0:
+                        emit_error("错误", "git status 失败")
+                        return
+                    dirty = (cp.stdout or "").strip()
+                    if dirty:
+                        emit_error("工作区未清理", "检测到未提交改动，请先处理后再运行：\n\n" + dirty)
+                        return
+                else:
+                    emit_log("未配置本地仓库路径：跳过本地 git 仓库检查")
 
                 # --- git flow ---
                 if local_path:
