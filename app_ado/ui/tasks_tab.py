@@ -407,12 +407,32 @@ class TasksTab(QtWidgets.QWidget):
             show_error_dialog(self.window(), "无法回退", "Release 历史不足（需要至少 2 个 Release 才能回退）。")
             return
 
+        from datetime import datetime, timezone
+
+        def fmt_time(iso: str | None) -> str:
+            if not iso:
+                return ""
+            s = str(iso).strip()
+            try:
+                if s.endswith("Z"):
+                    s2 = s[:-1] + "+00:00"
+                else:
+                    s2 = s
+                dt = datetime.fromisoformat(s2)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local = dt.astimezone()
+                return local.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return s
+
         preview: dict[int, list[str]] = {}
         for k in range(1, max_offset + 1):
             lines = [f"回退 offset={k}："]
             for tgt, rels in per_target:
                 r = rels[k]
-                lines.append(f"- {tgt}: {r.name or r.id} ({r.created_on or ''})")
+                ts = fmt_time(r.created_on)
+                lines.append(f"- {tgt}: {r.name or r.id}" + (f" ({ts})" if ts else ""))
             preview[k] = lines
 
         from app_ado.ui.rollback_dialog import RollbackDialog
@@ -456,6 +476,17 @@ class TasksTab(QtWidgets.QWidget):
                 emit_log(f"回退：{task_label}")
                 from app_ado.ado_release_http import get_release, extract_envs, start_release_environment
 
+                def fetch_envs(release_id: str):
+                    try:
+                        data = get_release(lib.base_url, proj.collection, proj.project, release_id, pat=pat, api_version="6.0")
+                    except Exception:
+                        data = get_release(lib.base_url, proj.collection, proj.project, release_id, pat=pat, api_version="7.0")
+                    return extract_envs(data)
+
+                def is_done(status: str) -> bool:
+                    s = (status or "").lower()
+                    return s in {"succeeded", "rejected", "canceled", "cancelled", "failed"}
+
                 for idx, tgt in enumerate(targets, start=1):
                     if should_stop():
                         emit_error("已取消", f"由程序界面取消\n阶段：Target[{idx}] {tgt.name}")
@@ -466,12 +497,7 @@ class TasksTab(QtWidgets.QWidget):
                     emit_log(f"\n=== Target[{idx}] {tgt.name} ===")
                     emit_log(f"选择 Release：{sel.name or sel.id} ({sel.id})")
 
-                    # fetch envs
-                    try:
-                        data = get_release(lib.base_url, proj.collection, proj.project, sel.id, pat=pat, api_version="6.0")
-                    except Exception:
-                        data = get_release(lib.base_url, proj.collection, proj.project, sel.id, pat=pat, api_version="7.0")
-                    envs = extract_envs(data)
+                    envs = fetch_envs(sel.id)
 
                     want_ids = set(list(getattr(tgt, "release_stage_ids", []) or []))
                     want_names = set(list(getattr(tgt, "release_stage_names", []) or []))
@@ -492,9 +518,45 @@ class TasksTab(QtWidgets.QWidget):
                         start_release_environment(lib.base_url, proj.collection, proj.project, sel.id, e.id, pat=pat)
                         time.sleep(0.8)
 
-                    emit_log(f"✅ Target[{idx}] {tgt.name} 已触发回退")
+                    # monitor selected envs until done
+                    deadline = time.time() + 60 * 60
+                    last_line = ""
+                    while time.time() < deadline:
+                        if should_stop():
+                            emit_error("已取消", f"由程序界面取消\n阶段：等待回退发布({tgt.name})")
+                            return
 
-                q.put(("log", "\n✅ 回退请求已发送（请在 ADO 平台查看部署进度）"))
+                        envs2 = fetch_envs(sel.id)
+                        by_id = {e.id: e for e in envs2}
+                        cur_sel = [by_id.get(e.id) for e in selected]
+                        cur_sel = [e for e in cur_sel if e is not None]
+
+                        parts = [f"{e.name}(envId={e.id})={e.status}" for e in cur_sel]
+                        line = "监控回退：" + " | ".join(parts) if parts else "监控回退：等待阶段状态更新"
+                        if line != last_line:
+                            emit_log(line)
+                            last_line = line
+
+                        if cur_sel and all(is_done(e.status) for e in cur_sel):
+                            failed = [e for e in cur_sel if (e.status or "").lower() not in ("succeeded",)]
+                            if failed:
+                                any_canceled = any((e.status or "").lower() in {"canceled", "cancelled"} for e in failed)
+                                msg = "回退部署完成但存在异常阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
+                                if any_canceled:
+                                    emit_error("ADO 平台已取消：Release", msg + (f"\n\n{sel.url or ''}"))
+                                else:
+                                    emit_error("ADO 平台报错：Release", msg + (f"\n\n{sel.url or ''}"))
+                                return
+                            emit_log(f"✅ Target[{idx}] {tgt.name} 回退成功")
+                            break
+
+                        time.sleep(4.0)
+
+                    else:
+                        emit_error("发布超时", f"Rollback Release 监控超时（60min）：{sel.url or ''}")
+                        return
+
+                q.put(("log", "\n✅ 回退完成"))
                 q.put(("done", ""))
             except Exception as ex:
                 emit_error("回退失败", str(ex))
