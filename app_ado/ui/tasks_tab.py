@@ -337,12 +337,13 @@ class TasksTab(QtWidgets.QWidget):
         local_path = (task.local_repo_path or "").strip()
         # local repo path is optional
 
+        build_branch = (getattr(task.git_flow, "build_branch", "") or "").strip()
         update_branches = [x.strip() for x in (task.git_flow.update_branches or []) if str(x).strip()]
         merges = list(task.git_flow.merges or [])
         push_branches = [x.strip() for x in (task.git_flow.push_branches or []) if str(x).strip()]
 
-        if not update_branches:
-            missing.append("- Git流程：更新分支（至少 1 个）")
+        if not build_branch:
+            missing.append("- Git流程：构建分支")
 
         for i, mr in enumerate(merges):
             if not (mr.source and mr.target):
@@ -369,7 +370,7 @@ class TasksTab(QtWidgets.QWidget):
             return
 
         # Determine the branch used for build/release association.
-        deploy_branch = merges[-1].target if merges else update_branches[-1]
+        deploy_branch = build_branch or (merges[-1].target if merges else (update_branches[-1] if update_branches else ""))
 
         if not skip_confirm:
             steps: list[str] = []

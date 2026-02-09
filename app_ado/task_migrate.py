@@ -84,7 +84,8 @@ def migrate_task_settings(raw: Any) -> tuple[TaskSettings, bool]:
                 merges = []
                 push_branches = []
 
-            git_flow = GitFlow(update_branches=update_branches, merges=merges, push_branches=push_branches)
+            build_branch = target_branch or (update_branches[-1] if update_branches else "")
+            git_flow = GitFlow(build_branch=build_branch, update_branches=update_branches, merges=merges, push_branches=push_branches)
 
             cmd = _default_command(flow_id)
             # Ensure cmd is valid

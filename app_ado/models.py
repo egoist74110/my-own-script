@@ -92,6 +92,10 @@ class GitMergeRule(BaseModel):
 class GitFlow(BaseModel):
     """Configurable git branch flow."""
 
+    # Branch used for build/release triggering.
+    # If empty, will fall back to last merge target, else last update branch.
+    build_branch: str = ""
+
     update_branches: list[str] = Field(default_factory=list)
     merges: list[GitMergeRule] = Field(default_factory=list)
     push_branches: list[str] = Field(default_factory=list)

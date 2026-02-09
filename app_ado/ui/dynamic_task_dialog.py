@@ -69,6 +69,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                 out.append(GitMergeRule(source=src, target=tgt))
         return out
 
+    def _pick_build_branch(self) -> None:
+        br = self._pick_branch("选择构建分支")
+        if br:
+            self.build_branch.setText(br)
+
     def _pick_branch(self, title: str) -> str | None:
         if not self._branches:
             show_error_dialog(self, "提示", "请先点击【刷新 Repo/分支】获取分支列表")
@@ -165,6 +170,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         self.repo_combo = combo()
 
+        # build branch
+        self.build_branch = LineEdit(); self.build_branch.setFixedWidth(260)
+        self.btn_pick_build_branch = PushButton("选择...")
+
         # GitFlow (list)
         self.update_list = QtWidgets.QListWidget(); self.update_list.setFixedHeight(110)
         self.btn_add_update = PushButton("新增")
@@ -198,8 +207,9 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("项目", self.project_combo)
         form.addRow("本地仓库路径", self._row(self.repo_path, self.btn_pick_path))
         form.addRow("仓库(Repo)", self.repo_combo)
+        form.addRow("构建分支", self._row(self.build_branch, self.btn_pick_build_branch))
 
-        form.addRow("更新分支（按顺序 checkout + pull --ff-only）", self._row(self.update_list, self._row(self.btn_add_update, self.btn_del_update)))
+        form.addRow("更新分支（按顺序 checkout + pull --ff-only，可为空）", self._row(self.update_list, self._row(self.btn_add_update, self.btn_del_update)))
         form.addRow("合并规则（按顺序 merge origin/<source> -> <target>）", self._row(self.merge_list, self._row(self.btn_add_merge, self.btn_del_merge)))
         self.push_hint = QtWidgets.QLabel("提示：Push 仅在填写【本地仓库路径】时可用；未填写时将禁用（避免远程推送带来的风险）。")
         self.push_hint.setWordWrap(True)
@@ -228,6 +238,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_pick_path.clicked.connect(self._pick_path)
         self.btn_refresh.clicked.connect(self._refresh_repos_and_branches)
         self.repo_combo.currentIndexChanged.connect(self._on_repo_changed)
+        self.btn_pick_build_branch.clicked.connect(self._pick_build_branch)
 
         self.btn_add_update.clicked.connect(self._add_update_branch)
         self.btn_del_update.clicked.connect(self._del_update_branch)
@@ -258,7 +269,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                     self.project_combo.setCurrentIndex(i)
                     break
 
-        # prefill git_flow lists
+        # prefill git_flow
+        self.build_branch.setText((task.git_flow.build_branch or "").strip())
         self._set_list(self.update_list, list(task.git_flow.update_branches or []))
         self._set_merge_list(self.merge_list, list(task.git_flow.merges or []))
         self._set_list(self.push_list, list(task.git_flow.push_branches or []))
@@ -483,12 +495,13 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         repo_id = repo.id if repo else None
         repo_name = repo.name if repo else None
 
+        build_branch = (self.build_branch.text() or "").strip()
         update_branches = self._get_list(self.update_list)
         push_branches = self._get_list(self.push_list)
         merges = self._get_merge_list(self.merge_list)
 
-        if not update_branches:
-            show_error_dialog(self, "错误", "请至少新增一个【更新分支】")
+        if not build_branch:
+            show_error_dialog(self, "错误", "请指定【构建分支】")
             return
 
         for i, mr in enumerate(merges, start=1):
@@ -500,7 +513,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             show_error_dialog(self, "错误", "请至少新增一个发布目标")
             return
 
-        git_flow = GitFlow(update_branches=update_branches, merges=merges, push_branches=push_branches)
+        git_flow = GitFlow(build_branch=build_branch, update_branches=update_branches, merges=merges, push_branches=push_branches)
 
         self._result = DynamicTaskConfig(
             id=self._task.id or str(uuid.uuid4()),
