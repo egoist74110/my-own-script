@@ -382,21 +382,49 @@ class TelegramController:
                     if self._can(role, group, "run", task_id=str(t.id)):
                         lines.append(fmt_direct(t))
 
-            if role == "owner":
-                msg = "可用命令（点击即可执行）：\n" + ("\n".join(lines) if lines else "（暂无任务）")
-                msg += "\n/status  # 查看当前运行状态\n/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n/rollback  # 回退发布版本（交互式）\n/help"
-            else:
-                if not lines:
-                    msg = "当前无可运行任务权限。请联系管理员分配权限。"
-                else:
-                    msg = "可用任务命令：\n" + "\n".join(lines)
-                if self._can(role, group, "stop"):
-                    msg += "\n/stop  # 停止自己触发的任务"
-                if any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks):
-                    msg += "\n/rollback  # 回退发布版本（交互式）"
+            # Prefer inline buttons for a cleaner UX (no need to type commands)
+            try:
+                from app_ado.tg_help_inline import help_keyboard
 
-            self._reply(token, ctx.chat_id, msg)
-            return
+                items: list[tuple[str, str]] = []
+                if role == "owner":
+                    allowed_tasks = [t for t in tasks if (t.tg_command or "").strip()]
+                else:
+                    allowed_tasks = [t for t in tasks if (t.tg_command or "").strip() and self._can(role, group, "run", task_id=str(t.id))]
+
+                for t in allowed_tasks:
+                    label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or "").strip())
+                    items.append((str(t.id), label))
+
+                show_stop = (role == "owner") or self._can(role, group, "stop")
+                show_status = (role == "owner") or self._can(role, group, "status")
+                show_rollback = (role == "owner") or any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks)
+
+                text = "任务：点击按钮直接执行\n\n系统操作：回退 / 状态 / 停止"
+                self._reply(
+                    token,
+                    ctx.chat_id,
+                    text,
+                    reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
+                )
+                return
+            except Exception:
+                # fallback to text list
+                if role == "owner":
+                    msg = "可用命令（点击即可执行）：\n" + ("\n".join(lines) if lines else "（暂无任务）")
+                    msg += "\n/status  # 查看当前运行状态\n/stop  # 停止任务（非超级管理员只能停止自己触发的任务）\n/rollback  # 回退发布版本（交互式）\n/help"
+                else:
+                    if not lines:
+                        msg = "当前无可运行任务权限。请联系管理员分配权限。"
+                    else:
+                        msg = "可用任务命令：\n" + "\n".join(lines)
+                    if self._can(role, group, "stop"):
+                        msg += "\n/stop  # 停止自己触发的任务"
+                    if any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks):
+                        msg += "\n/rollback  # 回退发布版本（交互式）"
+
+                self._reply(token, ctx.chat_id, msg)
+                return
 
         if cmd == "/status":
             if not self._can(role, group, "status"):
@@ -530,6 +558,39 @@ class TelegramController:
                             if role2 == "none":
                                 continue
                             ctx2 = TgCommandContext(chat_id=chat_id2, username=username2, text=data2)
+
+                            if data2 == "help_noop":
+                                continue
+
+                            if data2.startswith("help_run:"):
+                                tid = data2.split(":", 1)[1]
+                                if not self._can(role2, group2, "run", task_id=str(tid)):
+                                    self._reply(token, chat_id2, "无权限：run")
+                                    continue
+                                ok, msg = self._on_run(str(tid), chat_id2, username2)
+                                self._reply(token, chat_id2, msg if msg else ("收到，开始执行" if ok else "执行失败"))
+                                continue
+
+                            if data2.startswith("help_sys:"):
+                                op = data2.split(":", 1)[1]
+                                if op == "status":
+                                    if not self._can(role2, group2, "status"):
+                                        self._reply(token, chat_id2, "无权限：status")
+                                    else:
+                                        self._reply(token, chat_id2, self._on_status())
+                                    continue
+                                if op == "stop":
+                                    if not self._can(role2, group2, "stop"):
+                                        self._reply(token, chat_id2, "无权限：stop")
+                                    else:
+                                        self._on_stop(chat_id2, username2)
+                                        self._reply(token, chat_id2, "已发送停止请求")
+                                    continue
+                                if op == "rollback":
+                                    # reuse /rollback flow
+                                    ctx3 = TgCommandContext(chat_id=chat_id2, username=username2, text="/rollback")
+                                    self._handle(token, ctx3, role=role2, group=group2)
+                                    continue
 
                             if data2.startswith("rb_task:"):
                                 self._rollback_wizard[str(chat_id2)] = {"step": "pick_offset"}
