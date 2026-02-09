@@ -404,15 +404,21 @@ class TelegramController:
                 show_status = (role == "owner") or self._can(role, group, "status")
                 show_rollback = (role == "owner") or any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks)
 
-                # Telegram does not allow empty text; use a zero-width placeholder.
+                # Telegram does not allow empty text. Use an "invisible" placeholder char.
                 self._reply(
                     token,
                     ctx.chat_id,
-                    "\u200b",
+                    "\u3164",  # HANGUL FILLER
                     reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
                 )
                 return
-            except Exception:
+            except Exception as e:
+                # log why inline help failed, then fall back
+                try:
+                    self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} help inline failed: {e}")
+                    self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=str(e))
+                except Exception:
+                    pass
                 # fallback to text list
                 if role == "owner":
                     msg = "可用命令（点击即可执行）：\n" + ("\n".join(lines) if lines else "（暂无任务）")
