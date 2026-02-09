@@ -64,8 +64,24 @@ def migrate_task_settings(raw: Any) -> tuple[TaskSettings, bool]:
     """Return (settings, changed)."""
     s = TaskSettings.model_validate(raw or {})
 
+    # If tasks already exist, still run light migrations (schema evolution).
     if s.tasks:
-        return s, False
+        changed = False
+        for t in (s.tasks or []):
+            try:
+                gf = t.git_flow
+                build_branch = (getattr(gf, "build_branch", "") or "").strip()
+                if not build_branch:
+                    merges = list(getattr(gf, "merges", []) or [])
+                    update_branches = [str(x).strip() for x in (getattr(gf, "update_branches", []) or []) if str(x).strip()]
+                    # prefer last merge target, else last update branch
+                    inferred = (merges[-1].target if merges else (update_branches[-1] if update_branches else ""))
+                    if inferred:
+                        gf.build_branch = inferred
+                        changed = True
+            except Exception:
+                continue
+        return s, changed
 
     changed = False
 
@@ -84,7 +100,7 @@ def migrate_task_settings(raw: Any) -> tuple[TaskSettings, bool]:
                 merges = []
                 push_branches = []
 
-            build_branch = target_branch or (update_branches[-1] if update_branches else "")
+            build_branch = (flow.target_branch or "") or (merges[-1].target if merges else (update_branches[-1] if update_branches else ""))
             git_flow = GitFlow(build_branch=build_branch, update_branches=update_branches, merges=merges, push_branches=push_branches)
 
             cmd = _default_command(flow_id)
