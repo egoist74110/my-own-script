@@ -5,7 +5,10 @@ def task_buttons(items: list[tuple[str, str]], *, prefix: str = "rb_task:") -> d
     """items: [(task_id, label)]"""
     keyboard = []
     for tid, label in items:
-        keyboard.append([{ "text": label, "callback_data": prefix + str(tid) }])
+        keyboard.append([{"text": label, "callback_data": prefix + str(tid)}])
+
+    # Keep cancel as a special persistent last row.
+    keyboard.append([{"text": "⛔ 取消回退流程（危险操作）", "callback_data": "rb_cancel"}])
     return {"inline_keyboard": keyboard}
 
 
@@ -19,7 +22,7 @@ def offset_buttons(max_offset: int, *, prefix: str = "rb_off:") -> dict:
             row = []
     if row:
         keyboard.append(row)
-    keyboard.append([{ "text": "取消", "callback_data": "rb_cancel" }])
+    keyboard.append([{ "text": "⛔ 取消回退流程（危险操作）", "callback_data": "rb_cancel" }])
     return {"inline_keyboard": keyboard}
 
 
@@ -28,7 +31,9 @@ def confirm_buttons() -> dict:
         "inline_keyboard": [
             [
                 {"text": "确认回退", "callback_data": "rb_yes"},
-                {"text": "取消", "callback_data": "rb_cancel"},
-            ]
+            ],
+            [
+                {"text": "⛔ 取消回退流程（危险操作）", "callback_data": "rb_cancel"},
+            ],
         ]
     }
