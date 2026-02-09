@@ -42,6 +42,111 @@ class TelegramController:
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
 
+    def _answer_callback(self, token: str, callback_query_id: str, *, text: str = "") -> None:
+        try:
+            url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+            payload = {"callback_query_id": callback_query_id}
+            if text:
+                payload["text"] = text
+            with httpx.Client(timeout=httpx.Timeout(8.0, connect=5.0), follow_redirects=False) as c:
+                c.post(url, data=payload)
+        except Exception:
+            return
+
+    def _handle_rollback_pick_task(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None, task_id: str) -> None:
+        ts = load_task_settings()
+        tasks = list(getattr(ts, "tasks", []) or [])
+        tasks.sort(key=lambda x: (int(getattr(x, "sort_order", 0) or 0), (x.tg_command or "").lower()))
+        hit = next((x for x in tasks if str(x.id) == str(task_id)), None)
+        if not hit:
+            self._reply(token, ctx.chat_id, "任务不存在，请重新发 /rollback")
+            self._rollback_wizard.pop(str(ctx.chat_id), None)
+            return
+        if not self._can(role, group, "rollback", task_id=str(hit.id)):
+            self._reply(token, ctx.chat_id, "无权限：rollback")
+            self._rollback_wizard.pop(str(ctx.chat_id), None)
+            return
+
+        # build offset options by querying ADO releases
+        try:
+            from datetime import datetime, timezone
+
+            from app_ado.store import load_ui_settings
+            from app_ado.secrets import get_pat
+            from app_ado.ado_release_http import list_recent_releases
+            from app_ado.tg_rollback_inline import offset_buttons
+
+            ui = load_ui_settings()
+            proj = next((p for p in ui.projects if p.id == hit.project_id), None)
+            if not proj:
+                raise RuntimeError("找不到项目配置（project_id）")
+            lib = next((l for l in ui.libraries if l.id == proj.library_id), None)
+            if not lib:
+                raise RuntimeError("项目未关联代码库")
+            pat = get_pat(lib.id)
+            if not pat:
+                raise RuntimeError("未找到 PAT")
+
+            targets = list(hit.targets or [])
+            if not targets:
+                raise RuntimeError("任务未配置发布目标")
+
+            def fmt_time(iso: str | None) -> str:
+                if not iso:
+                    return ""
+                s = str(iso).strip()
+                try:
+                    if s.endswith("Z"):
+                        s2 = s[:-1] + "+00:00"
+                    else:
+                        s2 = s
+                    dt = datetime.fromisoformat(s2)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    local = dt.astimezone()
+                    return local.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    return s
+
+            per_target: list[tuple[str, list]] = []
+            for tgt in targets:
+                if not tgt.release_id:
+                    raise RuntimeError(f"发布目标未配置 release_id：{tgt.name}")
+                try:
+                    rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="6.0")
+                except Exception:
+                    rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="7.0")
+                per_target.append((tgt.name, rels))
+
+            max_offset = 5
+            for _, rels in per_target:
+                max_offset = min(max_offset, max(0, len(rels) - 1))
+            if max_offset <= 0:
+                raise RuntimeError("Release 历史不足（需要至少 2 个 Release 才能回退）")
+
+            label = (hit.tg_desc or "").strip() or ("/" + (hit.tg_command or "").strip())
+            lines = [f"请选择回退版本 offset（1~{max_offset}，1=上一个）："]
+            for k in range(1, max_offset + 1):
+                lines.append(f"\noffset={k}:")
+                for tgt_name, rels in per_target:
+                    r = rels[k]
+                    ts2 = fmt_time(r.created_on)
+                    lines.append(f"- {tgt_name}: {r.name or r.id}" + (f" ({ts2})" if ts2 else ""))
+
+            wiz = self._rollback_wizard.get(str(ctx.chat_id)) or {}
+            wiz["task_id"] = str(hit.id)
+            wiz["task_label"] = label
+            wiz["max_offset"] = int(max_offset)
+            wiz["step"] = "pick_offset"
+            self._rollback_wizard[str(ctx.chat_id)] = wiz
+
+            self._reply(token, ctx.chat_id, "\n".join(lines), reply_markup=offset_buttons(int(max_offset)))
+            return
+        except Exception as ex:
+            self._reply(token, ctx.chat_id, "无法获取回退版本：" + str(ex))
+            self._rollback_wizard.pop(str(ctx.chat_id), None)
+            return
+
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -155,7 +260,7 @@ class TelegramController:
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         params: dict[str, Any] = {
             "timeout": int(timeout),
-            "allowed_updates": json.dumps(["message"], ensure_ascii=False),
+            "allowed_updates": json.dumps(["message", "callback_query"], ensure_ascii=False),
         }
         if self._update_offset is not None:
             params["offset"] = int(self._update_offset)
@@ -167,8 +272,8 @@ class TelegramController:
             raise RuntimeError(f"telegram getUpdates failed: {data}")
         return data
 
-    def _reply(self, token: str, chat_id: str, text: str) -> None:
-        send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
+    def _reply(self, token: str, chat_id: str, text: str, *, reply_markup: dict | None = None) -> None:
+        send_telegram_message(bot_token=token, chat_id=chat_id, text=text, reply_markup=reply_markup)
 
     def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
@@ -202,82 +307,10 @@ class TelegramController:
                     self._rollback_wizard.pop(str(ctx.chat_id), None)
                     return
 
-                # build offset options by querying ADO releases
-                try:
-                    from datetime import datetime, timezone
-
-                    from app_ado.store import load_ui_settings
-                    from app_ado.secrets import get_pat
-                    from app_ado.ado_release_http import list_recent_releases
-
-                    ui = load_ui_settings()
-                    proj = next((p for p in ui.projects if p.id == hit.project_id), None)
-                    if not proj:
-                        raise RuntimeError("找不到项目配置（project_id）")
-                    lib = next((l for l in ui.libraries if l.id == proj.library_id), None)
-                    if not lib:
-                        raise RuntimeError("项目未关联代码库")
-                    pat = get_pat(lib.id)
-                    if not pat:
-                        raise RuntimeError("未找到 PAT")
-
-                    targets = list(hit.targets or [])
-                    if not targets:
-                        raise RuntimeError("任务未配置发布目标")
-
-                    def fmt_time(iso: str | None) -> str:
-                        if not iso:
-                            return ""
-                        s = str(iso).strip()
-                        try:
-                            if s.endswith("Z"):
-                                s2 = s[:-1] + "+00:00"
-                            else:
-                                s2 = s
-                            dt = datetime.fromisoformat(s2)
-                            if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=timezone.utc)
-                            local = dt.astimezone()
-                            return local.strftime("%Y-%m-%d %H:%M:%S")
-                        except Exception:
-                            return s
-
-                    per_target: list[tuple[str, list]] = []
-                    for tgt in targets:
-                        if not tgt.release_id:
-                            raise RuntimeError(f"发布目标未配置 release_id：{tgt.name}")
-                        try:
-                            rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="6.0")
-                        except Exception:
-                            rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="7.0")
-                        per_target.append((tgt.name, rels))
-
-                    max_offset = 5
-                    for _, rels in per_target:
-                        max_offset = min(max_offset, max(0, len(rels) - 1))
-                    if max_offset <= 0:
-                        raise RuntimeError("Release 历史不足（需要至少 2 个 Release 才能回退）")
-
-                    label = (hit.tg_desc or "").strip() or ("/" + (hit.tg_command or "").strip())
-                    lines = [f"请选择回退版本 offset（1~{max_offset}，1=上一个）："]
-                    for k in range(1, max_offset + 1):
-                        lines.append(f"\noffset={k}:")
-                        for tgt_name, rels in per_target:
-                            r = rels[k]
-                            ts2 = fmt_time(r.created_on)
-                            lines.append(f"- {tgt_name}: {r.name or r.id}" + (f" ({ts2})" if ts2 else ""))
-
-                    wiz["task_id"] = str(hit.id)
-                    wiz["task_label"] = label
-                    wiz["max_offset"] = int(max_offset)
-                    wiz["step"] = "pick_offset"
-                    self._rollback_wizard[str(ctx.chat_id)] = wiz
-                    self._reply(token, ctx.chat_id, "\n".join(lines))
-                    return
-                except Exception as ex:
-                    self._reply(token, ctx.chat_id, "无法获取回退版本：" + str(ex))
-                    self._rollback_wizard.pop(str(ctx.chat_id), None)
-                    return
+                # For text-based flow, just ask user to use button or /rollback again.
+                self._reply(token, ctx.chat_id, "请使用 /rollback 的按钮选择任务（或重新发送 /rollback）。")
+                self._rollback_wizard.pop(str(ctx.chat_id), None)
+                return
 
             if step == "pick_offset":
                 try:
@@ -386,25 +419,23 @@ class TelegramController:
             tasks = list(getattr(ts, "tasks", []) or [])
             tasks.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
 
-            opts = []
-            lines = ["请选择要回退的任务，回复序号："]
-            i = 0
+            items: list[tuple[str, str]] = []
             for tsk in tasks:
                 if not (tsk.tg_command or "").strip():
                     continue
                 if not self._can(role, group, "rollback", task_id=str(tsk.id)):
                     continue
-                i += 1
                 label = (tsk.tg_desc or "").strip() or ("/" + (tsk.tg_command or "").strip())
-                lines.append(f"{i}) {label}  (/{(tsk.tg_command or '').strip()})")
-                opts.append({"task_id": str(tsk.id)})
+                items.append((str(tsk.id), label))
 
-            if not opts:
+            if not items:
                 self._reply(token, ctx.chat_id, "无可回退任务权限。请联系管理员分配权限。")
                 return
 
-            self._rollback_wizard[str(ctx.chat_id)] = {"step": "pick_task", "options": opts}
-            self._reply(token, ctx.chat_id, "\n".join(lines) + "\n\n发送 /cancelrollback 可取消")
+            from app_ado.tg_rollback_inline import task_buttons
+
+            self._rollback_wizard[str(ctx.chat_id)] = {"step": "pick_task"}
+            self._reply(token, ctx.chat_id, "请选择要回退的任务：", reply_markup=task_buttons(items))
             return
 
         # Direct task commands (tap-to-run): /<tg_command>
@@ -473,6 +504,63 @@ class TelegramController:
 
                 for u in items:
                     last_id = u.get("update_id")
+
+                    # callback_query (inline buttons)
+                    cb = u.get("callback_query")
+                    if cb:
+                        cb_id = str(cb.get("id") or "")
+                        data2 = str(cb.get("data") or "")
+                        msg2 = cb.get("message") or {}
+                        chat2 = msg2.get("chat") or {}
+                        chat_id2 = str(chat2.get("id") or "")
+                        frm2 = cb.get("from") or {}
+                        username2 = frm2.get("username")
+                        if cb_id:
+                            self._answer_callback(token, cb_id)
+                        if chat_id2 and data2:
+                            role2, group2 = self._resolve_acl(chat_id2, username2)
+                            if role2 == "none":
+                                continue
+                            ctx2 = TgCommandContext(chat_id=chat_id2, username=username2, text=data2)
+
+                            if data2.startswith("rb_task:"):
+                                self._rollback_wizard[str(chat_id2)] = {"step": "pick_offset"}
+                                self._handle_rollback_pick_task(token, ctx2, role=role2, group=group2, task_id=data2.split(":", 1)[1])
+                                continue
+                            if data2.startswith("rb_off:"):
+                                wiz = self._rollback_wizard.get(str(chat_id2)) or {}
+                                try:
+                                    off = int(data2.split(":", 1)[1])
+                                except Exception:
+                                    self._reply(token, chat_id2, "offset 无效")
+                                    continue
+                                wiz["offset"] = off
+                                wiz["step"] = "confirm"
+                                self._rollback_wizard[str(chat_id2)] = wiz
+                                from app_ado.tg_rollback_inline import confirm_buttons
+
+                                self._reply(token, chat_id2, f"确认回退？\noffset={off}\n\n（回退将对该任务配置的所有发布目标依次执行）", reply_markup=confirm_buttons())
+                                continue
+                            if data2 == "rb_yes":
+                                wiz = self._rollback_wizard.get(str(chat_id2)) or {}
+                                task_id2 = str(wiz.get("task_id") or "")
+                                off2 = int(wiz.get("offset") or 0)
+                                if not task_id2 or off2 <= 0:
+                                    self._reply(token, chat_id2, "回退流程状态丢失，请重新发 /rollback")
+                                    self._rollback_wizard.pop(str(chat_id2), None)
+                                    continue
+                                self._rollback_wizard.pop(str(chat_id2), None)
+                                ok, msg = self._on_rollback(task_id2, off2, chat_id2, username2)
+                                self._reply(token, chat_id2, msg)
+                                continue
+                            if data2 == "rb_cancel":
+                                self._rollback_wizard.pop(str(chat_id2), None)
+                                self._reply(token, chat_id2, "已取消回退流程")
+                                continue
+
+                        continue
+
+                    # message
                     msg = u.get("message") or {}
                     chat = msg.get("chat") or {}
                     chat_id = str(chat.get("id") or "")
