@@ -205,12 +205,25 @@ def cancel_pipeline_run(
     pat: str,
     api_version: str = "7.0",
 ) -> None:
-    """Best-effort cancel a pipeline run."""
-    # ADO supports POST cancel for pipeline runs.
+    """Best-effort cancel a pipeline run.
+
+    Azure DevOps Server versions differ. Some don't implement the
+    /pipelines/{id}/runs/{runId}/cancel endpoint and return 404.
+
+    Fallback: treat run_id as build_id and cancel via Build API.
+    """
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}/cancel"
     with _client(pat) as c:
-        r = c.post(url, params={"api-version": api_version})
-        r.raise_for_status()
+        try:
+            r = c.post(url, params={"api-version": api_version})
+            r.raise_for_status()
+            return
+        except httpx.HTTPStatusError as e:
+            # If endpoint not supported, fallback to build cancel.
+            if e.response is not None and e.response.status_code == 404:
+                cancel_build(base_url, collection, project, run_id, pat=pat, api_version=api_version)
+                return
+            raise
 
 
 def cancel_build(

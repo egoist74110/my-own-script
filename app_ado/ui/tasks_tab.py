@@ -758,7 +758,7 @@ class TasksTab(QtWidgets.QWidget):
                         pr2 = None
                         while time.time() < deadline:
                             if should_stop():
-                                emit_log("已停止：用户取消（构建已触发，停止后不会回滚）")
+                                emit_log("已停止：用户取消（构建已触发：将尝试取消 ADO 构建）")
                                 # try cancel build on ADO if release not started
                                 if build_started and not release_started:
                                     try:
@@ -767,7 +767,8 @@ class TasksTab(QtWidgets.QWidget):
                                         cancel_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
                                         emit_log("✅ 已向 ADO 请求取消 Pipeline")
                                     except Exception as ex:
-                                        emit_log(f"⚠️ ADO 取消 Pipeline 失败：{ex}")
+                                        # 403: usually permission; 404: usually server endpoint not supported (we also fallback inside cancel_pipeline_run)
+                                        emit_log(f"⚠️ ADO 取消 Pipeline 失败（可能是权限不足或服务器不支持该取消接口）：{ex}")
                                 emit_stopped("等待构建")
                                 return
                             pr_cur = get_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, pr.run_id, pat=pat)
