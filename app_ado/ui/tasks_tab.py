@@ -272,15 +272,17 @@ class TasksTab(QtWidgets.QWidget):
         # local repo path is optional
         if not t.targets:
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
-        if not t.git_flow.update_branches:
-            missing.append("- Git流程：至少选择一个更新分支")
+        build_branch = (getattr(t.git_flow, "build_branch", "") or "").strip()
+        if not build_branch:
+            missing.append("- Git流程：构建分支")
         if t.git_flow.merges:
             r = t.git_flow.merges[0]
             if not r.source or not r.target:
                 missing.append("- Git流程：合并规则不完整")
 
         if missing:
-            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{t.name}）：\n" + "\n".join(missing)
+            label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
+            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{label}）：\n" + "\n".join(missing)
             return False, msg
 
         self._last_requester_chat_id = requester_chat_id
