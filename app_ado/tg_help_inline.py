@@ -8,15 +8,19 @@ def help_keyboard(*, tasks: list[tuple[str, str]], show_rollback: bool, show_sto
     """
     kb: list[list[dict]] = []
 
-    # tasks section
+    # tasks section header
+    kb.append([
+        {"text": "🔹 任务 🔹", "callback_data": "help_noop"},
+    ])
+
     for tid, label in tasks:
         kb.append([
             {"text": label, "callback_data": f"help_run:{tid}"},
         ])
 
-    # separator row (non-clickable not supported), so use a thin placeholder button.
+    # system section header
     kb.append([
-        {"text": "—— 系统操作 ——", "callback_data": "help_noop"},
+        {"text": "🔸 系统操作 🔸", "callback_data": "help_noop"},
     ])
 
     sys_row: list[dict] = []
