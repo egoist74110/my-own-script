@@ -163,6 +163,7 @@ class TasksTab(QtWidgets.QWidget):
 
             card.config_clicked.connect(lambda _=None, tid=t.id: self._edit_task(tid))
             card.run_clicked.connect(lambda _=None, tid=t.id, c=card: self._run(tid, c))
+            card.rollback_clicked.connect(lambda _=None, tid=t.id, c=card: self._rollback(tid, c))
             card.stop_clicked.connect(self._stop)
             card.history_clicked.connect(lambda _=None, tid=t.id: self._show_history(tid))
             card.delete_clicked.connect(lambda _=None, tid=t.id: self._delete_task(tid))
@@ -337,6 +338,197 @@ class TasksTab(QtWidgets.QWidget):
         if self._running:
             return f"运行中：{self._running_task}"
         return "空闲"
+
+    def _rollback(self, task_id: str, card: TaskCard) -> None:
+        """Rollback: redeploy previous classic releases for each target.
+
+        UI only (button on task card).
+        """
+        if self._running:
+            show_error_dialog(self.window(), "无法执行", f"已有任务运行中：{self._running_task}。请等待完成或先停止")
+            return
+
+        ts = load_task_settings()
+        task = next((t for t in (ts.tasks or []) if t.id == task_id), None)
+        if not task:
+            show_error_dialog(self.window(), "错误", "任务不存在")
+            return
+
+        task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
+
+        # basic validation
+        missing: list[str] = []
+        targets = list(task.targets or [])
+        if not targets:
+            missing.append("- 发布目标")
+        for i, tgt in enumerate(targets, start=1):
+            if not (tgt.release_id and (tgt.release_stage_ids or tgt.release_stage_names)):
+                missing.append(f"- Target[{i}] {tgt.name}: release 定义/阶段未配置")
+        if missing:
+            show_error_dialog(self.window(), "配置不完整", "回退需要配置 Release 定义 + 阶段：\n" + "\n".join(missing))
+            return
+
+        # load settings/pat
+        from app_ado.store import load_ui_settings
+        from app_ado.secrets import get_pat
+
+        settings = load_ui_settings()
+        proj = next((p for p in settings.projects if p.id == task.project_id), None)
+        if not proj:
+            show_error_dialog(self.window(), "错误", "找不到项目配置（project_id）")
+            return
+        lib = next((l for l in settings.libraries if l.id == proj.library_id), None)
+        if not lib:
+            show_error_dialog(self.window(), "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
+            return
+
+        # Fetch releases for each target to compute common offsets
+        from app_ado.ado_release_http import list_recent_releases
+
+        per_target: list[tuple[str, list]] = []
+        for tgt in targets:
+            # Need latest+previous 5 => top=6
+            try:
+                rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="6.0")
+            except Exception:
+                rels = list_recent_releases(lib.base_url, proj.collection, proj.project, str(tgt.release_id), pat=pat, top=6, api_version="7.0")
+            per_target.append((tgt.name, rels))
+
+        # Determine max selectable offset across all targets
+        max_offset = 5
+        for _, rels in per_target:
+            # require index 1..k exists
+            max_offset = min(max_offset, max(0, len(rels) - 1))
+        if max_offset <= 0:
+            show_error_dialog(self.window(), "无法回退", "Release 历史不足（需要至少 2 个 Release 才能回退）。")
+            return
+
+        preview: dict[int, list[str]] = {}
+        for k in range(1, max_offset + 1):
+            lines = [f"回退 offset={k}："]
+            for tgt, rels in per_target:
+                r = rels[k]
+                lines.append(f"- {tgt}: {r.name or r.id} ({r.created_on or ''})")
+            preview[k] = lines
+
+        from app_ado.ui.rollback_dialog import RollbackDialog
+
+        dlg = RollbackDialog(self.window(), task_label=task_label, max_offset=max_offset, preview_lines=preview)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        choice = dlg.result_choice()
+        if not choice:
+            return
+        offset = int(choice.offset)
+
+        ok = show_confirm_dialog(self.window(), "确认回退？", "将按以下版本回退（依次执行）：\n\n" + "\n".join(preview[offset]))
+        if not ok:
+            return
+
+        # Run rollback in background thread
+        import queue
+        import threading
+        import time
+
+        self._stop_event = threading.Event()
+        self._stop_source = "ui"
+        self._running = True
+        self._running_task = f"rollback:{task_id}"
+        self._running_by_chat_id = ""
+
+        q: queue.Queue[tuple[str, str]] = queue.Queue()
+
+        def emit_log(text: str) -> None:
+            q.put(("log", text))
+
+        def emit_error(title: str, details: str) -> None:
+            q.put(("error", title + "\n" + details))
+
+        def should_stop() -> bool:
+            return bool(self._stop_event and self._stop_event.is_set())
+
+        def worker() -> None:
+            try:
+                emit_log(f"回退：{task_label}")
+                from app_ado.ado_release_http import get_release, extract_envs, start_release_environment
+
+                for idx, tgt in enumerate(targets, start=1):
+                    if should_stop():
+                        emit_error("已取消", f"由程序界面取消\n阶段：Target[{idx}] {tgt.name}")
+                        return
+
+                    rels = next((x for n, x in per_target if n == tgt.name), [])
+                    sel = rels[offset]
+                    emit_log(f"\n=== Target[{idx}] {tgt.name} ===")
+                    emit_log(f"选择 Release：{sel.name or sel.id} ({sel.id})")
+
+                    # fetch envs
+                    try:
+                        data = get_release(lib.base_url, proj.collection, proj.project, sel.id, pat=pat, api_version="6.0")
+                    except Exception:
+                        data = get_release(lib.base_url, proj.collection, proj.project, sel.id, pat=pat, api_version="7.0")
+                    envs = extract_envs(data)
+
+                    want_ids = set(list(getattr(tgt, "release_stage_ids", []) or []))
+                    want_names = set(list(getattr(tgt, "release_stage_names", []) or []))
+
+                    selected = [e for e in envs if (e.definition_environment_id or "") in want_ids] if want_ids else []
+                    if not selected and want_names:
+                        selected = [e for e in envs if e.name in want_names]
+
+                    if not selected:
+                        emit_error("无法回退", f"未在 Release 中找到匹配的阶段：{tgt.name}")
+                        return
+
+                    for e in selected:
+                        if should_stop():
+                            emit_error("已取消", f"由程序界面取消\n阶段：{tgt.name}/{e.name}")
+                            return
+                        emit_log(f"触发回退部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
+                        start_release_environment(lib.base_url, proj.collection, proj.project, sel.id, e.id, pat=pat)
+                        time.sleep(0.8)
+
+                    emit_log(f"✅ Target[{idx}] {tgt.name} 已触发回退")
+
+                q.put(("log", "\n✅ 回退请求已发送（请在 ADO 平台查看部署进度）"))
+                q.put(("done", ""))
+            except Exception as ex:
+                emit_error("回退失败", str(ex))
+
+        def flush() -> None:
+            finished = False
+            try:
+                while True:
+                    kind, payload = q.get_nowait()
+                    if kind == "log":
+                        self._append_run_log(card, payload)
+                    elif kind == "error":
+                        parts = payload.split("\n", 1)
+                        title = parts[0]
+                        details = parts[1] if len(parts) > 1 else ""
+                        show_error_dialog(self.window(), title, details)
+                    elif kind == "done":
+                        finished = True
+            except Exception:
+                pass
+
+            if finished:
+                card.set_actions_enabled(True)
+                self._running = False
+                self._running_task = ""
+                return
+            QtCore.QTimer.singleShot(120, flush)
+
+        card.set_actions_enabled(False)
+        self._clear_run_log(card)
+
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+        QtCore.QTimer.singleShot(120, flush)
 
     def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None) -> None:
         """Run in a background Python thread to keep UI responsive.

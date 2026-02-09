@@ -8,6 +8,7 @@ class TaskCard(ExpandSettingCard):
     """Reusable task card with built-in expand panel and per-task run log."""
 
     run_clicked = QtCore.Signal()
+    rollback_clicked = QtCore.Signal()
     config_clicked = QtCore.Signal()
     stop_clicked = QtCore.Signal()
     delete_clicked = QtCore.Signal()
@@ -18,6 +19,7 @@ class TaskCard(ExpandSettingCard):
 
         self.btn_config = PushButton("配置")
         self.btn_run = PushButton("运行")
+        self.btn_rollback = PushButton("回退")
         self.btn_stop = PushButton("停止")
         self.btn_history = PushButton("历史")
         self.btn_delete = PushButton("删除")
@@ -38,12 +40,14 @@ class TaskCard(ExpandSettingCard):
         else:
             layout.insertWidget(idx, self.btn_stop, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_run, 0, QtCore.Qt.AlignRight)
+            layout.insertWidget(idx, self.btn_rollback, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_config, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_history, 0, QtCore.Qt.AlignRight)
             layout.insertWidget(idx, self.btn_delete, 0, QtCore.Qt.AlignRight)
 
         self.btn_config.clicked.connect(self.config_clicked.emit)
         self.btn_run.clicked.connect(self.run_clicked.emit)
+        self.btn_rollback.clicked.connect(self.rollback_clicked.emit)
         self.btn_stop.clicked.connect(self.stop_clicked.emit)
         self.btn_history.clicked.connect(self.history_clicked.emit)
         self.btn_delete.clicked.connect(self.delete_clicked.emit)
@@ -59,6 +63,7 @@ class TaskCard(ExpandSettingCard):
         # Make header actions less cramped
         self.btn_config.setFixedWidth(72)
         self.btn_run.setFixedWidth(72)
+        self.btn_rollback.setFixedWidth(72)
         self.btn_history.setFixedWidth(72)
         self.btn_delete.setFixedWidth(72)
         self.card.hBoxLayout.setSpacing(12)
@@ -69,6 +74,7 @@ class TaskCard(ExpandSettingCard):
     def set_actions_enabled(self, on: bool) -> None:
         self.btn_config.setEnabled(on)
         self.btn_run.setEnabled(on)
+        self.btn_rollback.setEnabled(on)
         self.btn_stop.setEnabled(not on)
 
     def clear_log(self) -> None:

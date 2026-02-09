@@ -37,6 +37,15 @@ class ReleaseRun:
 
 
 @dataclass(frozen=True)
+class ReleaseBrief:
+    id: str
+    name: str | None
+    created_on: str | None
+    url: str | None
+    status: str | None = None
+
+
+@dataclass(frozen=True)
 class ReleaseEnv:
     id: str
     name: str
@@ -175,6 +184,54 @@ def create_release_from_build(
     web = (data.get("_links") or {}).get("web") or {}
     href = web.get("href")
     return ReleaseRun(id=str(rid), name=str(name) if name else None, url=str(href) if href else None)
+
+
+def list_recent_releases(
+    base_url: str,
+    collection: str,
+    project: str,
+    release_def_id: str,
+    *,
+    pat: str,
+    top: int = 6,
+    api_version: str = "6.0",
+) -> list[ReleaseBrief]:
+    """List recent releases for a classic release definition.
+
+    Returns newest-first.
+    """
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/release/releases"
+    params = {
+        "api-version": api_version,
+        "definitionId": int(release_def_id),
+        "$top": int(top),
+        "queryOrder": "descending",
+    }
+    with _client(pat) as c:
+        r = c.get(url, params=params)
+        r.raise_for_status()
+        data: Any = r.json()
+
+    out: list[ReleaseBrief] = []
+    for x in data.get("value") or []:
+        rid = x.get("id")
+        name = x.get("name")
+        created_on = x.get("createdOn")
+        status = x.get("status")
+        web = (x.get("_links") or {}).get("web") or {}
+        href = web.get("href")
+        if rid is None:
+            continue
+        out.append(
+            ReleaseBrief(
+                id=str(rid),
+                name=str(name) if name else None,
+                created_on=str(created_on) if created_on else None,
+                url=str(href) if href else None,
+                status=str(status) if status else None,
+            )
+        )
+    return out
 
 
 def get_release(
