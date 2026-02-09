@@ -37,6 +37,7 @@ def main() -> None:
 
     tg = TelegramController(
         on_run=tasks.run_task,
+        on_deploy_only=tasks.deploy_only_task,
         on_rollback=tasks.rollback_task,
         on_stop_menu=tasks.list_stoppable_tasks,
         on_stop_one=tasks.stop_one_task,

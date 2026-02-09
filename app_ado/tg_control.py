@@ -31,12 +31,14 @@ class TelegramController:
         self,
         *,
         on_run: Callable[[str, str, str | None], tuple[bool, str]],
+        on_deploy_only: Callable[[str, str, str | None], tuple[bool, str]],
         on_rollback: Callable[[str, int, str, str | None], tuple[bool, str]],
         on_stop_menu: Callable[[str, str | None], list[tuple[str, str]]],
         on_stop_one: Callable[[str, str, str | None], tuple[bool, str]],
         on_status: Callable[[], str],
     ) -> None:
         self._on_run = on_run
+        self._on_deploy_only = on_deploy_only
         self._on_rollback = on_rollback
         self._on_stop_menu = on_stop_menu
         self._on_stop_one = on_stop_one
@@ -574,8 +576,35 @@ class TelegramController:
                                 if not self._can(role2, group2, "run", task_id=str(tid)):
                                     self._reply(token, chat_id2, "无权限：run")
                                     continue
+                                from app_ado.tg_help_run_inline import run_mode_buttons
+
+                                self._reply(token, chat_id2, "请选择执行方式：", reply_markup=run_mode_buttons(str(tid)))
+                                continue
+
+                            if data2.startswith("runmode:build:"):
+                                tid = data2.split(":", 2)[2]
+                                if not self._can(role2, group2, "run", task_id=str(tid)):
+                                    self._reply(token, chat_id2, "无权限：run")
+                                    continue
                                 ok, msg = self._on_run(str(tid), chat_id2, username2)
                                 self._reply(token, chat_id2, msg if msg else ("收到，开始执行" if ok else "执行失败"))
+                                continue
+
+                            if data2.startswith("runmode:deploy:"):
+                                tid = data2.split(":", 2)[2]
+                                if not self._can(role2, group2, "run", task_id=str(tid)):
+                                    self._reply(token, chat_id2, "无权限：run")
+                                    continue
+                                # deploy-only uses latest successful build
+                                try:
+                                    ok, msg = self._on_deploy_only(str(tid), chat_id2, username2)
+                                except Exception as ex:
+                                    ok, msg = False, str(ex)
+                                self._reply(token, chat_id2, msg if msg else ("收到，开始仅发布" if ok else "执行失败"))
+                                continue
+
+                            if data2 == "runmode:cancel":
+                                self._reply(token, chat_id2, "已取消")
                                 continue
 
                             if data2.startswith("help_sys:"):

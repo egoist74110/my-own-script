@@ -330,6 +330,29 @@ class TasksTab(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
         return True, f"收到，开始执行：{t.name}"
 
+    def deploy_only_task(self, task_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
+        """TG-triggered deploy-only (use latest successful build, skip git/build).
+
+        Returns (ok, message) for Telegram reply.
+        """
+        ts = load_task_settings()
+        task = next((t for t in (ts.tasks or []) if str(t.id) == str(task_id)), None)
+        if not task:
+            return False, "⚠️ 未找到任务，请发 /help 查看可用任务"
+
+        if self._is_task_running(str(task.id)):
+            label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or str(task.id)
+            return False, f"⛔ 无法执行\n该任务正在运行中：{label}。请等待完成或先 /stop"
+
+        card = self._task_cards.get(str(task.id))
+        if not card:
+            return False, "⚠️ 任务卡片未加载，请打开应用后再试"
+
+        self._last_requester_chat_id = requester_chat_id
+        self._last_requester_username = requester_username
+        QtCore.QTimer.singleShot(0, self, lambda: self._deploy_only(str(task.id), card, tg_reply_chat_id=requester_chat_id))
+        return True, f"收到，开始仅发布：{(task.tg_desc or task.tg_command or task.id)}"
+
     def rollback_task(self, task_id: str, offset: int, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
         """TG-triggered rollback.
 
@@ -774,6 +797,244 @@ class TasksTab(QtWidgets.QWidget):
         card.set_actions_enabled(False)
         self._clear_run_log(card)
 
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+        QtCore.QTimer.singleShot(120, flush)
+
+    def _deploy_only(self, task_id: str, card: TaskCard, *, tg_reply_chat_id: str | None = None) -> None:
+        """Deploy only: skip git/build, use latest successful build then create release + monitor stages."""
+
+        if self._is_task_running(str(task_id)):
+            show_error_dialog(self.window(), "无法执行", "该任务正在运行中，请等待完成或先停止")
+            return
+
+        ts = load_task_settings()
+        task = next((t for t in (ts.tasks or []) if str(t.id) == str(task_id)), None)
+        if not task:
+            show_error_dialog(self.window(), "错误", "任务不存在")
+            return
+
+        task_label = (task.tg_desc or "").strip() or ("/" + (task.tg_command or "").strip()) or "任务"
+
+        # basic validation
+        build_branch = (getattr(task.git_flow, "build_branch", "") or "").strip()
+        if not build_branch:
+            show_error_dialog(self.window(), "配置不完整", "仅发布需要配置【构建分支】")
+            return
+        targets = list(task.targets or [])
+        if not targets:
+            show_error_dialog(self.window(), "配置不完整", "仅发布需要至少一个发布目标")
+            return
+
+        from app_ado.store import load_ui_settings
+        from app_ado.secrets import get_pat
+
+        settings = load_ui_settings()
+        proj = next((p for p in settings.projects if p.id == task.project_id), None)
+        if not proj:
+            show_error_dialog(self.window(), "错误", "找不到项目配置（project_id）")
+            return
+        lib = next((l for l in settings.libraries if l.id == proj.library_id), None)
+        if not lib:
+            show_error_dialog(self.window(), "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self.window(), "错误", "该代码库未保存 PAT")
+            return
+
+        import queue
+        import threading
+        import time
+
+        stop_event = threading.Event()
+        self._running_tasks[str(task_id)] = {
+            "stop_event": stop_event,
+            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_username": str(self._last_requester_username or ""),
+            "kind": "deploy",
+            "label": task_label,
+            "card": card,
+        }
+
+        q: queue.Queue[tuple[str, str]] = queue.Queue()
+
+        def emit_log(text: str) -> None:
+            q.put(("log", text))
+
+        def should_stop() -> bool:
+            return bool(stop_event.is_set())
+
+        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
+
+        def notify_telegram(summary: str, details: str = "") -> None:
+            try:
+                from app_ado.store import load_ui_settings
+                from app_ado.secrets import get_telegram_token
+                from app_ado.notifier_telegram import send_telegram_message
+
+                token = get_telegram_token()
+                if not token:
+                    return
+
+                s = load_ui_settings()
+                include = bool(getattr(s, "telegram_notify_include_details", False))
+
+                chat_id = notify_chat_id
+                if not chat_id:
+                    chat_id = str(getattr(s, "telegram_chat_id", "") or "").strip()
+                if not chat_id:
+                    return
+
+                text = summary
+                if include and details:
+                    text = summary + "\n" + details
+                send_telegram_message(bot_token=token, chat_id=chat_id, text=text)
+            except Exception:
+                return
+
+        def emit_error(title: str, details: str) -> None:
+            notify_telegram(f"❌ 仅发布失败：{title}", f"{task_label}\n{title}\n{details}")
+            q.put(("error", title + "\n" + details))
+
+        def worker() -> None:
+            try:
+                emit_log(f"仅发布：{task_label}")
+                emit_log(f"branch={build_branch}")
+                notify_telegram("🚀 开始仅发布", f"{task_label}\nbranch={build_branch}\ntargets={len(targets)}")
+
+                from app_ado.ado_build_query import get_latest_successful_build
+                from app_ado.ado_release_http import create_release_from_build, extract_envs, get_release, start_release_environment
+
+                for ti, tgt in enumerate(targets, start=1):
+                    if not getattr(tgt, "enabled", True):
+                        emit_log(f"\n--- Target[{ti}] {tgt.name}: skipped (disabled) ---")
+                        continue
+                    if should_stop():
+                        emit_error("已取消", "由用户停止")
+                        return
+
+                    emit_log(f"\n=== Target[{ti}] {tgt.name} ===")
+                    emit_log(f"--- 查找最新成功构建: def={tgt.build_id} branch={build_branch} ---")
+
+                    bb = get_latest_successful_build(lib.base_url, proj.collection, proj.project, str(tgt.build_id), branch=build_branch, pat=pat)
+                    build_id = bb.id
+                    emit_log(f"找到构建: build_id={build_id} url={bb.url or ''}")
+
+                    emit_log("开始触发 Release ...")
+                    try:
+                        rel = create_release_from_build(lib.base_url, proj.collection, proj.project, str(tgt.release_id), build_id=build_id, pat=pat, api_version="6.0")
+                    except Exception:
+                        rel = create_release_from_build(lib.base_url, proj.collection, proj.project, str(tgt.release_id), build_id=build_id, pat=pat, api_version="7.0")
+
+                    emit_log(f"已创建 Release：id={rel.id} name={rel.name or ''} url={rel.url or ''}")
+
+                    stage_ids = list(getattr(tgt, "release_stage_ids", []) or [])
+                    want_ids = set(stage_ids)
+                    want_names = set(getattr(tgt, "release_stage_names", []) or [])
+
+                    def fetch_envs() -> list:
+                        try:
+                            data = get_release(lib.base_url, proj.collection, proj.project, rel.id, pat=pat, api_version="6.0")
+                        except Exception:
+                            data = get_release(lib.base_url, proj.collection, proj.project, rel.id, pat=pat, api_version="7.0")
+                        return extract_envs(data)
+
+                    def is_done(status: str) -> bool:
+                        s = (status or "").lower()
+                        return s in {"succeeded", "rejected", "canceled", "cancelled", "failed"}
+
+                    def select_envs(envs):
+                        by_def_id = [e for e in envs if (e.definition_environment_id or "") in want_ids]
+                        if by_def_id:
+                            return by_def_id
+                        by_name = [e for e in envs if e.name in want_names]
+                        if by_name:
+                            return by_name
+                        return []
+
+                    timeout_sec = 60 * 60
+                    start_wait = time.time()
+                    deadline = start_wait + timeout_sec
+                    last_line = ""
+
+                    while time.time() < deadline:
+                        if should_stop():
+                            emit_error("已取消", "由用户停止")
+                            return
+
+                        envs = fetch_envs()
+                        selected = select_envs(envs)
+                        parts = [f"{e.name}(envId={e.id})={e.status}" for e in selected]
+                        line = f"监控[{tgt.name}]：" + " | ".join(parts) if parts else f"监控[{tgt.name}]：等待阶段进入 release"
+                        if line != last_line:
+                            emit_log(line)
+                            last_line = line
+
+                        for e in selected:
+                            if (e.status or "").lower() == "notstarted":
+                                emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
+                                start_release_environment(lib.base_url, proj.collection, proj.project, rel.id, e.id, pat=pat)
+
+                        if selected and all(is_done(e.status) for e in selected):
+                            failed = [e for e in selected if (e.status or "").lower() not in ("succeeded",)]
+                            if failed:
+                                any_canceled = any((e.status or "").lower() in {"canceled", "cancelled"} for e in failed)
+                                msg = "Release 完成但存在异常阶段：\n" + "\n".join([f"- {e.name} ({e.id}) status={e.status}" for e in failed])
+                                if any_canceled:
+                                    emit_error("ADO 平台已取消：Release", msg + (f"\n\n{rel.url or ''}"))
+                                else:
+                                    emit_error("ADO 平台报错：Release", msg + (f"\n\n{rel.url or ''}"))
+                                return
+
+                            emit_log(f"✅ Target {tgt.name} Release 成功")
+                            break
+
+                        time.sleep(4.0)
+
+                    else:
+                        waited = int(time.time() - start_wait)
+                        emit_error(
+                            "发布超时",
+                            "ADO 平台超时：等待 Release 阶段完成超时\n"
+                            + f"target={tgt.name}\n"
+                            + f"release_def_id={tgt.release_id} release_id={rel.id}\n"
+                            + f"已等待={waited}s（超时={timeout_sec}s）\n"
+                            + f"url={rel.url or ''}",
+                        )
+                        return
+
+                notify_telegram("✅ 仅发布成功", f"{task_label}\nbranch={build_branch}\ntargets={len(targets)}")
+                q.put(("done", ""))
+            except Exception as ex:
+                emit_error("运行异常", str(ex))
+                q.put(("done", ""))
+
+        def flush() -> None:
+            finished = False
+            try:
+                while True:
+                    kind, payload = q.get_nowait()
+                    if kind == "log":
+                        self._append_run_log(card, payload)
+                    elif kind == "error":
+                        parts = payload.split("\n", 1)
+                        title = parts[0]
+                        details = parts[1] if len(parts) > 1 else ""
+                        show_error_dialog(self.window(), title, details)
+                    elif kind == "done":
+                        finished = True
+            except Exception:
+                pass
+
+            if finished:
+                card.set_actions_enabled(True)
+                self._running_tasks.pop(str(task_id), None)
+                return
+            QtCore.QTimer.singleShot(120, flush)
+
+        card.set_actions_enabled(False)
+        self._clear_run_log(card)
         th = threading.Thread(target=worker, daemon=True)
         th.start()
         QtCore.QTimer.singleShot(120, flush)
