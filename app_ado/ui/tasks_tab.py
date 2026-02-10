@@ -621,9 +621,21 @@ class TasksTab(QtWidgets.QWidget):
 
         # stop support (per task)
         stop_event = threading.Event()
+        # determine notification recipient and requester identity (avoid global last_requester races)
+        try:
+            from app_ado.store import load_ui_settings
+
+            s_owner = load_ui_settings()
+            owner_chat = str(getattr(s_owner, "telegram_chat_id", "") or "").strip()
+        except Exception:
+            owner_chat = ""
+
+        requester_chat = str(tg_reply_chat_id or "").strip()
+        notify_chat_id = requester_chat or owner_chat
+
         self._running_tasks[str(task_id)] = {
             "stop_event": stop_event,
-            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_chat_id": requester_chat,
             "by_username": str(self._last_requester_username or ""),
             "kind": "rollback",
             "label": task_label,
@@ -637,8 +649,6 @@ class TasksTab(QtWidgets.QWidget):
 
         def should_stop() -> bool:
             return bool(stop_event.is_set())
-
-        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
 
         def notify_telegram(summary: str, details: str = "") -> None:
             try:
@@ -847,10 +857,22 @@ class TasksTab(QtWidgets.QWidget):
         import threading
         import time
 
+        # determine notification recipient and requester identity (avoid global last_requester races)
+        try:
+            from app_ado.store import load_ui_settings
+
+            s_owner = load_ui_settings()
+            owner_chat = str(getattr(s_owner, "telegram_chat_id", "") or "").strip()
+        except Exception:
+            owner_chat = ""
+
+        requester_chat = str(tg_reply_chat_id or "").strip()
+        notify_chat_id = requester_chat or owner_chat
+
         stop_event = threading.Event()
         self._running_tasks[str(task_id)] = {
             "stop_event": stop_event,
-            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_chat_id": requester_chat,
             "by_username": str(self._last_requester_username or ""),
             "kind": "deploy",
             "label": task_label,
@@ -864,8 +886,6 @@ class TasksTab(QtWidgets.QWidget):
 
         def should_stop() -> bool:
             return bool(stop_event.is_set())
-
-        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
 
         def notify_telegram(summary: str, details: str = "") -> None:
             try:
@@ -1140,11 +1160,23 @@ class TasksTab(QtWidgets.QWidget):
         import subprocess
         import shlex
 
+        # determine notification recipient and requester identity (avoid global last_requester races)
+        try:
+            from app_ado.store import load_ui_settings
+
+            s_owner = load_ui_settings()
+            owner_chat = str(getattr(s_owner, "telegram_chat_id", "") or "").strip()
+        except Exception:
+            owner_chat = ""
+
+        requester_chat = str(tg_reply_chat_id or "").strip()
+        notify_chat_id = requester_chat or owner_chat
+
         # stop support (per task)
         stop_event = threading.Event()
         self._running_tasks[str(flow_id)] = {
             "stop_event": stop_event,
-            "by_chat_id": str(self._last_requester_chat_id or ""),
+            "by_chat_id": requester_chat,
             "by_username": str(self._last_requester_username or ""),
             "kind": "run",
             "label": task_label,
@@ -1166,7 +1198,7 @@ class TasksTab(QtWidgets.QWidget):
         # Notify policy:
         # - TG triggered: notify ONLY the requester chat.
         # - UI triggered: notify owner chat_id (ui_settings.telegram_chat_id) if configured.
-        notify_chat_id = (tg_reply_chat_id or self._last_requester_chat_id or "").strip()
+        # notify_chat_id computed above
 
         def notify_telegram(kind: str, *, details: str = "", summary: str = "") -> None:
             """Send TG notification.
