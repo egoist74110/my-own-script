@@ -1820,17 +1820,30 @@ class TasksTab(QtWidgets.QWidget):
         ctx = self._running_tasks.get(str(task_id))
         if not ctx:
             return
+
+        label = str(ctx.get("label") or task_id)
+        ok = show_confirm_dialog(
+            self.window(),
+            "确认停止？",
+            f"停止任务：{label}\n\n说明：将尽快停止本地等待/监控流程；已触发的构建/发布不会自动回滚。",
+        )
+        if not ok:
+            return
+
+        # loading state
+        try:
+            card = ctx.get("card")
+            if card:
+                card.set_stop_pending(True)
+                card.append_log("停止中…")
+        except Exception:
+            pass
+
         ctx["stop_source"] = "ui"
         try:
             ev = ctx.get("stop_event")
             if ev:
                 ev.set()
-        except Exception:
-            pass
-        try:
-            card = ctx.get("card")
-            if card:
-                card.append_log("收到停止请求：将尽快停止（不回滚已触发的构建/发布）")
         except Exception:
             pass
 

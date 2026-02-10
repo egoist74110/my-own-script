@@ -21,6 +21,7 @@ class TaskCard(ExpandSettingCard):
         self.btn_run = PushButton("运行")
         self.btn_rollback = PushButton("回退")
         self.btn_stop = PushButton("停止")
+        self._stop_text = "停止"
         self.btn_history = PushButton("历史")
         self.btn_delete = PushButton("删除")
         self.btn_history.setVisible(bool(show_history))
@@ -75,7 +76,18 @@ class TaskCard(ExpandSettingCard):
         self.btn_config.setEnabled(on)
         self.btn_run.setEnabled(on)
         self.btn_rollback.setEnabled(on)
+        # stop enabled when running
         self.btn_stop.setEnabled(not on)
+        if on:
+            self.set_stop_pending(False)
+
+    def set_stop_pending(self, pending: bool) -> None:
+        """UI loading state for stop."""
+        if pending:
+            self.btn_stop.setText("停止中…")
+            self.btn_stop.setEnabled(False)
+        else:
+            self.btn_stop.setText(self._stop_text)
 
     def clear_log(self) -> None:
         self.log_box.clear()
