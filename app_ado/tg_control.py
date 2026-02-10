@@ -388,7 +388,7 @@ class TelegramController:
 
             # Prefer inline buttons for a cleaner UX (no need to type commands)
             try:
-                from app_ado.tg_help_inline import help_keyboard
+                from app_ado.tg_help_inline import top_menu
 
                 items: list[tuple[str, str]] = []
                 if role == "owner":
@@ -409,7 +409,7 @@ class TelegramController:
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=help_keyboard(tasks=items, show_rollback=show_rollback, show_stop=show_stop, show_status=show_status),
+                    reply_markup=top_menu(),
                 )
                 return
             except Exception as e:
@@ -575,6 +575,40 @@ class TelegramController:
                             ctx2 = TgCommandContext(chat_id=chat_id2, username=username2, text=data2)
 
                             if data2 == "help_noop":
+                                continue
+
+                            if data2.startswith("help_menu:"):
+                                op = data2.split(":", 1)[1]
+
+                                ts3 = load_task_settings()
+                                tasks3 = list(getattr(ts3, "tasks", []) or [])
+                                tasks3.sort(key=lambda t: (int(getattr(t, "sort_order", 0) or 0), (t.tg_command or "").lower()))
+
+                                from app_ado.tg_help_inline import top_menu, tasks_menu, sys_menu
+
+                                # allowed task buttons
+                                if role2 == "owner":
+                                    allowed = [t for t in tasks3 if (t.tg_command or "").strip()]
+                                else:
+                                    allowed = [t for t in tasks3 if (t.tg_command or "").strip() and self._can(role2, group2, "run", task_id=str(t.id))]
+
+                                items2: list[tuple[str, str]] = []
+                                for t in allowed:
+                                    label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or "").strip())
+                                    items2.append((str(t.id), label))
+
+                                show_stop2 = (role2 == "owner") or self._can(role2, group2, "stop")
+                                show_status2 = (role2 == "owner") or self._can(role2, group2, "status")
+                                show_rollback2 = (role2 == "owner") or any(self._can(role2, group2, "rollback", task_id=str(t.id)) for t in tasks3)
+
+                                if op == "tasks":
+                                    self._reply(token, chat_id2, "代码工具箱", reply_markup=tasks_menu(items2))
+                                    continue
+                                if op == "sys":
+                                    self._reply(token, chat_id2, "代码工具箱", reply_markup=sys_menu(show_rollback=show_rollback2, show_stop=show_stop2, show_status=show_status2))
+                                    continue
+                                # back
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu())
                                 continue
 
                             if data2.startswith("help_run:"):
