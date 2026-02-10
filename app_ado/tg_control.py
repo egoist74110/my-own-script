@@ -25,6 +25,10 @@ class TelegramController:
     """Poll Telegram updates and trigger app actions.
 
     Designed for: app running -> polling thread active.
+
+    Note: Telegram long-polling may legitimately time out or disconnect.
+    We treat occasional timeouts as normal noise and only surface problems
+    when they repeat.
     """
 
     def __init__(
@@ -53,6 +57,11 @@ class TelegramController:
         self._log_path = config_dir() / "tg_control.log"
         self._state_path = config_dir() / "tg_control_state.json"
         self._update_offset = self._load_offset()
+
+        # health tracking
+        self._consecutive_errors: int = 0
+        self._last_error_ts: float = 0.0
+        self._last_alert_ts: float = 0.0
 
     def _answer_callback(self, token: str, callback_query_id: str, *, text: str = "") -> None:
         try:
@@ -158,14 +167,6 @@ class TelegramController:
             self._reply(token, ctx.chat_id, "无法获取回退版本：" + str(ex))
             self._rollback_wizard.pop(str(ctx.chat_id), None)
             return
-
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-        self._offset_path = config_dir() / "tg_offset.json"
-        self._log_path = config_dir() / "tg_control.log"
-        self._state_path = config_dir() / "tg_control_state.json"
-        self._update_offset = self._load_offset()
 
     def _load_offset(self) -> int | None:
         try:
@@ -745,12 +746,47 @@ class TelegramController:
 
             except Exception as e:
                 msg = str(e)
+                now = time.time()
+
+                # Treat intermittent network issues as normal; only surface when repeated.
+                is_timeout = ("timed out" in msg.lower()) or ("read operation timed out" in msg.lower())
+
+                # update counters
+                if self._last_error_ts and (now - self._last_error_ts) > 90:
+                    self._consecutive_errors = 0
+                self._last_error_ts = now
+                self._consecutive_errors += 1
+
+                # log
                 self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {msg}")
-                self._write_state(state="错误", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=msg)
+
+                # keep state running but remember last error
+                self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=msg)
+
+                # alert owner if errors keep happening (rate limited)
+                try:
+                    if self._consecutive_errors >= 3 and (now - self._last_alert_ts) > 300:
+                        s2 = load_ui_settings()
+                        owner_chat = str(getattr(s2, "telegram_chat_id", "") or "").strip()
+                        tok = self._bot_token() or ""
+                        if owner_chat and tok:
+                            send_telegram_message(
+                                bot_token=tok,
+                                chat_id=owner_chat,
+                                text=(
+                                    "⚠️ TG 控制网络不稳定（轮询失败多次）\n"
+                                    + f"错误：{msg}\n"
+                                    + f"连续次数：{self._consecutive_errors}"
+                                ),
+                            )
+                            self._last_alert_ts = now
+                except Exception:
+                    pass
 
                 # 409 can happen if webhook is set or another poller is active.
                 if "409" in msg or "Conflict" in msg:
                     self._delete_webhook(token)
                     time.sleep(5.0)
                 else:
-                    time.sleep(2.0)
+                    # For timeouts, shorter sleep is fine.
+                    time.sleep(1.0 if is_timeout else 2.0)
