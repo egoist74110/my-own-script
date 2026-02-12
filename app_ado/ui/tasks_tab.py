@@ -804,12 +804,20 @@ class TasksTab(QtWidgets.QWidget):
                 return
             QtCore.QTimer.singleShot(120, flush)
 
-        card.set_actions_enabled(False)
-        self._clear_run_log(card)
+        try:
+            card.set_actions_enabled(False)
+            self._clear_run_log(card)
 
-        th = threading.Thread(target=worker, daemon=True)
-        th.start()
-        QtCore.QTimer.singleShot(120, flush)
+            th = threading.Thread(target=worker, daemon=True)
+            th.start()
+            QtCore.QTimer.singleShot(120, flush)
+        except Exception as ex:
+            self._running_tasks.pop(str(task_id), None)
+            try:
+                card.set_actions_enabled(True)
+            except Exception:
+                pass
+            show_error_dialog(self.window(), "无法启动任务", str(ex))
 
     def _deploy_only(self, task_id: str, card: TaskCard, *, tg_reply_chat_id: str | None = None) -> None:
         """Deploy only: skip git/build, use latest successful build then create release + monitor stages."""
@@ -1053,11 +1061,20 @@ class TasksTab(QtWidgets.QWidget):
                 return
             QtCore.QTimer.singleShot(120, flush)
 
-        card.set_actions_enabled(False)
-        self._clear_run_log(card)
-        th = threading.Thread(target=worker, daemon=True)
-        th.start()
-        QtCore.QTimer.singleShot(120, flush)
+        try:
+            card.set_actions_enabled(False)
+            self._clear_run_log(card)
+            th = threading.Thread(target=worker, daemon=True)
+            th.start()
+            QtCore.QTimer.singleShot(120, flush)
+        except Exception as ex:
+            # If thread fails to start, avoid leaving a stuck running state.
+            self._running_tasks.pop(str(task_id), None)
+            try:
+                card.set_actions_enabled(True)
+            except Exception:
+                pass
+            show_error_dialog(self.window(), "无法启动任务", str(ex))
 
     def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None) -> None:
         """Run in a background Python thread to keep UI responsive.
@@ -1812,9 +1829,17 @@ class TasksTab(QtWidgets.QWidget):
                 return
             QtCore.QTimer.singleShot(120, flush)
 
-        th = threading.Thread(target=worker, daemon=True)
-        th.start()
-        QtCore.QTimer.singleShot(120, flush)
+        try:
+            th = threading.Thread(target=worker, daemon=True)
+            th.start()
+            QtCore.QTimer.singleShot(120, flush)
+        except Exception as ex:
+            self._running_tasks.pop(str(flow_id), None)
+            try:
+                card.set_actions_enabled(True)
+            except Exception:
+                pass
+            show_error_dialog(self.window(), "无法启动任务", str(ex))
 
     def _stop_task_ui(self, task_id: str) -> None:
         ctx = self._running_tasks.get(str(task_id))
