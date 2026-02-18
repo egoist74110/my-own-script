@@ -774,7 +774,8 @@ class TelegramController:
                 # alert owner if errors keep happening (rate limited)
                 try:
                     # alert if repeated failures (rate limited)
-                    if self._consecutive_errors >= 3 and (now - self._last_alert_ts) > 1800:
+                    # At most once per day to avoid spamming.
+                    if self._consecutive_errors >= 3 and (now - self._last_alert_ts) > 86400:
                         s2 = load_ui_settings()
                         owner_chat = str(getattr(s2, "telegram_chat_id", "") or "").strip()
                         tok = self._bot_token() or ""
