@@ -1417,7 +1417,12 @@ class TasksTab(QtWidgets.QWidget):
                     fetch_cmd = ["git", "fetch", "--prune", "origin"] + branches
                     cp = run_cmd(fetch_cmd)
                     if cp.returncode != 0:
-                        emit_error("错误", "fetch 失败")
+                        out = (cp.stdout or "").strip()
+                        err = (cp.stderr or "").strip()
+                        msg = "fetch 失败"
+                        if out or err:
+                            msg += "\n\nstdout:\n" + (out or "(empty)") + "\n\nstderr:\n" + (err or "(empty)")
+                        emit_error("错误", msg[:1800])
                         return
 
                     for br in update_branches:
