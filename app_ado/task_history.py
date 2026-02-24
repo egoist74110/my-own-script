@@ -18,6 +18,7 @@ class TaskRunRecord:
     requester_username: str
     result: str  # 'success'|'fail'|'stopped'
     summary: str
+    details: str = ""  # optional, truncated error/details
 
 
 def history_path() -> Path:

@@ -677,6 +677,25 @@ class TasksTab(QtWidgets.QWidget):
 
         def emit_error(title: str, details: str) -> None:
             notify_telegram(f"❌ 回退失败：{title}", f"{task_label}\noffset={offset}\n{title}\n{details}")
+            try:
+                from app_ado.task_history import TaskRunRecord, append_record
+                import time as _time
+
+                append_record(
+                    TaskRunRecord(
+                        ts=int(_time.time()),
+                        task_id=str(task.id),
+                        task_label=task_label,
+                        triggered_by=("tg" if notify_chat_id else "ui"),
+                        requester_chat_id=str(notify_chat_id or ""),
+                        requester_username=str(self._last_requester_username or ""),
+                        result="fail",
+                        summary=f"{title}",
+                        details=(f"{title}\n{details}"[:1800]),
+                    )
+                )
+            except Exception:
+                pass
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
@@ -923,6 +942,25 @@ class TasksTab(QtWidgets.QWidget):
 
         def emit_error(title: str, details: str) -> None:
             notify_telegram(f"❌ 仅发布失败：{title}", f"{task_label}\n{title}\n{details}")
+            try:
+                from app_ado.task_history import TaskRunRecord, append_record
+                import time as _time
+
+                append_record(
+                    TaskRunRecord(
+                        ts=int(_time.time()),
+                        task_id=str(task.id),
+                        task_label=task_label,
+                        triggered_by=("tg" if notify_chat_id else "ui"),
+                        requester_chat_id=str(notify_chat_id or ""),
+                        requester_username=str(self._last_requester_username or ""),
+                        result="fail",
+                        summary=f"{title}",
+                        details=(f"{title}\n{details}"[:1800]),
+                    )
+                )
+            except Exception:
+                pass
             q.put(("error", title + "\n" + details))
 
         def worker() -> None:
@@ -1271,6 +1309,7 @@ class TasksTab(QtWidgets.QWidget):
                         requester_username=str(self._last_requester_username or ""),
                         result="fail",
                         summary=f"{title}",
+                        details=(f"{title}\n{details}"[:1800]),
                     )
                 )
             except Exception:
@@ -1310,6 +1349,7 @@ class TasksTab(QtWidgets.QWidget):
                                 requester_username=str(self._last_requester_username or ""),
                                 result="stopped",
                                 summary=stop_detail(where),
+                                details=stop_detail(where)[:1800],
                             )
                         )
                     except Exception:
