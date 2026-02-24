@@ -675,8 +675,22 @@ class TasksTab(QtWidgets.QWidget):
             except Exception:
                 return
 
+        def _brief_reason(title: str, details: str) -> str:
+            t = (title or "").strip()
+            d = (details or "").strip()
+            for line in d.splitlines():
+                line = line.strip()
+                if not line or line == t:
+                    continue
+                return line[:120]
+            return ""
+
         def emit_error(title: str, details: str) -> None:
-            notify_telegram(f"❌ 回退失败：{title}", f"{task_label}\noffset={offset}\n{title}\n{details}")
+            brief = _brief_reason(title, details)
+            notify_telegram(
+                f"❌ 回退失败：{title}" + (f"（{brief}）" if brief else ""),
+                f"{task_label}\noffset={offset}\n{title}\n{details}",
+            )
             try:
                 from app_ado.task_history import TaskRunRecord, append_record
                 import time as _time
@@ -940,8 +954,22 @@ class TasksTab(QtWidgets.QWidget):
             except Exception:
                 return
 
+        def _brief_reason(title: str, details: str) -> str:
+            t = (title or "").strip()
+            d = (details or "").strip()
+            for line in d.splitlines():
+                line = line.strip()
+                if not line or line == t:
+                    continue
+                return line[:120]
+            return ""
+
         def emit_error(title: str, details: str) -> None:
-            notify_telegram(f"❌ 仅发布失败：{title}", f"{task_label}\n{title}\n{details}")
+            brief = _brief_reason(title, details)
+            notify_telegram(
+                f"❌ 仅发布失败：{title}" + (f"（{brief}）" if brief else ""),
+                f"{task_label}\n{title}\n{details}",
+            )
             try:
                 from app_ado.task_history import TaskRunRecord, append_record
                 import time as _time
@@ -1288,11 +1316,46 @@ class TasksTab(QtWidgets.QWidget):
             except Exception:
                 return
 
+        def _brief_reason(title: str, details: str) -> str:
+            """Return a short, user-friendly reason for TG summary.
+
+            Keep it short to reduce leakage when details are masked.
+            """
+            t = (title or "").strip()
+            d = (details or "").strip()
+
+            # Prefer first meaningful stderr line for git fetch failures
+            if t == "错误" and "fetch 失败" in d and "stderr:" in d:
+                try:
+                    seg = d.split("stderr:", 1)[1]
+                    for line in seg.splitlines():
+                        line = line.strip()
+                        if not line or line in ("(empty)",):
+                            continue
+                        return line[:120]
+                except Exception:
+                    pass
+
+            # Generic: first non-empty line that isn't the title
+            for line in d.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line == t:
+                    continue
+                # common noisy prefixes
+                if line.lower().startswith("stdout:") or line.lower().startswith("stderr:"):
+                    continue
+                return line[:120]
+
+            return ""
+
         def emit_error(title: str, details: str) -> None:
-            # Always include short reason in summary (even when details are masked)
+            brief = _brief_reason(title, details)
+            summary = f"❌ 任务失败：{title}" + (f"（{brief}）" if brief else "")
             notify_telegram(
                 "fail",
-                summary=f"❌ 任务失败：{title}",
+                summary=summary,
                 details=f"{task_label}\n{title}\n{details}",
             )
             try:
