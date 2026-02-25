@@ -1513,11 +1513,26 @@ class TasksTab(QtWidgets.QWidget):
                             return
                         cp = run_cmd(["git", "merge", f"origin/{mr.source}"])
                         if cp.returncode != 0:
+                            # Collect conflict list first
                             cp2 = run_cmd(["git", "diff", "--name-only", "--diff-filter=U"])
                             conflicts = (cp2.stdout or "").strip()
+
+                            # IMPORTANT: avoid leaving repo in a conflicted state.
+                            # Abort merge and discard local changes so user can retry later.
+                            emit_log("检测到合并失败：将自动放弃本地更改并取消合并（git merge --abort + reset --hard）")
+                            try:
+                                run_cmd(["git", "merge", "--abort"])
+                            except Exception:
+                                pass
+                            try:
+                                run_cmd(["git", "reset", "--hard", "HEAD"])
+                            except Exception:
+                                pass
+
                             emit_error(
                                 "合并失败（可能存在冲突）",
-                                f"merge 失败：{mr.source} -> {mr.target}\n\n冲突文件：\n" + (conflicts or "(未检测到冲突文件列表)"),
+                                f"merge 失败：{mr.source} -> {mr.target}\n\n已自动执行：git merge --abort + git reset --hard HEAD\n\n冲突文件：\n"
+                                + (conflicts or "(未检测到冲突文件列表)"),
                             )
                             return
 
