@@ -59,7 +59,10 @@ def list_repos(base_url: str, collection: str, project: str, *, pat: str, api_ve
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/git/repositories"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
-        r.raise_for_status()
+        if r.is_error:
+            pat_info = f"PAT长度: {len(pat)}, 开头: {pat[:4]}...{pat[-4:]}" if pat else "PAT 为空"
+            hint = "\n[提示] 401 未授权。请检查 PAT 是否已过期，或者是否缺少 Code(Read) 权限。" if r.status_code == 401 else ""
+            raise RuntimeError(f"HTTP {r.status_code} 请求失败:{hint}\n[接口] {url}\n[{pat_info}]\n[响应] {r.text}")
         data: Any = r.json()
     out: list[GitRepo] = []
     for x in data.get("value") or []:
@@ -83,7 +86,8 @@ def list_branches(
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/git/repositories/{repo_id}/refs"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version, "filter": "heads/"})
-        r.raise_for_status()
+        if r.is_error:
+            raise RuntimeError(f"HTTP {r.status_code} 请求失败:\n{r.text}")
         data: Any = r.json()
     out: list[GitBranch] = []
     for x in data.get("value") or []:
@@ -110,7 +114,8 @@ def list_build_pipelines(
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
-        r.raise_for_status()
+        if r.is_error:
+            raise RuntimeError(f"HTTP {r.status_code} 请求失败:\n{r.text}")
         data: Any = r.json()
 
     out: list[BuildPipeline] = []
@@ -135,7 +140,8 @@ def list_build_definitions(
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/definitions"
     with _client(pat) as c:
         r = c.get(url, params={"api-version": api_version})
-        r.raise_for_status()
+        if r.is_error:
+            raise RuntimeError(f"HTTP {r.status_code} 请求失败:\n{r.text}")
         data: Any = r.json()
 
     out: list[BuildPipeline] = []
