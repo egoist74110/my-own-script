@@ -36,8 +36,6 @@ class TasksTab(QtWidgets.QWidget):
         # Per-task running contexts: task_id -> ctx
         # ctx keys: stop_event, by_chat_id, by_username, kind ('run'|'rollback'), label
         self._running_tasks: dict[str, dict] = {}
-        self._last_requester_chat_id: str = ""
-        self._last_requester_username: str | None = None
         self._stop_requester_chat_id: str = ""
         self._stop_requester_username: str | None = None
         self._stop_source: str = ""  # 'tg'|'ui'
@@ -321,13 +319,11 @@ class TasksTab(QtWidgets.QWidget):
             msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{label}）：\n" + "\n".join(missing)
             return False, msg
 
-        self._last_requester_chat_id = requester_chat_id
-        self._last_requester_username = requester_username
         card = self._task_cards.get(t.id)
         if not card:
             return False, "⚠️ 任务卡片未加载，请打开应用后再试"
 
-        QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id))
+        QtCore.QTimer.singleShot(0, self, lambda: self._run(t.id, card, skip_confirm=True, tg_reply_chat_id=requester_chat_id, tg_reply_username=requester_username))
         return True, f"收到，开始执行：{t.name}"
 
     def deploy_only_task(self, task_id: str, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
@@ -348,9 +344,7 @@ class TasksTab(QtWidgets.QWidget):
         if not card:
             return False, "⚠️ 任务卡片未加载，请打开应用后再试"
 
-        self._last_requester_chat_id = requester_chat_id
-        self._last_requester_username = requester_username
-        QtCore.QTimer.singleShot(0, self, lambda: self._deploy_only(str(task.id), card, tg_reply_chat_id=requester_chat_id))
+        QtCore.QTimer.singleShot(0, self, lambda: self._deploy_only(str(task.id), card, tg_reply_chat_id=requester_chat_id, tg_reply_username=requester_username))
         return True, f"收到，开始仅发布：{(task.tg_desc or task.tg_command or task.id)}"
 
     def rollback_task(self, task_id: str, offset: int, requester_chat_id: str, requester_username: str | None) -> tuple[bool, str]:
@@ -375,9 +369,7 @@ class TasksTab(QtWidgets.QWidget):
             return False, "⚠️ 任务卡片未加载，请打开应用后再试"
 
         # schedule on Qt main thread
-        self._last_requester_chat_id = requester_chat_id
-        self._last_requester_username = requester_username
-        QtCore.QTimer.singleShot(0, self, lambda: self._rollback_tg(str(task.id), card, offset, tg_reply_chat_id=requester_chat_id))
+        QtCore.QTimer.singleShot(0, self, lambda: self._rollback_tg(str(task.id), card, offset, tg_reply_chat_id=requester_chat_id, tg_reply_username=requester_username))
         return True, f"收到，开始回退：{(task.tg_desc or task.tg_command or task.id)}（offset={offset}）"
 
     def list_stoppable_tasks(self, requester_chat_id: str, requester_username: str | None) -> list[tuple[str, str]]:
@@ -450,10 +442,10 @@ class TasksTab(QtWidgets.QWidget):
             parts.append(f"- {label} ({kind})")
         return "运行中：\n" + "\n".join(parts)
 
-    def _rollback_tg(self, task_id: str, card: TaskCard, offset: int, *, tg_reply_chat_id: str) -> None:
+    def _rollback_tg(self, task_id: str, card: TaskCard, offset: int, *, tg_reply_chat_id: str, tg_reply_username: str | None = None) -> None:
         """TG rollback execution (no dialogs)."""
         # Reuse the same underlying implementation as UI, but skip dialogs.
-        return self._rollback_impl(task_id, card, offset=offset, skip_confirm=True, tg_reply_chat_id=tg_reply_chat_id)
+        return self._rollback_impl(task_id, card, offset=offset, skip_confirm=True, tg_reply_chat_id=tg_reply_chat_id, tg_reply_username=tg_reply_username)
 
     def _rollback(self, task_id: str, card: TaskCard) -> None:
         """Rollback: redeploy previous classic releases for each target."""
@@ -562,7 +554,7 @@ class TasksTab(QtWidgets.QWidget):
         self._rollback_impl(task_id, card, offset=offset, skip_confirm=False, tg_reply_chat_id=None)
         return
 
-    def _rollback_impl(self, task_id: str, card: TaskCard, *, offset: int, skip_confirm: bool, tg_reply_chat_id: str | None) -> None:
+    def _rollback_impl(self, task_id: str, card: TaskCard, *, offset: int, skip_confirm: bool, tg_reply_chat_id: str | None, tg_reply_username: str | None = None) -> None:
         """Shared rollback implementation for UI and TG."""
         import queue
         import threading
@@ -636,7 +628,7 @@ class TasksTab(QtWidgets.QWidget):
         self._running_tasks[str(task_id)] = {
             "stop_event": stop_event,
             "by_chat_id": requester_chat,
-            "by_username": str(self._last_requester_username or ""),
+            "by_username": str(tg_reply_username or ""),
             "kind": "rollback",
             "label": task_label,
             "card": card,
@@ -700,9 +692,9 @@ class TasksTab(QtWidgets.QWidget):
                         ts=int(_time.time()),
                         task_id=str(task.id),
                         task_label=task_label,
-                        triggered_by=("tg" if notify_chat_id else "ui"),
-                        requester_chat_id=str(notify_chat_id or ""),
-                        requester_username=str(self._last_requester_username or ""),
+                        triggered_by=("tg" if tg_reply_chat_id else "ui"),
+                        requester_chat_id=str(tg_reply_chat_id or ""),
+                        requester_username=str(tg_reply_username or ""),
                         result="fail",
                         summary=f"{title}",
                         details=(f"{title}\n{details}"[:1800]),
@@ -852,7 +844,7 @@ class TasksTab(QtWidgets.QWidget):
                 pass
             show_error_dialog(self.window(), "无法启动任务", str(ex))
 
-    def _deploy_only(self, task_id: str, card: TaskCard, *, tg_reply_chat_id: str | None = None) -> None:
+    def _deploy_only(self, task_id: str, card: TaskCard, *, tg_reply_chat_id: str | None = None, tg_reply_username: str | None = None) -> None:
         """Deploy only: skip git/build, use latest successful build then create release + monitor stages."""
 
         if self._is_task_running(str(task_id)):
@@ -914,7 +906,7 @@ class TasksTab(QtWidgets.QWidget):
         self._running_tasks[str(task_id)] = {
             "stop_event": stop_event,
             "by_chat_id": requester_chat,
-            "by_username": str(self._last_requester_username or ""),
+            "by_username": str(tg_reply_username or ""),
             "kind": "deploy",
             "label": task_label,
             "card": card,
@@ -979,9 +971,9 @@ class TasksTab(QtWidgets.QWidget):
                         ts=int(_time.time()),
                         task_id=str(task.id),
                         task_label=task_label,
-                        triggered_by=("tg" if notify_chat_id else "ui"),
-                        requester_chat_id=str(notify_chat_id or ""),
-                        requester_username=str(self._last_requester_username or ""),
+                        triggered_by=("tg" if tg_reply_chat_id else "ui"),
+                        requester_chat_id=str(tg_reply_chat_id or ""),
+                        requester_username=str(tg_reply_username or ""),
                         result="fail",
                         summary=f"{title}",
                         details=(f"{title}\n{details}"[:1800]),
@@ -1142,7 +1134,7 @@ class TasksTab(QtWidgets.QWidget):
                 pass
             show_error_dialog(self.window(), "无法启动任务", str(ex))
 
-    def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None) -> None:
+    def _run(self, flow_id: str, card: TaskCard, *, skip_confirm: bool = False, tg_reply_chat_id: str | None = None, tg_reply_username: str | None = None) -> None:
         """Run in a background Python thread to keep UI responsive.
 
         Note: single-flight. Only one task can run at a time.
@@ -1260,7 +1252,7 @@ class TasksTab(QtWidgets.QWidget):
         self._running_tasks[str(flow_id)] = {
             "stop_event": stop_event,
             "by_chat_id": requester_chat,
-            "by_username": str(self._last_requester_username or ""),
+            "by_username": str(tg_reply_username or ""),
             "kind": "run",
             "label": task_label,
             "card": card,
@@ -1367,9 +1359,9 @@ class TasksTab(QtWidgets.QWidget):
                         ts=int(_time.time()),
                         task_id=str(task.id),
                         task_label=task_label,
-                        triggered_by=("tg" if notify_chat_id else "ui"),
-                        requester_chat_id=str(self._last_requester_chat_id or ""),
-                        requester_username=str(self._last_requester_username or ""),
+                        triggered_by=("tg" if tg_reply_chat_id else "ui"),
+                        requester_chat_id=str(tg_reply_chat_id or ""),
+                        requester_username=str(tg_reply_username or ""),
                         result="fail",
                         summary=f"{title}",
                         details=(f"{title}\n{details}"[:1800]),
@@ -1407,9 +1399,9 @@ class TasksTab(QtWidgets.QWidget):
                                 ts=int(_time.time()),
                                 task_id=str(task.id),
                                 task_label=task_label,
-                                triggered_by=("tg" if notify_chat_id else "ui"),
-                                requester_chat_id=str(self._last_requester_chat_id or ""),
-                                requester_username=str(self._last_requester_username or ""),
+                                triggered_by=("tg" if tg_reply_chat_id else "ui"),
+                                requester_chat_id=str(tg_reply_chat_id or ""),
+                                requester_username=str(tg_reply_username or ""),
                                 result="stopped",
                                 summary=stop_detail(where),
                                 details=stop_detail(where)[:1800],
@@ -1904,9 +1896,9 @@ class TasksTab(QtWidgets.QWidget):
                             ts=int(_time.time()),
                             task_id=str(task.id),
                             task_label=task_label,
-                            triggered_by=("tg" if notify_chat_id else "ui"),
-                            requester_chat_id=str(self._last_requester_chat_id or ""),
-                            requester_username=str(self._last_requester_username or ""),
+                            triggered_by=("tg" if tg_reply_chat_id else "ui"),
+                            requester_chat_id=str(tg_reply_chat_id or ""),
+                            requester_username=str(tg_reply_username or ""),
                             result="success",
                             summary=f"GitFlow完成; 发布targets={len(targets)}",
                         )
