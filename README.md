@@ -20,8 +20,8 @@
     - 发布目标 targets：支持多目标串行执行，失败即停
   - Build：兼容 Pipelines 与 Build Definitions
   - Release：创建 Release、自动启动 notStarted 环境、监控选定 stages
-- UI/UX：
   - PySide6 + Fluent 风格，任务卡片、实时日志、停止按钮（非回滚）
+  - 任务配置状态锁定机制（防误触发：任务运行时会锁定编辑操作、置灰按钮并自动忽略页面刷新请求以保证任务可见度与日志正常记录）
   - 错误统一弹窗（可滚动详情）
 - Telegram：
   - 通知：默认仅 **摘要**（开始/最终结果），可选开启“包含细节”（有泄露风险）
@@ -39,16 +39,54 @@
 - 打包：wrapper `.app` + `.dmg`
   - 可发布到 GitHub Releases（用于应用内更新）
 
-## 本地运行（macOS）
+## 快速开始（本地开发）
+
+对于习惯前端开发的工程师，你可以将 `bash dev_run.sh` 类比为 `npm install && npm run dev` 的组合体。它会自动处理虚拟环境创建、依赖安装和应用启动。
+
+### 1. 环境准备
+
+- **操作系统**: macOS
+- **Python 环境**: 推荐使用 **Python 3.14** (本项目基于该版本开发，利用了最新的性能优化)。
+- **Git**: 用于自动更新同步。
+
+### 2. 一键运行指令
+
+在终端中执行以下指令即可启动桌面端 UI 界面：
 
 ```bash
+# 进入项目根目录
 cd ~/my-own-script
+
+# 执行启动脚本（自动完成依赖安装 + 运行）
 bash dev_run.sh
 ```
 
-更多安全建议见：`docs/SECURITY.md`
+### 3. 指令说明
 
-> macOS 依赖使用 `requirements-mac.txt`（避免 Windows-only 依赖）。
+- `dev_run.sh`: **核心启动脚本**。
+  - 自动执行 `git pull` 同步最新代码。
+  - 检查并创建 `.venv` Python 隔离环境（类似 `node_modules`）。
+  - 根据系统类型（macOS/Windows）自动安装对应的依赖包（`requirements-mac.txt`）。
+  - 最终启动 `app_main.py` 入口程序。
+- `app_main.py`: 该项目的 **入口文件**。如果你已经手动调用过环境初始化，可以直接运行它。
+
+### 4. 核心架构与逻辑
+
+项目采用 **Python + PySide6** 构建，结合了 Telegram 远程控制。
+
+- **UI 界面**:
+  - **任务选项卡 (Tasks)**: 动态管理 (CRUD) 各种同步/发布流水线。
+  - **配置选项卡 (Ado/Settings)**: 配置 ADO 组织 URL、项目名称、以及 Telegram Bot Token 等。
+- **存储管理**:
+  - **YAML 配置**: 所有的任务定义存储在 `tasks.yaml` 中。
+  - **Keychain**: 敏感的 ADO PAT (Personal Access Token) 通过 macOS 系统级 Keychain 安全存储（不存明文）。
+- **Telegram 控制 (tg_control.py)**:
+  - 后台线程轮询：实时响应 `/help`, `/status`, `/stop` 命令。
+  - 权限控制 (ACL): 仅限绑定的 Owner 或 ACL 组内的用户触发敏感任务。
+
+### 5. 安全说明
+
+本工具涉及 Azure DevOps 敏感 Token，相关安全建议请参考：`docs/SECURITY.md`
 
 ## 构建 macOS App / DMG
 
@@ -59,6 +97,7 @@ bash pack_mac_dmg.sh
 ```
 
 输出：
+
 - `dist/代码工具箱.app`
 - `dist/代码工具箱-<version>-mac.dmg`
 

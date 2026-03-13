@@ -93,6 +93,29 @@ class TasksTab(QtWidgets.QWidget):
 
         self._render_tasks()
 
+    def _check_running_lock(self) -> bool:
+        if self._running_tasks:
+            from app_ado.ui.dialogs import show_error_dialog
+            show_error_dialog(self.window(), "操作受限", "当前有任务正在运行中，为保护运行日志和状态，请等待任务完成后再修改配置！")
+            return False
+        return True
+
+    def _update_run_states(self) -> None:
+        has_running = len(self._running_tasks) > 0
+        self.btn_new_task.setEnabled(not has_running)
+        self.btn_sort_tasks.setEnabled(not has_running)
+        self.btn_refresh_tasks.setEnabled(not has_running)
+        self.search.setEnabled(not has_running)
+
+        for tid, card in self._task_cards.items():
+            if str(tid) == "__hint__":
+                continue
+            try:
+                card.btn_config.setEnabled(not has_running)
+                card.btn_delete.setEnabled(not has_running)
+            except Exception:
+                pass
+
     def _clear_run_log(self, card: TaskCard) -> None:
         card.clear_log()
 
@@ -100,6 +123,8 @@ class TasksTab(QtWidgets.QWidget):
         card.append_log(text)
 
     def _sort_tasks(self) -> None:
+        if not self._check_running_lock():
+            return
         ts = load_task_settings()
         tasks = list(getattr(ts, "tasks", []) or [])
         if not tasks:
@@ -124,6 +149,9 @@ class TasksTab(QtWidgets.QWidget):
 
     def _render_tasks(self) -> None:
         """Render task cards from dynamic tasks config."""
+        if self._running_tasks:
+            return  # do not wipe out cards while tasks are running
+
         # remove old cards
         for card in list(self._task_cards.values()):
             try:
@@ -167,8 +195,12 @@ class TasksTab(QtWidgets.QWidget):
 
             self.list_layout.addWidget(card)
             self._task_cards[t.id] = card
+        
+        self._update_run_states()
 
     def _new_task(self) -> None:
+        if not self._check_running_lock():
+            return
         from app_ado.models import DynamicTaskConfig
         from app_ado.store import load_ui_settings
         from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
@@ -213,6 +245,8 @@ class TasksTab(QtWidgets.QWidget):
         dlg.exec()
 
     def _delete_task(self, task_id: str) -> None:
+        if not self._check_running_lock():
+            return
         ts = load_task_settings()
         t = next((x for x in (ts.tasks or []) if x.id == task_id), None)
         if not t:
@@ -250,6 +284,8 @@ class TasksTab(QtWidgets.QWidget):
         self._render_tasks()
 
     def _edit_task(self, task_id: str) -> None:
+        if not self._check_running_lock():
+            return
         from app_ado.store import load_ui_settings
         from app_ado.ui.dynamic_task_dialog import DynamicTaskConfigDialog
 
@@ -633,6 +669,7 @@ class TasksTab(QtWidgets.QWidget):
             "label": task_label,
             "card": card,
         }
+        self._update_run_states()
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
 
@@ -826,6 +863,7 @@ class TasksTab(QtWidgets.QWidget):
             if finished:
                 card.set_actions_enabled(True)
                 self._running_tasks.pop(str(task_id), None)
+                self._update_run_states()
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -838,6 +876,7 @@ class TasksTab(QtWidgets.QWidget):
             QtCore.QTimer.singleShot(120, flush)
         except Exception as ex:
             self._running_tasks.pop(str(task_id), None)
+            self._update_run_states()
             try:
                 card.set_actions_enabled(True)
             except Exception:
@@ -911,6 +950,7 @@ class TasksTab(QtWidgets.QWidget):
             "label": task_label,
             "card": card,
         }
+        self._update_run_states()
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
 
@@ -1116,6 +1156,7 @@ class TasksTab(QtWidgets.QWidget):
             if finished:
                 card.set_actions_enabled(True)
                 self._running_tasks.pop(str(task_id), None)
+                self._update_run_states()
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -1128,6 +1169,7 @@ class TasksTab(QtWidgets.QWidget):
         except Exception as ex:
             # If thread fails to start, avoid leaving a stuck running state.
             self._running_tasks.pop(str(task_id), None)
+            self._update_run_states()
             try:
                 card.set_actions_enabled(True)
             except Exception:
@@ -1257,6 +1299,7 @@ class TasksTab(QtWidgets.QWidget):
             "label": task_label,
             "card": card,
         }
+        self._update_run_states()
 
         q: queue.Queue[tuple[str, str]] = queue.Queue()
         # ('log'|'error'|'done', payload)
@@ -1941,6 +1984,7 @@ class TasksTab(QtWidgets.QWidget):
             if finished:
                 card.set_actions_enabled(True)
                 self._running_tasks.pop(str(flow_id), None)
+                self._update_run_states()
                 return
             QtCore.QTimer.singleShot(120, flush)
 
@@ -1950,6 +1994,7 @@ class TasksTab(QtWidgets.QWidget):
             QtCore.QTimer.singleShot(120, flush)
         except Exception as ex:
             self._running_tasks.pop(str(flow_id), None)
+            self._update_run_states()
             try:
                 card.set_actions_enabled(True)
             except Exception:
