@@ -27,5 +27,8 @@ class RunLogDialog(QtWidgets.QDialog):
         root.addLayout(row)
 
     def log(self, text: str) -> None:
+        from shiboken6 import isValid
+        if not isValid(self) or not isValid(self.box):
+            return
         self.box.appendPlainText(text)
         self.box.verticalScrollBar().setValue(self.box.verticalScrollBar().maximum())

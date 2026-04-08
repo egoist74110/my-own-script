@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
 from qfluentwidgets import CardWidget, ComboBox, PushButton, LineEdit
+from shiboken6 import isValid
 
 from app_ado.ui.task_card import TaskCard
 
@@ -849,19 +850,22 @@ class TasksTab(QtWidgets.QWidget):
                 while True:
                     kind, payload = q.get_nowait()
                     if kind == "log":
-                        self._append_run_log(card, payload)
+                        if isValid(card):
+                            self._append_run_log(card, payload)
                     elif kind == "error":
                         parts = payload.split("\n", 1)
                         title = parts[0]
                         details = parts[1] if len(parts) > 1 else ""
-                        show_error_dialog(self.window(), title, details)
+                        if isValid(self.window()):
+                            show_error_dialog(self.window(), title, details)
                     elif kind == "done":
                         finished = True
             except Exception:
                 pass
 
             if finished:
-                card.set_actions_enabled(True)
+                if isValid(card):
+                    card.set_actions_enabled(True)
                 self._running_tasks.pop(str(task_id), None)
                 self._update_run_states()
                 return
@@ -1142,19 +1146,22 @@ class TasksTab(QtWidgets.QWidget):
                 while True:
                     kind, payload = q.get_nowait()
                     if kind == "log":
-                        self._append_run_log(card, payload)
+                        if isValid(card):
+                            self._append_run_log(card, payload)
                     elif kind == "error":
                         parts = payload.split("\n", 1)
                         title = parts[0]
                         details = parts[1] if len(parts) > 1 else ""
-                        show_error_dialog(self.window(), title, details)
+                        if isValid(self.window()):
+                            show_error_dialog(self.window(), title, details)
                     elif kind == "done":
                         finished = True
             except Exception:
                 pass
 
             if finished:
-                card.set_actions_enabled(True)
+                if isValid(card):
+                    card.set_actions_enabled(True)
                 self._running_tasks.pop(str(task_id), None)
                 self._update_run_states()
                 return
@@ -1643,6 +1650,7 @@ class TasksTab(QtWidgets.QWidget):
                 from app_ado.store import load_ui_settings
                 from app_ado.secrets import get_pat
                 from app_ado.ado_build_http import (
+                    get_build,
                     get_pipeline_run,
                     trigger_build_definition,
                     trigger_pipeline_run,
@@ -1959,8 +1967,8 @@ class TasksTab(QtWidgets.QWidget):
         # UI init
         card.set_actions_enabled(False)
         self._clear_run_log(card)
-        log = RunLogDialog(self.window(), title=f"运行：{task_label}")
-        log.show()
+        self._active_log_dialog = RunLogDialog(self.window(), title=f"运行：{task_label}")
+        self._active_log_dialog.show()
 
         def flush():
             finished = False
@@ -1968,23 +1976,29 @@ class TasksTab(QtWidgets.QWidget):
                 while True:
                     kind, payload = q.get_nowait()
                     if kind == "log":
-                        self._append_run_log(card, payload)
-                        log.log(payload)
+                        if isValid(card):
+                            self._append_run_log(card, payload)
+                        if hasattr(self, "_active_log_dialog") and isValid(self._active_log_dialog):
+                            self._active_log_dialog.log(payload)
                     elif kind == "error":
-                        # payload = title + '\n' + details
                         parts = payload.split("\n", 1)
                         title = parts[0]
                         details = parts[1] if len(parts) > 1 else ""
-                        show_error_dialog(self.window(), title, details)
+                        if isValid(self.window()):
+                            show_error_dialog(self.window(), title, details)
                     elif kind == "done":
                         finished = True
             except Exception:
                 pass
 
             if finished:
-                card.set_actions_enabled(True)
+                if isValid(card):
+                    card.set_actions_enabled(True)
                 self._running_tasks.pop(str(flow_id), None)
                 self._update_run_states()
+                # Clear dialog reference once task is done
+                if hasattr(self, "_active_log_dialog"):
+                    del self._active_log_dialog
                 return
             QtCore.QTimer.singleShot(120, flush)
 
