@@ -18,6 +18,84 @@ from app_ado.ui.dialogs import show_error_dialog
 _CMD_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 
 
+class BranchPickerDialog(QtWidgets.QDialog):
+    """Custom branch selection dialog with a dedicated Refresh button next to the label."""
+
+    def __init__(self, parent: DynamicTaskConfigDialog, title: str, branches: list[str], current_value: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setFixedWidth(420)
+        self.setModal(True)
+        self._current_value = current_value
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Row 1: Label + Refresh Button
+        row1 = QtWidgets.QHBoxLayout()
+        label = QtWidgets.QLabel("选择分支：")
+        label.setStyleSheet("font-weight: bold;")
+        row1.addWidget(label)
+        row1.addStretch(1)
+        self.btn_refresh = PushButton("刷新")
+        self.btn_refresh.setFixedWidth(80)
+        row1.addWidget(self.btn_refresh)
+        layout.addLayout(row1)
+
+        # Row 2: Selection ComboBox
+        self.combo = ComboBox()
+        self.combo.addItems(branches)
+        # Pre-select current value
+        if current_value:
+            for i in range(self.combo.count()):
+                if self.combo.itemText(i) == current_value:
+                    self.combo.setCurrentIndex(i)
+                    break
+
+        # Note: ComboBox from qfluentwidgets might need a bit of stretch to look good
+        self.combo.setMinimumHeight(32)
+        layout.addWidget(self.combo)
+
+        # Row 3: Standard Buttons
+        self.btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self.btns.accepted.connect(self.accept)
+        self.btns.rejected.connect(self.reject)
+        layout.addWidget(self.btns)
+
+        # Signals
+        self.btn_refresh.clicked.connect(self._do_refresh)
+
+        # 自动触发：如果列表为空，刚开弹窗时自动刷新一次，省去用户点击
+        if not branches:
+            QtCore.QTimer.singleShot(100, self._do_refresh)
+
+    def _do_refresh(self):
+        self.btn_refresh.setEnabled(False)
+        self.btn_refresh.setText("刷新中...")
+
+        def on_done():
+            self.btn_refresh.setEnabled(True)
+            self.btn_refresh.setText("刷新")
+            # Get updated branches from parent
+            new_branches = getattr(self.parent(), "_branches", [])
+            self.combo.clear()
+            self.combo.addItems(new_branches)
+            
+            # 刷新完成后，重新尝试选中默认值
+            if self._current_value:
+                for i in range(self.combo.count()):
+                    if self.combo.itemText(i) == self._current_value:
+                        self.combo.setCurrentIndex(i)
+                        break
+
+        # Call parent's refresh logic
+        self.parent()._refresh_repos_and_branches(callback=on_done)
+
+    def selected_branch(self) -> str:
+        return self.combo.currentText().strip()
+
+
 class DynamicTaskConfigDialog(QtWidgets.QDialog):
     def _set_list(self, w: QtWidgets.QListWidget, items: list[str]) -> None:
         w.clear()
@@ -70,26 +148,28 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         return out
 
     def _pick_build_branch(self) -> None:
-        br = self._pick_branch("选择构建分支")
-        if br:
-            self.build_branch.setText(br)
+        val = self.build_branch.text().strip()
+        self._pick_branch("选择构建分支", current_value=val, on_picked=lambda br: self.build_branch.setText(br))
 
-    def _pick_branch(self, title: str) -> str | None:
-        if not self._branches:
-            show_error_dialog(self, "提示", "请先点击【刷新 Repo/分支】获取分支列表")
+    def _pick_branch(self, title: str, current_value: str = "", on_picked: callable = None) -> str | None:
+        dlg = BranchPickerDialog(self, title, self._branches, current_value=current_value)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
             return None
-        choice, ok = QtWidgets.QInputDialog.getItem(self, title, "选择分支：", self._branches, 0, False)
-        if not ok or not choice:
+
+        res = dlg.selected_branch()
+        if not res:
             return None
-        return str(choice).strip()
+
+        if on_picked:
+            on_picked(res)
+        return res
 
     def _add_update_branch(self) -> None:
-        br = self._pick_branch("新增更新分支")
-        if not br:
-            return
-        cur = self._get_list(self.update_list)
-        cur.append(br)
-        self._set_list(self.update_list, cur)
+        def _on_picked(br: str):
+            cur = self._get_list(self.update_list)
+            cur.append(br)
+            self._set_list(self.update_list, cur)
+        self._pick_branch("新增更新分支", on_picked=_on_picked)
 
     def _del_update_branch(self) -> None:
         row = self.update_list.currentRow()
@@ -97,12 +177,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             self.update_list.takeItem(row)
 
     def _add_push_branch(self) -> None:
-        br = self._pick_branch("新增推送分支")
-        if not br:
-            return
-        cur = self._get_list(self.push_list)
-        cur.append(br)
-        self._set_list(self.push_list, cur)
+        def _on_picked(br: str):
+            cur = self._get_list(self.push_list)
+            cur.append(br)
+            self._set_list(self.push_list, cur)
+        self._pick_branch("新增推送分支", on_picked=_on_picked)
 
     def _del_push_branch(self) -> None:
         row = self.push_list.currentRow()
@@ -110,15 +189,16 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             self.push_list.takeItem(row)
 
     def _add_merge_rule(self) -> None:
-        src = self._pick_branch("选择合并源分支")
-        if not src:
-            return
-        tgt = self._pick_branch("选择合并目标分支")
-        if not tgt:
-            return
-        merges = self._get_merge_list(self.merge_list)
-        merges.append(GitMergeRule(source=src, target=tgt))
-        self._set_merge_list(self.merge_list, merges)
+        def _on_src_picked(src: str):
+            # 第一步选完 source，接着选 target
+            def _on_tgt_picked(tgt: str):
+                merges = self._get_merge_list(self.merge_list)
+                merges.append(GitMergeRule(source=src, target=tgt))
+                self._set_merge_list(self.merge_list, merges)
+            
+            self._pick_branch("选择合并目标分支", on_picked=_on_tgt_picked)
+
+        self._pick_branch("选择合并源分支", on_picked=_on_src_picked)
 
     def _del_merge_rule(self) -> None:
         row = self.merge_list.currentRow()
@@ -319,7 +399,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         if msg:
             self.status.setText(msg)
 
-    def _refresh_repos_and_branches(self) -> None:
+    def _refresh_repos_and_branches(self, *, callback: callable = None) -> None:
         proj = self._selected_project()
         if not proj:
             show_error_dialog(self, "错误", "请先新增并选择项目")
@@ -333,6 +413,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
 
+        # 获取当前选中的 Repo ID，以便刷新后恢复
+        current_repo: GitRepo | None = self.repo_combo.currentData()
+        current_repo_id = current_repo.id if current_repo else (self._task.repo_id or None)
+
         self._set_loading(True, "刷新 Repo/分支...")
 
         import threading
@@ -343,7 +427,14 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             nonlocal result
             try:
                 repos = list_repos(lib.base_url, proj.collection, proj.project, pat=pat)
-                rid = self._task.repo_id or (repos[0].id if repos else None)
+                
+                # 如果当前选中的 ID 在新的列表中，则继续使用它
+                rid = current_repo_id
+                if rid and not any(r.id == rid for r in repos):
+                    rid = repos[0].id if repos else None
+                elif not rid:
+                    rid = repos[0].id if repos else None
+                
                 branches: list[GitBranch] = []
                 if rid:
                     branches = list_branches(lib.base_url, proj.collection, proj.project, rid, pat=pat)
@@ -368,6 +459,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             rid = result.get("repo_id")
             branches: list[GitBranch] = result.get("branches") or []
 
+            # 刷新 Repo 下拉框
+            self.repo_combo.blockSignals(True)
             self.repo_combo.clear()
             for r in repos:
                 self.repo_combo.addItem(r.name, userData=r)
@@ -381,9 +474,13 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                             idx = i
                             break
                 self.repo_combo.setCurrentIndex(idx)
+            self.repo_combo.blockSignals(False)
 
             self._fill_branches(branches)
             self.status.setText(f"刷新完成：repos={len(repos)} branches={len(branches)}")
+            
+            if callback:
+                callback()
 
         QtCore.QTimer.singleShot(80, self, finish)
 
