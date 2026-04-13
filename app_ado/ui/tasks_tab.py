@@ -824,7 +824,10 @@ class TasksTab(QtWidgets.QWidget):
                             emit_log(f"✅ Target[{idx}] {tgt.name} 回退成功")
                             break
 
-                        time.sleep(4.0)
+                        # Responsive sleep
+                        for _ in range(8):
+                            if should_stop(): break
+                            time.sleep(0.5)
 
                     else:
                         waited = int(time.time() - start_wait)
@@ -1120,7 +1123,10 @@ class TasksTab(QtWidgets.QWidget):
                             emit_log(f"✅ Target {tgt.name} Release 成功")
                             break
 
-                        time.sleep(4.0)
+                        # Responsive sleep
+                        for _ in range(8):
+                            if should_stop(): break
+                            time.sleep(0.5)
 
                     else:
                         waited = int(time.time() - start_wait)
@@ -1656,6 +1662,7 @@ class TasksTab(QtWidgets.QWidget):
                     trigger_pipeline_run,
                     wait_build,
                     wait_pipeline,
+                    find_matching_run,
                 )
 
                 settings = load_ui_settings()
@@ -1700,12 +1707,21 @@ class TasksTab(QtWidgets.QWidget):
                     build_run_id: str | None = None
 
                     if tgt.build_kind == "pipeline":
-                        pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
-                        build_run_id = pr.run_id
-                        build_started = True
-                        build_kind = "pipeline"
-                        build_ident = pr.run_id
-                        emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
+                        existing = find_matching_run(lib.base_url, proj.collection, proj.project, "pipeline", tgt.build_id, branch=branch, pat=pat)
+                        if existing and (existing.state or "").lower() != "completed":
+                            pr = existing
+                            build_run_id = pr.run_id
+                            build_started = True
+                            build_kind = "pipeline"
+                            build_ident = pr.run_id
+                            emit_log(f"检测到正在运行的 Pipeline (自动触发或手动冲突)：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
+                        else:
+                            pr = trigger_pipeline_run(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
+                            build_run_id = pr.run_id
+                            build_started = True
+                            build_kind = "pipeline"
+                            build_ident = pr.run_id
+                            emit_log(f"已触发 Pipeline：run_id={pr.run_id} state={pr.state} url={pr.url or ''}")
                         timeout_sec = 30 * 60
                         start_wait = time.time()
                         deadline = start_wait + timeout_sec
@@ -1729,7 +1745,11 @@ class TasksTab(QtWidgets.QWidget):
                             if (pr_cur.state or "").lower() == "completed":
                                 pr2 = pr_cur
                                 break
-                            time.sleep(4.0)
+                            # Responsive sleep
+                            for _ in range(8):
+                                if should_stop():
+                                    break
+                                time.sleep(0.5)
                         if pr2 is None:
                             waited = int(time.time() - start_wait)
                             emit_error(
@@ -1758,12 +1778,21 @@ class TasksTab(QtWidgets.QWidget):
                             )
                             return
                     else:
-                        brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
-                        build_run_id = brn.build_id
-                        build_started = True
-                        build_kind = "build_definition"
-                        build_ident = brn.build_id
-                        emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
+                        existing_b = find_matching_run(lib.base_url, proj.collection, proj.project, "build_definition", tgt.build_id, branch=branch, pat=pat)
+                        if existing_b and (existing_b.status or "").lower() != "completed":
+                            brn = existing_b
+                            build_run_id = brn.build_id
+                            build_started = True
+                            build_kind = "build_definition"
+                            build_ident = brn.build_id
+                            emit_log(f"检测到正在运行的 Build (自动触发或手动冲突)：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
+                        else:
+                            brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
+                            build_run_id = brn.build_id
+                            build_started = True
+                            build_kind = "build_definition"
+                            build_ident = brn.build_id
+                            emit_log(f"已触发 Build：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
 
                         # wait build with cancel support
                         timeout_sec = 30 * 60
@@ -1787,7 +1816,11 @@ class TasksTab(QtWidgets.QWidget):
                             if (cur.status or "").lower() == "completed":
                                 br2 = cur
                                 break
-                            time.sleep(4.0)
+                            # Responsive sleep
+                            for _ in range(8):
+                                if should_stop():
+                                    break
+                                time.sleep(0.5)
 
                         if br2 is None:
                             waited = int(time.time() - start_wait)

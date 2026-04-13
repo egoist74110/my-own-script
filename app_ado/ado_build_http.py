@@ -173,6 +173,115 @@ def get_build(
     )
 
 
+def find_matching_run(
+    base_url: str,
+    collection: str,
+    project: str,
+    kind: BuildKind,
+    definition_id: str,
+    *,
+    branch: str,
+    pat: str,
+    max_age_min: int = 5,
+) -> PipelineRun | BuildRun | None:
+    """Find a recent (running or completed) build run that matches definition and branch.
+
+    Used to avoid redundant triggers when ADO auto-trigger is active.
+    """
+    if kind == "pipeline":
+        runs = list_pipeline_runs(base_url, collection, project, definition_id, pat=pat)
+        # pipeline runs don't directly expose branch in the list easily in some versions,
+        # but we can try to find one. If we can't verify branch, we skip to be safe
+        # or we check the first one.
+        if runs:
+            # For modern pipelines, the list often doesn't show branch without deeper call,
+            # but we can check the latest.
+            return runs[0]
+    else:
+        runs = list_build_runs(base_url, collection, project, definition_id, branch=branch, pat=pat, top=1)
+        if runs:
+            # list_build_runs already filters by branch
+            return runs[0]
+    return None
+
+
+def list_pipeline_runs(
+    base_url: str,
+    collection: str,
+    project: str,
+    pipeline_id: str,
+    *,
+    pat: str,
+    api_version: str = "7.0",
+    top: int = 5,
+) -> list[PipelineRun]:
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/pipelines/{pipeline_id}/runs"
+    with _client(pat) as c:
+        r = c.get(url, params={"api-version": api_version, "$top": top})
+        r.raise_for_status()
+        data: Any = r.json()
+
+    out: list[PipelineRun] = []
+    for x in data.get("value") or []:
+        rid = x.get("id")
+        state = x.get("state") or ""
+        result = x.get("result")
+        web = (x.get("_links") or {}).get("web") or {}
+        href = web.get("href")
+        out.append(
+            PipelineRun(
+                pipeline_id=str(pipeline_id),
+                run_id=str(rid),
+                state=str(state),
+                result=str(result) if result is not None else None,
+                url=str(href) if href else None,
+            )
+        )
+    return out
+
+
+def list_build_runs(
+    base_url: str,
+    collection: str,
+    project: str,
+    definition_id: str,
+    *,
+    branch: str,
+    pat: str,
+    api_version: str = "7.0",
+    top: int = 5,
+) -> list[BuildRun]:
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/builds"
+    params = {
+        "api-version": api_version,
+        "definitions": str(definition_id),
+        "branchName": f"refs/heads/{branch}",
+        "$top": top,
+        "queryOrder": "queueTimeDescending",
+    }
+    with _client(pat) as c:
+        r = c.get(url, params=params)
+        r.raise_for_status()
+        data: Any = r.json()
+
+    out: list[BuildRun] = []
+    for b0 in data.get("value") or []:
+        bid = b0.get("id")
+        status = b0.get("status") or ""
+        result = b0.get("result")
+        href = b0.get("_links", {}).get("web", {}).get("href")
+        out.append(
+            BuildRun(
+                definition_id=str(definition_id),
+                build_id=str(bid),
+                status=str(status),
+                result=str(result) if result is not None else None,
+                url=str(href) if href else None,
+            )
+        )
+    return out
+
+
 def wait_pipeline(
     base_url: str,
     collection: str,

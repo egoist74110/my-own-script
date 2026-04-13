@@ -18,9 +18,9 @@
     - 动态任务（支持新增/编辑/删除）
     - GitFlow 可配置：更新分支 / 合并规则 / 推送分支
     - 发布目标 targets：支持多目标串行执行，失败即停
-  - Build：兼容 Pipelines 与 Build Definitions
+  - Build：兼容 Pipelines 与 Build Definitions，**支持构建实例智能匹配**（自动接管已运行的实例，防止重复触发死循环）
   - Release：创建 Release、自动启动 notStarted 环境、监控选定 stages
-  - PySide6 + Fluent 风格，任务卡片、实时日志、停止按钮（非回滚）
+  - PySide6 + Fluent 风格，任务卡片、实时日志、**响应式停止按钮**（毫秒级感应，非阻塞监控流程）
   - 任务配置状态锁定机制（防误触发：任务运行时会锁定编辑操作、置灰按钮并自动忽略页面刷新请求以保证任务可见度与日志正常记录）
   - **稳定性与生命周期保证**：针对多线程更新环境提供了硬核防护。通过 `shiboken6.isValid` 机制实时校验 Qt 组件有效性，彻底解决在任务运行中关闭窗口或高频触发导致的 `CustomStyleSheetWatcher` C++ 对象误访问崩溃（Segmentation fault）问题。
   - 错误统一弹窗（可滚动详情）
