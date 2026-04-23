@@ -1,0 +1,74 @@
+version: 1
+
+default_decision: review
+
+allowed_work_item_types:
+  - Bug
+  - 缺陷
+  - 用户情景
+
+review_work_item_types:
+  - 任务
+  - Task
+
+deny_work_item_types: []
+
+deny_keywords:
+  - 支付
+  - 出款
+  - 账务
+  - 结算
+  - 风控
+  - 权限
+  - 认证
+  - 授权
+  - token
+  - 密钥
+  - keychain
+  - 密文
+  - 加密
+  - 安全
+  - 发布
+  - 生产
+  - 删除数据
+  - 数据迁移
+
+review_keywords:
+  - ACL
+  - 审计
+  - telegram
+  - TG
+  - pipeline
+  - build
+  - release
+  - deploy
+  - webhook
+  - 配置中心
+  - 环境变量
+
+forbidden_paths:
+  - app_ado/secrets.py
+  - app_ado/tg_control.py
+  - app_ado/ado_release_http.py
+  - app_ado/ado_build_http.py
+  - release_github.sh
+  - pack_mac_app.sh
+  - pack_mac_dmg.sh
+
+review_paths:
+  - app_ado/notifier_telegram.py
+  - app_ado/notifier_telegram_updates.py
+  - app_ado/notifier_telegram_meta.py
+  - app_ado/ui/telegram_card.py
+  - app_ado/ui/tasks_tab.py
+  - app_main.py
+
+max_target_files_without_review: 5
+require_human_review_if_no_target_paths: true
+
+required_output_fields:
+  - work_item_id
+  - decision
+  - reasons
+  - target_paths
+  - recommended_action

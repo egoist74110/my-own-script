@@ -9,7 +9,9 @@ from PySide6.QtWidgets import QApplication
 from qfluentwidgets import MSFluentWindow, FluentIcon
 
 from app_ado.ui.ado_tab import AdoReleaseTab
+from app_ado.ui.ai_config_tab import AiConfigTab
 from app_ado.ui.tasks_tab import TasksTab
+from app_ado.ui.work_items_tab import WorkItemsTab
 
 
 def main() -> None:
@@ -31,6 +33,8 @@ def main() -> None:
 
     tasks = TasksTab()
     ado = AdoReleaseTab()
+    ai = AiConfigTab()
+    work_items = WorkItemsTab()
 
     # Telegram control (polling thread) - only active while app runs
     from app_ado.tg_control import TelegramController
@@ -46,7 +50,9 @@ def main() -> None:
     tg.start()
 
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
+    w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
     w.addSubInterface(ado, FluentIcon.APPLICATION, "配置")
+    w.addSubInterface(ai, FluentIcon.APPLICATION, "AI配置")
 
     w.resize(1100, 760)
     w.show()

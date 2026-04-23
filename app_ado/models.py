@@ -19,6 +19,72 @@ class ProjectEntry(BaseModel):
     project: str
 
 
+class LocalRepoEntry(BaseModel):
+    id: str
+    name: str
+    path: str
+
+
+class AiPolicyConfig(BaseModel):
+    default_decision: str = ""
+
+    allowed_work_item_types: list[str] = Field(default_factory=list)
+    review_work_item_types: list[str] = Field(default_factory=list)
+    deny_work_item_types: list[str] = Field(default_factory=list)
+
+    deny_keywords: list[str] = Field(default_factory=list)
+    review_keywords: list[str] = Field(default_factory=list)
+
+    forbidden_paths: list[str] = Field(default_factory=list)
+    review_paths: list[str] = Field(default_factory=list)
+
+    max_target_files_without_review: int = 0
+    require_human_review_if_no_target_paths: Optional[bool] = None
+
+
+class AiTargetConfig(BaseModel):
+    id: str
+    name: str = ""
+    enabled: bool = True
+    target_type: str = "prompt_copy"  # prompt_copy | command | url
+    command: str = ""
+    cwd: str = ""
+    url: str = ""
+    prompt_template: str = ""
+
+
+class AiToolSettings(BaseModel):
+    selected_profile_id: str = "codex"
+    profiles: list["AiCliProfile"] = Field(default_factory=list)
+    prompt_template: str = ""
+
+
+class AiCliProfile(BaseModel):
+    id: str
+    name: str
+    command: str = ""
+    builtin: bool = False
+
+
+class ProjectAiSettings(BaseModel):
+    enabled: bool = True
+    show_quick_action_buttons: bool = True
+    use_default_policy: bool = True
+    target_id: str = ""
+    policy: AiPolicyConfig = Field(default_factory=AiPolicyConfig)
+
+
+class AiSettings(BaseModel):
+    enabled: bool = True
+    require_policy_check_before_code_change: bool = True
+    allow_direct_code_change: bool = False
+    tool: AiToolSettings = Field(default_factory=AiToolSettings)
+    default_target_id: str = ""
+    targets: list[AiTargetConfig] = Field(default_factory=list)
+    default_policy: AiPolicyConfig = Field(default_factory=AiPolicyConfig)
+    project_overrides: dict[str, ProjectAiSettings] = Field(default_factory=dict)
+
+
 class DeployTarget(BaseModel):
     """One deployment unit: build + release + stages."""
 
@@ -69,6 +135,7 @@ class FlowTaskConfig(BaseModel):
 class UiSettings(BaseModel):
     libraries: list[LibraryEntry] = Field(default_factory=list)
     projects: list[ProjectEntry] = Field(default_factory=list)
+    local_repos: list[LocalRepoEntry] = Field(default_factory=list)
     active_library_id: Optional[str] = None
     active_project_id: Optional[str] = None
 
@@ -82,6 +149,13 @@ class UiSettings(BaseModel):
     # ACL groups/members for Telegram control
     telegram_acl_groups: list[dict] = Field(default_factory=list)
     telegram_acl_members: list[dict] = Field(default_factory=list)
+
+    work_items_team: str = ""
+    work_items_board: str = ""
+    work_items_project_id: str = ""
+    work_items_local_repo_id: str = ""
+
+    ai: AiSettings = Field(default_factory=AiSettings)
 
 
 class GitMergeRule(BaseModel):

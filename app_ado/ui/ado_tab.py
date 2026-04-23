@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from PySide6 import QtCore
 from PySide6 import QtWidgets
 from PySide6.QtWidgets import QWidget, QFormLayout
 from qfluentwidgets import ComboBox, PushButton, InfoBar, InfoBarPosition, CardWidget
 
-from app_ado.models import UiSettings
+from app_ado.models import LocalRepoEntry, UiSettings
 from app_ado.store import load_ui_settings, save_ui_settings
 from app_ado.notifier_telegram import send_telegram_message
 from app_ado.secrets import get_telegram_token, set_telegram_token
@@ -31,6 +32,7 @@ class AdoReleaseTab(Tab):
 
         self._build_library_card()
         self._build_project_card()
+        self._build_local_repo_card()
         self._build_telegram_card()
         self._build_update_card()
         self._build_tg_status_card()
@@ -95,6 +97,31 @@ class AdoReleaseTab(Tab):
 
         self.add_card("项目（本地配置）", w)
         self._refresh_proj_combo()
+
+    def _build_local_repo_card(self) -> None:
+        w = CardWidget(self)
+        form = QFormLayout(w)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        self.local_repo_combo = QtWidgets.QComboBox(); self.local_repo_combo.setFixedWidth(360)
+        self.btn_new_local_repo = PushButton("新增")
+        self.btn_edit_local_repo = PushButton("编辑")
+        self.btn_del_local_repo = PushButton("删除")
+
+        self.btn_new_local_repo.clicked.connect(self._new_local_repo)
+        self.btn_edit_local_repo.clicked.connect(self._edit_local_repo)
+        self.btn_del_local_repo.clicked.connect(self._delete_local_repo)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.local_repo_combo)
+        row.addWidget(self.btn_new_local_repo)
+        row.addWidget(self.btn_edit_local_repo)
+        row.addWidget(self.btn_del_local_repo)
+        row.addStretch(1)
+        form.addRow("本地仓库", row)
+
+        self.add_card("本地仓库（仅本地路径）", w)
+        self._refresh_local_repo_combo()
 
     def _build_tg_status_card(self) -> None:
         w = CardWidget(self)
@@ -517,3 +544,84 @@ class AdoReleaseTab(Tab):
         save_ui_settings(self._settings)
         self._toast("已删除", f"项目已删除：{p.project}")
         self._refresh_proj_combo()
+
+    def _refresh_local_repo_combo(self, *, select_id: str | None = None) -> None:
+        self._settings = load_ui_settings()
+        active = select_id or self._settings.work_items_local_repo_id
+        self.local_repo_combo.blockSignals(True)
+        self.local_repo_combo.clear()
+        idx = 0
+        for i, repo in enumerate(self._settings.local_repos):
+            self.local_repo_combo.addItem(f"{repo.name}  ({repo.path})", userData=repo.id)
+            if active and repo.id == active:
+                idx = i
+        if self._settings.local_repos:
+            self.local_repo_combo.setCurrentIndex(idx)
+        self.local_repo_combo.blockSignals(False)
+
+    def _new_local_repo(self) -> None:
+        repo_path = QtWidgets.QFileDialog.getExistingDirectory(self, "选择本地仓库目录")
+        if not repo_path:
+            return
+        repo_path = str(Path(repo_path).expanduser().resolve())
+        if not (Path(repo_path) / ".git").exists():
+            show_error_dialog(self, "错误", "选择的目录不是 Git 仓库")
+            return
+
+        self._settings = load_ui_settings()
+        if any(Path(x.path).expanduser().resolve() == Path(repo_path).resolve() for x in self._settings.local_repos):
+            show_error_dialog(self, "错误", "该本地仓库已存在")
+            return
+
+        entry = LocalRepoEntry(id=f"repo:{uuid.uuid4()}", name=Path(repo_path).name, path=repo_path)
+        self._settings.local_repos.append(entry)
+        self._settings.work_items_local_repo_id = entry.id
+        save_ui_settings(self._settings)
+        self._refresh_local_repo_combo(select_id=entry.id)
+        self._toast("已新增", f"本地仓库已创建：{entry.name}")
+
+    def _edit_local_repo(self) -> None:
+        repo_id = self.local_repo_combo.currentData()
+        if not repo_id:
+            self._toast("提示", "请先选择本地仓库", ok=False)
+            return
+        self._settings = load_ui_settings()
+        repo = next((x for x in self._settings.local_repos if x.id == repo_id), None)
+        if repo is None:
+            return
+
+        repo_path = QtWidgets.QFileDialog.getExistingDirectory(self, "重新选择本地仓库目录", repo.path)
+        if not repo_path:
+            return
+        repo_path = str(Path(repo_path).expanduser().resolve())
+        if not (Path(repo_path) / ".git").exists():
+            show_error_dialog(self, "错误", "选择的目录不是 Git 仓库")
+            return
+        if any(x.id != repo.id and Path(x.path).expanduser().resolve() == Path(repo_path).resolve() for x in self._settings.local_repos):
+            show_error_dialog(self, "错误", "该本地仓库已存在")
+            return
+
+        repo.path = repo_path
+        repo.name = Path(repo_path).name
+        save_ui_settings(self._settings)
+        self._refresh_local_repo_combo(select_id=repo.id)
+        self._toast("已保存", f"本地仓库已更新：{repo.name}")
+
+    def _delete_local_repo(self) -> None:
+        repo_id = self.local_repo_combo.currentData()
+        if not repo_id:
+            self._toast("提示", "请先选择本地仓库", ok=False)
+            return
+        self._settings = load_ui_settings()
+        repo = next((x for x in self._settings.local_repos if x.id == repo_id), None)
+        if repo is None:
+            return
+        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除本地仓库：{repo.name} ？")
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+        self._settings.local_repos = [x for x in self._settings.local_repos if x.id != repo_id]
+        if self._settings.work_items_local_repo_id == repo_id:
+            self._settings.work_items_local_repo_id = self._settings.local_repos[0].id if self._settings.local_repos else ""
+        save_ui_settings(self._settings)
+        self._refresh_local_repo_combo()
+        self._toast("已删除", f"本地仓库已删除：{repo.name}")
