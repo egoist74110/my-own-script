@@ -8,7 +8,17 @@ from PySide6.QtWidgets import QFormLayout
 from qfluentwidgets import CardWidget, ComboBox, LineEdit, PushButton
 
 from app_ado.ado_http import GitBranch, GitRepo, list_branches, list_repos
-from app_ado.models import DeployTarget, DynamicTaskConfig, GitFlow, GitMergeRule, UiSettings
+from app_ado.models import (
+    DeployTarget,
+    DynamicTaskConfig,
+    GitFlow,
+    GitMergeRule,
+    UiSettings,
+    project_entry_collection,
+    project_entry_id,
+    project_entry_library_id,
+    project_entry_name,
+)
 from app_ado.secrets import get_pat
 # (build/release discovery is handled in DeployTargetDialog; no need to import build/release http here)
 from app_ado.ui.deploy_target_dialog import DeployTargetDialog
@@ -243,7 +253,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         # project/repo
         self.project_combo = combo()
         for p in settings.projects:
-            self.project_combo.addItem(p.project, userData=p.id)
+            project_id = project_entry_id(p)
+            project_name = project_entry_name(p)
+            if not project_id or not project_name:
+                continue
+            self.project_combo.addItem(project_name, userData=project_id)
 
         self.repo_path = LineEdit(); self.repo_path.setFixedWidth(420)
         self.btn_pick_path = PushButton("选择...")
@@ -389,10 +403,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
     def _selected_project(self):
         pid = self.project_combo.currentData()
-        return next((p for p in self._settings.projects if p.id == pid), None)
+        return next((p for p in self._settings.projects if project_entry_id(p) == pid), None)
 
     def _selected_library(self, project):
-        return next((l for l in self._settings.libraries if l.id == project.library_id), None)
+        library_id = project_entry_library_id(project)
+        return next((l for l in self._settings.libraries if l.id == library_id), None)
 
     def _set_loading(self, on: bool, msg: str = "") -> None:
         self.btn_refresh.setEnabled(not on)
@@ -412,6 +427,11 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         # 获取当前选中的 Repo ID，以便刷新后恢复
         current_repo: GitRepo | None = self.repo_combo.currentData()
@@ -426,7 +446,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         def run():
             nonlocal result
             try:
-                repos = list_repos(lib.base_url, proj.collection, proj.project, pat=pat)
+                repos = list_repos(lib.base_url, collection, project_name, pat=pat)
                 
                 # 如果当前选中的 ID 在新的列表中，则继续使用它
                 rid = current_repo_id
@@ -437,7 +457,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
                 
                 branches: list[GitBranch] = []
                 if rid:
-                    branches = list_branches(lib.base_url, proj.collection, proj.project, rid, pat=pat)
+                    branches = list_branches(lib.base_url, collection, project_name, rid, pat=pat)
                 result = {"repos": repos, "repo_id": rid, "branches": branches}
             except Exception as e:
                 result = e
@@ -511,11 +531,16 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return None
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return None
         return {
             "parent": self,
             "base_url": lib.base_url,
-            "collection": proj.collection,
-            "project": proj.project,
+            "collection": collection,
+            "project": project_name,
             "pat": pat,
         }
 

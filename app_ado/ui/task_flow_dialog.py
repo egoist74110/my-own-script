@@ -16,7 +16,14 @@ from app_ado.ado_http import (
     list_repos,
 )
 from app_ado.ado_release_http import ReleaseDefinition, ReleaseStage, get_release_stages, list_release_definitions
-from app_ado.models import FlowTaskConfig, UiSettings
+from app_ado.models import (
+    FlowTaskConfig,
+    UiSettings,
+    project_entry_collection,
+    project_entry_id,
+    project_entry_library_id,
+    project_entry_name,
+)
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings
 from app_ado.ui.dialogs import show_error_dialog, toast
@@ -50,7 +57,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
 
         self.project_combo = combo()
         for p in settings.projects:
-            self.project_combo.addItem(p.project, userData=p.id)
+            project_id = project_entry_id(p)
+            project_name = project_entry_name(p)
+            if not project_id or not project_name:
+                continue
+            self.project_combo.addItem(project_name, userData=project_id)
 
         # QFluentWidgets ComboBox doesn't support setEditable; keep it selectable only.
         self.repo_combo = combo()
@@ -179,10 +190,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
 
     def _selected_project(self):
         pid = self.project_combo.currentData()
-        return next((p for p in self._settings.projects if p.id == pid), None)
+        return next((p for p in self._settings.projects if project_entry_id(p) == pid), None)
 
     def _selected_library(self, project):
-        return next((l for l in self._settings.libraries if l.id == project.library_id), None)
+        library_id = project_entry_library_id(project)
+        return next((l for l in self._settings.libraries if l.id == library_id), None)
 
     def _set_loading(self, on: bool, msg: str = "") -> None:
         self.btn_refresh.setEnabled(not on)
@@ -204,6 +216,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         self._set_loading(True, "刷新 Repo/分支...")
 
@@ -214,12 +231,12 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         def run():
             nonlocal result
             try:
-                repos = list_repos(lib.base_url, proj.collection, proj.project, pat=pat)
+                repos = list_repos(lib.base_url, collection, project_name, pat=pat)
                 want_repo_id = self._flow.repo_id
                 rid = want_repo_id or (repos[0].id if repos else None)
                 branches: list[GitBranch] = []
                 if rid:
-                    branches = list_branches(lib.base_url, proj.collection, proj.project, rid, pat=pat)
+                    branches = list_branches(lib.base_url, collection, project_name, rid, pat=pat)
                 result = {"repos": repos, "repo_id": rid, "branches": branches}
             except Exception as e:
                 result = e
@@ -272,6 +289,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         self._set_loading(True, "刷新构建列表...")
         import threading
@@ -282,9 +304,9 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             nonlocal result
             try:
                 try:
-                    items = list_build_pipelines(lib.base_url, proj.collection, proj.project, pat=pat)
+                    items = list_build_pipelines(lib.base_url, collection, project_name, pat=pat)
                 except Exception:
-                    items = list_build_definitions(lib.base_url, proj.collection, proj.project, pat=pat)
+                    items = list_build_definitions(lib.base_url, collection, project_name, pat=pat)
                 result = {"items": items}
             except Exception as e:
                 result = e
@@ -342,6 +364,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         self._set_loading(True, "刷新发布/阶段...")
         import threading
@@ -353,20 +380,20 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             try:
                 # some servers require api-version=6.0 for release
                 try:
-                    defs = list_release_definitions(lib.base_url, proj.collection, proj.project, pat=pat, api_version="7.0")
+                    defs = list_release_definitions(lib.base_url, collection, project_name, pat=pat, api_version="7.0")
                     api_used = "7.0"
                 except Exception:
-                    defs = list_release_definitions(lib.base_url, proj.collection, proj.project, pat=pat, api_version="6.0")
+                    defs = list_release_definitions(lib.base_url, collection, project_name, pat=pat, api_version="6.0")
                     api_used = "6.0"
 
                 rid = want_release_id or (defs[0].id if defs else None)
                 stages: list[ReleaseStage] = []
                 if rid:
                     try:
-                        stages = get_release_stages(lib.base_url, proj.collection, proj.project, rid, pat=pat, api_version=api_used)
+                        stages = get_release_stages(lib.base_url, collection, project_name, rid, pat=pat, api_version=api_used)
                     except Exception:
                         # try 6.0 fallback
-                        stages = get_release_stages(lib.base_url, proj.collection, proj.project, rid, pat=pat, api_version="6.0")
+                        stages = get_release_stages(lib.base_url, collection, project_name, rid, pat=pat, api_version="6.0")
                 result = {"defs": defs, "rid": rid, "stages": stages}
             except Exception as e:
                 result = e
@@ -480,6 +507,11 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         from app_ado.models import DeployTarget
         from app_ado.ui.deploy_target_dialog import DeployTargetDialog
@@ -494,7 +526,7 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
             n += 1
 
         target = DeployTarget(name=name)
-        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=proj.collection, project=proj.project, pat=pat, target=target)
+        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=collection, project=project_name, pat=pat, target=target)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         res = dlg.result_target()
@@ -521,11 +553,16 @@ class FlowTaskConfigDialog(QtWidgets.QDialog):
         if not pat:
             show_error_dialog(self, "错误", "该代码库未保存 PAT")
             return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
 
         from app_ado.ui.deploy_target_dialog import DeployTargetDialog
 
         cur = self._targets[idx]
-        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=proj.collection, project=proj.project, pat=pat, target=cur)
+        dlg = DeployTargetDialog(self, base_url=lib.base_url, collection=collection, project=project_name, pat=pat, target=cur)
         if dlg.exec() != QtWidgets.QDialog.Accepted:
             return
         res = dlg.result_target()

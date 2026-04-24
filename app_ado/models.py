@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
@@ -215,3 +215,31 @@ class TaskSettings(BaseModel):
 
     # Legacy fixed tasks (kept for back-compat; will be migrated into tasks)
     flows: list[FlowTaskConfig] = Field(default_factory=list)
+
+
+def _project_value(project: Any, *keys: str) -> str:
+    if project is None:
+        return ""
+    for key in keys:
+        value = getattr(project, key, None)
+        if value in (None, "") and isinstance(project, dict):
+            value = project.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def project_entry_id(project: Any) -> str:
+    return _project_value(project, "id", "project_id")
+
+
+def project_entry_library_id(project: Any) -> str:
+    return _project_value(project, "library_id", "repo_id")
+
+
+def project_entry_collection(project: Any) -> str:
+    return _project_value(project, "collection", "collection_name")
+
+
+def project_entry_name(project: Any) -> str:
+    return _project_value(project, "project", "name", "project_name")

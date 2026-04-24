@@ -9,6 +9,7 @@ from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, LineE
 from app_ado.ado_work_item_http import WorkItem, list_work_items_by_board_column_value
 from app_ado.ai_policy import evaluate_change_policy, load_effective_ai_change_policy
 from app_ado.ai_work_item_flow import build_mcp_prompt, build_prompt, load_work_item_context, open_ai_in_terminal, selected_ai_profile, selected_local_repo
+from app_ado.models import ProjectEntry, project_entry_collection, project_entry_id, project_entry_library_id, project_entry_name
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings, save_ui_settings
 from app_ado.ui.dialogs import show_error_dialog
@@ -74,6 +75,9 @@ class WorkItemsTab(Tab):
         self._loaded_items: list[WorkItem] = []
         self._filtered_items: list[WorkItem] = []
         self._current_page: int = 1
+        self.list_scroll: QtWidgets.QScrollArea | None = None
+        self.list_view: QtWidgets.QWidget | None = None
+        self.list_layout: QtWidgets.QVBoxLayout | None = None
 
         self._build_filter_card()
         self._build_pagination_card()
@@ -94,6 +98,8 @@ class WorkItemsTab(Tab):
 
         self.project_combo = ComboBox()
         self.project_combo.setFixedWidth(260)
+        self.btn_refresh_projects = PushButton("刷新项目")
+        self.btn_refresh_projects.setFixedWidth(88)
 
         self.column_combo = ComboBox()
         self.column_combo.setFixedWidth(180)
@@ -113,13 +119,14 @@ class WorkItemsTab(Tab):
         row.addWidget(self.btn_refresh)
         row.addStretch(1)
 
-        form.addRow("项目", self.project_combo)
+        form.addRow("项目", self._row(self.project_combo, self.btn_refresh_projects))
         form.addRow("版块", self.column_combo)
         form.addRow("搜索工单", self.search_edit)
         form.addRow("过滤指派", self.assignee_edit)
         form.addRow(row)
 
         self.project_combo.currentIndexChanged.connect(self._save_selection_state)
+        self.btn_refresh_projects.clicked.connect(self._reload_projects)
         self.column_combo.currentIndexChanged.connect(self._on_column_changed)
         self.search_edit.textChanged.connect(self._apply_filters)
         self.assignee_edit.textChanged.connect(self._apply_filters)
@@ -164,6 +171,16 @@ class WorkItemsTab(Tab):
         self.add_card("分页", w)
         self._load_page_size_state()
 
+    def _row(self, a: QtWidgets.QWidget, b: QtWidgets.QWidget) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        h.addWidget(a)
+        h.addWidget(b)
+        h.addStretch(1)
+        return w
+
     def _build_list_area(self) -> None:
         self.list_scroll = QtWidgets.QScrollArea(self)
         self.list_scroll.setWidgetResizable(True)
@@ -185,9 +202,14 @@ class WorkItemsTab(Tab):
         self.project_combo.blockSignals(True)
         self.project_combo.clear()
         idx = 0
-        for i, p in enumerate(settings.projects):
-            self.project_combo.addItem(p.project, userData=p.id)
-            if selected_project and p.id == selected_project:
+        for p in settings.projects:
+            project_id = project_entry_id(p)
+            project_name = project_entry_name(p)
+            if not project_id or not project_name:
+                continue
+            i = self.project_combo.count()
+            self.project_combo.addItem(project_name, userData=project_id)
+            if selected_project and project_id == selected_project:
                 idx = i
         if self.project_combo.count() > 0:
             self.project_combo.setCurrentIndex(idx)
@@ -198,6 +220,15 @@ class WorkItemsTab(Tab):
             if self.column_combo.itemData(i) == selected_column:
                 self.column_combo.setCurrentIndex(i)
                 break
+
+    def _reload_projects(self) -> None:
+        prev_project_id = str(self.project_combo.currentData() or "")
+        settings = load_ui_settings()
+        if prev_project_id:
+            settings.work_items_project_id = prev_project_id
+            save_ui_settings(settings)
+        self._load_filter_state()
+        self._refresh()
 
     def _load_page_size_state(self) -> None:
         default_size = 5
@@ -216,16 +247,32 @@ class WorkItemsTab(Tab):
     def _selected_project(self):
         settings = load_ui_settings()
         pid = self.project_combo.currentData() or settings.active_project_id
-        return next((x for x in settings.projects if x.id == pid), None)
+        return next((x for x in settings.projects if project_entry_id(x) == pid), None)
 
-    def _current_context(self) -> tuple[object, object, str]:
+    def _normalized_project(self, project) -> ProjectEntry:
+        project_id = project_entry_id(project)
+        library_id = project_entry_library_id(project)
+        collection = project_entry_collection(project)
+        project_name = project_entry_name(project)
+        if not project_id or not library_id or not collection or not project_name:
+            raise RuntimeError("项目配置缺少必要字段（id/library_id/collection/project）")
+        return ProjectEntry(
+            id=project_id,
+            library_id=library_id,
+            collection=collection,
+            project=project_name,
+        )
+
+    def _current_context(self) -> tuple[object, ProjectEntry, str]:
         settings = load_ui_settings()
-        proj = self._selected_project()
-        if proj is None:
-            raise RuntimeError("请先在【配置】里新增并选择项目")
-        lib = next((x for x in settings.libraries if x.id == proj.library_id), None)
+        raw_proj = self._selected_project()
+        if raw_proj is None:
+            raise RuntimeError("请先在【代码配置】里新增并选择项目")
+        proj = self._normalized_project(raw_proj)
+        library_id = proj.library_id
+        lib = next((x for x in settings.libraries if x.id == library_id), None)
         if lib is None:
-            raise RuntimeError("请先在【配置】里选择代码库")
+            raise RuntimeError("请先在【代码配置】里选择代码库")
         pat = get_pat(lib.id)
         if not pat:
             raise RuntimeError(f"当前代码库未配置 PAT：{lib.name}")
@@ -234,6 +281,10 @@ class WorkItemsTab(Tab):
     def _on_column_changed(self) -> None:
         self._save_selection_state()
         self._refresh()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(0, self._reload_projects)
 
     def _refresh(self) -> None:
         proj = self._selected_project()
@@ -327,6 +378,8 @@ class WorkItemsTab(Tab):
         self._set_page(page)
 
     def _clear_list(self) -> None:
+        if self.list_layout is None:
+            return
         while self.list_layout.count():
             item = self.list_layout.takeAt(0)
             widget = item.widget()
@@ -334,6 +387,8 @@ class WorkItemsTab(Tab):
                 widget.deleteLater()
 
     def _render_empty(self, text: str) -> None:
+        if self.list_layout is None:
+            return
         self._clear_list()
         label = QtWidgets.QLabel(text)
         label.setStyleSheet("color:#666;")
@@ -344,6 +399,8 @@ class WorkItemsTab(Tab):
         self.btn_next.setEnabled(False)
 
     def _render_page(self) -> None:
+        if self.list_layout is None or self.list_view is None:
+            return
         self._clear_list()
         total_items = len(self._filtered_items)
         total_pages = self._page_count()
@@ -389,7 +446,7 @@ class WorkItemsTab(Tab):
     def _run_ai_flow(self, work_item_id: int, *, mode: str) -> None:
         settings = load_ui_settings()
         if not settings.local_repos:
-            show_error_dialog(self, "缺少本地仓库", "请先到【配置】页添加并配置本地仓库")
+            show_error_dialog(self, "缺少本地仓库", "请先到【代码配置】页添加并配置本地仓库")
             return
 
         repo_id = self._choose_local_repo(settings)

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import shlex
-import subprocess
 import threading
 import uuid
-from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, PushButton
@@ -67,7 +65,6 @@ class AiConfigTab(Tab):
         super().__init__()
         self._settings = load_ui_settings()
         self._builtin_policy = load_ai_change_policy()
-        self._mcp_process: subprocess.Popen[str] | None = None
         self._migrate_and_seed_profiles()
 
         self._build_tool_card()
@@ -141,18 +138,11 @@ class AiConfigTab(Tab):
         self.profile_combo.setFixedWidth(280)
         self.command_edit = QtWidgets.QLineEdit()
         self.command_edit.setPlaceholderText("启动命令")
-        self.mcp_command_edit = QtWidgets.QLineEdit()
-        self.mcp_command_edit.setReadOnly(True)
-        self.mcp_command_edit.setPlaceholderText("MCP 启动命令")
-        self.lbl_mcp_status = QtWidgets.QLabel("已关闭")
 
         self.btn_save_tool = PushButton("保存工具配置")
         self.btn_test_tool = PushButton("测试工具")
         self.btn_add_profile = PushButton("新增")
         self.btn_delete_profile = PushButton("删除")
-        self.btn_test_mcp = PushButton("开启MCP")
-        self.btn_copy_mcp_command = PushButton("复制MCP命令")
-        self.btn_copy_codex_mcp = PushButton("复制Codex配置")
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_save_tool)
@@ -161,18 +151,9 @@ class AiConfigTab(Tab):
         row.addWidget(self.btn_delete_profile)
         row.addStretch(1)
 
-        mcp_row = QtWidgets.QHBoxLayout()
-        mcp_row.addWidget(self.btn_test_mcp)
-        mcp_row.addWidget(self.btn_copy_mcp_command)
-        mcp_row.addWidget(self.btn_copy_codex_mcp)
-        mcp_row.addStretch(1)
-
         form.addRow("AI工具", self.profile_combo)
         form.addRow("启动命令", self.command_edit)
-        form.addRow("MCP状态", self.lbl_mcp_status)
-        form.addRow("MCP命令", self.mcp_command_edit)
         form.addRow(row)
-        form.addRow(mcp_row)
 
         self.profile_combo.currentIndexChanged.connect(self._load_selected_profile)
         self.profile_combo.currentIndexChanged.connect(self._remember_selected_profile)
@@ -180,9 +161,6 @@ class AiConfigTab(Tab):
         self.btn_test_tool.clicked.connect(self._test_tool)
         self.btn_add_profile.clicked.connect(self._add_profile)
         self.btn_delete_profile.clicked.connect(self._delete_profile)
-        self.btn_test_mcp.clicked.connect(self._toggle_mcp)
-        self.btn_copy_mcp_command.clicked.connect(self._copy_mcp_command)
-        self.btn_copy_codex_mcp.clicked.connect(self._copy_codex_mcp)
 
         self.add_card("AI工具接入", w)
 
@@ -235,8 +213,6 @@ class AiConfigTab(Tab):
         self._settings = load_ui_settings()
         tool = self._settings.ai.tool
         self._refresh_profile_combo()
-        self.mcp_command_edit.setText(self._mcp_launch_command())
-        self._update_mcp_status()
 
         merged = self._merge_policy(self._builtin_policy, self._settings.ai.default_policy.model_dump())
         self.chk_policy_enabled.setChecked(bool(self._settings.ai.enabled))
@@ -415,114 +391,3 @@ class AiConfigTab(Tab):
             return
         app.clipboard().setText(text)
         self._toast("已复制", "默认 Prompt 已复制到剪贴板")
-
-    def _repo_root(self) -> Path:
-        return Path(__file__).resolve().parent.parent.parent
-
-    def _mcp_python(self) -> str:
-        venv_python = self._repo_root() / ".venv" / "bin" / "python"
-        if venv_python.exists():
-            return str(venv_python)
-        return "python"
-
-    def _mcp_server_script(self) -> str:
-        return str(self._repo_root() / "app_ado" / "mcp_ado_work_items_server.py")
-
-    def _mcp_launch_command(self) -> str:
-        return f"{self._mcp_python()} {shlex.quote(self._mcp_server_script())}"
-
-    def _copy_text(self, text: str, ok_message: str) -> None:
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
-        app.clipboard().setText(text)
-        self._toast("已复制", ok_message)
-
-    def _copy_mcp_command(self) -> None:
-        self._copy_text(self._mcp_launch_command(), "MCP 启动命令已复制")
-
-    def _copy_codex_mcp(self) -> None:
-        text = (
-            "[mcp_servers.adoWorkItems]\n"
-            f'command = "{self._mcp_python()}"\n'
-            f'args = ["{self._mcp_server_script()}"]\n'
-        )
-        self._copy_text(text, "Codex MCP 配置已复制")
-
-    def _is_mcp_running(self) -> bool:
-        return self._mcp_process is not None and self._mcp_process.poll() is None
-
-    def _update_mcp_status(self) -> None:
-        if self._is_mcp_running():
-            self.lbl_mcp_status.setText("已开启")
-            self.btn_test_mcp.setText("关闭MCP")
-        else:
-            self.lbl_mcp_status.setText("已关闭")
-            self.btn_test_mcp.setText("开启MCP")
-
-    def _toggle_mcp(self) -> None:
-        if self._is_mcp_running():
-            self._stop_mcp()
-        else:
-            self._start_mcp()
-
-    def _start_mcp(self) -> None:
-        result: dict[str, object] = {}
-
-        def run() -> None:
-            try:
-                cp = subprocess.Popen(
-                    [self._mcp_python(), self._mcp_server_script()],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    cwd=str(self._repo_root()),
-                )
-                if cp.stdin is None or cp.stdout is None:
-                    raise RuntimeError("MCP 进程启动失败")
-                cp.stdin.write('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"toolbox","version":"1.0"}}}\n')
-                cp.stdin.flush()
-                line = cp.stdout.readline().strip()
-                if not line:
-                    cp.terminate()
-                    cp.wait(timeout=5)
-                    raise RuntimeError("MCP 无响应")
-                if '"result"' not in line or '"serverInfo"' not in line:
-                    cp.terminate()
-                    cp.wait(timeout=5)
-                    raise RuntimeError("MCP 初始化失败")
-                result["ok"] = True
-                result["process"] = cp
-            except Exception as e:
-                result["ok"] = False
-                result["message"] = str(e)
-
-        th = threading.Thread(target=run, daemon=True)
-        th.start()
-
-        def finish() -> None:
-            if th.is_alive():
-                QtCore.QTimer.singleShot(80, finish)
-                return
-            if bool(result.get("ok")):
-                self._mcp_process = result.get("process")  # type: ignore[assignment]
-                self._update_mcp_status()
-                self._toast("MCP", "MCP 已开启")
-            else:
-                self._mcp_process = None
-                self._update_mcp_status()
-                show_error_dialog(self, "MCP 启动失败", str(result.get("message") or "MCP 启动失败"))
-
-        QtCore.QTimer.singleShot(80, finish)
-
-    def _stop_mcp(self) -> None:
-        try:
-            if self._mcp_process is not None and self._mcp_process.poll() is None:
-                self._mcp_process.terminate()
-                self._mcp_process.wait(timeout=5)
-            self._mcp_process = None
-            self._update_mcp_status()
-            self._toast("MCP", "MCP 已关闭")
-        except Exception as e:
-            show_error_dialog(self, "MCP 关闭失败", str(e))

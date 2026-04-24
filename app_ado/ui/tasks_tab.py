@@ -353,7 +353,7 @@ class TasksTab(QtWidgets.QWidget):
 
         if missing:
             label = (t.tg_desc or "").strip() or ("/" + (t.tg_command or ""))
-            msg = "⚠️ 配置不完整\n" + f"请先在【配置】中补齐（{label}）：\n" + "\n".join(missing)
+            msg = "⚠️ 配置不完整\n" + f"请先在【代码配置】中补齐（{label}）：\n" + "\n".join(missing)
             return False, msg
 
         card = self._task_cards.get(t.id)
@@ -1240,7 +1240,7 @@ class TasksTab(QtWidgets.QWidget):
             missing.append("- 发布目标（至少新增一个：构建+发布+阶段）")
 
         if missing:
-            msg = f"请先在【配置】中补齐（{task_label}）：\n" + "\n".join(missing)
+            msg = f"请先在【代码配置】中补齐（{task_label}）：\n" + "\n".join(missing)
             if tg_reply_chat_id:
                 try:
                     from app_ado.secrets import get_telegram_token

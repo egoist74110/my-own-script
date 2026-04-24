@@ -10,6 +10,9 @@ from qfluentwidgets import MSFluentWindow, FluentIcon
 
 from app_ado.ui.ado_tab import AdoReleaseTab
 from app_ado.ui.ai_config_tab import AiConfigTab
+from app_ado.ui.code_config_tab import CodeConfigTab
+from app_ado.ui.communication_config_tab import CommunicationConfigTab
+from app_ado.ui.mcp_config_tab import McpConfigTab
 from app_ado.ui.tasks_tab import TasksTab
 from app_ado.ui.work_items_tab import WorkItemsTab
 
@@ -32,8 +35,11 @@ def main() -> None:
         w.setWindowIcon(QIcon(str(icon_path)))
 
     tasks = TasksTab()
-    ado = AdoReleaseTab()
+    communication = CommunicationConfigTab()
+    code = CodeConfigTab()
+    settings = AdoReleaseTab()
     ai = AiConfigTab()
+    mcp = McpConfigTab()
     work_items = WorkItemsTab()
 
     # Telegram control (polling thread) - only active while app runs
@@ -51,8 +57,11 @@ def main() -> None:
 
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
     w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
-    w.addSubInterface(ado, FluentIcon.APPLICATION, "配置")
+    w.addSubInterface(communication, FluentIcon.CHAT, "通讯配置")
+    w.addSubInterface(code, FluentIcon.CODE, "代码配置")
+    w.addSubInterface(settings, FluentIcon.SETTING, "设置")
     w.addSubInterface(ai, FluentIcon.APPLICATION, "AI配置")
+    w.addSubInterface(mcp, FluentIcon.DEVELOPER_TOOLS, "MCP配置")
 
     w.resize(1100, 760)
     w.show()
