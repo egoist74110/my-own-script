@@ -66,6 +66,39 @@ class AiCliProfile(BaseModel):
     builtin: bool = False
 
 
+class HighModelCollaborationSettings(BaseModel):
+    enabled: bool = False
+    scout_profile_id: str = ""
+    output_cap: int = 1200
+    show_raw_packet: bool = False
+    require_key_file_review: bool = True
+
+
+class LowModelCollaborationSettings(BaseModel):
+    enabled: bool = False
+    upgrade_profile_ids: list[str] = Field(default_factory=list)
+    default_upgrade_profile_id: str = ""
+    same_error_threshold: int = 2
+    ask_before_upgrade: bool = True
+    allow_session_auto_upgrade: bool = True
+    trigger_on_architecture_decision: bool = True
+    trigger_on_validation_stuck: bool = True
+    trigger_on_scope_expansion: bool = True
+
+
+class ProjectModelCollaborationSettings(BaseModel):
+    high_model: HighModelCollaborationSettings = Field(default_factory=HighModelCollaborationSettings)
+    low_model: LowModelCollaborationSettings = Field(default_factory=LowModelCollaborationSettings)
+
+
+class ModelCollaborationSettings(BaseModel):
+    run_mode: str = "global"  # disabled | global | project_override
+    selected_project_repo_id: str = ""
+    high_model: HighModelCollaborationSettings = Field(default_factory=HighModelCollaborationSettings)
+    low_model: LowModelCollaborationSettings = Field(default_factory=LowModelCollaborationSettings)
+    project_overrides: dict[str, ProjectModelCollaborationSettings] = Field(default_factory=dict)
+
+
 class ProjectAiSettings(BaseModel):
     enabled: bool = True
     show_quick_action_buttons: bool = True
@@ -79,6 +112,7 @@ class AiSettings(BaseModel):
     require_policy_check_before_code_change: bool = True
     allow_direct_code_change: bool = False
     tool: AiToolSettings = Field(default_factory=AiToolSettings)
+    collaboration: ModelCollaborationSettings = Field(default_factory=ModelCollaborationSettings)
     default_target_id: str = ""
     targets: list[AiTargetConfig] = Field(default_factory=list)
     default_policy: AiPolicyConfig = Field(default_factory=AiPolicyConfig)

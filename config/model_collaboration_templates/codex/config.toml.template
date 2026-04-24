@@ -1,0 +1,31 @@
+# Codex 配置模板（一键配置用）
+# 使用方式：拷贝到 ~/.codex/config.toml，根据本机情况补充：
+#   - [projects."<你的项目路径>"] trust_level = "trusted"
+#   - notify = [...] 如果你装了 Codex Computer Use
+#   - [marketplaces.*] 由 Codex 自己 sync，通常不用手动写
+#   - [mcp_servers.<自定义 MCP>] 按你自己的项目 MCP 补
+
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = true
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = true
+
+[mcp_servers.browsermcp]
+command = "npx"
+args = ["@browsermcp/mcp"]

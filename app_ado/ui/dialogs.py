@@ -44,6 +44,78 @@ def show_error_dialog(parent: QWidget, title: str, details: str) -> None:
     dlg.exec()
 
 
+def show_text_result_dialog(parent: QWidget, title: str, summary: str, details: str) -> None:
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setModal(True)
+    dlg.resize(760, 520)
+
+    root = QtWidgets.QVBoxLayout(dlg)
+    root.setContentsMargins(16, 16, 16, 16)
+    root.setSpacing(12)
+
+    summary_label = QtWidgets.QLabel(summary)
+    summary_label.setWordWrap(True)
+    root.addWidget(summary_label)
+
+    box = QtWidgets.QPlainTextEdit()
+    box.setReadOnly(True)
+    box.setPlainText(details)
+    root.addWidget(box, 1)
+
+    btn = PushButton("关闭")
+    btn.clicked.connect(dlg.accept)
+    row = QtWidgets.QHBoxLayout()
+    row.addStretch(1)
+    row.addWidget(btn)
+    root.addLayout(row)
+
+    dlg.exec()
+
+
+def show_upgrade_authorization_dialog(parent: QWidget, title: str, details: str) -> str:
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setModal(True)
+    dlg.resize(760, 460)
+
+    root = QtWidgets.QVBoxLayout(dlg)
+    root.setContentsMargins(16, 16, 16, 16)
+    root.setSpacing(12)
+
+    box = QtWidgets.QPlainTextEdit()
+    box.setReadOnly(True)
+    box.setPlainText(details)
+    root.addWidget(box, 1)
+
+    choice = {"value": "deny"}
+
+    row = QtWidgets.QHBoxLayout()
+    row.addStretch(1)
+
+    btn_deny = PushButton("拒绝")
+    btn_once = PushButton("授权本次")
+    btn_session = PushButton("本次会话都允许")
+    btn_once.setDefault(True)
+
+    def choose(value: str) -> None:
+        choice["value"] = value
+        dlg.accept()
+
+    btn_deny.clicked.connect(lambda: choose("deny"))
+    btn_once.clicked.connect(lambda: choose("once"))
+    btn_session.clicked.connect(lambda: choose("session"))
+
+    row.addWidget(btn_deny)
+    row.addWidget(btn_once)
+    row.addWidget(btn_session)
+    root.addLayout(row)
+
+    if dlg.exec() != QtWidgets.QDialog.Accepted:
+        return "deny"
+    return str(choice["value"])
+
+
 class LibraryDialog(QDialog):
     def __init__(self, parent: QWidget, *, settings: UiSettings, existing: LibraryEntry | None = None):
         super().__init__(parent)

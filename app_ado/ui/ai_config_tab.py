@@ -1,16 +1,35 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 import threading
 import uuid
+from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, PushButton
 
 from app_ado.ai_policy import load_ai_change_policy
-from app_ado.models import AiCliProfile, AiPolicyConfig, AiToolSettings
+from app_ado.model_collaboration_rules import (
+    apply_rule_to_global,
+    apply_rule_to_repo,
+    global_rule_path,
+    inspect_rule_target,
+    inspect_template_target,
+    remove_rule_from_global,
+    remove_rule_from_repo,
+    repo_rule_path,
+)
+from app_ado.models import (
+    AiCliProfile,
+    AiPolicyConfig,
+)
 from app_ado.store import load_ui_settings, save_ui_settings
-from app_ado.ui.dialogs import show_error_dialog
+from app_ado.ui.confirm import show_confirm_dialog
+from app_ado.ui.dialogs import (
+    show_error_dialog,
+    show_text_result_dialog,
+)
 from ok.gui.widget.Tab import Tab
 
 
@@ -60,6 +79,7 @@ class AiProfileDialog(QtWidgets.QDialog):
 class AiConfigTab(Tab):
     icon = None
     name = "AI配置"
+    _project_root = Path(__file__).resolve().parents[2]
 
     def __init__(self):
         super().__init__()
@@ -68,6 +88,7 @@ class AiConfigTab(Tab):
         self._migrate_and_seed_profiles()
 
         self._build_tool_card()
+        self._build_scope_card()
         self._build_policy_card()
         self._load_all()
 
@@ -209,10 +230,56 @@ class AiConfigTab(Tab):
 
         self.add_card("默认Prompt与限制逻辑", w)
 
+    def _build_scope_card(self) -> None:
+        w = CardWidget(self)
+        form = QtWidgets.QFormLayout(w)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        self.model_rule_combo = ComboBox()
+        self.model_rule_combo.setFixedWidth(280)
+        self.model_rule_combo.addItem("Claude", userData="claude")
+        self.model_rule_combo.addItem("Codex", userData="codex")
+        self.model_rule_combo.addItem("Gemini", userData="gemini")
+
+        self.apply_target_combo = ComboBox()
+        self.apply_target_combo.setFixedWidth(280)
+        self.apply_target_combo.addItem("全局", userData="global")
+        self.apply_target_combo.addItem("本地仓库", userData="repo")
+
+        self.repo_target_combo = ComboBox()
+        self.repo_target_combo.setFixedWidth(360)
+
+        self.deploy_status = QtWidgets.QLabel("")
+        self.deploy_status.setWordWrap(True)
+
+        self.btn_apply_rule = PushButton("部署")
+        self.btn_remove_rule = PushButton("删除")
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.btn_apply_rule)
+        row.addWidget(self.btn_remove_rule)
+        row.addStretch(1)
+
+        form.addRow("模型切换", self.model_rule_combo)
+        form.addRow("模型应用切换", self.apply_target_combo)
+        form.addRow("本地仓库", self.repo_target_combo)
+        form.addRow("规则状态", self.deploy_status)
+        form.addRow(row)
+
+        self.model_rule_combo.currentIndexChanged.connect(self._refresh_rule_status)
+        self.apply_target_combo.currentIndexChanged.connect(self._update_scope_widgets)
+        self.apply_target_combo.currentIndexChanged.connect(self._refresh_rule_status)
+        self.repo_target_combo.currentIndexChanged.connect(self._refresh_rule_status)
+        self.btn_apply_rule.clicked.connect(self._apply_selected_rule)
+        self.btn_remove_rule.clicked.connect(self._remove_selected_rule)
+
+        self.add_card("规则部署", w)
+
     def _load_all(self) -> None:
         self._settings = load_ui_settings()
         tool = self._settings.ai.tool
         self._refresh_profile_combo()
+        self._refresh_scope_options()
 
         merged = self._merge_policy(self._builtin_policy, self._settings.ai.default_policy.model_dump())
         self.chk_policy_enabled.setChecked(bool(self._settings.ai.enabled))
@@ -221,6 +288,8 @@ class AiConfigTab(Tab):
         self.prompt_template.setPlainText(tool.prompt_template)
         self.forbidden_paths.setPlainText("\n".join(merged.get("forbidden_paths") or []))
         self.deny_keywords.setPlainText("\n".join(merged.get("deny_keywords") or []))
+        self._update_scope_widgets()
+        self._refresh_rule_status()
 
     def _refresh_profile_combo(self) -> None:
         self._settings = load_ui_settings()
@@ -236,6 +305,15 @@ class AiConfigTab(Tab):
             self.profile_combo.setCurrentIndex(idx)
         self.profile_combo.blockSignals(False)
         self._load_selected_profile()
+
+    def _refresh_scope_options(self) -> None:
+        self.repo_target_combo.blockSignals(True)
+        self.repo_target_combo.clear()
+        self.repo_target_combo.addItem("未选择", userData="")
+        for repo in self._settings.local_repos or []:
+            label = f"{repo.name} ({repo.path})"
+            self.repo_target_combo.addItem(label, userData=repo.id)
+        self.repo_target_combo.blockSignals(False)
 
     def _selected_profile(self) -> AiCliProfile | None:
         pid = self.profile_combo.currentData()
@@ -269,6 +347,37 @@ class AiConfigTab(Tab):
                 out[key] = list(value)
         return out
 
+    def _selected_rule_model(self) -> str:
+        return str(self.model_rule_combo.currentData() or "claude")
+
+    def _selected_apply_target(self) -> str:
+        return str(self.apply_target_combo.currentData() or "global")
+
+    def _update_scope_widgets(self) -> None:
+        self.repo_target_combo.setEnabled(self._selected_apply_target() == "repo")
+
+    def _selected_repo_root(self) -> Path:
+        repo_id = str(self.repo_target_combo.currentData() or "")
+        repo = next((x for x in (self._settings.local_repos or []) if x.id == repo_id), None)
+        if repo and repo.path.strip():
+            return Path(repo.path).expanduser()
+        return self._project_root
+
+    def _refresh_rule_status(self) -> None:
+        model_id = self._selected_rule_model()
+        template_result = inspect_template_target(model_id)
+        if self._selected_apply_target() == "repo":
+            target_path = repo_rule_path(model_id, self._selected_repo_root())
+            scope_label = "本地仓库"
+        else:
+            target_path = global_rule_path(model_id)
+            scope_label = "全局"
+        if not template_result.ok:
+            self.deploy_status.setText(f"当前目标：{scope_label}\n模板缺失\n{target_path}")
+            return
+        deploy_result = inspect_rule_target(model_id, target_path)
+        self.deploy_status.setText(f"当前目标：{scope_label}\n部署状态：{deploy_result.summary}\n{target_path}")
+
     def _save_tool(self) -> None:
         self._settings = load_ui_settings()
         profile = self._selected_profile()
@@ -287,6 +396,44 @@ class AiConfigTab(Tab):
         save_ui_settings(self._settings)
         self._refresh_profile_combo()
         self._toast("已保存", "AI 工具配置已保存")
+
+    def _show_rule_result(self, result) -> None:
+        show_text_result_dialog(self, result.title, result.summary, result.details)
+        self._toast("已完成", result.summary, ok=bool(result.ok))
+        self._refresh_rule_status()
+
+    def _apply_selected_rule(self) -> None:
+        model_id = self._selected_rule_model()
+        template_status = inspect_template_target(model_id)
+        if not template_status.ok:
+            show_error_dialog(self, "保存失败", template_status.details)
+            return
+        if self._selected_apply_target() == "repo":
+            result = apply_rule_to_repo(model_id, self._selected_repo_root())
+        else:
+            result = apply_rule_to_global(model_id)
+        self._show_rule_result(result)
+
+    def _confirm_remove(self, scope_label: str, details: str) -> bool:
+        if not show_confirm_dialog(self, f"确认删除{scope_label}规则", details):
+            return False
+        return show_confirm_dialog(self, f"再次确认删除{scope_label}规则", "只会删除当前模型写入的受控片段，不会删除其它已有内容。确认继续？")
+
+    def _remove_selected_rule(self) -> None:
+        model_id = self._selected_rule_model()
+        if self._selected_apply_target() == "repo":
+            scope_label = "仓库"
+            details = f"将从仓库规则文件中删除 {model_id} 的受控片段：\n{self._selected_repo_root()}\n不会删除其它内容。"
+        else:
+            scope_label = "全局"
+            details = f"将从全局规则文件中删除 {model_id} 的受控片段。不会删除其它内容。"
+        if not self._confirm_remove(scope_label, details):
+            return
+        if self._selected_apply_target() == "repo":
+            result = remove_rule_from_repo(model_id, self._selected_repo_root())
+        else:
+            result = remove_rule_from_global(model_id)
+        self._show_rule_result(result)
 
     def _test_tool(self) -> None:
         command = self.command_edit.text().strip()

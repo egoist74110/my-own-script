@@ -1,0 +1,20 @@
+{
+  "general": {
+    "defaultApprovalMode": "auto_edit"
+  },
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal"
+    }
+  },
+  "ui": {
+    "theme": "Default Light"
+  },
+  "mcpServers": {
+    "browsermcp": {
+      "command": "npx",
+      "args": ["@browsermcp/mcp"],
+      "trust": true
+    }
+  }
+}
