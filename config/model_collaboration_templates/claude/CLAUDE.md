@@ -108,6 +108,6 @@
 
 ## 外部 CLI 调用
 - `gemini`、`codex`、`ssh`、`vim`、`less`、`tail -f`、`watch`、`npm run dev` 等长跑或交互式命令，必须用非交互形式 + 超时
-- 调 Flash 子代理统一用 `ask-flash-read.sh`，已封装超时
-- 直接调其它命令时，用 `python3 -c "import subprocess; subprocess.run(..., timeout=...)"` 包裹
+- 调 Flash 子代理统一用 `ask-flash-read.sh`，脚本内部已封装超时（默认 180s，可用 `--timeout` 或 `ASK_FLASH_READ_TIMEOUT` 调）。**不要再在外面包一层 `python3 subprocess.run(..., timeout=...)`**——外层 timeout 小于内部就会提前杀进程，preflight 日志和超时增强分支都看不到
+- 直接调**其它**命令时，用 `python3 -c "import subprocess; subprocess.run(..., timeout=...)"` 包裹
 - 命令挂起 / 部分输出 / 报错时，停下来如实汇报，不要无脑重试
