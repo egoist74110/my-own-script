@@ -26,8 +26,8 @@
 #            symbol/call relations, explicit unknowns). Capped to --max-words.
 #   stderr = error / detection log lines
 #
-# Defaults: max-words 1200 (clamped 200..2500). Bump up for collection-heavy
-# requests, down for narrow lookups.
+# Defaults: timeout 180s, max-words 1200 (clamped 200..2500). Bump up for
+# collection-heavy requests, down for narrow lookups.
 #
 # Exit 0 on success, non-zero on failure.
 
@@ -48,7 +48,7 @@ CANDIDATES=(
 REQUEST=""
 CWD="$PWD"
 MAX_WORDS=1200
-PER_ATTEMPT_TIMEOUT="${ASK_FLASH_READ_TIMEOUT:-120}"
+PER_ATTEMPT_TIMEOUT="${ASK_FLASH_READ_TIMEOUT:-180}"
 
 usage() {
   sed -n '2,32p' "$0"
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
     --request)    REQUEST="${2:-}"; shift 2 ;;
     --cwd)        CWD="${2:-$PWD}"; shift 2 ;;
     --max-words)  MAX_WORDS="${2:-1200}"; shift 2 ;;
-    --timeout)    PER_ATTEMPT_TIMEOUT="${2:-120}"; shift 2 ;;
+    --timeout)    PER_ATTEMPT_TIMEOUT="${2:-$PER_ATTEMPT_TIMEOUT}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "ask-flash-read: unknown arg: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -91,6 +91,35 @@ if (( MAX_WORDS < 200 )); then MAX_WORDS=200; fi
 if (( MAX_WORDS > 2500 )); then MAX_WORDS=2500; fi
 
 log() { printf '[ask-flash-read] %s\n' "$*" >&2; }
+
+git_preflight() {
+  if ! git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "preflight: not a git work tree"
+    return 0
+  fi
+
+  local status_count diff_stat
+  status_count="$(git -C "$CWD" status --short 2>/dev/null | wc -l | tr -d ' ')"
+  diff_stat="$(git -C "$CWD" diff --stat 2>/dev/null | tail -n 1 || true)"
+
+  log "preflight: cwd=$CWD"
+  log "preflight: git status --short lines=$status_count"
+  if [[ -n "$diff_stat" ]]; then
+    log "preflight: git diff --stat tail=$diff_stat"
+  else
+    log "preflight: git diff --stat empty"
+  fi
+
+  if [[ "$status_count" == "0" && "$REQUEST" =~ (工作区|未提交|当前变更) ]]; then
+    log "preflight-error: request mentions working tree/uncommitted changes, but working tree is clean"
+    log "preflight-error: did you mean HEAD~1..HEAD or 'git show HEAD'? refine the request and retry"
+    exit 2
+  fi
+
+  if [[ "$REQUEST" =~ (调用点|调用关系|调用链) && "$REQUEST" =~ (逐文件|所有|全部|全仓|diff) ]]; then
+    log "preflight-warning: request asks broad diff + call lookup; split it or raise --timeout"
+  fi
+}
 
 # Recursion guard: if Flash itself is somehow invoking us, refuse.
 if [[ "${FLASH_READ_ONLY:-}" == "1" ]]; then
@@ -128,6 +157,9 @@ if ! MODEL="$(detect_flash_model)"; then
   exit 1
 fi
 
+log "model=$MODEL timeout=${PER_ATTEMPT_TIMEOUT}s max_words=$MAX_WORDS"
+git_preflight
+
 # Build the prompt that frames Flash as a strict read-only CONTEXT COLLECTOR.
 # Important: Flash is a scout, not a planner. It executes the request literally,
 # preserves raw quotes, and does NOT decide what is "important". The high-tier
@@ -147,6 +179,7 @@ PROMPT="$(cat <<EOF
 - 不知道就如实说"未找到 / 不确定"，不要编、不要猜
 - 输出必须纯中文文本，不要 JSON、不要协议字段、不要"已为您"套话
 - 输出长度上限：${MAX_WORDS} 字。超出请舍弃**次要**细节，但**保留所有原文引文**——不要截断引文中间
+- 范围预算（硬约束，先自检再行动）：开始正式采集前，**先用轻量命令估算规模**——\`git ls-files | wc -l\`、\`git diff --stat\`、\`grep -rc <关键字> <目录>\`、\`wc -l <文件>\` 这类秒级操作。如果预估满足以下任一条：读取文件数 > 12、搜索次数 > 20、任一单文件 > 1500 行需要全文、diff 总量 > 800 行——**立刻停止采集**，在输出最前面开一节 "## 范围预警" 返回：预估的文件数 / 搜索次数 / diff 行数 + 2–3 个可执行拆分请求（每条拆分写清具体路径 / 符号 / 行范围 / 子请求措辞）。宁可返回拆分建议，也不要硬跑到超时。只有预估在预算内才继续按"输出格式"采集
 
 【工作目录】
 $CWD
@@ -196,6 +229,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 secs = float(sys.argv[1])
 model = sys.argv[2]
@@ -207,14 +241,27 @@ env["BYPASS_AI_ORCH"] = "1"
 # and so a future Flash-side hook could detect this mode if needed.
 env["FLASH_READ_ONLY"] = "1"
 
+started = time.monotonic()
 try:
     result = subprocess.run(
         ["gemini", "-m", model, "--approval-mode", "yolo",
          "-p", prompt, "-o", "json"],
         capture_output=True, text=True, timeout=secs, env=env,
     )
-except subprocess.TimeoutExpired:
-    print("ask-flash-read: gemini timed out", file=sys.stderr)
+except subprocess.TimeoutExpired as e:
+    elapsed = time.monotonic() - started
+    print(f"ask-flash-read: gemini timed out after {elapsed:.1f}s", file=sys.stderr)
+    print(f"ask-flash-read: model={model}", file=sys.stderr)
+    print("ask-flash-read: prompt prefix:", file=sys.stderr)
+    print(prompt[:1200], file=sys.stderr)
+    if e.stdout:
+        out = e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout
+        print("ask-flash-read: partial stdout:", file=sys.stderr)
+        print(out[:2000], file=sys.stderr)
+    if e.stderr:
+        err = e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr
+        print("ask-flash-read: partial stderr:", file=sys.stderr)
+        print(err[:2000], file=sys.stderr)
     sys.exit(124)
 
 if result.returncode != 0:
