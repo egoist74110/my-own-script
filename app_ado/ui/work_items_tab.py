@@ -6,7 +6,7 @@ import threading
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, LineEdit, PushButton
 
-from app_ado.ado_work_item_http import WorkItem, list_work_items_by_board_column_value
+from app_ado.ado_work_item_http import WorkItem, get_descendant_work_items, get_work_item, list_work_items_by_board_column_value
 from app_ado.ai_policy import evaluate_change_policy, load_effective_ai_change_policy
 from app_ado.ai_work_item_flow import build_mcp_prompt, build_prompt, load_work_item_context, open_ai_in_terminal, selected_ai_profile, selected_local_repo
 from app_ado.models import ProjectEntry, project_entry_collection, project_entry_id, project_entry_library_id, project_entry_name
@@ -24,6 +24,7 @@ class WorkItemMiniCard(CardWidget):
     analyze_clicked = QtCore.Signal(int)
     fix_clicked = QtCore.Signal(int)
     mcp_clicked = QtCore.Signal(int)
+    related_clicked = QtCore.Signal(int)
 
     def __init__(self, item: WorkItem, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -49,21 +50,158 @@ class WorkItemMiniCard(CardWidget):
         self.btn_analyze = PushButton("分析")
         self.btn_fix = PushButton("修复")
         self.btn_mcp = PushButton("MCP")
+        self.btn_related = PushButton("关联单")
         self.btn_analyze.setFixedWidth(72)
         self.btn_fix.setFixedWidth(72)
         self.btn_mcp.setFixedWidth(72)
+        self.btn_related.setFixedWidth(72)
         row.addWidget(self.btn_analyze)
         row.addWidget(self.btn_fix)
         row.addWidget(self.btn_mcp)
+        row.addWidget(self.btn_related)
         row.addStretch(1)
 
         self.btn_analyze.clicked.connect(lambda: self.analyze_clicked.emit(self.item.id))
         self.btn_fix.clicked.connect(lambda: self.fix_clicked.emit(self.item.id))
         self.btn_mcp.clicked.connect(lambda: self.mcp_clicked.emit(self.item.id))
+        self.btn_related.clicked.connect(lambda: self.related_clicked.emit(self.item.id))
 
         root.addWidget(title)
         root.addWidget(meta)
         root.addLayout(row)
+
+
+class RelatedWorkItemsDialog(QtWidgets.QDialog):
+    analyze_requested = QtCore.Signal(int)
+    fix_requested = QtCore.Signal(int)
+    mcp_requested = QtCore.Signal(int)
+
+    def __init__(
+        self,
+        root_id: int,
+        library,
+        project: ProjectEntry,
+        pat: str,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._root_id = int(root_id)
+        self._library = library
+        self._project = project
+        self._pat = pat
+
+        self.setWindowTitle(f"#{self._root_id} 关联单")
+        self.resize(560, 640)
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
+
+        header = QtWidgets.QHBoxLayout()
+        self.title_label = QtWidgets.QLabel(f"#{self._root_id} 关联单（含子项）")
+        self.title_label.setStyleSheet("font-weight: 600;")
+        self.btn_refresh = PushButton("刷新")
+        self.btn_close = PushButton("关闭")
+        self.btn_refresh.setFixedWidth(80)
+        self.btn_close.setFixedWidth(80)
+        header.addWidget(self.title_label)
+        header.addStretch(1)
+        header.addWidget(self.btn_refresh)
+        header.addWidget(self.btn_close)
+        outer.addLayout(header)
+
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.list_view = QtWidgets.QWidget()
+        self.list_layout = QtWidgets.QVBoxLayout(self.list_view)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(8)
+        self.list_layout.addStretch(1)
+        self.scroll.setWidget(self.list_view)
+        outer.addWidget(self.scroll, 1)
+
+        self.btn_refresh.clicked.connect(self._reload)
+        self.btn_close.clicked.connect(self.reject)
+
+        QtCore.QTimer.singleShot(0, self._reload)
+
+    def _clear_list(self) -> None:
+        while self.list_layout.count():
+            entry = self.list_layout.takeAt(0)
+            w = entry.widget()
+            if w is not None:
+                w.deleteLater()
+        self.list_layout.addStretch(1)
+
+    def _show_message(self, text: str) -> None:
+        self._clear_list()
+        label = QtWidgets.QLabel(text)
+        label.setStyleSheet("color:#666; padding:16px;")
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        self.list_layout.insertWidget(0, label)
+
+    def _add_card(self, item: WorkItem, *, is_root: bool) -> None:
+        card = WorkItemMiniCard(item)
+        if is_root:
+            card.setStyleSheet("WorkItemMiniCard { border:1px solid #d0d7de; }")
+        card.analyze_clicked.connect(self.analyze_requested.emit)
+        card.fix_clicked.connect(self.fix_requested.emit)
+        card.mcp_clicked.connect(self.mcp_requested.emit)
+        card.related_clicked.connect(lambda _wid: None)
+        card.btn_related.setEnabled(False)
+        self.list_layout.insertWidget(self.list_layout.count() - 1, card)
+
+    def _reload(self) -> None:
+        self.btn_refresh.setEnabled(False)
+        self._show_message("加载中…")
+
+        result: dict = {}
+
+        def run() -> None:
+            try:
+                root = get_work_item(
+                    self._library.base_url,
+                    self._root_id,
+                    collection=self._project.collection,
+                    project=self._project.project,
+                    pat=self._pat,
+                )
+                children = get_descendant_work_items(
+                    self._library.base_url,
+                    self._root_id,
+                    collection=self._project.collection,
+                    project=self._project.project,
+                    pat=self._pat,
+                )
+                result["root"] = root
+                result["children"] = children
+            except Exception as exc:
+                result["error"] = exc
+
+            QtCore.QTimer.singleShot(0, finish)
+
+        def finish() -> None:
+            self.btn_refresh.setEnabled(True)
+            err = result.get("error")
+            if err is not None:
+                self._show_message(f"加载失败：{err}")
+                return
+            root = result.get("root")
+            children = result.get("children") or []
+            self._clear_list()
+            if root is not None:
+                self._add_card(root, is_root=True)
+            for child in children:
+                self._add_card(child, is_root=False)
+            self.title_label.setText(
+                f"#{self._root_id} 关联单（含 {len(children)} 个子项）"
+            )
+            if not children:
+                hint = QtWidgets.QLabel("没有子项工单。")
+                hint.setStyleSheet("color:#666; padding:8px;")
+                self.list_layout.insertWidget(self.list_layout.count() - 1, hint)
+
+        threading.Thread(target=run, daemon=True).start()
 
 
 class WorkItemsTab(Tab):
@@ -418,6 +556,7 @@ class WorkItemsTab(Tab):
             item_card.analyze_clicked.connect(self._analyze_item)
             item_card.fix_clicked.connect(self._fix_item)
             item_card.mcp_clicked.connect(self._copy_mcp_item_prompt)
+            item_card.related_clicked.connect(self._open_related_dialog)
             self.list_layout.addWidget(item_card)
 
         self.lbl_page.setText(f"第 {self._current_page} / {total_pages} 页  共 {total_items} 条")
@@ -442,6 +581,18 @@ class WorkItemsTab(Tab):
             return
         app.clipboard().setText(prompt)
         self._toast("已复制", f"工单 #{work_item_id} 的 MCP 提示词已复制")
+
+    def _open_related_dialog(self, work_item_id: int) -> None:
+        try:
+            library, project, pat = self._current_context()
+        except Exception as exc:
+            show_error_dialog(self, "无法打开关联单", str(exc))
+            return
+        dlg = RelatedWorkItemsDialog(work_item_id, library, project, pat, parent=self)
+        dlg.analyze_requested.connect(self._analyze_item)
+        dlg.fix_requested.connect(self._fix_item)
+        dlg.mcp_requested.connect(self._copy_mcp_item_prompt)
+        dlg.exec()
 
     def _run_ai_flow(self, work_item_id: int, *, mode: str) -> None:
         settings = load_ui_settings()

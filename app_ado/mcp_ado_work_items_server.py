@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import mimetypes
 import os
+import re
 import sys
 import traceback
+from io import BytesIO
+from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app_ado.ado_work_item_http import (
     DEFAULT_WORK_ITEM_FIELDS,
+    fetch_attachment_bytes,
     get_work_item,
     get_work_item_comments,
     get_work_item_updates,
@@ -337,6 +344,147 @@ def _tool_ado_list_work_items_by_column(arguments: dict[str, Any]) -> dict[str, 
     )
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_ATTACHMENT_CACHE_ROOT = _PROJECT_ROOT / ".cache" / "ado-attachments"
+
+
+def _safe_path_segment(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[\\/:*?\"<>|\s]+", "_", str(value or "").strip())
+    cleaned = cleaned.strip("._") or fallback
+    return cleaned[:120]
+
+
+def _attachment_filename_from_url(url: str, fallback: str) -> str:
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query or "")
+    for v in (query.get("fileName") or query.get("filename") or []):
+        text = str(v).strip()
+        if text:
+            return _safe_path_segment(text, fallback)
+    return _safe_path_segment(fallback, "attachment.bin")
+
+
+def _attachment_id_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    parts = [p for p in (parsed.path or "").split("/") if p]
+    for i, p in enumerate(parts):
+        if p == "attachments" and i + 1 < len(parts):
+            return _safe_path_segment(parts[i + 1], "attachment")[:64]
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+
+
+def _compress_image_inplace(path: Path, mime_type: str | None) -> tuple[bool, str | None]:
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError:
+        return False, "Pillow 未安装，跳过压缩"
+
+    ct = (mime_type or "").lower()
+    suffix = path.suffix.lower()
+    is_png = "png" in ct or suffix == ".png"
+    is_jpeg = "jpeg" in ct or "jpg" in ct or suffix in (".jpg", ".jpeg")
+    if not (is_png or is_jpeg):
+        return False, f"非 PNG/JPEG（{suffix or ct or '未知'}），不压缩"
+
+    try:
+        with Image.open(path) as img:
+            img.load()
+            buf = BytesIO()
+            if is_png:
+                img.save(buf, format="PNG", optimize=True)
+            else:
+                img.save(buf, format="JPEG", quality=92, optimize=True, progressive=True)
+            data = buf.getvalue()
+    except Exception as e:
+        return False, f"压缩失败：{e}"
+
+    if len(data) >= path.stat().st_size:
+        return False, "优化后未变小，保留原文件"
+    path.write_bytes(data)
+    return True, None
+
+
+def _tool_ado_get_attachment(arguments: dict[str, Any]) -> dict[str, Any]:
+    library, project, pat = _resolve_context(arguments)
+
+    attachment_url = str(arguments.get("attachment_url") or "").strip()
+    if not attachment_url:
+        raise RuntimeError("缺少参数 attachment_url")
+
+    parsed = urlparse(attachment_url)
+    base_parsed = urlparse(str(library.base_url))
+    if not parsed.netloc or parsed.netloc.lower() != base_parsed.netloc.lower():
+        raise RuntimeError(
+            f"attachment_url 的 host ({parsed.netloc!r}) 与 library.base_url ({base_parsed.netloc!r}) 不一致，拒绝下载"
+        )
+
+    work_item_id_raw = arguments.get("work_item_id")
+    if work_item_id_raw is None:
+        wi_segment = "wi_unknown"
+    else:
+        wi_segment = f"wi_{int(work_item_id_raw)}"
+
+    library_segment = _safe_path_segment(getattr(library, "name", "") or library.id, fallback="library")
+    attachment_id = _attachment_id_from_url(attachment_url)
+    filename = _attachment_filename_from_url(attachment_url, fallback=f"{attachment_id}.bin")
+
+    cache_dir = _ATTACHMENT_CACHE_ROOT / library_segment / wi_segment
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{attachment_id}_{filename}"
+
+    force = bool(arguments.get("force_redownload"))
+    compress_arg = arguments.get("compress")
+    compress = True if compress_arg is None else bool(compress_arg)
+
+    if cache_path.exists() and not force:
+        stored_bytes = cache_path.stat().st_size
+        guessed_mime, _ = mimetypes.guess_type(str(cache_path))
+        return _tool_result_text(
+            {
+                "library": library.name,
+                "project": project.project,
+                "url": attachment_url,
+                "saved_path": str(cache_path),
+                "filename": filename,
+                "mime_type": guessed_mime,
+                "stored_bytes": stored_bytes,
+                "from_cache": True,
+                "compressed": "unknown",
+                "instruction": f"附件已在本地缓存。请使用 Read 工具读取 {cache_path} 查看图像内容。",
+            }
+        )
+
+    data, mime_type = fetch_attachment_bytes(attachment_url, pat=pat)
+    original_bytes = len(data)
+    cache_path.write_bytes(data)
+
+    compressed = False
+    compress_skip_reason: str | None = None
+    if compress:
+        compressed, compress_skip_reason = _compress_image_inplace(cache_path, mime_type)
+
+    stored_bytes = cache_path.stat().st_size
+    ratio = round(stored_bytes / original_bytes, 3) if original_bytes else None
+
+    payload: dict[str, Any] = {
+        "library": library.name,
+        "project": project.project,
+        "url": attachment_url,
+        "saved_path": str(cache_path),
+        "filename": filename,
+        "mime_type": mime_type,
+        "original_bytes": original_bytes,
+        "stored_bytes": stored_bytes,
+        "compression_ratio": ratio,
+        "compressed": compressed,
+        "from_cache": False,
+        "instruction": f"附件已下载到本地。请使用 Read 工具读取 {cache_path} 查看图像内容。",
+    }
+    if compress_skip_reason:
+        payload["compress_skip_reason"] = compress_skip_reason
+    return _tool_result_text(payload)
+
+
 def _tool_ado_evaluate_change_policy(arguments: dict[str, Any]) -> dict[str, Any]:
     library, project, pat = _resolve_context(arguments)
     work_item_id = arguments.get("work_item_id")
@@ -476,6 +624,24 @@ TOOLS: dict[str, dict[str, Any]] = {
             "required": ["team", "board", "column_name"],
         },
         "handler": _tool_ado_list_work_items_by_column,
+    },
+    "ado_get_attachment": {
+        "description": "下载并缓存 ADO 工作项附件到项目本地 .cache/ado-attachments 目录，PNG/JPEG 自动做无损或接近无损压缩，返回保存路径。下载完成后请使用 Read 工具读取 saved_path 查看附件内容。",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "attachment_url": {"type": "string"},
+                "work_item_id": {"type": "integer"},
+                "library_id": {"type": "string"},
+                "library_name": {"type": "string"},
+                "project_id": {"type": "string"},
+                "project_name": {"type": "string"},
+                "compress": {"type": "boolean"},
+                "force_redownload": {"type": "boolean"},
+            },
+            "required": ["attachment_url"],
+        },
+        "handler": _tool_ado_get_attachment,
     },
     "ado_evaluate_change_policy": {
         "description": "按本地策略评估某个 work item 是否允许 AI 自动改代码。",

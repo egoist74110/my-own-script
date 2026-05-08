@@ -243,6 +243,18 @@ def download_authenticated_file(
     return target
 
 
+def fetch_attachment_bytes(
+    url: str,
+    *,
+    pat: str,
+    timeout_sec: float = 30.0,
+) -> tuple[bytes, str | None]:
+    with _client(pat, timeout_sec=timeout_sec) as c:
+        r = c.get(url, params={"download": "true"})
+        _raise_http_error(r, url=url)
+        return r.content, r.headers.get("content-type")
+
+
 def get_work_items(
     base_url: str,
     ids: list[int | str],
@@ -287,6 +299,81 @@ def get_work_items(
                     continue
                 out.append(_parse_work_item(item))
     return out
+
+
+_HIERARCHY_FORWARD_REL = "System.LinkTypes.Hierarchy-Forward"
+
+
+def _extract_child_id_from_relation_url(url: str) -> int | None:
+    if not url:
+        return None
+    path = urlparse(url).path or ""
+    tail = path.rsplit("/", 1)[-1].strip()
+    if not tail:
+        return None
+    try:
+        return int(tail)
+    except ValueError:
+        return None
+
+
+def get_descendant_work_items(
+    base_url: str,
+    root_id: int | str,
+    *,
+    collection: str | None = None,
+    project: str | None = None,
+    pat: str,
+    fields: list[str] | None = None,
+    api_version: str = "7.0",
+    timeout_sec: float = 15.0,
+    max_depth: int = 8,
+) -> list[WorkItem]:
+    root_int = int(root_id)
+    visited: set[int] = {root_int}
+    ordered_ids: list[int] = []
+    frontier: list[int] = [root_int]
+    depth = 0
+
+    while frontier and depth < max_depth:
+        layer = get_work_items(
+            base_url,
+            list(frontier),
+            collection=collection,
+            project=project,
+            pat=pat,
+            fields=fields,
+            expand_relations=True,
+            api_version=api_version,
+            timeout_sec=timeout_sec,
+        )
+        next_frontier: list[int] = []
+        for parent_item in layer:
+            for rel in parent_item.relations or []:
+                if str(rel.get("rel") or "") != _HIERARCHY_FORWARD_REL:
+                    continue
+                child_id = _extract_child_id_from_relation_url(str(rel.get("url") or ""))
+                if child_id is None or child_id in visited:
+                    continue
+                visited.add(child_id)
+                ordered_ids.append(child_id)
+                next_frontier.append(child_id)
+        frontier = next_frontier
+        depth += 1
+
+    if not ordered_ids:
+        return []
+
+    return get_work_items(
+        base_url,
+        ordered_ids,
+        collection=collection,
+        project=project,
+        pat=pat,
+        fields=fields,
+        api_version=api_version,
+        timeout_sec=timeout_sec,
+    )
 
 
 def get_work_item_comments(
