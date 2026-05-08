@@ -6,7 +6,14 @@ import threading
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, LineEdit, PushButton
 
-from app_ado.ado_work_item_http import WorkItem, get_descendant_work_items, get_work_item, list_work_items_by_board_column_value
+from app_ado.ado_work_item_http import HIERARCHY_FORWARD_REL, WorkItem, get_descendant_work_items, list_work_items_by_board_column_value
+
+
+def _has_child_relations(item: WorkItem) -> bool:
+    for rel in item.relations or []:
+        if str(rel.get("rel") or "") == HIERARCHY_FORWARD_REL:
+            return True
+    return False
 from app_ado.ai_policy import evaluate_change_policy, load_effective_ai_change_policy
 from app_ado.ai_work_item_flow import build_mcp_prompt, build_prompt, load_work_item_context, open_ai_in_terminal, selected_ai_profile, selected_local_repo
 from app_ado.models import ProjectEntry, project_entry_collection, project_entry_id, project_entry_library_id, project_entry_name
@@ -50,21 +57,25 @@ class WorkItemMiniCard(CardWidget):
         self.btn_analyze = PushButton("分析")
         self.btn_fix = PushButton("修复")
         self.btn_mcp = PushButton("MCP")
-        self.btn_related = PushButton("关联单")
         self.btn_analyze.setFixedWidth(72)
         self.btn_fix.setFixedWidth(72)
         self.btn_mcp.setFixedWidth(72)
-        self.btn_related.setFixedWidth(72)
         row.addWidget(self.btn_analyze)
         row.addWidget(self.btn_fix)
         row.addWidget(self.btn_mcp)
-        row.addWidget(self.btn_related)
+
+        self.btn_related: PushButton | None = None
+        if _has_child_relations(item):
+            self.btn_related = PushButton("关联单")
+            self.btn_related.setFixedWidth(72)
+            row.addWidget(self.btn_related)
+            self.btn_related.clicked.connect(lambda: self.related_clicked.emit(self.item.id))
+
         row.addStretch(1)
 
         self.btn_analyze.clicked.connect(lambda: self.analyze_clicked.emit(self.item.id))
         self.btn_fix.clicked.connect(lambda: self.fix_clicked.emit(self.item.id))
         self.btn_mcp.clicked.connect(lambda: self.mcp_clicked.emit(self.item.id))
-        self.btn_related.clicked.connect(lambda: self.related_clicked.emit(self.item.id))
 
         root.addWidget(title)
         root.addWidget(meta)
@@ -78,14 +89,15 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
 
     def __init__(
         self,
-        root_id: int,
+        root_item: WorkItem,
         library,
         project: ProjectEntry,
         pat: str,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._root_id = int(root_id)
+        self._root_item = root_item
+        self._root_id = int(root_item.id)
         self._library = library
         self._project = project
         self._pat = pat
@@ -98,13 +110,17 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
         outer.setSpacing(8)
 
         header = QtWidgets.QHBoxLayout()
-        self.title_label = QtWidgets.QLabel(f"#{self._root_id} 关联单（含子项）")
+        self.title_label = QtWidgets.QLabel(f"#{self._root_id} 关联单")
         self.title_label.setStyleSheet("font-weight: 600;")
+        self.status_label = QtWidgets.QLabel("加载子项中…")
+        self.status_label.setStyleSheet("color:#666;")
         self.btn_refresh = PushButton("刷新")
         self.btn_close = PushButton("关闭")
         self.btn_refresh.setFixedWidth(80)
         self.btn_close.setFixedWidth(80)
         header.addWidget(self.title_label)
+        header.addSpacing(12)
+        header.addWidget(self.status_label)
         header.addStretch(1)
         header.addWidget(self.btn_refresh)
         header.addWidget(self.btn_close)
@@ -123,7 +139,7 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
         self.btn_refresh.clicked.connect(self._reload)
         self.btn_close.clicked.connect(self.reject)
 
-        QtCore.QTimer.singleShot(0, self._reload)
+        QtCore.QTimer.singleShot(0, self, self._reload_children)
 
     def _clear_list(self) -> None:
         while self.list_layout.count():
@@ -133,73 +149,49 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
                 w.deleteLater()
         self.list_layout.addStretch(1)
 
-    def _show_message(self, text: str) -> None:
-        self._clear_list()
-        label = QtWidgets.QLabel(text)
-        label.setStyleSheet("color:#666; padding:16px;")
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        self.list_layout.insertWidget(0, label)
-
-    def _add_card(self, item: WorkItem, *, is_root: bool) -> None:
+    def _add_card(self, item: WorkItem) -> None:
         card = WorkItemMiniCard(item)
-        if is_root:
-            card.setStyleSheet("WorkItemMiniCard { border:1px solid #d0d7de; }")
         card.analyze_clicked.connect(self.analyze_requested.emit)
         card.fix_clicked.connect(self.fix_requested.emit)
         card.mcp_clicked.connect(self.mcp_requested.emit)
-        card.related_clicked.connect(lambda _wid: None)
-        card.btn_related.setEnabled(False)
+        if card.btn_related is not None:
+            card.btn_related.setEnabled(False)
         self.list_layout.insertWidget(self.list_layout.count() - 1, card)
 
     def _reload(self) -> None:
+        self._clear_list()
+        self._reload_children()
+
+    def _reload_children(self) -> None:
         self.btn_refresh.setEnabled(False)
-        self._show_message("加载中…")
+        self.status_label.setText("加载子项中…")
 
         result: dict = {}
 
         def run() -> None:
             try:
-                root = get_work_item(
+                result["children"] = get_descendant_work_items(
                     self._library.base_url,
                     self._root_id,
                     collection=self._project.collection,
                     project=self._project.project,
                     pat=self._pat,
                 )
-                children = get_descendant_work_items(
-                    self._library.base_url,
-                    self._root_id,
-                    collection=self._project.collection,
-                    project=self._project.project,
-                    pat=self._pat,
-                )
-                result["root"] = root
-                result["children"] = children
             except Exception as exc:
                 result["error"] = exc
-
-            QtCore.QTimer.singleShot(0, finish)
+            QtCore.QTimer.singleShot(0, self, finish)
 
         def finish() -> None:
             self.btn_refresh.setEnabled(True)
             err = result.get("error")
             if err is not None:
-                self._show_message(f"加载失败：{err}")
+                self.status_label.setText(f"加载失败：{err}")
                 return
-            root = result.get("root")
-            children = result.get("children") or []
+            children = [x for x in (result.get("children") or []) if int(x.id) != self._root_id]
             self._clear_list()
-            if root is not None:
-                self._add_card(root, is_root=True)
             for child in children:
-                self._add_card(child, is_root=False)
-            self.title_label.setText(
-                f"#{self._root_id} 关联单（含 {len(children)} 个子项）"
-            )
-            if not children:
-                hint = QtWidgets.QLabel("没有子项工单。")
-                hint.setStyleSheet("color:#666; padding:8px;")
-                self.list_layout.insertWidget(self.list_layout.count() - 1, hint)
+                self._add_card(child)
+            self.status_label.setText(f"含 {len(children)} 个子项" if children else "没有子项")
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -446,6 +438,7 @@ class WorkItemsTab(Tab):
                     proj2.project,
                     column_name,
                     pat=pat,
+                    expand_relations=True,
                 )
             except Exception as e:
                 payload["error"] = str(e)
@@ -583,12 +576,16 @@ class WorkItemsTab(Tab):
         self._toast("已复制", f"工单 #{work_item_id} 的 MCP 提示词已复制")
 
     def _open_related_dialog(self, work_item_id: int) -> None:
+        root_item = next((x for x in self._loaded_items if int(x.id) == int(work_item_id)), None)
+        if root_item is None:
+            show_error_dialog(self, "无法打开关联单", "未找到当前工单数据，请先刷新列表")
+            return
         try:
             library, project, pat = self._current_context()
         except Exception as exc:
             show_error_dialog(self, "无法打开关联单", str(exc))
             return
-        dlg = RelatedWorkItemsDialog(work_item_id, library, project, pat, parent=self)
+        dlg = RelatedWorkItemsDialog(root_item, library, project, pat, parent=self)
         dlg.analyze_requested.connect(self._analyze_item)
         dlg.fix_requested.connect(self._fix_item)
         dlg.mcp_requested.connect(self._copy_mcp_item_prompt)

@@ -285,10 +285,11 @@ def get_work_items(
             body: dict[str, Any] = {
                 "ids": work_ids[i:i + chunk_size],
                 "errorPolicy": error_policy,
-                "fields": fields or DEFAULT_WORK_ITEM_FIELDS,
             }
             if expand_relations:
                 body["$expand"] = "relations"
+            else:
+                body["fields"] = fields or DEFAULT_WORK_ITEM_FIELDS
 
             r = c.post(url, params={"api-version": api_version}, json=body)
             _raise_http_error(r, url=url)
@@ -301,7 +302,7 @@ def get_work_items(
     return out
 
 
-_HIERARCHY_FORWARD_REL = "System.LinkTypes.Hierarchy-Forward"
+HIERARCHY_FORWARD_REL = "System.LinkTypes.Hierarchy-Forward"
 
 
 def _extract_child_id_from_relation_url(url: str) -> int | None:
@@ -350,7 +351,7 @@ def get_descendant_work_items(
         next_frontier: list[int] = []
         for parent_item in layer:
             for rel in parent_item.relations or []:
-                if str(rel.get("rel") or "") != _HIERARCHY_FORWARD_REL:
+                if str(rel.get("rel") or "") != HIERARCHY_FORWARD_REL:
                     continue
                 child_id = _extract_child_id_from_relation_url(str(rel.get("url") or ""))
                 if child_id is None or child_id in visited:
@@ -626,6 +627,7 @@ def list_work_items_by_board_column_value(
     work_item_types: list[str] | None = None,
     fields: list[str] | None = None,
     extra_where: list[str] | None = None,
+    expand_relations: bool = False,
     api_version: str = "7.0",
     timeout_sec: float = 15.0,
 ) -> list[WorkItem]:
@@ -668,6 +670,7 @@ def list_work_items_by_board_column_value(
         project=project,
         pat=pat,
         fields=fields or DEFAULT_WORK_ITEM_FIELDS,
+        expand_relations=expand_relations,
         api_version=api_version,
         timeout_sec=timeout_sec,
     )
