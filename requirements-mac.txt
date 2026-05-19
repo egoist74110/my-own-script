@@ -5,3 +5,4 @@ pydantic>=2.7
 keyring>=25
 httpx>=0.28
 pyyaml>=6
+pyte>=0.8

@@ -19,6 +19,8 @@ class TgCommandContext:
     chat_id: str
     username: str | None
     text: str
+    # AI 开发模块：reply-to 的目标消息 id（如有），用于路由到具体会话
+    reply_to_msg_id: int | None = None
 
 
 class TelegramController:
@@ -40,6 +42,7 @@ class TelegramController:
         on_stop_menu: Callable[[str, str | None], list[tuple[str, str]]],
         on_stop_one: Callable[[str, str, str | None], tuple[bool, str]],
         on_status: Callable[[], str],
+        dev_bridge: Any = None,
     ) -> None:
         self._on_run = on_run
         self._on_deploy_only = on_deploy_only
@@ -47,6 +50,8 @@ class TelegramController:
         self._on_stop_menu = on_stop_menu
         self._on_stop_one = on_stop_one
         self._on_status = on_status
+        # AI 开发模块的 TG 桥（可选）；不传则禁用 /dev* 相关功能
+        self._dev_bridge = dev_bridge
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
 
@@ -292,6 +297,21 @@ class TelegramController:
     def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
 
+        # AI 开发：非 / 文字消息优先路由到远程开发会话（仅当该 chat 处于远程开发上下文）
+        if self._dev_bridge is not None and t and not t.startswith("/"):
+            wiz_check = self._rollback_wizard.get(str(ctx.chat_id))
+            if not wiz_check and self._dev_bridge.should_consume_text(ctx.chat_id, ctx.reply_to_msg_id):
+                ok, msg = self._dev_bridge.handle_text(
+                    text=ctx.text or "",
+                    chat_id=ctx.chat_id,
+                    reply_to_msg_id=ctx.reply_to_msg_id,
+                    role=role,
+                    group=group,
+                )
+                if msg:
+                    self._reply(token, ctx.chat_id, msg)
+                return
+
         # rollback wizard (multi-step) can accept non-slash replies
         wiz = self._rollback_wizard.get(str(ctx.chat_id))
         if wiz and not t.startswith("/"):
@@ -407,11 +427,12 @@ class TelegramController:
                 show_rollback = (role == "owner") or any(self._can(role, group, "rollback", task_id=str(t.id)) for t in tasks)
 
                 # Telegram does not allow empty text. Use an "invisible" placeholder char.
+                show_dev = (role == "owner") and (self._dev_bridge is not None)
                 self._reply(
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=top_menu(),
+                    reply_markup=top_menu(show_dev=show_dev),
                 )
                 return
             except Exception as e:
@@ -528,7 +549,169 @@ class TelegramController:
             self._reply(token, ctx.chat_id, msg if msg else (f"收到，开始执行：{(hit.tg_desc or hit.tg_command)}" if ok else "执行失败"))
             return
 
+        # AI 开发：/dev* 命令
+        if self._dev_bridge is not None and cmd in ("/dev", "/devnew", "/devkill", "/devfocus"):
+            self._handle_dev_command(token, ctx, role=role, group=group, cmd=cmd, parts=parts)
+            return
+
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
+
+    def _handle_dev_command(
+        self,
+        token: str,
+        ctx: TgCommandContext,
+        *,
+        role: str,
+        group: dict | None,
+        cmd: str,
+        parts: list[str],
+    ) -> None:
+        bridge = self._dev_bridge
+        if bridge is None:
+            return
+        if cmd == "/dev":
+            msg = bridge.handle_list(ctx.chat_id, role, group)
+            self._reply(token, ctx.chat_id, msg)
+            return
+        if cmd == "/devkill":
+            if len(parts) < 2:
+                self._reply(token, ctx.chat_id, "用法：/devkill <sid>")
+                return
+            ok, msg = bridge.handle_kill(parts[1].strip(), ctx.chat_id, role, group)
+            self._reply(token, ctx.chat_id, msg)
+            return
+        if cmd == "/devfocus":
+            if len(parts) < 2:
+                self._reply(token, ctx.chat_id, "用法：/devfocus <sid>")
+                return
+            ok, msg = bridge.handle_focus(parts[1].strip(), ctx.chat_id, role, group)
+            self._reply(token, ctx.chat_id, msg)
+            return
+        if cmd == "/devnew":
+            if len(parts) < 3:
+                self._reply(token, ctx.chat_id, "用法：/devnew <gemini|claude|codex> <仓库名或路径子串>")
+                return
+            model_alias = parts[1].strip().lower()
+            model_id = {"gemini": "gemini", "claude": "claude_code", "claude_code": "claude_code", "codex": "codex"}.get(model_alias)
+            if not model_id:
+                self._reply(token, ctx.chat_id, "未知模型，仅支持 gemini / claude / codex")
+                return
+            repo_query = " ".join(parts[2:]).strip()
+            s = load_ui_settings()
+            repo = next((r for r in (s.local_repos or []) if r.name == repo_query), None)
+            if repo is None:
+                repo = next((r for r in (s.local_repos or []) if repo_query.lower() in (r.name or "").lower() or repo_query in (r.path or "")), None)
+            if repo is None:
+                self._reply(token, ctx.chat_id, f"找不到本地仓库：{repo_query}（请先到“代码配置-本地仓库”添加）")
+                return
+            profile = next((p for p in (s.ai.tool.profiles or []) if p.id == model_id), None)
+            if profile is None or not (profile.command or "").strip():
+                self._reply(token, ctx.chat_id, f"AI CLI 未配置启动命令：{model_id}（请检查 AI 配置）")
+                return
+            ok, msg = bridge.handle_new(
+                model_id=model_id,
+                repo_path=repo.path,
+                repo_name=repo.name,
+                repo_id=repo.id,
+                command=profile.command,
+                chat_id=ctx.chat_id,
+                role=role,
+                group=group,
+            )
+            self._reply(token, ctx.chat_id, msg)
+            return
+
+    # ---------------- AI 开发：inline 菜单辅助 ----------------
+
+    def _handle_dev_main_menu(self, token: str, chat_id: str, role: str, group: dict | None) -> None:
+        bridge = self._dev_bridge
+        if bridge is None:
+            return
+        if not bridge.can_dev(role, group, "dev_status"):
+            self._reply(token, chat_id, "无权限：AI 开发")
+            return
+        from app_ado.tg_dev_inline import dev_main_menu
+
+        _STATUS_ZH = {"starting": "启动中", "running": "运行中", "waiting": "等Y/N", "exited": "已退出"}
+        infos = bridge._manager.list()
+        focus = bridge._chat_focus.get(str(chat_id))
+        sessions = []
+        for info in infos:
+            status_zh = _STATUS_ZH.get(info.status, info.status)
+            if info.status == "exited" and info.exit_code is not None:
+                status_zh = f"已退出({info.exit_code})"
+            sessions.append((info.sid, info.model_label, info.repo_name, status_zh, info.sid == focus))
+        text = "🛠 AI 开发\n" + (f"当前共 {len(sessions)} 个会话。" if sessions else "暂无会话。点下面 + 新建。")
+        self._reply(token, chat_id, text, reply_markup=dev_main_menu(sessions))
+
+    def _handle_dev_pick_repo(
+        self,
+        token: str,
+        chat_id: str,
+        role: str,
+        group: dict | None,
+        model_id: str,
+    ) -> None:
+        bridge = self._dev_bridge
+        if bridge is None:
+            return
+        if not bridge.can_dev(role, group, "dev_run"):
+            self._reply(token, chat_id, "无权限：dev_run")
+            return
+        from app_ado.tg_dev_inline import dev_pick_repo_menu
+
+        s = load_ui_settings()
+        profile = next((p for p in (s.ai.tool.profiles or []) if p.id == model_id), None)
+        if profile is None or not (profile.command or "").strip():
+            self._reply(token, chat_id, f"AI CLI 未配置启动命令：{model_id}")
+            return
+        repos = list(s.local_repos or [])
+        if not repos:
+            self._reply(token, chat_id, "尚未配置本地仓库，请先到桌面端「代码配置 - 本地仓库」添加")
+            return
+        label = {"codex": "Codex", "gemini": "Gemini CLI", "claude_code": "Claude Code"}.get(model_id, model_id)
+        self._reply(
+            token,
+            chat_id,
+            f"启动 {label}，选择本地仓库：",
+            reply_markup=dev_pick_repo_menu(model_id, [(r.id, r.name) for r in repos]),
+        )
+
+    def _handle_dev_do_new(
+        self,
+        token: str,
+        chat_id: str,
+        role: str,
+        group: dict | None,
+        model_id: str,
+        repo_id: str,
+    ) -> None:
+        bridge = self._dev_bridge
+        if bridge is None:
+            return
+        if not bridge.can_dev(role, group, "dev_run"):
+            self._reply(token, chat_id, "无权限：dev_run")
+            return
+        s = load_ui_settings()
+        profile = next((p for p in (s.ai.tool.profiles or []) if p.id == model_id), None)
+        if profile is None or not (profile.command or "").strip():
+            self._reply(token, chat_id, f"AI CLI 未配置启动命令：{model_id}")
+            return
+        repo = next((r for r in (s.local_repos or []) if r.id == repo_id), None)
+        if repo is None:
+            self._reply(token, chat_id, f"仓库不存在：{repo_id}")
+            return
+        ok, msg = bridge.handle_new(
+            model_id=model_id,
+            repo_path=repo.path,
+            repo_name=repo.name,
+            repo_id=repo.id,
+            command=profile.command,
+            chat_id=chat_id,
+            role=role,
+            group=group,
+        )
+        self._reply(token, chat_id, msg)
 
     def _run_loop(self) -> None:
         self._write_state(state="启动中", last_poll="-", last_error="-")
@@ -582,6 +765,50 @@ class TelegramController:
                             if data2 == "help_noop":
                                 continue
 
+                            # AI 开发：dev_key:<sid>:<key> / dev_kill:<sid>
+                            if self._dev_bridge is not None and data2.startswith("dev_key:"):
+                                try:
+                                    _, sid_k, key_k = data2.split(":", 2)
+                                except ValueError:
+                                    continue
+                                ok, msg = self._dev_bridge.handle_key(
+                                    key=key_k, sid=sid_k, chat_id=chat_id2, role=role2, group=group2
+                                )
+                                if not ok and msg:
+                                    self._reply(token, chat_id2, msg)
+                                continue
+
+                            if self._dev_bridge is not None and data2.startswith("dev_kill:"):
+                                sid_k = data2.split(":", 1)[1].strip()
+                                ok, msg = self._dev_bridge.handle_kill(
+                                    sid_k, chat_id2, role2, group2
+                                )
+                                if msg:
+                                    self._reply(token, chat_id2, msg)
+                                # 删完回主菜单
+                                self._handle_dev_main_menu(token, chat_id2, role2, group2)
+                                continue
+
+                            if self._dev_bridge is not None and data2.startswith("dev_focus:"):
+                                sid_k = data2.split(":", 1)[1].strip()
+                                ok, msg = self._dev_bridge.handle_focus(sid_k, chat_id2, role2, group2)
+                                if msg:
+                                    self._reply(token, chat_id2, msg)
+                                continue
+
+                            if self._dev_bridge is not None and data2.startswith("dev_new_pick_repo:"):
+                                model_id = data2.split(":", 1)[1].strip()
+                                self._handle_dev_pick_repo(token, chat_id2, role2, group2, model_id)
+                                continue
+
+                            if self._dev_bridge is not None and data2.startswith("dev_do_new:"):
+                                try:
+                                    _, model_id, repo_id = data2.split(":", 2)
+                                except ValueError:
+                                    continue
+                                self._handle_dev_do_new(token, chat_id2, role2, group2, model_id, repo_id)
+                                continue
+
                             if data2.startswith("help_menu:"):
                                 op = data2.split(":", 1)[1]
 
@@ -612,8 +839,12 @@ class TelegramController:
                                 if op == "sys":
                                     self._reply(token, chat_id2, "代码工具箱", reply_markup=sys_menu(show_rollback=show_rollback2, show_stop=show_stop2, show_status=show_status2))
                                     continue
+                                if op == "dev":
+                                    self._handle_dev_main_menu(token, chat_id2, role2, group2)
+                                    continue
                                 # back
-                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu())
+                                show_dev2 = (role2 == "owner") and (self._dev_bridge is not None)
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2))
                                 continue
 
                             if data2.startswith("help_run:"):
@@ -736,12 +967,21 @@ class TelegramController:
                     frm = msg.get("from") or {}
                     username = frm.get("username")
                     text = msg.get("text") or ""
+                    reply_to_msg_id: int | None = None
+                    rt = msg.get("reply_to_message") or {}
+                    if rt.get("message_id") is not None:
+                        try:
+                            reply_to_msg_id = int(rt.get("message_id"))
+                        except Exception:
+                            reply_to_msg_id = None
 
                     role, group = self._resolve_acl(chat_id, username)
                     if role == "none":
                         continue
 
-                    ctx = TgCommandContext(chat_id=chat_id, username=username, text=text)
+                    ctx = TgCommandContext(
+                        chat_id=chat_id, username=username, text=text, reply_to_msg_id=reply_to_msg_id
+                    )
                     self._handle(token, ctx, role=role, group=group)
 
                 if last_id is not None:

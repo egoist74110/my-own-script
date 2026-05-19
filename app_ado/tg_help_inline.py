@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 
-def top_menu() -> dict:
-    return {
-        "inline_keyboard": [
-            [{"text": "🔹 任务", "callback_data": "help_menu:tasks"}],
-            [{"text": "🔸 系统操作", "callback_data": "help_menu:sys"}],
-        ]
-    }
+def top_menu(*, show_dev: bool = False) -> dict:
+    rows: list[list[dict]] = [
+        [{"text": "🔹 任务", "callback_data": "help_menu:tasks"}],
+        [{"text": "🔸 系统操作", "callback_data": "help_menu:sys"}],
+    ]
+    if show_dev:
+        rows.append([{"text": "🛠 AI开发", "callback_data": "help_menu:dev"}])
+    return {"inline_keyboard": rows}
 
 
 def tasks_menu(tasks: list[tuple[str, str]]) -> dict:
