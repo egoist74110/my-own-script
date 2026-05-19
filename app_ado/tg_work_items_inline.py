@@ -11,7 +11,11 @@ from typing import Iterable
 BOARD_COLUMNS: list[str] = ["新建", "待开发", "开发中", "测试", "已关闭"]
 
 
-def wi_main_menu(*, project_label: str, column_label: str) -> dict:
+def wi_main_menu(*, project_label: str, column_label: str, mcp_running: bool | None = None) -> dict:
+    if mcp_running is None:
+        from app_ado.mcp_server_manager import is_ado_work_items_mcp_running
+        mcp_running = is_ado_work_items_mcp_running()
+    mcp_text = "🟢 工单MCP 已开（点击关闭）" if mcp_running else "⚪ 工单MCP 已关（点击开启）"
     rows: list[list[dict]] = [
         [{"text": f"📁 项目：{project_label}", "callback_data": "wi_pp"}],
         [{"text": f"📊 版块：{column_label}", "callback_data": "wi_pc"}],
@@ -19,6 +23,7 @@ def wi_main_menu(*, project_label: str, column_label: str) -> dict:
             {"text": "📋 列工单", "callback_data": "wi_l:1"},
             {"text": "🔄 刷新", "callback_data": "wi_rl"},
         ],
+        [{"text": mcp_text, "callback_data": "wi_mcp"}],
         [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
     ]
     return {"inline_keyboard": rows}

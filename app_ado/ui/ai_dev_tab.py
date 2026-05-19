@@ -160,7 +160,7 @@ class AiDevTab(Tab):
         # 输入框
         in_row = QtWidgets.QHBoxLayout()
         self._input = QtWidgets.QLineEdit()
-        self._input.setPlaceholderText("输入文字后按 Enter 或点发送 → 末尾会自动加回车")
+        self._input.setPlaceholderText("回车发送（自动追加换行）")
         self._input.returnPressed.connect(self._on_send_clicked)
         self._btn_send = PushButton("发送")
         self._btn_send.clicked.connect(self._on_send_clicked)
@@ -222,6 +222,18 @@ class AiDevTab(Tab):
         self._on_list_selection_changed()
 
     def _refresh_list_status(self) -> None:
+        # 先看 manager 和 UI 的 sid 集合是否一致；不一致说明 TG 端新建/删除过会话，整体重建
+        ui_sids = {self._list.item(i).data(QtCore.Qt.UserRole) for i in range(self._list.count())}
+        mgr_sids = {info.sid for info in self._manager.list()}
+        if ui_sids != mgr_sids:
+            # 新增的会话也要挂监听器（用于跨线程屏幕更新）
+            for info in self._manager.list():
+                if info.sid not in self._listener_for:
+                    sess = self._manager.get(info.sid)
+                    if sess:
+                        self._attach_session(sess)
+            self._refresh_list()
+            return
         # 仅更新文本，不重建（避免选中丢失）
         for i in range(self._list.count()):
             item = self._list.item(i)

@@ -294,10 +294,16 @@ class AiDevSession:
             return False
 
     def write_text(self, text: str, *, append_enter: bool = True) -> bool:
-        b = text.encode("utf-8", errors="replace")
-        if append_enter:
-            b = b + b"\r"
-        return self.write_bytes(b)
+        # Claude Code / Codex / Gemini 是 ink raw-mode TUI，对一坨字节会做 heuristic
+        # paste detection，末尾 \r 会被吃掉、必须用户再手动按 Enter 才提交。
+        # 用 bracketed paste 显式包文本，让 TUI 明确认作粘贴；之后单独发 \r 才是真正
+        # 的 Enter 键事件。
+        body = text.encode("utf-8", errors="replace")
+        ok = self.write_bytes(b"\x1b[200~" + body + b"\x1b[201~")
+        if not ok or not append_enter:
+            return ok
+        time.sleep(0.05)
+        return self.write_bytes(b"\r")
 
     def send_key(self, key: str) -> bool:
         b = KEY_CODES.get(key.lower().strip())

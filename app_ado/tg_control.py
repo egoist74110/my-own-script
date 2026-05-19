@@ -752,6 +752,11 @@ class TelegramController:
             self._reply(token, chat_id, text, reply_markup=markup)
             return
 
+        if data == "wi_mcp":
+            text, markup = bridge.handle_toggle_mcp(chat_id)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
         if data == "wi_pp":
             text, markup = bridge.handle_pick_project(chat_id)
             self._reply(token, chat_id, text, reply_markup=markup)

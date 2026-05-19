@@ -213,10 +213,10 @@ def get_work_item(
     else:
         url = f"{base_url.rstrip('/')}/_apis/wit/workitems/{int(work_item_id)}"
     params: dict[str, Any] = {"api-version": api_version}
-    if fields:
-        params["fields"] = ",".join(fields)
     if expand_relations:
         params["$expand"] = "relations"
+    elif fields:
+        params["fields"] = ",".join(fields)
     with _client(pat, timeout_sec=timeout_sec) as c:
         r = c.get(url, params=params)
         _raise_http_error(r, url=url)
