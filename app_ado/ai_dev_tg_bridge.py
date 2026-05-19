@@ -66,6 +66,10 @@ def _keyboard_for_session(sess: AiDevSession) -> dict:
     if sess.info.status == "exited":
         return {"inline_keyboard": [[{"text": "🗑 删除", "callback_data": f"dev_kill:{sid}"}]]}
     rows: list[list[dict]] = []
+    # 主要操作：发提示词（强制把输入框带到 reply 状态）
+    rows.append([
+        {"text": "📝 发提示词", "callback_data": f"dev_prompt:{sid}"},
+    ])
     if sess.info.awaiting_yn:
         rows.append([
             {"text": "✅ 是", "callback_data": f"dev_key:{sid}:y"},
@@ -278,6 +282,45 @@ class AiDevTgBridge:
         if not ok:
             return False, "写入失败（会话可能已关闭）"
         return True, ""  # 静默：不另发"已发送"，等屏幕自然刷出来
+
+    def handle_prompt_button(
+        self,
+        *,
+        sid: str,
+        chat_id: str,
+        role: str,
+        group: Optional[dict],
+    ) -> tuple[bool, str]:
+        """用户点 [📝 发提示词] 按钮：发一条 force_reply 提示并登记 msg→sid 映射。
+
+        TG 客户端会自动把输入框置为 reply 这条消息的状态，用户接着打字发送即可，
+        现有 reply-to 路由会把消息分发到该会话。
+        """
+        if not self.can_dev(role, group, "dev_message"):
+            return False, "无权限"
+        sess = self._manager.get(sid)
+        if not sess:
+            return False, f"会话不存在：{sid}"
+        if sess.info.status == "exited":
+            return False, "会话已退出"
+        token = self._bot_token_fn()
+        if not token:
+            return False, "未配置 Telegram Bot Token"
+        title = f"#{sess.info.sid} · {sess.info.model_label} · {sess.info.repo_name}"
+        text = f"📝 请输入要发给 {title} 的提示词\n（发送后直接进入该会话；引用条会显示在输入框上方）"
+        kb = {
+            "force_reply": True,
+            "input_field_placeholder": f"发给 #{sess.info.sid}",
+            "selective": True,
+        }
+        mid = self._tg_send(token, str(chat_id), text, kb)
+        if mid is None:
+            return False, "发送 force_reply 提示失败"
+        with self._lock:
+            self._msg_to_sid[int(mid)] = sid
+            self._chat_focus[str(chat_id)] = sid
+            self._sid_to_chats.setdefault(sid, set()).add(str(chat_id))
+        return True, ""
 
     def handle_key(
         self,

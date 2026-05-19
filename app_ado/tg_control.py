@@ -886,6 +886,15 @@ class TelegramController:
                                     self._reply(token, chat_id2, msg)
                                 continue
 
+                            if self._dev_bridge is not None and data2.startswith("dev_prompt:"):
+                                sid_k = data2.split(":", 1)[1].strip()
+                                ok, msg = self._dev_bridge.handle_prompt_button(
+                                    sid=sid_k, chat_id=chat_id2, role=role2, group=group2
+                                )
+                                if not ok and msg:
+                                    self._reply(token, chat_id2, msg)
+                                continue
+
                             if self._dev_bridge is not None and data2.startswith("dev_kill:"):
                                 sid_k = data2.split(":", 1)[1].strip()
                                 ok, msg = self._dev_bridge.handle_kill(
