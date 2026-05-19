@@ -43,6 +43,7 @@ class TelegramController:
         on_stop_one: Callable[[str, str, str | None], tuple[bool, str]],
         on_status: Callable[[], str],
         dev_bridge: Any = None,
+        wi_bridge: Any = None,
     ) -> None:
         self._on_run = on_run
         self._on_deploy_only = on_deploy_only
@@ -52,6 +53,8 @@ class TelegramController:
         self._on_status = on_status
         # AI 开发模块的 TG 桥（可选）；不传则禁用 /dev* 相关功能
         self._dev_bridge = dev_bridge
+        # 工单模块的 TG 桥（可选，owner-only）；不传则禁用 /wi 相关功能
+        self._wi_bridge = wi_bridge
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
 
@@ -428,11 +431,12 @@ class TelegramController:
 
                 # Telegram does not allow empty text. Use an "invisible" placeholder char.
                 show_dev = (role == "owner") and (self._dev_bridge is not None)
+                show_wi = (role == "owner") and (self._wi_bridge is not None)
                 self._reply(
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=top_menu(show_dev=show_dev),
+                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi),
                 )
                 return
             except Exception as e:
@@ -552,6 +556,26 @@ class TelegramController:
         # AI 开发：/dev* 命令
         if self._dev_bridge is not None and cmd in ("/dev", "/devnew", "/devkill", "/devfocus"):
             self._handle_dev_command(token, ctx, role=role, group=group, cmd=cmd, parts=parts)
+            return
+
+        # 工单：/wi [<id>]（owner-only）
+        if self._wi_bridge is not None and cmd == "/wi":
+            if not self._wi_bridge.can_use(role, group):
+                self._reply(token, ctx.chat_id, "无权限：工单")
+                return
+            if len(parts) >= 2:
+                raw = parts[1].strip().lstrip("#")
+                try:
+                    wid = int(raw)
+                except ValueError:
+                    text, markup = self._wi_bridge.handle_main(ctx.chat_id)
+                    self._reply(token, ctx.chat_id, text, reply_markup=markup)
+                    return
+                text, markup = self._wi_bridge.handle_open(ctx.chat_id, wid)
+                self._reply(token, ctx.chat_id, text, reply_markup=markup)
+                return
+            text, markup = self._wi_bridge.handle_main(ctx.chat_id)
+            self._reply(token, ctx.chat_id, text, reply_markup=markup)
             return
 
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
@@ -713,6 +737,90 @@ class TelegramController:
         )
         self._reply(token, chat_id, msg)
 
+    # ---------------- 工单：callback 分发 ----------------
+
+    def _handle_wi_callback(self, token: str, chat_id: str, data: str) -> None:
+        bridge = self._wi_bridge
+        if bridge is None:
+            return
+
+        if data == "wi_noop":
+            return
+
+        if data == "wi_main":
+            text, markup = bridge.handle_main(chat_id)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data == "wi_pp":
+            text, markup = bridge.handle_pick_project(chat_id)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_psp:"):
+            pid = data.split(":", 1)[1].strip()
+            text, markup = bridge.handle_set_project(chat_id, pid)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data == "wi_pc":
+            text, markup = bridge.handle_pick_column(chat_id)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_psc:"):
+            try:
+                idx = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_set_column(chat_id, idx)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data == "wi_rl":
+            text, markup = bridge.handle_refresh(chat_id)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_l:"):
+            try:
+                page = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_list(chat_id, page)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_o:"):
+            try:
+                wid = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_open(chat_id, wid)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_m:"):
+            try:
+                _, wid_s, mode = data.split(":", 2)
+                wid = int(wid_s)
+            except ValueError:
+                return
+            chunks, markup = bridge.handle_mcp_prompt(chat_id, wid, mode)
+            for i, chunk in enumerate(chunks):
+                rm = markup if i == len(chunks) - 1 else None
+                self._reply(token, chat_id, chunk, reply_markup=rm)
+            return
+
+        if data.startswith("wi_r:"):
+            try:
+                wid = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_related(chat_id, wid)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
     def _run_loop(self) -> None:
         self._write_state(state="启动中", last_poll="-", last_error="-")
         while not self._stop.is_set():
@@ -809,6 +917,14 @@ class TelegramController:
                                 self._handle_dev_do_new(token, chat_id2, role2, group2, model_id, repo_id)
                                 continue
 
+                            # 工单：所有 wi_* callback 走 owner-only 桥
+                            if self._wi_bridge is not None and (data2 == "wi_main" or data2.startswith("wi_")):
+                                if not self._wi_bridge.can_use(role2, group2):
+                                    self._reply(token, chat_id2, "无权限：工单")
+                                    continue
+                                self._handle_wi_callback(token, chat_id2, data2)
+                                continue
+
                             if data2.startswith("help_menu:"):
                                 op = data2.split(":", 1)[1]
 
@@ -842,9 +958,17 @@ class TelegramController:
                                 if op == "dev":
                                     self._handle_dev_main_menu(token, chat_id2, role2, group2)
                                     continue
+                                if op == "wi":
+                                    if self._wi_bridge is not None and self._wi_bridge.can_use(role2, group2):
+                                        text_wi, markup_wi = self._wi_bridge.handle_main(chat_id2)
+                                        self._reply(token, chat_id2, text_wi, reply_markup=markup_wi)
+                                    else:
+                                        self._reply(token, chat_id2, "无权限：工单")
+                                    continue
                                 # back
                                 show_dev2 = (role2 == "owner") and (self._dev_bridge is not None)
-                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2))
+                                show_wi2 = (role2 == "owner") and (self._wi_bridge is not None)
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2))
                                 continue
 
                             if data2.startswith("help_run:"):

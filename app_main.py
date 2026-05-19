@@ -90,6 +90,9 @@ def main() -> None:
 
     # Telegram control (polling thread) - only active while app runs
     from app_ado.tg_control import TelegramController
+    from app_ado.tg_work_items_bridge import WorkItemsBridge
+
+    wi_bridge = WorkItemsBridge()
 
     tg = TelegramController(
         on_run=tasks.run_task,
@@ -99,6 +102,7 @@ def main() -> None:
         on_stop_one=tasks.stop_one_task,
         on_status=tasks.status_text,
         dev_bridge=ai_dev_bridge,
+        wi_bridge=wi_bridge,
     )
     tg.start()
 
