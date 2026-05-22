@@ -432,11 +432,12 @@ class TelegramController:
                 # Telegram does not allow empty text. Use an "invisible" placeholder char.
                 show_dev = (role == "owner") and (self._dev_bridge is not None)
                 show_wi = (role == "owner") and (self._wi_bridge is not None)
+                show_vpn = (role == "owner")
                 self._reply(
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi),
+                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi, show_vpn=show_vpn),
                 )
                 return
             except Exception as e:
@@ -878,6 +879,20 @@ class TelegramController:
                             if data2 == "help_noop":
                                 continue
 
+                            # VPN 地址：仅 owner 可用
+                            if data2 == "vpn_ip":
+                                if role2 != "owner":
+                                    self._reply(token, chat_id2, "无权限")
+                                    continue
+                                from app_ado.vpn_ip import get_vpn_ip
+
+                                ip = get_vpn_ip()
+                                if ip:
+                                    self._reply(token, chat_id2, f"🌐 当前 Harmony VPN IP\n\n{ip}")
+                                else:
+                                    self._reply(token, chat_id2, "没有找到 Harmony VPN IP，可能 VPN 没连上。")
+                                continue
+
                             # AI 开发：dev_key:<sid>:<key> / dev_kill:<sid>
                             if self._dev_bridge is not None and data2.startswith("dev_key:"):
                                 try:
@@ -982,7 +997,8 @@ class TelegramController:
                                 # back
                                 show_dev2 = (role2 == "owner") and (self._dev_bridge is not None)
                                 show_wi2 = (role2 == "owner") and (self._wi_bridge is not None)
-                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2))
+                                show_vpn2 = (role2 == "owner")
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2, show_vpn=show_vpn2))
                                 continue
 
                             if data2.startswith("help_run:"):

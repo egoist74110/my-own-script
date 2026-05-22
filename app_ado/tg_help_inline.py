@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 
-def top_menu(*, show_dev: bool = False, show_wi: bool = False) -> dict:
+def top_menu(*, show_dev: bool = False, show_wi: bool = False, show_vpn: bool = False) -> dict:
     rows: list[list[dict]] = [
         [{"text": "🔹 任务", "callback_data": "help_menu:tasks"}],
         [{"text": "🔸 系统操作", "callback_data": "help_menu:sys"}],
     ]
+    if show_vpn:
+        rows.append([{"text": "🌐 VPN地址", "callback_data": "vpn_ip"}])
     if show_dev:
         rows.append([{"text": "🛠 AI开发", "callback_data": "help_menu:dev"}])
     if show_wi:
