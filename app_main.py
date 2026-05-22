@@ -14,6 +14,7 @@ from app_ado.ui.ai_dev_tab import AiDevTab
 from app_ado.ui.code_config_tab import CodeConfigTab
 from app_ado.ui.communication_config_tab import CommunicationConfigTab
 from app_ado.ui.mcp_config_tab import McpConfigTab
+from app_ado.ui.services_tab import ServicesTab
 from app_ado.ui.tasks_tab import TasksTab
 from app_ado.ui.work_items_tab import WorkItemsTab
 
@@ -42,6 +43,7 @@ def main() -> None:
     ai = AiConfigTab()
     mcp = McpConfigTab()
     work_items = WorkItemsTab()
+    services = ServicesTab()
 
     # AI 开发：本地多会话 + TG 桥
     from app_ado.ai_dev_session import AiDevSessionManager
@@ -108,6 +110,7 @@ def main() -> None:
 
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
     w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
+    w.addSubInterface(services, FluentIcon.GLOBE, "服务")
     w.addSubInterface(communication, FluentIcon.CHAT, "通讯配置")
     w.addSubInterface(code, FluentIcon.CODE, "代码配置")
     w.addSubInterface(settings, FluentIcon.SETTING, "设置")

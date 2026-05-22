@@ -432,12 +432,12 @@ class TelegramController:
                 # Telegram does not allow empty text. Use an "invisible" placeholder char.
                 show_dev = (role == "owner") and (self._dev_bridge is not None)
                 show_wi = (role == "owner") and (self._wi_bridge is not None)
-                show_vpn = (role == "owner")
+                show_svc = (role == "owner")
                 self._reply(
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi, show_vpn=show_vpn),
+                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi, show_svc=show_svc),
                 )
                 return
             except Exception as e:
@@ -740,6 +740,52 @@ class TelegramController:
 
     # ---------------- 工单：callback 分发 ----------------
 
+    def _handle_svc_callback(self, token: str, chat_id: str, data: str) -> None:
+        """服务面板回调（owner-only，调用方已校验权限）。
+
+        data: svc / svc:vpn / svc:cs / svc:cs:start / svc:cs:stop / svc:cf / svc:cf:start / svc:cf:stop
+        """
+        from app_ado import services_panel as svc
+        from app_ado.tg_help_inline import (
+            services_menu,
+            service_actions_menu,
+            service_back_menu,
+        )
+
+        parts = data.split(":")
+        if len(parts) == 1:  # "svc"
+            self._reply(token, chat_id, "🧰 服务面板", reply_markup=services_menu())
+            return
+
+        key = parts[1]
+        action = parts[2] if len(parts) > 2 else ""
+
+        if key == "vpn":
+            ip = svc.vpn_ip()
+            text = f"🌐 当前 Harmony VPN IP\n\n{ip}" if ip else "🌐 没有找到 Harmony VPN IP，可能 VPN 没连上。"
+            self._reply(token, chat_id, text, reply_markup=service_back_menu())
+            return
+
+        if key in ("cs", "cf"):
+            starter = svc.codeserver_start if key == "cs" else svc.cloudflared_start
+            stopper = svc.codeserver_stop if key == "cs" else svc.cloudflared_stop
+            status = svc.codeserver_status if key == "cs" else svc.cloudflared_status
+
+            head = ""
+            if action == "start":
+                _, head = starter()
+            elif action == "stop":
+                _, head = stopper()
+
+            text = status()
+            if head:
+                text = f"{head}\n\n{text}"
+            self._reply(token, chat_id, text, reply_markup=service_actions_menu(key))
+            return
+
+        # 未知子项，回服务面板
+        self._reply(token, chat_id, "🧰 服务面板", reply_markup=services_menu())
+
     def _handle_wi_callback(self, token: str, chat_id: str, data: str) -> None:
         bridge = self._wi_bridge
         if bridge is None:
@@ -879,18 +925,12 @@ class TelegramController:
                             if data2 == "help_noop":
                                 continue
 
-                            # VPN 地址：仅 owner 可用
-                            if data2 == "vpn_ip":
+                            # 服务面板：svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]，仅 owner
+                            if data2 == "svc" or data2.startswith("svc:"):
                                 if role2 != "owner":
                                     self._reply(token, chat_id2, "无权限")
                                     continue
-                                from app_ado.vpn_ip import get_vpn_ip
-
-                                ip = get_vpn_ip()
-                                if ip:
-                                    self._reply(token, chat_id2, f"🌐 当前 Harmony VPN IP\n\n{ip}")
-                                else:
-                                    self._reply(token, chat_id2, "没有找到 Harmony VPN IP，可能 VPN 没连上。")
+                                self._handle_svc_callback(token, chat_id2, data2)
                                 continue
 
                             # AI 开发：dev_key:<sid>:<key> / dev_kill:<sid>
@@ -987,6 +1027,13 @@ class TelegramController:
                                 if op == "dev":
                                     self._handle_dev_main_menu(token, chat_id2, role2, group2)
                                     continue
+                                if op == "svc":
+                                    if role2 != "owner":
+                                        self._reply(token, chat_id2, "无权限：服务")
+                                        continue
+                                    from app_ado.tg_help_inline import services_menu
+                                    self._reply(token, chat_id2, "🧰 服务面板", reply_markup=services_menu())
+                                    continue
                                 if op == "wi":
                                     if self._wi_bridge is not None and self._wi_bridge.can_use(role2, group2):
                                         text_wi, markup_wi = self._wi_bridge.handle_main(chat_id2)
@@ -997,8 +1044,8 @@ class TelegramController:
                                 # back
                                 show_dev2 = (role2 == "owner") and (self._dev_bridge is not None)
                                 show_wi2 = (role2 == "owner") and (self._wi_bridge is not None)
-                                show_vpn2 = (role2 == "owner")
-                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2, show_vpn=show_vpn2))
+                                show_svc2 = (role2 == "owner")
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2, show_svc=show_svc2))
                                 continue
 
                             if data2.startswith("help_run:"):
