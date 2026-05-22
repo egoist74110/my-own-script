@@ -9,7 +9,7 @@ def top_menu(*, show_dev: bool = False, show_wi: bool = False, show_svc: bool = 
     if show_svc:
         rows.append([{"text": "🧰 服务", "callback_data": "help_menu:svc"}])
     if show_dev:
-        rows.append([{"text": "🛠 AI开发", "callback_data": "help_menu:dev"}])
+        rows.append([{"text": "🤖 Claude 会话", "callback_data": "help_menu:dev"}])
     if show_wi:
         rows.append([{"text": "📋 工单", "callback_data": "help_menu:wi"}])
     return {"inline_keyboard": rows}
@@ -21,6 +21,7 @@ def services_menu() -> dict:
         [{"text": "🌐 VPN 地址", "callback_data": "svc:vpn"}],
         [{"text": "💻 code-server", "callback_data": "svc:cs"}],
         [{"text": "☁️ cloudflared 隧道", "callback_data": "svc:cf"}],
+        [{"text": "📱 CC Pocket", "callback_data": "svc:cp"}],
         [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
     ]}
 
@@ -31,6 +32,17 @@ def service_actions_menu(key: str) -> dict:
         [{"text": "▶️ 启动", "callback_data": f"svc:{key}:start"},
          {"text": "⏹ 关闭", "callback_data": f"svc:{key}:stop"}],
         [{"text": "🔄 刷新状态", "callback_data": f"svc:{key}"}],
+        [{"text": "⬅ 返回", "callback_data": "help_menu:svc"}],
+    ]}
+
+
+def ccpocket_actions_menu() -> dict:
+    """CC Pocket 操作菜单：比通用菜单多一个「获取二维码」。"""
+    return {"inline_keyboard": [
+        [{"text": "▶️ 启动", "callback_data": "svc:cp:start"},
+         {"text": "⏹ 关闭", "callback_data": "svc:cp:stop"}],
+        [{"text": "📱 获取二维码", "callback_data": "svc:cp:qr"}],
+        [{"text": "🔄 刷新状态", "callback_data": "svc:cp"}],
         [{"text": "⬅ 返回", "callback_data": "help_menu:svc"}],
     ]}
 

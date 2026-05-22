@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qfluentwidgets import CardWidget, InfoBar, InfoBarPosition, PushButton
 
 from app_ado import services_panel as svc
@@ -26,6 +26,7 @@ class ServicesTab(Tab):
         self._build_vpn_card()
         self._build_codeserver_card()
         self._build_cloudflared_card()
+        self._build_ccpocket_card()
         self._refresh_all()
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(3000)
@@ -119,17 +120,72 @@ class ServicesTab(Tab):
         self.btn_cf_copy.clicked.connect(lambda: self._copy(svc.cloudflared_domain(), "cloudflared 域名已复制"))
         self.add_card("☁️ cloudflared 临时隧道", w)
 
+    # ---------- CC Pocket ----------
+
+    def _build_ccpocket_card(self) -> None:
+        w = CardWidget(self)
+        lay = QtWidgets.QVBoxLayout(w)
+        self.lbl_cp = self._status_label()
+        self.btn_cp_start = PushButton("启动")
+        self.btn_cp_stop = PushButton("关闭")
+        self.btn_cp_qr = PushButton("获取二维码")
+        row = QtWidgets.QHBoxLayout()
+        for b in (self.btn_cp_start, self.btn_cp_stop, self.btn_cp_qr):
+            row.addWidget(b)
+        row.addStretch(1)
+        lay.addWidget(self.lbl_cp)
+        lay.addLayout(row)
+        self.btn_cp_start.clicked.connect(lambda: self._run_action("CC Pocket 启动", svc.ccpocket_start))
+        self.btn_cp_stop.clicked.connect(lambda: self._run_action("CC Pocket 关闭", svc.ccpocket_stop))
+        self.btn_cp_qr.clicked.connect(self._show_ccpocket_qr)
+        self.add_card("📱 CC Pocket", w)
+
+    def _show_ccpocket_qr(self) -> None:
+        png = svc.ccpocket_qr_png(scale=10, border=3)
+        if not png:
+            self._toast("没有二维码", "请先启动 CC Pocket", ok=False)
+            return
+        deeplink = svc.ccpocket_deeplink() or ""
+        pix = QtGui.QPixmap()
+        if not pix.loadFromData(png, "PNG"):
+            self._toast("二维码渲染失败", "无法加载图片", ok=False)
+            return
+
+        dlg = QtWidgets.QDialog(self.window())
+        dlg.setWindowTitle("CC Pocket 连接二维码")
+        v = QtWidgets.QVBoxLayout(dlg)
+        img = QtWidgets.QLabel()
+        img.setPixmap(pix)
+        img.setAlignment(QtCore.Qt.AlignCenter)
+        tip = QtWidgets.QLabel("用 ccpocket app 扫码连接")
+        tip.setAlignment(QtCore.Qt.AlignCenter)
+        link = QtWidgets.QLabel(deeplink)
+        link.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        link.setWordWrap(True)
+        btn_copy = PushButton("复制链接")
+        btn_copy.clicked.connect(lambda: self._copy(deeplink, "CC Pocket 链接已复制"))
+        v.addWidget(img)
+        v.addWidget(tip)
+        v.addWidget(link)
+        v.addWidget(btn_copy)
+        dlg.exec()
+
     # ---------- 刷新 ----------
 
     def _refresh_all(self) -> None:
         self._refresh_vpn()
         self.lbl_cs.setText(svc.codeserver_status())
         self.lbl_cf.setText(svc.cloudflared_status())
+        self.lbl_cp.setText(svc.ccpocket_status())
 
     # ---------- 启停（放到线程，避免阻塞 UI；cloudflared 启动会等十几秒抓域名）----------
 
     def _action_buttons(self) -> list[PushButton]:
-        return [self.btn_cs_start, self.btn_cs_stop, self.btn_cf_start, self.btn_cf_stop]
+        return [
+            self.btn_cs_start, self.btn_cs_stop,
+            self.btn_cf_start, self.btn_cf_stop,
+            self.btn_cp_start, self.btn_cp_stop,
+        ]
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy

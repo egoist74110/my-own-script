@@ -101,7 +101,6 @@ class AiConfigTab(Tab):
     def _default_profiles(self) -> list[AiCliProfile]:
         return [
             AiCliProfile(id="codex", name="Codex", command="codex", builtin=True),
-            AiCliProfile(id="gemini", name="Gemini CLI", command="gemini", builtin=True),
             AiCliProfile(id="claude_code", name="Claude Code", command="claude", builtin=True),
         ]
 

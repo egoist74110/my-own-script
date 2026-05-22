@@ -45,9 +45,8 @@ def main() -> None:
     work_items = WorkItemsTab()
     services = ServicesTab()
 
-    # AI 开发：本地多会话 + TG 桥
+    # AI 开发：本地终端（多会话 PTY），纯本地、不再镜像到 TG
     from app_ado.ai_dev_session import AiDevSessionManager
-    from app_ado.ai_dev_tg_bridge import AiDevTgBridge
     from app_ado.secrets import get_telegram_token
     from app_ado.store import load_ui_settings as _load_ui_settings_for_dev
 
@@ -66,29 +65,19 @@ def main() -> None:
         except Exception:
             return None
 
-    ai_dev_bridge = AiDevTgBridge(
-        manager=ai_dev_manager,
+    # Claude headless 结构化会话（CC Pocket 式）：TG 端的 AI 开发入口
+    from app_ado.ai_headless_session import HeadlessSessionManager
+    from app_ado.ai_headless_tg_bridge import AiHeadlessTgBridge
+
+    headless_manager = HeadlessSessionManager()
+    headless_bridge = AiHeadlessTgBridge(
+        manager=headless_manager,
         bot_token_fn=_dev_bot_token,
         owner_chat_id_fn=_dev_owner_chat_id,
     )
-    ai_dev_bridge.start()
+    headless_bridge.start()  # 启动审批落盘监听线程
 
-    ai_dev = AiDevTab(ai_dev_manager, ai_dev_bridge)
-
-    # AiDevTab 创建会话后，把 owner chat 自动挂上来（让 owner 直接发 TG 文字就能到这个会话）
-    _orig_run_clicked = ai_dev._on_run_clicked
-
-    def _run_clicked_then_attach(model_id: str) -> None:
-        before = set(s.sid for s in ai_dev_manager.list())
-        _orig_run_clicked(model_id)
-        after = set(s.sid for s in ai_dev_manager.list())
-        new_sids = after - before
-        owner_chat = _dev_owner_chat_id()
-        if owner_chat:
-            for sid in new_sids:
-                ai_dev_bridge.attach_chat_to_session(owner_chat, sid)
-
-    ai_dev._on_run_clicked = _run_clicked_then_attach  # type: ignore[assignment]
+    ai_dev = AiDevTab(ai_dev_manager)
 
     # Telegram control (polling thread) - only active while app runs
     from app_ado.tg_control import TelegramController
@@ -103,8 +92,8 @@ def main() -> None:
         on_stop_menu=tasks.list_stoppable_tasks,
         on_stop_one=tasks.stop_one_task,
         on_status=tasks.status_text,
-        dev_bridge=ai_dev_bridge,
         wi_bridge=wi_bridge,
+        headless_bridge=headless_bridge,
     )
     tg.start()
 
@@ -119,7 +108,7 @@ def main() -> None:
     w.addSubInterface(ai_dev, FluentIcon.COMMAND_PROMPT, "AI开发")
 
     # 退出时清理：终止所有 AI 开发会话
-    app.aboutToQuit.connect(lambda: (ai_dev_bridge.stop(), ai_dev_manager.shutdown(), ai_dev.shutdown()))
+    app.aboutToQuit.connect(lambda: (ai_dev_manager.shutdown(), ai_dev.shutdown(), headless_bridge.shutdown()))
 
     w.resize(1100, 760)
     w.show()

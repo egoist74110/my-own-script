@@ -29,3 +29,31 @@ def send_telegram_message(*, bot_token: str, chat_id: str, text: str, reply_mark
         data = r.json()
         if not data.get("ok"):
             raise RuntimeError(f"telegram send failed: {data}")
+
+
+def send_telegram_photo(
+    *,
+    bot_token: str,
+    chat_id: str,
+    photo: bytes,
+    caption: str | None = None,
+    filename: str = "qr.png",
+    timeout_sec: float = 20.0,
+) -> None:
+    """Send a photo (raw bytes) via Telegram Bot API sendPhoto (multipart upload)."""
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    data: dict[str, str] = {"chat_id": chat_id}
+    if caption:
+        data["caption"] = caption
+    files = {"photo": (filename, photo, "image/png")}
+    with httpx.Client(timeout=httpx.Timeout(timeout_sec, connect=5.0), follow_redirects=False) as c:
+        try:
+            r = c.post(url, data=data, files=files)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            body = e.response.text if e.response is not None else ""
+            raise RuntimeError(f"Telegram HTTP {e.response.status_code if e.response else ''}: {body}") from e
+
+        d = r.json()
+        if not d.get("ok"):
+            raise RuntimeError(f"telegram sendPhoto failed: {d}")

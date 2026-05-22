@@ -20,7 +20,6 @@ from app_ado.ai_dev_session import (
     AiDevSessionManager,
     resolve_command_executable,
 )
-from app_ado.ai_dev_tg_bridge import AiDevTgBridge
 from app_ado.models import AiCliProfile, LocalRepoEntry
 from app_ado.store import load_ui_settings
 from app_ado.ui.ai_dev_repo_dialog import PickLocalRepoDialog
@@ -29,7 +28,6 @@ from ok.gui.widget.Tab import Tab
 
 
 _BUTTON_MODELS: list[tuple[str, str]] = [
-    ("gemini", "Gemini"),
     ("claude_code", "Claude Code"),
     ("codex", "Codex"),
 ]
@@ -51,10 +49,9 @@ class AiDevTab(Tab):
     _sig_session_update = QtCore.Signal(str)  # sid
     _sig_session_exit = QtCore.Signal(str)    # sid
 
-    def __init__(self, manager: AiDevSessionManager, tg_bridge: Optional[AiDevTgBridge]) -> None:
+    def __init__(self, manager: AiDevSessionManager) -> None:
         super().__init__()
         self._manager = manager
-        self._tg_bridge = tg_bridge
         self._current_sid: Optional[str] = None
         self._listener_for: dict[str, callable] = {}  # sid -> listener fn
         self._refresh_timer = QtCore.QTimer(self)
@@ -274,9 +271,6 @@ class AiDevTab(Tab):
             self._toast("启动失败", str(e), ok=False)
             return
         self._attach_session(sess)
-        if self._tg_bridge is not None:
-            self._tg_bridge._sid_to_chats.setdefault(sess.info.sid, set())
-            self._tg_bridge._mark_dirty(sess.info.sid)
         self._refresh_list(select_sid=sess.info.sid)
         self._toast("已启动", f"会话 #{sess.info.sid}（{profile.name} / {repo.name}）")
 
@@ -329,10 +323,7 @@ class AiDevTab(Tab):
         if ok != QtWidgets.QMessageBox.Yes:
             return
         self._detach_session_listener(sid)
-        if self._tg_bridge is not None:
-            self._tg_bridge.handle_kill(sid, chat_id="", role="owner", group=None)
-        else:
-            self._manager.remove(sid)
+        self._manager.remove(sid)
         if self._current_sid == sid:
             self._current_sid = None
         self._refresh_list()
