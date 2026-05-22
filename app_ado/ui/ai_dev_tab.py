@@ -2,7 +2,7 @@
 
 布局上下分区：
   上：三个运行按钮 + 会话列表 + 删除按钮
-  下：聚焦会话的终端面板（输出 + 输入框 + 软键盘）
+  下：聚焦会话的真终端面板（自绘彩色终端，可直接敲键盘进 PTY + 一个粘长 prompt 的输入框）
 
 只读 UiSettings.ai.tool.profiles 和 UiSettings.local_repos，不修改这些配置。
 """
@@ -12,19 +12,19 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, InfoBar, InfoBarPosition, PushButton
 
 from app_ado.ai_dev_session import (
     AiDevSession,
     AiDevSessionManager,
-    KEY_CODES,
     resolve_command_executable,
 )
 from app_ado.ai_dev_tg_bridge import AiDevTgBridge
 from app_ado.models import AiCliProfile, LocalRepoEntry
 from app_ado.store import load_ui_settings
 from app_ado.ui.ai_dev_repo_dialog import PickLocalRepoDialog
+from app_ado.ui.ai_dev_terminal import TerminalWidget
 from ok.gui.widget.Tab import Tab
 
 
@@ -127,40 +127,24 @@ class AiDevTab(Tab):
         self._term_header.setStyleSheet("font-weight:600;")
         v.addWidget(self._term_header)
 
-        self._term_view = QtWidgets.QPlainTextEdit()
-        self._term_view.setReadOnly(True)
-        font = QtGui.QFont("Menlo")
-        font.setStyleHint(QtGui.QFont.Monospace)
-        if not font.exactMatch():
-            font = QtGui.QFont("Courier New")
-            font.setStyleHint(QtGui.QFont.Monospace)
-        font.setPointSize(11)
-        self._term_view.setFont(font)
-        self._term_view.setMinimumHeight(280)
+        # 真终端：直接敲键盘进 PTY，彩色渲染 + 光标 + 跟随窗口 resize
+        self._term_view = TerminalWidget()
+        self._term_view.key_bytes.connect(self._on_term_key_bytes)
+        self._term_view.paste_text.connect(self._on_term_paste)
+        self._term_view.resized.connect(self._on_term_resized)
         v.addWidget(self._term_view, 1)
 
-        # 软键盘
-        kb_row = QtWidgets.QHBoxLayout()
-        kb_row.setSpacing(4)
-        self._key_buttons: list[PushButton] = []
-        for label, key in [
-            ("↑", "up"), ("↓", "down"), ("←", "left"), ("→", "right"),
-            ("Enter", "enter"), ("Esc", "esc"), ("Tab", "tab"),
-            ("⌫", "backspace"), ("Space", "space"),
-            ("Y", "y"), ("N", "n"), ("Ctrl+C", "ctrl_c"),
-        ]:
-            b = PushButton(label)
-            b.setFixedHeight(28)
-            b.clicked.connect(lambda _=False, k=key: self._on_key_clicked(k))
-            self._key_buttons.append(b)
-            kb_row.addWidget(b)
-        kb_row.addStretch(1)
-        v.addLayout(kb_row)
+        self._term_hint = QtWidgets.QLabel(
+            "点终端可直接敲键盘（方向键/Ctrl+C/Tab 等实时生效）；滚轮或 Shift+PgUp/PgDn 翻历史；"
+            "框选后 " + ("Cmd+C 复制、Cmd+V 粘贴" if sys.platform == "darwin" else "Ctrl+Shift+C/V 复制粘贴")
+        )
+        self._term_hint.setStyleSheet("color:#888; font-size:11px;")
+        v.addWidget(self._term_hint)
 
-        # 输入框
+        # 输入框：粘长 prompt 用（bracketed-paste，避免被 TUI 吃掉换行）
         in_row = QtWidgets.QHBoxLayout()
         self._input = QtWidgets.QLineEdit()
-        self._input.setPlaceholderText("回车发送（自动追加换行）")
+        self._input.setPlaceholderText("贴长提示词，回车发送（自动追加换行）")
         self._input.returnPressed.connect(self._on_send_clicked)
         self._btn_send = PushButton("发送")
         self._btn_send.clicked.connect(self._on_send_clicked)
@@ -252,8 +236,7 @@ class AiDevTab(Tab):
     def _set_terminal_enabled(self, enabled: bool) -> None:
         self._input.setEnabled(enabled)
         self._btn_send.setEnabled(enabled)
-        for b in self._key_buttons:
-            b.setEnabled(enabled)
+        self._term_view.set_input_enabled(enabled)
 
     # ------------------------------------------------------------------
     # event handlers
@@ -302,7 +285,7 @@ class AiDevTab(Tab):
         if item is None:
             self._current_sid = None
             self._term_header.setText("（未选中会话）")
-            self._term_view.clear()
+            self._term_view.clear_screen()
             self._set_terminal_enabled(False)
             return
         sid = item.data(QtCore.Qt.UserRole)
@@ -310,15 +293,22 @@ class AiDevTab(Tab):
         sess = self._manager.get(sid)
         if not sess:
             self._term_header.setText(f"#{sid}（会话已不存在）")
-            self._term_view.clear()
+            self._term_view.clear_screen()
             self._set_terminal_enabled(False)
             return
         self._term_header.setText(
             f"#{sess.info.sid}   {sess.info.model_label}   {sess.info.repo_name}   "
             f"cmd: {sess.info.command}"
         )
-        self._set_terminal_enabled(sess.info.status != "exited")
-        self._render_screen(sess)
+        live = sess.info.status != "exited"
+        self._set_terminal_enabled(live)
+        if live:
+            rows, cols = self._term_view.grid_size()
+            sess.resize(rows, cols)
+        # 绑定取片接口；set_provider 内部会贴底刷新（退出的会话也能滚动回看最终输出）
+        self._term_view.set_provider(sess.screen_view)
+        if live:
+            self._term_view.setFocus()
 
     def _on_delete_clicked(self) -> None:
         item = self._list.currentItem()
@@ -362,15 +352,29 @@ class AiDevTab(Tab):
             return
         self._input.clear()
 
-    def _on_key_clicked(self, key: str) -> None:
+    def _current_live_session(self) -> Optional[AiDevSession]:
         if not self._current_sid:
-            return
+            return None
         sess = self._manager.get(self._current_sid)
         if not sess or sess.info.status == "exited":
-            return
-        if key not in KEY_CODES:
-            return
-        sess.send_key(key)
+            return None
+        return sess
+
+    def _on_term_key_bytes(self, data: bytes) -> None:
+        sess = self._current_live_session()
+        if sess is not None:
+            sess.write_bytes(data)
+
+    def _on_term_paste(self, text: str) -> None:
+        sess = self._current_live_session()
+        if sess is not None and text:
+            sess.write_text(text, append_enter=False)
+
+    def _on_term_resized(self, rows: int, cols: int) -> None:
+        sess = self._current_live_session()
+        if sess is not None:
+            sess.resize(rows, cols)
+            self._render_screen(sess)
 
     # ------------------------------------------------------------------
     # session listener (cross-thread)
@@ -410,16 +414,8 @@ class AiDevTab(Tab):
             self._set_terminal_enabled(False)
 
     def _render_screen(self, sess: AiDevSession) -> None:
-        snapshot = sess.snapshot_text()
-        if self._term_view.toPlainText() != snapshot:
-            scroll = self._term_view.verticalScrollBar()
-            at_bottom = scroll.value() >= scroll.maximum() - 4
-            self._term_view.setPlainText(snapshot)
-            if at_bottom:
-                cursor = self._term_view.textCursor()
-                cursor.movePosition(QtGui.QTextCursor.End)
-                self._term_view.setTextCursor(cursor)
-                self._term_view.ensureCursorVisible()
+        # provider 已绑定到该会话，直接重取可视片重绘
+        self._term_view.refresh()
 
     # ------------------------------------------------------------------
     # misc

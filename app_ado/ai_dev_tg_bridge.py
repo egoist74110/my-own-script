@@ -29,8 +29,9 @@ from app_ado.ai_dev_session import (
 )
 
 
-_MAX_LINES_TO_SEND = 24
-_MAX_LINE_WIDTH = 100
+# 手机阅读优化：窄一点、行多一点，省得手机上每行横向滚动。嫌宽窄不合适改这两个值。
+_MAX_LINES_TO_SEND = 30
+_MAX_LINE_WIDTH = 72
 _FLUSH_MIN_INTERVAL = 0.4  # 同一会话两次 TG 编辑之间最少间隔（秒）
 _TG_HTTP_TIMEOUT = 12.0
 
@@ -90,6 +91,19 @@ def _keyboard_for_session(sess: AiDevSession) -> dict:
         {"text": "⌫", "callback_data": f"dev_key:{sid}:backspace"},
         {"text": "Space", "callback_data": f"dev_key:{sid}:space"},
         {"text": "Ctrl+C", "callback_data": f"dev_key:{sid}:ctrl_c"},
+        {"text": "Ctrl+D", "callback_data": f"dev_key:{sid}:ctrl_d"},
+    ])
+    rows.append([
+        {"text": "PgUp", "callback_data": f"dev_key:{sid}:pageup"},
+        {"text": "PgDn", "callback_data": f"dev_key:{sid}:pagedown"},
+        {"text": "Esc²", "callback_data": f"dev_key:{sid}:esc_esc"},
+    ])
+    rows.append([
+        {"text": "1", "callback_data": f"dev_key:{sid}:1"},
+        {"text": "2", "callback_data": f"dev_key:{sid}:2"},
+        {"text": "3", "callback_data": f"dev_key:{sid}:3"},
+        {"text": "4", "callback_data": f"dev_key:{sid}:4"},
+        {"text": "5", "callback_data": f"dev_key:{sid}:5"},
     ])
     rows.append([
         {"text": "🗑 删除", "callback_data": f"dev_kill:{sid}"},
@@ -281,6 +295,9 @@ class AiDevTgBridge:
         ok = sess.write_text(text, append_enter=True)
         if not ok:
             return False, "写入失败（会话可能已关闭）"
+        # reply 到哪个会话就把它设为当前活跃；之后不必再 reply，直接打字即可继续
+        if chat_id:
+            self._chat_focus[str(chat_id)] = sid
         return True, ""  # 静默：不另发"已发送"，等屏幕自然刷出来
 
     def handle_prompt_button(
@@ -341,6 +358,9 @@ class AiDevTgBridge:
         if key not in KEY_CODES:
             return False, f"未知按键：{key}"
         sess.send_key(key)
+        # 操作过哪个会话，它就成为该 chat 的当前活跃会话；之后直接打字就进它
+        if chat_id:
+            self._chat_focus[str(chat_id)] = sid
         return True, ""
 
     # 反查：TG reply-to 的目标消息是否属于某个远程开发会话

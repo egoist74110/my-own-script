@@ -32,6 +32,8 @@ except Exception:
     _HAS_PYTE = False
 
 
+_SCROLLBACK_LINES = 5000  # GUI 终端回滚保留的历史行数上限
+
 _YN_RE = re.compile(
     r"\(\s*(?:y\s*/\s*n|y\s*/\s*N|N\s*/\s*y|yes\s*/\s*no|是\s*/\s*否)\s*\)\s*[?？]?\s*$",
     re.IGNORECASE,
@@ -46,13 +48,20 @@ KEY_CODES: dict[str, bytes] = {
     "left": b"\x1b[D",
     "enter": b"\r",
     "esc": b"\x1b",
+    "esc_esc": b"\x1b\x1b",   # Claude Code 双 Esc = 清空输入
     "tab": b"\t",
+    "home": b"\x1b[H",
+    "end": b"\x1b[F",
+    "pageup": b"\x1b[5~",
+    "pagedown": b"\x1b[6~",
     "y": b"y",
     "n": b"n",
     "ctrl_c": b"\x03",
     "ctrl_d": b"\x04",
     "backspace": b"\x7f",
     "space": b" ",
+    # 数字键：选 TUI 菜单项
+    "1": b"1", "2": b"2", "3": b"3", "4": b"4", "5": b"5",
 }
 
 
@@ -136,7 +145,8 @@ class AiDevSession:
         self._closed = False
         self._listeners: list[Callable[[str, bool], None]] = []
         if _HAS_PYTE:
-            self._screen = pyte.Screen(cols, rows)
+            # HistoryScreen 维护回滚缓冲（滚出屏幕的行进 history.top），GUI 据此实现滚动
+            self._screen = pyte.HistoryScreen(cols, rows, history=_SCROLLBACK_LINES, ratio=0.5)
             self._stream = pyte.ByteStream(self._screen)
             self._raw_buf: Optional[bytearray] = None
         else:
@@ -311,6 +321,27 @@ class AiDevSession:
             return False
         return self.write_bytes(b)
 
+    def resize(self, rows: int, cols: int) -> bool:
+        """跟随前端窗口调整终端尺寸：同步 pyte 屏幕 + 对 PTY 发 TIOCSWINSZ（触发 SIGWINCH）。"""
+        rows = max(1, int(rows))
+        cols = max(1, int(cols))
+        if rows == self._rows and cols == self._cols:
+            return True
+        self._rows, self._cols = rows, cols
+        if self._screen is not None:
+            try:
+                self._screen.resize(rows, cols)
+            except Exception:
+                pass
+        fd = self._master_fd
+        if fd is not None and not self._closed:
+            try:
+                packed = struct.pack("HHHH", rows, cols, 0, 0)
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, packed)
+            except Exception:
+                pass
+        return True
+
     # ---------- screen ----------
 
     def snapshot_text(self) -> str:
@@ -320,6 +351,79 @@ class AiDevSession:
         if self._raw_buf is not None:
             return strip_ansi(self._raw_buf.decode("utf-8", errors="replace"))
         return ""
+
+    @staticmethod
+    def _line_to_cells(line, cols: int) -> list:
+        out = []
+        for x in range(cols):
+            c = line[x]
+            out.append((c.data or " ", c.fg, c.bg, bool(c.bold), bool(c.reverse), bool(c.underscore)))
+        return out
+
+    @staticmethod
+    def _line_blank(line, cols: int) -> bool:
+        for x in range(cols):
+            d = line[x].data
+            if d and d != " ":
+                return False
+        return True
+
+    def screen_view(self, start: int, count: int) -> tuple:
+        """供 GUI 滚动渲染的「按需取片」接口（含历史回滚）。
+
+        返回 (total, cursor, rows)：
+          total  = 完整记录总行数（历史 + 当前页，已裁掉末尾空行，但保证含光标行）
+          cursor = (x, y_full, hidden)，y_full 是在完整记录里的行号
+          rows   = [start, start+count) 这一段的单元格行（只构建这一段，O(count)）
+
+        count<=0 时只返回 (total, cursor, [])，用于廉价地取总行数/光标。
+        无 pyte 时退化为纯文本网格。
+        """
+        scr = self._screen
+        if scr is not None:
+            try:
+                cols = scr.columns
+                page_rows = scr.lines
+                hist = getattr(scr, "history", None)
+                top_deque = list(hist.top) if (hist is not None and hist.top) else []
+                n_hist = len(top_deque)
+                buf = scr.buffer
+
+                def _line_at(idx):
+                    return buf[idx - n_hist] if idx >= n_hist else top_deque[idx]
+
+                cur = scr.cursor
+                cx = int(cur.x)
+                cy = int(cur.y) + n_hist
+                hidden = bool(getattr(cur, "hidden", False))
+
+                # 从底部往上裁掉全空行（光标行及以上保留）
+                last = n_hist + page_rows - 1
+                while last > cy and last >= 0 and self._line_blank(_line_at(last), cols):
+                    last -= 1
+                total = max(last + 1, cy + 1, 0)
+                cursor = (cx, cy, hidden)
+                if count <= 0:
+                    return total, cursor, []
+                rows = [
+                    self._line_to_cells(_line_at(idx), cols)
+                    for idx in range(max(0, start), min(start + count, total))
+                ]
+                return total, cursor, rows
+            except Exception:
+                pass
+
+        # fallback（无 pyte）
+        all_lines = self.snapshot_text().split("\n")
+        total = len(all_lines)
+        cursor = (0, max(0, total - 1), True)
+        if count <= 0:
+            return total, cursor, []
+        rows = [
+            [(ch, "default", "default", False, False, False) for ch in ln]
+            for ln in all_lines[max(0, start): start + count]
+        ]
+        return total, cursor, rows
 
     # ---------- shutdown ----------
 
