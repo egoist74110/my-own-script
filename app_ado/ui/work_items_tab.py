@@ -188,9 +188,7 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
         threading.Thread(target=run, daemon=True).start()
 
 
-_AI_CHOICES: list[tuple[str, str]] = [
-    ("claude_code", "Claude Code"),
-]
+_DEFAULT_AI_PROFILE_ID = "claude_code"
 
 
 class WorkItemsTab(Tab):
@@ -665,6 +663,12 @@ class WorkItemsTab(Tab):
         return str(combo.currentData() or "")
 
     def _choose_ai_profile(self) -> str | None:
+        settings = load_ui_settings()
+        profiles = [p for p in (settings.ai.tool.profiles or []) if (p.command or "").strip()]
+        if not profiles:
+            show_error_dialog(self, "未配置 AI", "请先到【AI 配置】里给 AI CLI 设好启动命令")
+            return None
+
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle("选择 AI")
         dlg.setModal(True)
@@ -675,9 +679,12 @@ class WorkItemsTab(Tab):
 
         combo = QtWidgets.QComboBox()
         combo.setFixedWidth(220)
-        for pid, label in _AI_CHOICES:
-            combo.addItem(label, userData=pid)
-        combo.setCurrentIndex(0)
+        default_idx = 0
+        for i, profile in enumerate(profiles):
+            combo.addItem(profile.name or profile.id, userData=profile.id)
+            if profile.id == _DEFAULT_AI_PROFILE_ID:
+                default_idx = i
+        combo.setCurrentIndex(default_idx)
 
         row = QtWidgets.QHBoxLayout()
         btn_cancel = PushButton("取消")

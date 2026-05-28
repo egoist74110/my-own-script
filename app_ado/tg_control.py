@@ -749,14 +749,15 @@ class TelegramController:
             return
 
         if data.startswith("wi_ma:"):
-            # 选 AI（实际启动 claude 会话）
+            # 选 AI（命中 claude 时实际启动会话；其它 AI 暂未对接 TG，会礼貌报错）
             try:
-                _, wid_s, idx_s, ai_code = data.split(":", 3)
+                _, wid_s, repo_idx_s, ai_idx_s = data.split(":", 3)
                 wid = int(wid_s)
-                repo_idx = int(idx_s)
+                repo_idx = int(repo_idx_s)
+                ai_idx = int(ai_idx_s)
             except ValueError:
                 return
-            text, markup = bridge.handle_mcp_pick_ai(chat_id, wid, repo_idx, ai_code)
+            text, markup = bridge.handle_mcp_pick_ai(chat_id, wid, repo_idx, ai_idx)
             if text is not None:
                 self._reply(token, chat_id, text, reply_markup=markup)
             return

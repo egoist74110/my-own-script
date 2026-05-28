@@ -46,6 +46,9 @@ from app_ado.tg_work_items_inline import (
 _CACHE_TTL_SEC = 600.0
 _PAGE_SIZE = 10
 
+# TG 端目前只接了 claude stream-json；其它 AI 选了会礼貌报错。
+_TG_SUPPORTED_AI_IDS: frozenset[str] = frozenset({"claude_code"})
+
 
 def _has_child_relations(item: WorkItem) -> bool:
     for rel in item.relations or []:
@@ -326,6 +329,14 @@ class WorkItemsBridge:
 
     # ---------------- MCP 分析（选仓库 → 选 AI → 起 claude 会话） ----------------
 
+    def _ai_options_from_settings(self, s: UiSettings) -> list[tuple[str, str]]:
+        """读全局 AI 配置；过滤掉空命令。返回 [(profile_id, label), ...]。"""
+        return [
+            (p.id, (p.name or p.id))
+            for p in (s.ai.tool.profiles or [])
+            if (p.command or "").strip()
+        ]
+
     def handle_mcp_start(self, chat_id: str, work_item_id: int) -> tuple[str, dict]:
         s = self._settings()
         st = self._state(chat_id)
@@ -335,38 +346,64 @@ class WorkItemsBridge:
                 int(work_item_id), has_children=False
             )
 
-        # 缓存本次向导能选的仓库快照（callback 用 idx 引用）
-        snap = [(r.id, r.name, r.path) for r in repos]
+        # 缓存本次向导能选的仓库 / AI 快照（callback 用 idx 引用）
+        repos_snap = [(r.id, r.name, r.path) for r in repos]
+        ais_snap = self._ai_options_from_settings(s)
         st["mcp_wizard"] = {
             "work_item_id": int(work_item_id),
-            "repos": snap,
+            "repos": repos_snap,
+            "ais": ais_snap,
         }
-        rows = [(i, name, _short_path(path)) for i, (_rid, name, path) in enumerate(snap)]
+        rows = [(i, name, _short_path(path)) for i, (_rid, name, path) in enumerate(repos_snap)]
         return f"#{work_item_id} 选择本地仓库（cd 进去后再启 AI）：", wi_pick_repo_menu(int(work_item_id), rows)
 
     def handle_mcp_pick_repo(self, chat_id: str, work_item_id: int, repo_idx: int) -> tuple[str, dict]:
         st = self._state(chat_id)
         w = st.get("mcp_wizard") or {}
         repos = w.get("repos") or []
+        ais = w.get("ais") or []
         if int(w.get("work_item_id") or 0) != int(work_item_id):
             return "向导已过期，请重新点「MCP分析」。", wi_detail_menu(int(work_item_id), has_children=False)
         if repo_idx < 0 or repo_idx >= len(repos):
             return "无效的仓库选择。", wi_detail_menu(int(work_item_id), has_children=False)
+        if not ais:
+            return "未配置任何 AI（请到桌面端【AI 配置】里给 AI CLI 设启动命令）。", wi_detail_menu(
+                int(work_item_id), has_children=False
+            )
         _rid, name, _path = repos[repo_idx]
-        return f"#{work_item_id} 仓库：{name}\n选择 AI：", wi_pick_ai_menu(int(work_item_id), repo_idx)
+        ai_rows = [
+            (idx, label, (pid in _TG_SUPPORTED_AI_IDS))
+            for idx, (pid, label) in enumerate(ais)
+        ]
+        return (
+            f"#{work_item_id} 仓库：{name}\n选择 AI（🤖 已对接 / 🚫 尚未对接 TG）：",
+            wi_pick_ai_menu(int(work_item_id), repo_idx, ai_rows),
+        )
 
     def handle_mcp_pick_ai(
-        self, chat_id: str, work_item_id: int, repo_idx: int, ai_code: str,
+        self, chat_id: str, work_item_id: int, repo_idx: int, ai_idx: int,
     ) -> tuple[Optional[str], Optional[dict]]:
         st = self._state(chat_id)
         w = st.get("mcp_wizard") or {}
         repos = w.get("repos") or []
+        ais = w.get("ais") or []
         if int(w.get("work_item_id") or 0) != int(work_item_id):
             return "向导已过期，请重新点「MCP分析」。", wi_detail_menu(int(work_item_id), has_children=False)
         if repo_idx < 0 or repo_idx >= len(repos):
             return "无效的仓库选择。", wi_detail_menu(int(work_item_id), has_children=False)
-        if ai_code != "c":
-            return f"暂不支持的 AI：{ai_code}", wi_pick_ai_menu(int(work_item_id), repo_idx)
+        if ai_idx < 0 or ai_idx >= len(ais):
+            return "无效的 AI 选择。", wi_detail_menu(int(work_item_id), has_children=False)
+
+        ai_id, ai_label = ais[ai_idx]
+        if ai_id not in _TG_SUPPORTED_AI_IDS:
+            ai_rows = [
+                (idx, label, (pid in _TG_SUPPORTED_AI_IDS))
+                for idx, (pid, label) in enumerate(ais)
+            ]
+            return (
+                f"🚫 {ai_label} 暂未对接 TG 桥，目前只支持 Claude Code（桌面端可以跑这些 AI）。",
+                wi_pick_ai_menu(int(work_item_id), repo_idx, ai_rows),
+            )
 
         rid, repo_name, repo_path = repos[repo_idx]
 

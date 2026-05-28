@@ -97,12 +97,20 @@ def wi_pick_repo_menu(
     return {"inline_keyboard": kb}
 
 
-def wi_pick_ai_menu(work_item_id: int, repo_idx: int) -> dict:
-    """目前只接好了 Claude Code，所以菜单只有一项。"""
-    kb: list[list[dict]] = [
-        [{"text": "🤖 Claude Code", "callback_data": f"wi_ma:{work_item_id}:{repo_idx}:c"}],
-        [{"text": "⬅ 返回选仓库", "callback_data": f"wi_m:{work_item_id}"}],
-    ]
+def wi_pick_ai_menu(
+    work_item_id: int,
+    repo_idx: int,
+    ais: Iterable[tuple[int, str, bool]],
+) -> dict:
+    """ais 每条：(ai_idx, label, supported)。supported=False 的项也会显示但点了会回错。"""
+    kb: list[list[dict]] = []
+    for ai_idx, label, supported in ais:
+        prefix = "🤖" if supported else "🚫"
+        text = f"{prefix} {label}"
+        if len(text) > 56:
+            text = text[:55] + "…"
+        kb.append([{"text": text, "callback_data": f"wi_ma:{work_item_id}:{repo_idx}:{ai_idx}"}])
+    kb.append([{"text": "⬅ 返回选仓库", "callback_data": f"wi_m:{work_item_id}"}])
     return {"inline_keyboard": kb}
 
 
