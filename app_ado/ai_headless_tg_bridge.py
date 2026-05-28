@@ -23,8 +23,6 @@ from typing import Callable, Optional
 import httpx
 
 from app_ado.ai_headless_session import (
-    DEFAULT_EFFORT,
-    DEFAULT_PERMISSION_MODE,
     HeadlessEvent,
     HeadlessSession,
     HeadlessSessionManager,
@@ -35,22 +33,9 @@ from app_ado.ai_headless_session import (
 _TG_HTTP_TIMEOUT = 15.0
 _TG_MAX_LEN = 3900  # 给 markdown 包裹留余量（TG 上限 4096）
 
-# 向导可选项
-MODEL_CHOICES: list[tuple[str, str]] = [
-    ("sonnet", "Sonnet 4.6"),
-    ("opus", "Opus 4.7"),
-    ("haiku", "Haiku 4.5"),
-]
-EFFORT_CHOICES_UI: list[tuple[str, str]] = [
-    ("high", "High（更强）"),
-    ("medium", "Medium（默认）"),
-]
-# Phase 1：acceptEdits=默认放行(改文件自动应用)；bypassPermissions=全自动。
-# Phase 2 会在 acceptEdits 基础上把危险操作经 PreToolUse hook 推到 TG 审批。
-PERMISSION_CHOICES_UI: list[tuple[str, str]] = [
-    ("acceptEdits", "默认 · 改文件自动 / 命令推审批"),
-    ("bypassPermissions", "全自动 · 不打断"),
-]
+# 新建会话统一用 claude 的 auto 模式（分类器自动判断每个工具该不该跑），
+# 不再让用户选 model / effort / permission。这套保留为 dead code（cc_approval_hook
+# 之类的设施仍在仓库里，需要时可重新接回）。
 
 
 def _short(s: str, n: int) -> str:
@@ -265,7 +250,7 @@ class AiHeadlessTgBridge:
             st = status_zh.get(info.status, info.status)
             if info.status == "exited" and info.exit_code is not None:
                 st = f"已结束({info.exit_code})"
-            label = f"{mark} {info.model_id or '续聊'} · {info.repo_name} [{st}]"
+            label = f"{mark} {info.repo_name} [{st}]"
             kb.append([
                 {"text": label, "callback_data": f"cc:focus:{info.sid}"},
                 {"text": "🗑", "callback_data": f"cc:kill:{info.sid}"},
@@ -311,7 +296,7 @@ class AiHeadlessTgBridge:
             )
 
         if rest == "fresh":
-            return self._wiz_model_menu(cid)
+            return self._wiz_fresh(cid)
 
         if rest.startswith("resume:"):
             return self._wiz_pick_resume(cid, rest.split(":", 1)[1])
@@ -322,15 +307,6 @@ class AiHeadlessTgBridge:
                 "🔎 回复本条消息，发送筛选关键字（匹配会话标题）：",
                 {"force_reply": True, "input_field_placeholder": "关键字", "selective": True},
             )
-
-        if rest.startswith("model:"):
-            return self._wiz_pick_model(cid, rest.split(":", 1)[1])
-
-        if rest.startswith("effort:"):
-            return self._wiz_pick_effort(cid, rest.split(":", 1)[1])
-
-        if rest.startswith("perm:"):
-            return self._wiz_pick_perm(cid, rest.split(":", 1)[1], role, group)
 
         if rest.startswith("focus:"):
             sid = rest.split(":", 1)[1]
@@ -477,78 +453,22 @@ class AiHeadlessTgBridge:
         meta = claude_sessions.get_session(w["cwd"], session_id)
         if not meta:
             return "该会话不存在了。", None
-        w["resume_session_id"] = session_id
-        w["resume_title"] = meta.title
-        w["model"] = ""   # 续聊沿用原会话模型/effort
-        w["effort"] = ""
-        return self._wiz_perm_menu(cid)
-
-    # ---- ③ 模型（仅全新会话）----
-    def _wiz_model_menu(self, cid: str) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.setdefault(cid, {})
-        w["step"] = "pick_model"
-        w.setdefault("resume_session_id", "")
-        kb = [[{"text": label, "callback_data": f"cc:model:{mid}"}] for mid, label in MODEL_CHOICES]
-        kb.append([{"text": "✖ 取消", "callback_data": "cc:cancel"}])
-        return f"项目：{w.get('repo_name')}\n③ 选择模型：", {"inline_keyboard": kb}
-
-    def _wiz_pick_model(self, cid: str, model: str) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.get(cid)
-        if not w or not w.get("cwd"):
-            return "向导已过期，请重新点「新建」。", None
-        if model not in {m for m, _ in MODEL_CHOICES}:
-            return "未知模型。", None
-        w["model"] = model
-        return self._wiz_effort_menu(cid)
-
-    # ---- ④ effort（仅全新会话）----
-    def _wiz_effort_menu(self, cid: str) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.setdefault(cid, {})
-        w["step"] = "pick_effort"
-        kb = [[{"text": label, "callback_data": f"cc:effort:{eid}"}] for eid, label in EFFORT_CHOICES_UI]
-        kb.append([{"text": "✖ 取消", "callback_data": "cc:cancel"}])
-        return f"模型：{w.get('model')}\n④ 选择思考强度（effort）：", {"inline_keyboard": kb}
-
-    def _wiz_pick_effort(self, cid: str, effort: str) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.get(cid)
-        if not w or not w.get("cwd"):
-            return "向导已过期，请重新点「新建」。", None
-        if effort not in {e for e, _ in EFFORT_CHOICES_UI}:
-            effort = DEFAULT_EFFORT
-        w["effort"] = effort
-        return self._wiz_perm_menu(cid)
-
-    # ---- ⑤ 权限 ----
-    def _wiz_perm_menu(self, cid: str) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.setdefault(cid, {})
-        w["step"] = "pick_perm"
-        kb = [[{"text": label, "callback_data": f"cc:perm:{pid}"}] for pid, label in PERMISSION_CHOICES_UI]
-        kb.append([{"text": "✖ 取消", "callback_data": "cc:cancel"}])
-        if w.get("resume_session_id"):
-            head = f"续聊：{w.get('resume_title') or w['resume_session_id'][:8]}\n选择权限模式："
-        else:
-            head = f"effort：{w.get('effort')}\n⑤ 选择权限模式："
-        return head, {"inline_keyboard": kb}
-
-    def _wiz_pick_perm(
-        self, cid: str, mode: str, role: str, group: Optional[dict]
-    ) -> tuple[Optional[str], Optional[dict]]:
-        w = self._wizard.get(cid)
-        if not w or not w.get("cwd"):
-            return "向导已过期，请重新点「新建」。", None
-        if mode not in {p for p, _ in PERMISSION_CHOICES_UI}:
-            mode = DEFAULT_PERMISSION_MODE
-        cwd = w.get("cwd") or ""
+        cwd = w["cwd"]
         repo_name = w.get("repo_name") or cwd
-        model = w.get("model") or ""
-        effort = w.get("effort") or ""
-        resume_id = w.get("resume_session_id") or ""
-        resume_title = w.get("resume_title") or ""
         self._wizard.pop(cid, None)
         return self._create_session(
-            cid, cwd, repo_name, model, effort, mode,
-            resume_session_id=resume_id, resume_title=resume_title,
+            cid, cwd, repo_name,
+            resume_session_id=session_id, resume_title=meta.title,
         )
+
+    def _wiz_fresh(self, cid: str) -> tuple[Optional[str], Optional[dict]]:
+        w = self._wizard.get(cid)
+        if not w or not w.get("cwd"):
+            return "向导已过期，请重新点「新建」。", None
+        cwd = w["cwd"]
+        repo_name = w.get("repo_name") or cwd
+        self._wizard.pop(cid, None)
+        return self._create_session(cid, cwd, repo_name)
 
     # ------------------------------------------------------------------
     # 向导的文字输入（手输路径）
@@ -582,18 +502,17 @@ class AiHeadlessTgBridge:
     # ------------------------------------------------------------------
 
     def _create_session(
-        self, cid: str, cwd: str, repo_name: str, model: str, effort: str, perm: str,
+        self, cid: str, cwd: str, repo_name: str,
         *, resume_session_id: str = "", resume_title: str = "",
     ) -> tuple[Optional[str], Optional[dict]]:
+        """新建/续聊会话。统一走 claude --permission-mode auto，由分类器自动放行/拦截。"""
         if not resolve_claude_executable("claude"):
             return "找不到 claude 可执行文件（检查 PATH）。", None
-        # acceptEdits：注入 PreToolUse 钩子，Bash 等危险操作走 TG 审批
-        settings_path = self._ensure_hook_settings() if perm == "acceptEdits" else ""
         sess = self._manager.new(
-            model_id=model, repo_name=repo_name, cwd=cwd,
-            effort=effort, permission_mode=perm,
+            model_id="", repo_name=repo_name, cwd=cwd,
+            effort="", permission_mode="auto",
             resume_session_id=resume_session_id,
-            settings_path=settings_path,
+            settings_path="",
         )
         sid = sess.info.sid
         with self._lock:
@@ -603,13 +522,11 @@ class AiHeadlessTgBridge:
         if resume_session_id:
             head = (
                 f"🟢 已续聊会话 {sid}\n项目：{repo_name}\n"
-                f"续聊：{resume_title or resume_session_id[:8]}\n权限={perm}\n\n"
-                f"直接打字继续。"
+                f"续聊：{resume_title or resume_session_id[:8]}\n\n直接打字继续。"
             )
         else:
             head = (
-                f"🟢 已新建会话 {sid}\n"
-                f"项目：{repo_name}\n模型：{model} · effort={effort} · 权限={perm}\n\n"
+                f"🟢 已新建会话 {sid}\n项目：{repo_name}\nauto 模式（Claude 自动判断每步是否放行）\n\n"
                 f"直接打字给它发提示词。"
             )
         return head, self._session_kb(sid)

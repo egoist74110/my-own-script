@@ -41,8 +41,8 @@ EFFORT_CHOICES = ("low", "medium", "high", "xhigh", "max")
 # claude --permission-mode 的合法档位
 PERMISSION_CHOICES = ("default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan")
 
-# 默认审批模式：默认放行（编辑自动应用），危险操作交由上层（PreToolUse hook）推 TG 审批。
-DEFAULT_PERMISSION_MODE = "acceptEdits"
+# 默认审批模式：auto — claude 内置分类器自动判断每个工具是否放行（仿 VSCode Auto Mode）。
+DEFAULT_PERMISSION_MODE = "auto"
 DEFAULT_EFFORT = "medium"
 
 
