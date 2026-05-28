@@ -463,11 +463,12 @@ class TelegramController:
                 show_dev = (role == "owner") and (self._headless_bridge is not None)
                 show_wi = (role == "owner") and (self._wi_bridge is not None)
                 show_svc = (role == "owner")
+                show_mcp = (role == "owner")
                 self._reply(
                     token,
                     ctx.chat_id,
                     "代码工具箱",
-                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi, show_svc=show_svc),
+                    reply_markup=top_menu(show_dev=show_dev, show_wi=show_wi, show_svc=show_svc, show_mcp=show_mcp),
                 )
                 return
             except Exception as e:
@@ -699,11 +700,6 @@ class TelegramController:
             self._reply(token, chat_id, text, reply_markup=markup)
             return
 
-        if data == "wi_mcp":
-            text, markup = bridge.handle_toggle_mcp(chat_id)
-            self._reply(token, chat_id, text, reply_markup=markup)
-            return
-
         if data == "wi_pp":
             text, markup = bridge.handle_pick_project(chat_id)
             self._reply(token, chat_id, text, reply_markup=markup)
@@ -772,6 +768,59 @@ class TelegramController:
             text, markup = bridge.handle_related(chat_id, wid)
             self._reply(token, chat_id, text, reply_markup=markup)
             return
+
+    # ---------------- MCP 配置：callback 分发 ----------------
+
+    def _build_mcp_menu(self) -> dict:
+        from app_ado.mcp_server_manager import is_ado_work_items_mcp_running
+        from app_ado.tg_help_inline import mcp_menu
+        from app_lark.mcp_server_manager import is_lark_logged_in, is_lark_mcp_running
+
+        return mcp_menu(
+            ado_running=is_ado_work_items_mcp_running(),
+            lark_running=is_lark_mcp_running(),
+            lark_logged_in=is_lark_logged_in(),
+        )
+
+    def _handle_mcp_callback(self, token: str, chat_id: str, data: str) -> None:
+        """data 形态:mcp:<key>:<op>。点击 toggle → 切状态 + 重绘菜单。"""
+        parts = data.split(":")
+        key = parts[1] if len(parts) > 1 else ""
+
+        if key == "ado":
+            from app_ado.mcp_server_manager import (
+                is_ado_work_items_mcp_running,
+                start_ado_work_items_mcp,
+                stop_ado_work_items_mcp,
+            )
+            if is_ado_work_items_mcp_running():
+                ok, msg = stop_ado_work_items_mcp()
+                text = f"工单 MCP 已关闭（{msg}）" if ok else f"关闭失败：{msg}"
+            else:
+                ok, msg = start_ado_work_items_mcp()
+                text = f"工单 MCP 已开启（{msg}）" if ok else f"开启失败：{msg}"
+            self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
+            return
+
+        if key == "lark":
+            from app_lark.mcp_server_manager import (
+                is_lark_logged_in,
+                is_lark_mcp_running,
+                start_lark_mcp,
+                stop_lark_mcp,
+            )
+            if is_lark_mcp_running():
+                ok, msg = stop_lark_mcp()
+                text = f"Lark MCP 已关闭（{msg}）" if ok else f"关闭失败：{msg}"
+            elif not is_lark_logged_in():
+                text = "Lark MCP 未登录。请到桌面端 MCP 配置 Tab,点 \"登录\" 完成 OAuth 授权后再开启。"
+            else:
+                ok, msg = start_lark_mcp()
+                text = f"Lark MCP 已开启（{msg}）" if ok else f"开启失败：{msg}"
+            self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
+            return
+
+        self._reply(token, chat_id, "⚙️ MCP 配置", reply_markup=self._build_mcp_menu())
 
     def _run_loop(self) -> None:
         self._write_state(state="启动中", last_poll="-", last_error="-")
@@ -906,11 +955,25 @@ class TelegramController:
                                     else:
                                         self._reply(token, chat_id2, "无权限：工单")
                                     continue
+                                if op == "mcp":
+                                    if role2 != "owner":
+                                        self._reply(token, chat_id2, "无权限：MCP 配置")
+                                        continue
+                                    self._reply(token, chat_id2, "⚙️ MCP 配置", reply_markup=self._build_mcp_menu())
+                                    continue
                                 # back
                                 show_dev2 = (role2 == "owner") and (self._headless_bridge is not None)
                                 show_wi2 = (role2 == "owner") and (self._wi_bridge is not None)
                                 show_svc2 = (role2 == "owner")
-                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2, show_svc=show_svc2))
+                                show_mcp2 = (role2 == "owner")
+                                self._reply(token, chat_id2, "代码工具箱", reply_markup=top_menu(show_dev=show_dev2, show_wi=show_wi2, show_svc=show_svc2, show_mcp=show_mcp2))
+                                continue
+
+                            if data2.startswith("mcp:"):
+                                if role2 != "owner":
+                                    self._reply(token, chat_id2, "无权限：MCP 配置")
+                                    continue
+                                self._handle_mcp_callback(token, chat_id2, data2)
                                 continue
 
                             if data2.startswith("help_run:"):

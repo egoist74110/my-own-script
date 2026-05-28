@@ -115,25 +115,6 @@ class WorkItemsBridge:
             column_label=self._column_label(st),
         )
 
-    def handle_toggle_mcp(self, chat_id: str) -> tuple[str, dict]:
-        from app_ado.mcp_server_manager import (
-            is_ado_work_items_mcp_running,
-            start_ado_work_items_mcp,
-            stop_ado_work_items_mcp,
-        )
-        if is_ado_work_items_mcp_running():
-            ok, msg = stop_ado_work_items_mcp()
-            text = f"工单MCP 已关闭（{msg}）" if ok else f"关闭失败：{msg}"
-        else:
-            ok, msg = start_ado_work_items_mcp()
-            text = f"工单MCP 已开启（{msg}）" if ok else f"开启失败：{msg}"
-        s = self._settings()
-        st = self._state(chat_id)
-        return text, wi_main_menu(
-            project_label=self._project_label(s, st),
-            column_label=self._column_label(st),
-        )
-
     def handle_pick_project(self, chat_id: str) -> tuple[str, dict]:
         s = self._settings()
         st = self._state(chat_id)

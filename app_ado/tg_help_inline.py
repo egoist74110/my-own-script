@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 
-def top_menu(*, show_dev: bool = False, show_wi: bool = False, show_svc: bool = False) -> dict:
+def top_menu(
+    *,
+    show_dev: bool = False,
+    show_wi: bool = False,
+    show_svc: bool = False,
+    show_mcp: bool = False,
+) -> dict:
     rows: list[list[dict]] = [
         [{"text": "🔹 任务", "callback_data": "help_menu:tasks"}],
         [{"text": "🔸 系统操作", "callback_data": "help_menu:sys"}],
@@ -12,7 +18,25 @@ def top_menu(*, show_dev: bool = False, show_wi: bool = False, show_svc: bool = 
         rows.append([{"text": "🤖 Claude 会话", "callback_data": "help_menu:dev"}])
     if show_wi:
         rows.append([{"text": "📋 工单", "callback_data": "help_menu:wi"}])
+    if show_mcp:
+        rows.append([{"text": "⚙️ MCP 配置", "callback_data": "help_menu:mcp"}])
     return {"inline_keyboard": rows}
+
+
+def mcp_menu(*, ado_running: bool, lark_running: bool, lark_logged_in: bool) -> dict:
+    """MCP 配置主菜单:列两个 MCP 的状态,点击 toggle。"""
+    ado_text = "🟢 工单 MCP 已开(点击关闭)" if ado_running else "⚪ 工单 MCP 已关(点击开启)"
+    if lark_running:
+        lark_text = "🟢 Lark MCP 已开(点击关闭)"
+    elif not lark_logged_in:
+        lark_text = "🔒 Lark MCP 未登录(请到桌面端配置)"
+    else:
+        lark_text = "⚪ Lark MCP 已关(点击开启)"
+    return {"inline_keyboard": [
+        [{"text": ado_text, "callback_data": "mcp:ado:tg"}],
+        [{"text": lark_text, "callback_data": "mcp:lark:tg"}],
+        [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
+    ]}
 
 
 def services_menu() -> dict:
