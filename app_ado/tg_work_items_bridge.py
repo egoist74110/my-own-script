@@ -5,12 +5,19 @@
 
 设计模式参考 ai_dev_tg_bridge：bridge 提供 (text, reply_markup) 返回值，
 tg_control 负责 reply。无后台线程，所有 ADO 调用同步进行。
+
+MCP 分析的执行链：
+1. 用户点 `🔍 MCP分析` → 弹"选仓库"菜单 (handle_mcp_start)
+2. 选仓库 → 弹"选 AI"菜单 (handle_mcp_pick_repo)
+3. 选 AI → 通过 headless_bridge 起一个 claude 会话，并自动发送 MCP 分析提示词
+   (handle_mcp_pick_ai)
 """
 
 from __future__ import annotations
 
+import os
 import time
-from typing import Any
+from typing import Any, Optional
 
 from app_ado.ado_work_item_http import (
     HIERARCHY_FORWARD_REL,
@@ -28,15 +35,16 @@ from app_ado.tg_work_items_inline import (
     wi_detail_menu,
     wi_list_menu,
     wi_main_menu,
+    wi_pick_ai_menu,
     wi_pick_column_menu,
     wi_pick_project_menu,
+    wi_pick_repo_menu,
     wi_related_menu,
 )
 
 
 _CACHE_TTL_SEC = 600.0
 _PAGE_SIZE = 10
-_MCP_PROMPT_CHUNK = 3500  # Telegram text 限制 4096，留点 buffer 给 markdown 包裹
 
 
 def _has_child_relations(item: WorkItem) -> bool:
@@ -53,10 +61,21 @@ def _short_title(title: str, *, limit: int = 50) -> str:
     return t[: limit - 1] + "…"
 
 
+def _short_path(path: str, *, limit: int = 32) -> str:
+    p = (path or "").strip()
+    if len(p) <= limit:
+        return p
+    # 留首尾，中间打省略
+    head = p[: limit // 2 - 1]
+    tail = p[-(limit // 2 - 1):]
+    return f"{head}…{tail}"
+
+
 class WorkItemsBridge:
-    def __init__(self) -> None:
-        # chat_id -> {project_id, column_idx, page, cached_items, cache_ts, last_open_id}
+    def __init__(self, *, headless_bridge: Any = None) -> None:
+        # chat_id -> {project_id, column_idx, page, cached_items, cache_ts, last_open_id, mcp_wizard}
         self._chat_state: dict[str, dict[str, Any]] = {}
+        self._headless_bridge = headless_bridge
 
     # ---------------- ACL ----------------
 
@@ -75,6 +94,7 @@ class WorkItemsBridge:
                 "cached_items": [],
                 "cache_ts": 0.0,
                 "last_open_id": 0,
+                "mcp_wizard": {},
             },
         )
 
@@ -304,34 +324,98 @@ class WorkItemsBridge:
         text = "\n".join(lines)
         return text, wi_detail_menu(int(item.id), has_children=_has_child_relations(item))
 
-    def handle_mcp_prompt(self, chat_id: str, work_item_id: int, mode: str) -> tuple[list[str], dict | None]:
-        """返回 (text 分块列表, 详情菜单)。第一块前会拼一行提示语。"""
+    # ---------------- MCP 分析（选仓库 → 选 AI → 起 claude 会话） ----------------
+
+    def handle_mcp_start(self, chat_id: str, work_item_id: int) -> tuple[str, dict]:
         s = self._settings()
         st = self._state(chat_id)
+        repos = list(s.local_repos or [])
+        if not repos:
+            return "尚未在桌面端【代码配置】里配置本地仓库。", wi_detail_menu(
+                int(work_item_id), has_children=False
+            )
+
+        # 缓存本次向导能选的仓库快照（callback 用 idx 引用）
+        snap = [(r.id, r.name, r.path) for r in repos]
+        st["mcp_wizard"] = {
+            "work_item_id": int(work_item_id),
+            "repos": snap,
+        }
+        rows = [(i, name, _short_path(path)) for i, (_rid, name, path) in enumerate(snap)]
+        return f"#{work_item_id} 选择本地仓库（cd 进去后再启 AI）：", wi_pick_repo_menu(int(work_item_id), rows)
+
+    def handle_mcp_pick_repo(self, chat_id: str, work_item_id: int, repo_idx: int) -> tuple[str, dict]:
+        st = self._state(chat_id)
+        w = st.get("mcp_wizard") or {}
+        repos = w.get("repos") or []
+        if int(w.get("work_item_id") or 0) != int(work_item_id):
+            return "向导已过期，请重新点「MCP分析」。", wi_detail_menu(int(work_item_id), has_children=False)
+        if repo_idx < 0 or repo_idx >= len(repos):
+            return "无效的仓库选择。", wi_detail_menu(int(work_item_id), has_children=False)
+        _rid, name, _path = repos[repo_idx]
+        return f"#{work_item_id} 仓库：{name}\n选择 AI：", wi_pick_ai_menu(int(work_item_id), repo_idx)
+
+    def handle_mcp_pick_ai(
+        self, chat_id: str, work_item_id: int, repo_idx: int, ai_code: str,
+    ) -> tuple[Optional[str], Optional[dict]]:
+        st = self._state(chat_id)
+        w = st.get("mcp_wizard") or {}
+        repos = w.get("repos") or []
+        if int(w.get("work_item_id") or 0) != int(work_item_id):
+            return "向导已过期，请重新点「MCP分析」。", wi_detail_menu(int(work_item_id), has_children=False)
+        if repo_idx < 0 or repo_idx >= len(repos):
+            return "无效的仓库选择。", wi_detail_menu(int(work_item_id), has_children=False)
+        if ai_code != "c":
+            return f"暂不支持的 AI：{ai_code}", wi_pick_ai_menu(int(work_item_id), repo_idx)
+
+        rid, repo_name, repo_path = repos[repo_idx]
+
+        s = self._settings()
         proj = self._resolve_project(s, st)
         if proj is None:
-            return ["请先选择项目"], None
-        mode_norm = "fix" if mode == "f" else "analyze"
+            return "请先选择项目。", wi_detail_menu(int(work_item_id), has_children=False)
+
+        # 写回 settings.work_items_local_repo_id 与桌面端保持一致
         try:
-            prompt = build_mcp_prompt(
-                settings=s,
-                project=proj,
-                work_item_id=int(work_item_id),
-                mode=mode_norm,
+            s.work_items_local_repo_id = rid
+            save_ui_settings(s)
+        except Exception:
+            pass
+
+        # 生成 MCP 分析提示词
+        try:
+            prompt = build_mcp_prompt(project=proj, work_item_id=int(work_item_id))
+        except Exception as ex:
+            return f"生成 MCP 提示词失败：{ex}", wi_detail_menu(int(work_item_id), has_children=False)
+
+        if self._headless_bridge is None:
+            return (
+                "AI 开发桥未加载，无法自动启动 Claude 会话。",
+                wi_detail_menu(int(work_item_id), has_children=False),
+            )
+
+        cwd = os.path.abspath(os.path.expanduser(repo_path or ""))
+        if not cwd or not os.path.isdir(cwd):
+            return (
+                f"仓库路径无效或不存在：{repo_path}",
+                wi_pick_ai_menu(int(work_item_id), repo_idx),
+            )
+
+        # 清掉向导态
+        st["mcp_wizard"] = {}
+
+        try:
+            text, kb = self._headless_bridge.start_session_with_prompt(
+                chat_id, cwd=cwd, repo_name=repo_name, prompt=prompt,
             )
         except Exception as ex:
-            return [f"生成 MCP 提示词失败：{ex}"], None
-
-        label = "分析" if mode_norm == "analyze" else "修复"
-        header = f"📋 工单 #{work_item_id} 的 MCP {label} 提示词（请整段复制后粘到 AI CLI）："
-        chunks: list[str] = [header]
-        rest = prompt
-        while rest:
-            chunks.append(rest[:_MCP_PROMPT_CHUNK])
-            rest = rest[_MCP_PROMPT_CHUNK:]
-
-        # last chunk 附返回菜单
-        return chunks, wi_detail_menu(int(work_item_id), has_children=False)
+            return (
+                f"启动 Claude 会话失败：{ex}",
+                wi_detail_menu(int(work_item_id), has_children=False),
+            )
+        # 让前置消息带上工单上下文
+        head = f"#{work_item_id} · {repo_name}\n{text or ''}"
+        return head, kb
 
     def handle_related(self, chat_id: str, work_item_id: int) -> tuple[str, dict]:
         s = self._settings()

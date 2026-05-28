@@ -72,14 +72,37 @@ def wi_list_menu(
 
 def wi_detail_menu(work_item_id: int, *, has_children: bool) -> dict:
     kb: list[list[dict]] = [
-        [
-            {"text": "📋 MCP 分析", "callback_data": f"wi_m:{work_item_id}:a"},
-            {"text": "🔧 MCP 修复", "callback_data": f"wi_m:{work_item_id}:f"},
-        ],
+        [{"text": "🔍 MCP分析", "callback_data": f"wi_m:{work_item_id}"}],
     ]
     if has_children:
         kb.append([{"text": "🔗 关联子单", "callback_data": f"wi_r:{work_item_id}"}])
     kb.append([{"text": "⬅ 返回列表", "callback_data": "wi_l:0"}])
+    return {"inline_keyboard": kb}
+
+
+def wi_pick_repo_menu(
+    work_item_id: int,
+    repos: Iterable[tuple[int, str, str]],
+) -> dict:
+    """repos 每条：(idx, repo_name, repo_path_short)。"""
+    kb: list[list[dict]] = []
+    for idx, name, path in repos:
+        label = f"📁 {name}"
+        if path:
+            label += f" ({path})"
+        if len(label) > 56:
+            label = label[:55] + "…"
+        kb.append([{"text": label, "callback_data": f"wi_mr:{work_item_id}:{idx}"}])
+    kb.append([{"text": "⬅ 返回详情", "callback_data": f"wi_o:{work_item_id}"}])
+    return {"inline_keyboard": kb}
+
+
+def wi_pick_ai_menu(work_item_id: int, repo_idx: int) -> dict:
+    """目前只接好了 Claude Code，所以菜单只有一项。"""
+    kb: list[list[dict]] = [
+        [{"text": "🤖 Claude Code", "callback_data": f"wi_ma:{work_item_id}:{repo_idx}:c"}],
+        [{"text": "⬅ 返回选仓库", "callback_data": f"wi_m:{work_item_id}"}],
+    ]
     return {"inline_keyboard": kb}
 
 

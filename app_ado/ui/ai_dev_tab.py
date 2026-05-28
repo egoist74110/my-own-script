@@ -274,6 +274,60 @@ class AiDevTab(Tab):
         self._refresh_list(select_sid=sess.info.sid)
         self._toast("已启动", f"会话 #{sess.info.sid}（{profile.name} / {repo.name}）")
 
+    def launch_session_with_prompt(
+        self,
+        *,
+        profile_id: str,
+        repo: LocalRepoEntry,
+        initial_prompt: str,
+        prompt_delay_ms: int = 2500,
+    ) -> bool:
+        """外部入口：在 AI 开发模块新开一个会话并自动发送 prompt。
+
+        - 校验 profile 与可执行；不弹仓库选择对话框（仓库由调用方挑好传进来）。
+        - 进程起来后延迟 ~2.5s 再灌 prompt，避免 TUI 还没准备好就被吞键。
+        """
+        if sys.platform == "win32":
+            self._toast("无法运行", "AI 开发模块当前仅支持 macOS / Linux", ok=False)
+            return False
+        settings = load_ui_settings()
+        profile = next((p for p in settings.ai.tool.profiles or [] if p.id == profile_id), None)
+        if profile is None or not (profile.command or "").strip():
+            self._toast("无法运行", f"未配置 {profile_id} 的启动命令（前往“AI配置”）", ok=False)
+            return False
+        if not resolve_command_executable(profile.command):
+            self._toast("无法运行", f"未找到可执行：{profile.command}", ok=False)
+            return False
+        try:
+            sess = self._manager.new(
+                model_id=profile.id,
+                model_label=profile.name,
+                repo_id=repo.id,
+                repo_name=repo.name,
+                cwd=repo.path,
+                command=profile.command,
+            )
+        except Exception as e:
+            self._toast("启动失败", str(e), ok=False)
+            return False
+        self._attach_session(sess)
+        self._refresh_list(select_sid=sess.info.sid)
+
+        prompt = initial_prompt or ""
+        if prompt:
+            sid = sess.info.sid
+
+            def _send_initial() -> None:
+                target = self._manager.get(sid)
+                if target is None or target.info.status == "exited":
+                    return
+                target.write_text(prompt, append_enter=True)
+
+            QtCore.QTimer.singleShot(max(0, int(prompt_delay_ms)), _send_initial)
+
+        self._toast("已启动", f"会话 #{sess.info.sid}（{profile.name} / {repo.name}）")
+        return True
+
     def _on_list_selection_changed(self) -> None:
         item = self._list.currentItem()
         if item is None:

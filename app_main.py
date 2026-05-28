@@ -42,7 +42,6 @@ def main() -> None:
     settings = AdoReleaseTab()
     ai = AiConfigTab()
     mcp = McpConfigTab()
-    work_items = WorkItemsTab()
     services = ServicesTab()
 
     # AI 开发：本地终端（多会话 PTY），纯本地、不再镜像到 TG
@@ -79,11 +78,17 @@ def main() -> None:
 
     ai_dev = AiDevTab(ai_dev_manager)
 
+    # 工单页：MCP 分析按钮要能在 AI 开发 Tab 起会话并跳过去
+    work_items = WorkItemsTab(
+        ai_dev_tab=ai_dev,
+        on_navigate_to_ai_dev=lambda: w.switchTo(ai_dev),
+    )
+
     # Telegram control (polling thread) - only active while app runs
     from app_ado.tg_control import TelegramController
     from app_ado.tg_work_items_bridge import WorkItemsBridge
 
-    wi_bridge = WorkItemsBridge()
+    wi_bridge = WorkItemsBridge(headless_bridge=headless_bridge)
 
     tg = TelegramController(
         on_run=tasks.run_task,

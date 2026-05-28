@@ -504,8 +504,12 @@ class AiHeadlessTgBridge:
     def _create_session(
         self, cid: str, cwd: str, repo_name: str,
         *, resume_session_id: str = "", resume_title: str = "",
+        initial_prompt: str = "",
     ) -> tuple[Optional[str], Optional[dict]]:
-        """新建/续聊会话。统一走 claude --permission-mode auto，由分类器自动放行/拦截。"""
+        """新建/续聊会话。统一走 claude --permission-mode auto，由分类器自动放行/拦截。
+
+        initial_prompt 非空时立即给该会话投一轮 user 消息（用于"点 MCP 分析按钮 → 自动发提示词"）。
+        """
         if not resolve_claude_executable("claude"):
             return "找不到 claude 可执行文件（检查 PATH）。", None
         sess = self._manager.new(
@@ -519,17 +523,35 @@ class AiHeadlessTgBridge:
             self._sid_to_chats.setdefault(sid, set()).add(cid)
             self._chat_focus[cid] = sid
         sess.add_listener(self._on_event)
+        if initial_prompt:
+            sess.submit(initial_prompt)
         if resume_session_id:
             head = (
                 f"🟢 已续聊会话 {sid}\n项目：{repo_name}\n"
-                f"续聊：{resume_title or resume_session_id[:8]}\n\n直接打字继续。"
+                f"续聊：{resume_title or resume_session_id[:8]}"
             )
         else:
             head = (
-                f"🟢 已新建会话 {sid}\n项目：{repo_name}\nauto 模式（Claude 自动判断每步是否放行）\n\n"
-                f"直接打字给它发提示词。"
+                f"🟢 已新建会话 {sid}\n项目：{repo_name}\nauto 模式（Claude 自动判断每步是否放行）"
             )
+        if initial_prompt:
+            head += "\n\n📝 已自动发送 MCP 分析提示词，等待回复…"
+        else:
+            head += "\n\n直接打字给它发提示词。"
         return head, self._session_kb(sid)
+
+    def start_session_with_prompt(
+        self,
+        chat_id: str,
+        *,
+        cwd: str,
+        repo_name: str,
+        prompt: str,
+    ) -> tuple[Optional[str], Optional[dict]]:
+        """对外入口（被工单 MCP 分析按钮调用）：创建会话并自动投第一轮提示词。"""
+        return self._create_session(
+            str(chat_id), cwd, repo_name, initial_prompt=prompt or "",
+        )
 
     def _session_kb(self, sid: str) -> dict:
         return {"inline_keyboard": [[

@@ -2,23 +2,17 @@ from __future__ import annotations
 
 import math
 import threading
+from typing import Callable, Optional
 
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, LineEdit, PushButton
 
 from app_ado.ado_work_item_http import HIERARCHY_FORWARD_REL, WorkItem, get_descendant_work_items, list_work_items_by_board_column_value
-
-
-def _has_child_relations(item: WorkItem) -> bool:
-    for rel in item.relations or []:
-        if str(rel.get("rel") or "") == HIERARCHY_FORWARD_REL:
-            return True
-    return False
-from app_ado.ai_policy import evaluate_change_policy, load_effective_ai_change_policy
-from app_ado.ai_work_item_flow import build_mcp_prompt, build_prompt, load_work_item_context, open_ai_in_terminal, selected_ai_profile, selected_local_repo
+from app_ado.ai_work_item_flow import build_mcp_prompt
 from app_ado.models import ProjectEntry, project_entry_collection, project_entry_id, project_entry_library_id, project_entry_name
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings, save_ui_settings
+from app_ado.ui.ai_dev_tab import AiDevTab
 from app_ado.ui.dialogs import show_error_dialog
 from ok.gui.widget.Tab import Tab
 
@@ -27,9 +21,14 @@ BOARD_COLUMNS = ["新建", "待开发", "开发中", "测试", "已关闭"]
 PAGE_SIZES = [5, 10, 50, 100, 200]
 
 
+def _has_child_relations(item: WorkItem) -> bool:
+    for rel in item.relations or []:
+        if str(rel.get("rel") or "") == HIERARCHY_FORWARD_REL:
+            return True
+    return False
+
+
 class WorkItemMiniCard(CardWidget):
-    analyze_clicked = QtCore.Signal(int)
-    fix_clicked = QtCore.Signal(int)
     mcp_clicked = QtCore.Signal(int)
     related_clicked = QtCore.Signal(int)
 
@@ -54,14 +53,8 @@ class WorkItemMiniCard(CardWidget):
         meta.setStyleSheet("color:#666;")
 
         row = QtWidgets.QHBoxLayout()
-        self.btn_analyze = PushButton("分析")
-        self.btn_fix = PushButton("修复")
-        self.btn_mcp = PushButton("MCP")
-        self.btn_analyze.setFixedWidth(72)
-        self.btn_fix.setFixedWidth(72)
-        self.btn_mcp.setFixedWidth(72)
-        row.addWidget(self.btn_analyze)
-        row.addWidget(self.btn_fix)
+        self.btn_mcp = PushButton("MCP分析")
+        self.btn_mcp.setFixedWidth(96)
         row.addWidget(self.btn_mcp)
 
         self.btn_related: PushButton | None = None
@@ -73,8 +66,6 @@ class WorkItemMiniCard(CardWidget):
 
         row.addStretch(1)
 
-        self.btn_analyze.clicked.connect(lambda: self.analyze_clicked.emit(self.item.id))
-        self.btn_fix.clicked.connect(lambda: self.fix_clicked.emit(self.item.id))
         self.btn_mcp.clicked.connect(lambda: self.mcp_clicked.emit(self.item.id))
 
         root.addWidget(title)
@@ -83,8 +74,6 @@ class WorkItemMiniCard(CardWidget):
 
 
 class RelatedWorkItemsDialog(QtWidgets.QDialog):
-    analyze_requested = QtCore.Signal(int)
-    fix_requested = QtCore.Signal(int)
     mcp_requested = QtCore.Signal(int)
 
     def __init__(
@@ -151,12 +140,15 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
 
     def _add_card(self, item: WorkItem) -> None:
         card = WorkItemMiniCard(item)
-        card.analyze_clicked.connect(self.analyze_requested.emit)
-        card.fix_clicked.connect(self.fix_requested.emit)
-        card.mcp_clicked.connect(self.mcp_requested.emit)
+        card.mcp_clicked.connect(self._on_card_mcp_clicked)
         if card.btn_related is not None:
             card.btn_related.setEnabled(False)
         self.list_layout.insertWidget(self.list_layout.count() - 1, card)
+
+    def _on_card_mcp_clicked(self, work_item_id: int) -> None:
+        # 选了子工单后关掉关联单弹窗，避免 modal 拦截后续 AI 开发面板切换
+        self.accept()
+        self.mcp_requested.emit(work_item_id)
 
     def _reload(self) -> None:
         self._clear_list()
@@ -196,11 +188,21 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
         threading.Thread(target=run, daemon=True).start()
 
 
+_AI_CHOICES: list[tuple[str, str]] = [
+    ("claude_code", "Claude Code"),
+]
+
+
 class WorkItemsTab(Tab):
     icon = None
     name = "工单"
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        ai_dev_tab: Optional[AiDevTab] = None,
+        on_navigate_to_ai_dev: Optional[Callable[[], None]] = None,
+    ):
         super().__init__()
         self._loaded_items: list[WorkItem] = []
         self._filtered_items: list[WorkItem] = []
@@ -208,6 +210,8 @@ class WorkItemsTab(Tab):
         self.list_scroll: QtWidgets.QScrollArea | None = None
         self.list_view: QtWidgets.QWidget | None = None
         self.list_layout: QtWidgets.QVBoxLayout | None = None
+        self._ai_dev_tab = ai_dev_tab
+        self._on_navigate_to_ai_dev = on_navigate_to_ai_dev
 
         self._build_filter_card()
         self._build_pagination_card()
@@ -546,34 +550,13 @@ class WorkItemsTab(Tab):
 
         for work_item in page_items:
             item_card = WorkItemMiniCard(work_item, self.list_view)
-            item_card.analyze_clicked.connect(self._analyze_item)
-            item_card.fix_clicked.connect(self._fix_item)
-            item_card.mcp_clicked.connect(self._copy_mcp_item_prompt)
+            item_card.mcp_clicked.connect(self._open_mcp_analysis)
             item_card.related_clicked.connect(self._open_related_dialog)
             self.list_layout.addWidget(item_card)
 
         self.lbl_page.setText(f"第 {self._current_page} / {total_pages} 页  共 {total_items} 条")
         self.btn_prev.setEnabled(self._current_page > 1)
         self.btn_next.setEnabled(self._current_page < total_pages)
-
-    def _analyze_item(self, work_item_id: int) -> None:
-        self._run_ai_flow(work_item_id, mode="analyze")
-
-    def _fix_item(self, work_item_id: int) -> None:
-        self._run_ai_flow(work_item_id, mode="fix")
-
-    def _copy_mcp_item_prompt(self, work_item_id: int) -> None:
-        settings = load_ui_settings()
-        proj = self._selected_project()
-        if proj is None:
-            show_error_dialog(self, "错误", "请先选择项目")
-            return
-        prompt = build_mcp_prompt(settings=settings, project=proj, work_item_id=work_item_id, mode="analyze")
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
-        app.clipboard().setText(prompt)
-        self._toast("已复制", f"工单 #{work_item_id} 的 MCP 提示词已复制")
 
     def _open_related_dialog(self, work_item_id: int) -> None:
         root_item = next((x for x in self._loaded_items if int(x.id) == int(work_item_id)), None)
@@ -586,101 +569,68 @@ class WorkItemsTab(Tab):
             show_error_dialog(self, "无法打开关联单", str(exc))
             return
         dlg = RelatedWorkItemsDialog(root_item, library, project, pat, parent=self)
-        dlg.analyze_requested.connect(self._analyze_item)
-        dlg.fix_requested.connect(self._fix_item)
-        dlg.mcp_requested.connect(self._copy_mcp_item_prompt)
+        dlg.mcp_requested.connect(self._open_mcp_analysis)
         dlg.exec()
 
-    def _run_ai_flow(self, work_item_id: int, *, mode: str) -> None:
+    # ------------------------------------------------------------------
+    # MCP 分析：选仓库 → 选 AI → 在 AI 开发面板里新开一个会话并自动发提示词
+    # ------------------------------------------------------------------
+
+    def _open_mcp_analysis(self, work_item_id: int) -> None:
         settings = load_ui_settings()
         if not settings.local_repos:
             show_error_dialog(self, "缺少本地仓库", "请先到【代码配置】页添加并配置本地仓库")
             return
 
+        raw_proj = self._selected_project()
+        if raw_proj is None:
+            show_error_dialog(self, "错误", "请先选择项目")
+            return
+        try:
+            project = self._normalized_project(raw_proj)
+        except Exception as exc:
+            show_error_dialog(self, "错误", str(exc))
+            return
+
         repo_id = self._choose_local_repo(settings)
         if not repo_id:
+            return
+        repo = next((r for r in settings.local_repos if r.id == repo_id), None)
+        if repo is None:
+            return
+
+        profile_id = self._choose_ai_profile()
+        if not profile_id:
             return
 
         settings.work_items_local_repo_id = repo_id
         save_ui_settings(settings)
 
-        self.btn_refresh.setEnabled(False)
-        self._toast("处理中", f"正在准备工单 #{work_item_id}")
+        prompt = build_mcp_prompt(project=project, work_item_id=int(work_item_id))
 
-        def run() -> None:
-            payload: dict[str, object] = {}
+        if self._ai_dev_tab is None:
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                app.clipboard().setText(prompt)
+            self._toast("已复制", "AI 开发模块未加载，已把 MCP 提示词复制到剪贴板", ok=False)
+            return
+
+        ok = self._ai_dev_tab.launch_session_with_prompt(
+            profile_id=profile_id,
+            repo=repo,
+            initial_prompt=prompt,
+        )
+        if not ok:
+            return
+        if self._on_navigate_to_ai_dev is not None:
             try:
-                settings = load_ui_settings()
-                profile = selected_ai_profile(settings)
-                if profile is None or not profile.command.strip():
-                    raise RuntimeError("请先在 AI配置 里选择并保存 AI 工具")
-                repo = selected_local_repo(settings)
-                if repo is None or not repo.path.strip():
-                    raise RuntimeError("请先选择一个本地仓库")
-
-                lib, proj, pat = self._current_context()
-                context = load_work_item_context(lib, proj, pat, work_item_id)
-                policy_cfg = load_effective_ai_change_policy(proj.id, settings=settings)
-                policy = evaluate_change_policy(policy_cfg, work_item=context.work_item.__dict__)
-
-                if mode == "fix" and settings.ai.enabled and settings.ai.require_policy_check_before_code_change:
-                    if policy.decision == "deny":
-                        raise RuntimeError("当前策略禁止直接修复，该工单只允许分析。")
-
-                payload["profile_name"] = profile.name
-                payload["repo_name"] = repo.name
-                payload["repo_path"] = repo.path
-                payload["prompt"] = build_prompt(
-                    mode=mode,
-                    settings=settings,
-                    project=proj,
-                    context=context,
-                    policy=policy,
-                )
-                payload["command"] = profile.command.strip()
-                payload["policy"] = policy
-            except Exception as e:
-                payload["error"] = str(e)
-
-            def finish() -> None:
-                self.btn_refresh.setEnabled(True)
-                if "error" in payload:
-                    show_error_dialog(self, "执行失败", str(payload["error"]))
-                    return
-
-                prompt = str(payload["prompt"] or "")
-                app = QtWidgets.QApplication.instance()
-                if app is not None:
-                    app.clipboard().setText(prompt)
-
-                policy = payload.get("policy")
-                if mode == "fix" and getattr(policy, "decision", "") == "review":
-                    ok = QtWidgets.QMessageBox.question(
-                        self,
-                        "需要确认",
-                        "当前工单命中复核规则。继续启动 AI 吗？",
-                    )
-                    if ok != QtWidgets.QMessageBox.Yes:
-                        return
-
-                try:
-                    open_ai_in_terminal(str(payload["command"] or ""), repo_path=str(payload["repo_path"] or ""))
-                except Exception as e:
-                    show_error_dialog(self, "启动 AI 失败", str(e))
-                    return
-
-                action = "分析" if mode == "analyze" else "修复"
-                name = str(payload["profile_name"] or "AI")
-                repo_name = str(payload["repo_name"] or "本地仓库")
-                self._toast("已启动", f"{name} 已在 {repo_name} 打开，{action} Prompt 已复制")
-
-            QtCore.QTimer.singleShot(0, self, finish)
-
-        threading.Thread(target=run, daemon=True).start()
+                self._on_navigate_to_ai_dev()
+            except Exception:
+                pass
 
     def _choose_local_repo(self, settings) -> str | None:
         dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle("选择本地仓库")
+        dlg.setWindowTitle("选择仓库")
         dlg.setModal(True)
         dlg.resize(620, 140)
 
@@ -705,6 +655,38 @@ class WorkItemsTab(Tab):
         row.addStretch(1)
 
         form.addRow("本地仓库", combo)
+        form.addRow(row)
+
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok.clicked.connect(dlg.accept)
+
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return None
+        return str(combo.currentData() or "")
+
+    def _choose_ai_profile(self) -> str | None:
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("选择 AI")
+        dlg.setModal(True)
+        dlg.resize(360, 130)
+
+        form = QtWidgets.QFormLayout(dlg)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        combo = QtWidgets.QComboBox()
+        combo.setFixedWidth(220)
+        for pid, label in _AI_CHOICES:
+            combo.addItem(label, userData=pid)
+        combo.setCurrentIndex(0)
+
+        row = QtWidgets.QHBoxLayout()
+        btn_cancel = PushButton("取消")
+        btn_ok = PushButton("确定")
+        row.addWidget(btn_cancel)
+        row.addWidget(btn_ok)
+        row.addStretch(1)
+
+        form.addRow("AI", combo)
         form.addRow(row)
 
         btn_cancel.clicked.connect(dlg.reject)

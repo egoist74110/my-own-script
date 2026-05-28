@@ -748,16 +748,39 @@ class TelegramController:
             self._reply(token, chat_id, text, reply_markup=markup)
             return
 
-        if data.startswith("wi_m:"):
+        if data.startswith("wi_ma:"):
+            # 选 AI（实际启动 claude 会话）
             try:
-                _, wid_s, mode = data.split(":", 2)
+                _, wid_s, idx_s, ai_code = data.split(":", 3)
                 wid = int(wid_s)
+                repo_idx = int(idx_s)
             except ValueError:
                 return
-            chunks, markup = bridge.handle_mcp_prompt(chat_id, wid, mode)
-            for i, chunk in enumerate(chunks):
-                rm = markup if i == len(chunks) - 1 else None
-                self._reply(token, chat_id, chunk, reply_markup=rm)
+            text, markup = bridge.handle_mcp_pick_ai(chat_id, wid, repo_idx, ai_code)
+            if text is not None:
+                self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_mr:"):
+            # 选仓库
+            try:
+                _, wid_s, idx_s = data.split(":", 2)
+                wid = int(wid_s)
+                repo_idx = int(idx_s)
+            except ValueError:
+                return
+            text, markup = bridge.handle_mcp_pick_repo(chat_id, wid, repo_idx)
+            self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_m:"):
+            # 启动 MCP 分析向导（先选仓库）
+            try:
+                wid = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_mcp_start(chat_id, wid)
+            self._reply(token, chat_id, text, reply_markup=markup)
             return
 
         if data.startswith("wi_r:"):
