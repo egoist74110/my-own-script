@@ -105,6 +105,16 @@ def _client(pat: str, *, timeout_sec: float = 15.0) -> httpx.Client:
     )
 
 
+def _binary_client(pat: str, *, timeout_sec: float = 30.0) -> httpx.Client:
+    """专门给附件 / 内联图片用：跟随重定向（ADO 常 302 到 CDN 签名 URL），Accept 不限。"""
+    timeout = httpx.Timeout(timeout_sec, connect=5.0)
+    return httpx.Client(
+        timeout=timeout,
+        headers={"Authorization": _auth_header(pat), "Accept": "*/*"},
+        follow_redirects=True,
+    )
+
+
 def _raise_http_error(r: httpx.Response, *, url: str) -> None:
     if r.is_error:
         raise RuntimeError(f"HTTP {r.status_code} 请求失败:\n[接口] {url}\n[响应] {r.text}")
@@ -233,7 +243,7 @@ def download_authenticated_file(
 ) -> Path:
     target = Path(dest_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    with _client(pat, timeout_sec=timeout_sec) as c:
+    with _binary_client(pat, timeout_sec=timeout_sec) as c:
         r = c.get(url, params={"download": "true"})
         _raise_http_error(r, url=url)
         suffix = target.suffix or _infer_suffix(url, r.headers.get("content-type"))
@@ -249,7 +259,7 @@ def fetch_attachment_bytes(
     pat: str,
     timeout_sec: float = 30.0,
 ) -> tuple[bytes, str | None]:
-    with _client(pat, timeout_sec=timeout_sec) as c:
+    with _binary_client(pat, timeout_sec=timeout_sec) as c:
         r = c.get(url, params={"download": "true"})
         _raise_http_error(r, url=url)
         return r.content, r.headers.get("content-type")

@@ -85,16 +85,44 @@ def download_images_to_cache(urls: list[str], *, pat: str, sub_key: str) -> dict
 def fetch_image_blobs(urls: list[str], *, pat: str) -> list[tuple[str, bytes, str]]:
     """直接拉成内存字节流（TG sendMediaGroup 用，不落盘）。
 
-    返回 ``[(filename, bytes, content_type), ...]``，下载失败的项跳过。
+    返回 ``[(filename, bytes, content_type), ...]``。会跳过：
+    - 下载抛错的项；
+    - SVG（TG sendPhoto 不接受矢量图）；
+    - 内容明显不是图片的（content-type 不带 image/，且魔数也对不上）。
     """
     out: list[tuple[str, bytes, str]] = []
     for i, url in enumerate(urls, start=1):
         try:
             data, ct = fetch_attachment_bytes(url, pat=pat)
-            out.append((_filename_hint(url, i), data, (ct or "image/png")))
         except Exception:
             continue
+        if not data:
+            continue
+        ct_norm = (ct or "").split(";", 1)[0].strip().lower()
+        if ct_norm == "image/svg+xml" or _filename_hint(url, i).lower().endswith(".svg"):
+            continue
+        if not ct_norm.startswith("image/") and not _looks_like_image_bytes(data):
+            # 不是图（八成是 ADO 转出来的 HTML 错误页 / 重定向页），跳过避免 TG 拒收整组
+            continue
+        out.append((_filename_hint(url, i), data, ct_norm or "image/png"))
     return out
+
+
+def _looks_like_image_bytes(data: bytes) -> bool:
+    """按文件头判图（content-type 不靠谱时兜底）。"""
+    if not data or len(data) < 8:
+        return False
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    if data[:3] == b"\xff\xd8\xff":  # JPEG
+        return True
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return True
+    if data[:2] == b"BM":  # BMP
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return False
 
 
 def rewrite_html_images(html: str, url_to_local: dict[str, Path]) -> str:
