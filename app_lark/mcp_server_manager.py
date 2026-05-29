@@ -12,7 +12,7 @@ from app_lark.lark_mcp_flow import (
     lark_mcp_server_script,
     tool_workspace_root,
 )
-from app_lark.node_bootstrap import find_npx
+from app_lark.node_bootstrap import augmented_search_path, find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -32,6 +32,14 @@ _process: Optional[subprocess.Popen[str]] = None
 _login_lock = threading.Lock()
 _login_process: Optional[subprocess.Popen[str]] = None
 _login_cancelled: bool = False
+
+
+def _augmented_env() -> dict[str, str]:
+    """子进程跑 npx 时 env 里必须能找到 node，否则会报 `env: node: No such file or directory`。"""
+    import os as _os
+    env = _os.environ.copy()
+    env["PATH"] = augmented_search_path()
+    return env
 
 
 # ---------------- MCP server 启停 ----------------
@@ -56,6 +64,7 @@ def start_lark_mcp() -> tuple[bool, str]:
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=str(tool_workspace_root()),
+                env=_augmented_env(),
             )
         except Exception as e:
             return False, f"进程启动失败:{e}"
@@ -169,6 +178,7 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(tool_workspace_root()),
+                env=_augmented_env(),
             )
         except Exception as e:
             return False, f"启动登录失败:{e}"
@@ -237,6 +247,7 @@ def lark_logout() -> tuple[bool, str]:
             capture_output=True,
             text=True,
             timeout=60,
+            env=_augmented_env(),
         )
     except Exception as e:
         return True, f"已清空本地状态;调用 lark-mcp logout 异常:{e}"

@@ -12,7 +12,7 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app_lark.node_bootstrap import find_npx
+from app_lark.node_bootstrap import augment_path_env, find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -42,11 +42,17 @@ def main() -> None:
     if not is_logged_in(app_id):
         _die("未登录。搜索 / 深度文档读取需要 user_access_token,请在 UI > MCP配置 > Lark MCP 点 \"登录\" 完成 OAuth 授权后再启动。", code=3)
 
+    # 先把 PATH 扩成「bootstrap + 系统常见 Node 位置」，这样 execvp(npx) 跑起来
+    # 之后 npx 的 shebang `#!/usr/bin/env node` 也能找到 node。
+    # 不做这一步，macOS .app 在 launchd 起来时 PATH 只剩 /usr/bin:/bin:... 会报
+    # `env: node: No such file or directory`。
+    augment_path_env()
+
     npx_path = find_npx()
     if npx_path is None:
         _die(
-            "未找到 Node.js 运行时。请到 UI > MCP配置 > Lark MCP 卡里点 \"下载内置 Node 运行时\"，"
-            "或自行安装 Node.js (brew install node) 后再启动。",
+            "未找到 Node.js 运行时。请到 UI > MCP配置 > Lark MCP 卡里点「开启 Lark MCP」"
+            "走「安装」流程，或自行安装 Node.js 后再启动。",
             code=4,
         )
     npx = str(npx_path)

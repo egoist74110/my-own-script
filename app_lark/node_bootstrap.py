@@ -98,7 +98,7 @@ def find_npx() -> Optional[Path]:
 
     都没找到返回 ``None``，调用方应提示用户去下载。
     """
-    augmented_path = _augmented_search_path()
+    augmented_path = augmented_search_path()
     sys_npx = shutil.which("npx", path=augmented_path)
     if sys_npx:
         return Path(sys_npx)
@@ -122,34 +122,58 @@ def find_npx() -> Optional[Path]:
     return None
 
 
-def _augmented_search_path() -> str:
-    """当前 PATH ∪ 常见 Node 安装位置（brew / nvm / fnm / volta / n / MacPorts / Windows）。
+def augment_path_env() -> None:
+    """把扩展过的搜索路径写回 ``os.environ['PATH']``。
+
+    重要：子进程（如 ``npx``，shebang 是 ``#!/usr/bin/env node``）需要在 PATH 里
+    也能找到 ``node``，单纯把路径传给 ``shutil.which(..., path=...)`` 不够。
+    `mcp_lark_server.py` execvp 之前 / `subprocess.Popen` 之前都得调一次。
+    """
+    os.environ["PATH"] = augmented_search_path()
+
+
+def augmented_search_path() -> str:
+    """当前 PATH ∪ bootstrap 的 Node bin ∪ 常见系统 Node 安装位置。
 
     解决 macOS GUI 应用 PATH 被 launchd 砍成只剩 ``/usr/bin:/bin:...`` 的问题。
     只把存在的目录加进去，避免污染 PATH。
     """
     parts: list[str] = []
+
+    # 1. bootstrap 出来的 Node（如果有）—— 优先级最高，保证 npx 跟 node 取自同一份
+    root = bootstrap_root()
+    if root.is_dir():
+        try:
+            installs = [p for p in root.iterdir() if p.is_dir() and p.name.startswith("node-")]
+            installs.sort(key=_semver_sort_key, reverse=True)  # 新版本在前
+            for sub in installs:
+                if not _stamp_path(sub).exists():
+                    continue
+                parts.append(str(_npx_path_in(sub).parent))
+        except Exception:
+            pass
+
+    # 2. 当前进程已有的 PATH
     cur = os.environ.get("PATH", "")
     if cur:
         parts.extend(cur.split(os.pathsep))
 
+    # 3. 系统常见 Node 安装位置
     home = Path.home()
     sys_os = platform.system().lower()
-
     candidates: list[Path] = []
 
     if sys_os in ("darwin", "linux"):
         candidates += [
             Path("/usr/local/bin"),
             Path("/opt/homebrew/bin"),
-            Path("/opt/local/bin"),                    # MacPorts
+            Path("/opt/local/bin"),                          # MacPorts
             home / ".local" / "bin",
             home / "bin",
-            home / ".volta" / "bin",                   # Volta
-            home / ".fnm" / "aliases" / "default" / "bin",  # fnm 默认别名
-            home / "n" / "bin",                        # n
+            home / ".volta" / "bin",                         # Volta
+            home / ".fnm" / "aliases" / "default" / "bin",   # fnm 默认别名
+            home / "n" / "bin",                              # n
         ]
-        # nvm：~/.nvm/versions/node/<version>/bin —— 把所有版本都加上，按 semver 倒序
         nvm_root = home / ".nvm" / "versions" / "node"
         if nvm_root.is_dir():
             try:
@@ -158,7 +182,6 @@ def _augmented_search_path() -> str:
                 candidates += [v / "bin" for v in versions]
             except Exception:
                 pass
-        # fnm：~/.local/share/fnm/node-versions/<v>/installation/bin
         fnm_root = home / ".local" / "share" / "fnm" / "node-versions"
         if fnm_root.is_dir():
             try:
@@ -181,7 +204,7 @@ def _augmented_search_path() -> str:
     seen: set[str] = set()
     out: list[str] = []
     for p in parts:
-        if p and p not in seen and p.strip():
+        if p and p.strip() and p not in seen:
             seen.add(p)
             out.append(p)
     for p in candidates:
