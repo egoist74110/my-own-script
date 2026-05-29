@@ -39,7 +39,8 @@ from app_lark.mcp_server_manager import (
 from app_lark.node_bootstrap import (
     NODE_VERSION,
     bootstrap_node,
-    find_npx,
+    find_usable_npx,
+    min_node_version_str,
 )
 from app_lark.secrets import get_app_secret, set_app_secret
 from app_lark.store import (
@@ -478,11 +479,40 @@ class McpConfigTab(Tab):
             )
             return
 
-        # Node 不在就先弹「安装 / 取消」；安装完了再继续开 MCP
-        if find_npx() is None:
-            self._prompt_install_node_then(self._actually_start_lark_mcp)
+        # 优先级：内置 Node → 系统 Node → 缺失。其中"内置但版本过低"走静默升级，
+        # 不让用户再确认一次；其它两种走「安装 / 取消」弹窗。
+        _npx, status, current_ver = find_usable_npx()
+        if status == "ok":
+            self._actually_start_lark_mcp()
             return
-        self._actually_start_lark_mcp()
+        if status == "bootstrap_too_old":
+            self._toast(
+                "Lark MCP",
+                f"内置 Node 过低（{current_ver or '?'}），正在升级到 {NODE_VERSION} …",
+            )
+            self._run_node_bootstrap(self._actually_start_lark_mcp, force=True)
+            return
+        if status == "missing":
+            self._prompt_install_node_then(
+                self._actually_start_lark_mcp,
+                text="当前未检测到 node，是否安装？",
+            )
+            return
+        if status == "system_too_old":
+            cur = current_ver if current_ver and current_ver != "?" else "未知"
+            self._prompt_install_node_then(
+                self._actually_start_lark_mcp,
+                text=(
+                    f"本地 node 版本过低（当前 {cur}，最低需求 node 版本 "
+                    f"{min_node_version_str()}），是否下载内置 Node？"
+                ),
+            )
+            return
+        # 兜底：意外状态当作 missing 处理
+        self._prompt_install_node_then(
+            self._actually_start_lark_mcp,
+            text="当前未检测到 node，是否安装？",
+        )
 
     def _actually_start_lark_mcp(self) -> None:
         result: dict[str, object] = {}
@@ -517,12 +547,15 @@ class McpConfigTab(Tab):
 
     # ---------------- 内置 Node 下载（开启 Lark MCP 缺 Node 时触发） ----------------
 
-    def _prompt_install_node_then(self, on_success) -> None:
-        """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。"""
+    def _prompt_install_node_then(self, on_success, *, text: str = "当前未检测到 node，是否安装？") -> None:
+        """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。
+
+        ``text`` 用来区分两种触发场景：完全缺 node、或本地 node 版本太老。
+        """
         box = QtWidgets.QMessageBox(self)
         box.setIcon(QtWidgets.QMessageBox.Question)
         box.setWindowTitle("Lark MCP")
-        box.setText("当前未检测到 node，是否安装？")
+        box.setText(text)
         btn_install = box.addButton("安装", QtWidgets.QMessageBox.AcceptRole)
         box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
         box.setDefaultButton(btn_install)
@@ -531,14 +564,14 @@ class McpConfigTab(Tab):
             return
         self._run_node_bootstrap(on_success)
 
-    def _run_node_bootstrap(self, on_success) -> None:
+    def _run_node_bootstrap(self, on_success, *, force: bool = False) -> None:
         dlg = QtWidgets.QProgressDialog(
             f"正在下载 Node.js {NODE_VERSION} …",
             "取消",
             0, 100,
             self,
         )
-        dlg.setWindowTitle("下载内置 Node 运行时")
+        dlg.setWindowTitle("升级内置 Node 运行时" if force else "下载内置 Node 运行时")
         dlg.setWindowModality(QtCore.Qt.WindowModal)
         dlg.setMinimumDuration(0)
         dlg.setAutoReset(False)
@@ -592,7 +625,7 @@ class McpConfigTab(Tab):
         progress_sig.done.connect(on_done)
 
         def worker() -> None:
-            ok, msg = bootstrap_node(progress=on_progress, cancel_flag=cancel_flag)
+            ok, msg = bootstrap_node(progress=on_progress, cancel_flag=cancel_flag, force=force)
             progress_sig.done.emit(ok, msg)
 
         threading.Thread(target=worker, daemon=True).start()

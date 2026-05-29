@@ -13,12 +13,15 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import re
 import shutil
+import subprocess
 import tarfile
 import threading
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -29,6 +32,86 @@ from app_ado.store import config_dir
 
 # 想升级 Node 就只改这一行；下次启动会拉新版本。
 NODE_VERSION = "v20.18.1"
+
+# MIN 不能写死，要跟 npm 上的 `@larksuiteoapi/lark-mcp` engines 走。
+# 网络拿不到时回退到这个基线（与 NODE_VERSION 大版本对齐，保证 bootstrap 一定满足）。
+_BASELINE_MIN_NODE: tuple[int, int, int] = (20, 0, 0)
+_MIN_NODE_CACHE_TTL_SEC = 24 * 3600
+_NPM_REGISTRY_URL = "https://registry.npmjs.org/@larksuiteoapi/lark-mcp/latest"
+
+
+def _min_node_cache_path() -> Path:
+    return config_dir() / "lark_mcp_min_node.json"
+
+
+def _parse_engines_node_spec(spec: str) -> Optional[tuple[int, int, int]]:
+    """把 npm engines 字段（``">=20.0.0"`` / ``"^20.18.0"`` / ``"20"`` 这类）提成 (M, m, p)。"""
+    if not spec:
+        return None
+    m = re.search(r"(?:>=?|\^|~)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?", spec)
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0))
+
+
+def _fetch_min_node_from_registry(timeout_sec: float = 5.0) -> Optional[tuple[str, tuple[int, int, int]]]:
+    """命中 npm registry 拿 engines.node。失败返回 None（调用方自己回退）。"""
+    try:
+        req = urllib.request.Request(
+            _NPM_REGISTRY_URL,
+            headers={"User-Agent": "my-own-script/min-node-check"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout_sec) as r:
+            data = json.loads(r.read())
+    except Exception:
+        return None
+    spec = str(((data.get("engines") or {}).get("node") or "")).strip()
+    parsed = _parse_engines_node_spec(spec)
+    if parsed is None:
+        return None
+    return (spec, parsed)
+
+
+def get_min_node_version() -> tuple[int, int, int]:
+    """返回 MCP 当前要求的最小 Node 版本，按 (cache < 24h) → (registry) → (基线) 顺序回退。"""
+    cache_path = _min_node_cache_path()
+    try:
+        if cache_path.exists():
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            if time.time() - float(cached.get("ts") or 0) < _MIN_NODE_CACHE_TTL_SEC:
+                ver = cached.get("version")
+                if isinstance(ver, list) and len(ver) == 3:
+                    return (int(ver[0]), int(ver[1]), int(ver[2]))
+    except Exception:
+        pass
+
+    fresh = _fetch_min_node_from_registry()
+    if fresh is not None:
+        spec, ver = fresh
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps({"ts": time.time(), "spec": spec, "version": list(ver)}),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        return ver
+
+    # registry 拿不到 → 用上一次有效缓存（即便过期）；再不行用基线
+    try:
+        if cache_path.exists():
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            ver = cached.get("version")
+            if isinstance(ver, list) and len(ver) == 3:
+                return (int(ver[0]), int(ver[1]), int(ver[2]))
+    except Exception:
+        pass
+    return _BASELINE_MIN_NODE
+
+
+def min_node_version_str() -> str:
+    return "v" + ".".join(str(x) for x in get_min_node_version())
 
 _DOWNLOAD_LOCK = threading.Lock()
 
@@ -88,38 +171,105 @@ def _stamp_path(install_dir: Path) -> Path:
 # 公开 API
 # ---------------------------------------------------------------------------
 
-def find_npx() -> Optional[Path]:
-    """按顺序找一个能跑的 ``npx``：
-
-    1. 当前进程 PATH + 一组常见 Node 安装目录里的系统 ``npx`` —— 解决 macOS .app
-       被 launchd 启动时 PATH 被砍光、看不到 brew / nvm / fnm 装的 Node 的问题；
-    2. 已 bootstrap 的本地 Node；
-    3. 兜底扫旧版本 bootstrap 目录（升级了 ``NODE_VERSION`` 但旧的还在）。
-
-    都没找到返回 ``None``，调用方应提示用户去下载。
-    """
-    augmented_path = augmented_search_path()
-    sys_npx = shutil.which("npx", path=augmented_path)
-    if sys_npx:
-        return Path(sys_npx)
-
-    install_dir = _install_dir()
-    if _stamp_path(install_dir).exists():
-        npx = _npx_path_in(install_dir)
-        if npx.exists():
-            return npx
-
+def _bootstrap_npxes() -> list[Path]:
+    """枚举所有已 bootstrap 的 npx，按 semver 倒序（新版优先）。"""
+    out: list[Path] = []
     root = bootstrap_root()
-    if root.is_dir():
-        for sub in sorted(root.iterdir(), reverse=True):
-            if not sub.is_dir() or not sub.name.startswith("node-"):
-                continue
-            if not _stamp_path(sub).exists():
-                continue
-            npx = _npx_path_in(sub)
-            if npx.exists():
-                return npx
-    return None
+    if not root.is_dir():
+        return out
+    try:
+        installs = [p for p in root.iterdir() if p.is_dir() and p.name.startswith("node-")]
+    except Exception:
+        return out
+    installs.sort(key=_semver_sort_key, reverse=True)
+    for sub in installs:
+        if not _stamp_path(sub).exists():
+            continue
+        npx = _npx_path_in(sub)
+        if npx.exists():
+            out.append(npx)
+    return out
+
+
+def _find_system_npx() -> Optional[Path]:
+    """只在 augmented PATH 里找系统 npx；显式跳过 bootstrap 目录里的同名 npx。"""
+    bootstrap_bin_dirs = {str(npx.parent) for npx in _bootstrap_npxes()}
+    augmented = augmented_search_path()
+    parts = [p for p in augmented.split(os.pathsep) if p and p not in bootstrap_bin_dirs]
+    sys_npx = shutil.which("npx", path=os.pathsep.join(parts))
+    return Path(sys_npx) if sys_npx else None
+
+
+def find_npx() -> Optional[Path]:
+    """按 bootstrap → 系统 顺序找一个可执行的 ``npx``。不做版本校验，只关心存在性。"""
+    for npx in _bootstrap_npxes():
+        return npx
+    return _find_system_npx()
+
+
+def _node_path_beside(npx: Path) -> Path:
+    """同一份 install 里的 ``node`` 可执行路径。Windows 是 ``node.exe``，否则是 ``node``。"""
+    is_win = platform.system().lower() in ("windows", "win32")
+    return npx.parent / ("node.exe" if is_win else "node")
+
+
+def check_node_version(
+    npx: Path,
+    *,
+    min_version: Optional[tuple[int, int, int]] = None,
+) -> tuple[bool, str]:
+    """跑 ``node --version`` 验证版本是否 ≥ ``min_version``。
+
+    ``min_version`` 留空表示动态从 :func:`get_min_node_version` 拿 —— 默认就用 npm
+    registry 上 ``@larksuiteoapi/lark-mcp`` 的 engines.node。
+    返回 ``(够新吗, 版本字符串)``。版本字符串形如 ``v22.15.0``；拿不到时回 ``"?"``。
+    """
+    node = _node_path_beside(npx)
+    if not node.exists():
+        return (False, "?")
+    try:
+        out = subprocess.check_output(
+            [str(node), "--version"], timeout=5, text=True,
+        ).strip()
+    except Exception:
+        return (False, "?")
+    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", out)
+    if not m:
+        return (False, out or "?")
+    cur = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    floor = min_version if min_version is not None else get_min_node_version()
+    return (cur >= floor, out)
+
+
+def find_usable_npx() -> tuple[Optional[Path], str, str]:
+    """按 "内置 → 系统" 顺序找 ``npx``，并校验 Node 版本。
+
+    返回 ``(npx, status, version)``，``status`` 四态：
+
+    - ``"ok"``：找到达标的 npx；
+    - ``"bootstrap_too_old"``：bootstrap 有但 node 版本低于当前 MCP 要求 —— 调用方应
+      静默 ``force=True`` 重新 bootstrap；
+    - ``"system_too_old"``：bootstrap 没装，系统 npx 找到但 node 版本不够 —— 提示用户
+      装内置 Node；
+    - ``"missing"``：完全找不到 npx —— 提示用户装内置 Node。
+    """
+    min_ver = get_min_node_version()
+
+    boot_list = _bootstrap_npxes()
+    if boot_list:
+        npx = boot_list[0]
+        ok, ver = check_node_version(npx, min_version=min_ver)
+        if ok:
+            return (npx, "ok", ver)
+        return (npx, "bootstrap_too_old", ver)
+
+    sys_npx = _find_system_npx()
+    if sys_npx is None:
+        return (None, "missing", "")
+    ok, ver = check_node_version(sys_npx, min_version=min_ver)
+    if ok:
+        return (sys_npx, "ok", ver)
+    return (sys_npx, "system_too_old", ver)
 
 
 def augment_path_env() -> None:
