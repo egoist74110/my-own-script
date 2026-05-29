@@ -7,12 +7,12 @@
 from __future__ import annotations
 
 import os
-import shutil
 import sys
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from app_lark.node_bootstrap import find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -42,9 +42,14 @@ def main() -> None:
     if not is_logged_in(app_id):
         _die("未登录。搜索 / 深度文档读取需要 user_access_token,请在 UI > MCP配置 > Lark MCP 点 \"登录\" 完成 OAuth 授权后再启动。", code=3)
 
-    npx = shutil.which("npx")
-    if not npx:
-        _die("未找到 npx。需要先装 Node.js(brew install node)。")
+    npx_path = find_npx()
+    if npx_path is None:
+        _die(
+            "未找到 Node.js 运行时。请到 UI > MCP配置 > Lark MCP 卡里点 \"下载内置 Node 运行时\"，"
+            "或自行安装 Node.js (brew install node) 后再启动。",
+            code=4,
+        )
+    npx = str(npx_path)
 
     # 强制 user_access_token:搜索 / 深度文档读取走 UAT,tenant 模式部分接口直接 404
     token_mode = "user_access_token"

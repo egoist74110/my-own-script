@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as _dt
-import shutil
 import subprocess
 import threading
 from typing import Optional
@@ -13,6 +12,7 @@ from app_lark.lark_mcp_flow import (
     lark_mcp_server_script,
     tool_workspace_root,
 )
+from app_lark.node_bootstrap import find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -140,9 +140,10 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
     if not secret:
         return False, "找不到 App Secret(请先保存配置)"
 
-    npx = shutil.which("npx")
-    if not npx:
-        return False, "未找到 npx(请先装 Node.js)"
+    npx_path = find_npx()
+    if npx_path is None:
+        return False, "未找到 Node.js 运行时(请到 Lark MCP 卡里点\"下载内置 Node 运行时\")"
+    npx = str(npx_path)
 
     domain = (s.domain or DEFAULT_DOMAIN).strip()
     port = int(s.oauth_port or DEFAULT_OAUTH_PORT)
@@ -225,9 +226,10 @@ def lark_logout() -> tuple[bool, str]:
     if not app_id:
         return True, "已清空本地登录状态"
 
-    npx = shutil.which("npx")
-    if not npx:
-        return True, "已清空本地登录状态(未找到 npx,跳过 lark-mcp logout)"
+    npx_path = find_npx()
+    if npx_path is None:
+        return True, "已清空本地登录状态(未找到 Node 运行时,跳过 lark-mcp logout)"
+    npx = str(npx_path)
 
     try:
         cp = subprocess.run(

@@ -36,6 +36,11 @@ from app_lark.mcp_server_manager import (
     start_lark_mcp,
     stop_lark_mcp,
 )
+from app_lark.node_bootstrap import (
+    NODE_VERSION,
+    bootstrap_node,
+    find_npx,
+)
 from app_lark.secrets import get_app_secret, set_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -473,6 +478,13 @@ class McpConfigTab(Tab):
             )
             return
 
+        # Node 不在就先弹「安装 / 取消」；安装完了再继续开 MCP
+        if find_npx() is None:
+            self._prompt_install_node_then(self._actually_start_lark_mcp)
+            return
+        self._actually_start_lark_mcp()
+
+    def _actually_start_lark_mcp(self) -> None:
         result: dict[str, object] = {}
 
         def run() -> None:
@@ -502,3 +514,100 @@ class McpConfigTab(Tab):
             self._toast("Lark MCP", "Lark MCP 已关闭")
         else:
             show_error_dialog(self, "Lark MCP 关闭失败", msg)
+
+    # ---------------- 内置 Node 下载（开启 Lark MCP 缺 Node 时触发） ----------------
+
+    def _prompt_install_node_then(self, on_success) -> None:
+        """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。"""
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Question)
+        box.setWindowTitle("Lark MCP 需要 Node 运行时")
+        box.setText(
+            f"Lark MCP 依赖 Node.js {NODE_VERSION}（约 30MB），当前没检测到。\n"
+            "下载到本地缓存，不动你的系统。"
+        )
+        btn_install = box.addButton("安装", QtWidgets.QMessageBox.AcceptRole)
+        box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(btn_install)
+        box.exec()
+        if box.clickedButton() is not btn_install:
+            return
+        self._run_node_bootstrap(on_success)
+
+    def _run_node_bootstrap(self, on_success) -> None:
+        dlg = QtWidgets.QProgressDialog(
+            f"正在下载 Node.js {NODE_VERSION} …",
+            "取消",
+            0, 100,
+            self,
+        )
+        dlg.setWindowTitle("下载内置 Node 运行时")
+        dlg.setWindowModality(QtCore.Qt.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setAutoReset(False)
+        dlg.setAutoClose(False)
+        dlg.setValue(0)
+
+        cancel_flag = threading.Event()
+
+        def on_cancel() -> None:
+            cancel_flag.set()
+
+        dlg.canceled.connect(on_cancel)
+
+        # 跨线程：worker 报进度 → 主线程刷 UI
+        progress_sig = _BootstrapSignals()
+
+        def on_progress(done: int, total: int, phase: str) -> None:
+            progress_sig.tick.emit(done, total, phase)
+
+        def on_done(ok: bool, message: str) -> None:
+            dlg.close()
+            if ok:
+                self._toast("Lark MCP", message)
+                # 自动接力：装好就接着开 MCP
+                if on_success is not None:
+                    on_success()
+            else:
+                if "用户取消" in message:
+                    self._toast("Lark MCP", "已取消下载", ok=False)
+                else:
+                    show_error_dialog(self, "下载 Node 失败", message)
+
+        def tick(done: int, total: int, phase: str) -> None:
+            if phase == "downloading":
+                if total > 0:
+                    pct = int(done * 100 / total)
+                    dlg.setValue(pct)
+                    dlg.setLabelText(
+                        f"正在下载 Node.js {NODE_VERSION} … {_human_mb(done)} / {_human_mb(total)}"
+                    )
+                else:
+                    dlg.setLabelText(f"正在下载 Node.js {NODE_VERSION} … {_human_mb(done)}")
+            elif phase == "extracting":
+                dlg.setLabelText("正在解压 …")
+                dlg.setValue(99)
+            elif phase == "done":
+                dlg.setValue(100)
+                dlg.setLabelText("完成")
+
+        progress_sig.tick.connect(tick)
+        progress_sig.done.connect(on_done)
+
+        def worker() -> None:
+            ok, msg = bootstrap_node(progress=on_progress, cancel_flag=cancel_flag)
+            progress_sig.done.emit(ok, msg)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+def _human_mb(n: int) -> str:
+    if n <= 0:
+        return "?"
+    return f"{n / (1024 * 1024):.1f} MB"
+
+
+class _BootstrapSignals(QtCore.QObject):
+    """跨线程信号：worker 线程不能直接动 UI，必须经 signal 跳回主线程。"""
+    tick = QtCore.Signal(int, int, str)
+    done = QtCore.Signal(bool, str)
