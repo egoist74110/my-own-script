@@ -521,11 +521,8 @@ class McpConfigTab(Tab):
         """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。"""
         box = QtWidgets.QMessageBox(self)
         box.setIcon(QtWidgets.QMessageBox.Question)
-        box.setWindowTitle("Lark MCP 需要 Node 运行时")
-        box.setText(
-            f"Lark MCP 依赖 Node.js {NODE_VERSION}（约 30MB），当前没检测到。\n"
-            "下载到本地缓存，不动你的系统。"
-        )
+        box.setWindowTitle("Lark MCP")
+        box.setText("当前未检测到 node，是否安装？")
         btn_install = box.addButton("安装", QtWidgets.QMessageBox.AcceptRole)
         box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
         box.setDefaultButton(btn_install)

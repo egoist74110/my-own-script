@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import tarfile
 import threading
@@ -90,12 +91,15 @@ def _stamp_path(install_dir: Path) -> Path:
 def find_npx() -> Optional[Path]:
     """按顺序找一个能跑的 ``npx``：
 
-    1. 当前进程 PATH 里的 ``npx`` —— 用户自己装过 Node 的情况；
+    1. 当前进程 PATH + 一组常见 Node 安装目录里的系统 ``npx`` —— 解决 macOS .app
+       被 launchd 启动时 PATH 被砍光、看不到 brew / nvm / fnm 装的 Node 的问题；
     2. 已 bootstrap 的本地 Node；
+    3. 兜底扫旧版本 bootstrap 目录（升级了 ``NODE_VERSION`` 但旧的还在）。
 
     都没找到返回 ``None``，调用方应提示用户去下载。
     """
-    sys_npx = shutil.which("npx")
+    augmented_path = _augmented_search_path()
+    sys_npx = shutil.which("npx", path=augmented_path)
     if sys_npx:
         return Path(sys_npx)
 
@@ -105,7 +109,6 @@ def find_npx() -> Optional[Path]:
         if npx.exists():
             return npx
 
-    # 兜底：扫一下根目录里所有 node-* 子目录（升级了 NODE_VERSION 但旧的还在）
     root = bootstrap_root()
     if root.is_dir():
         for sub in sorted(root.iterdir(), reverse=True):
@@ -117,6 +120,97 @@ def find_npx() -> Optional[Path]:
             if npx.exists():
                 return npx
     return None
+
+
+def _augmented_search_path() -> str:
+    """当前 PATH ∪ 常见 Node 安装位置（brew / nvm / fnm / volta / n / MacPorts / Windows）。
+
+    解决 macOS GUI 应用 PATH 被 launchd 砍成只剩 ``/usr/bin:/bin:...`` 的问题。
+    只把存在的目录加进去，避免污染 PATH。
+    """
+    parts: list[str] = []
+    cur = os.environ.get("PATH", "")
+    if cur:
+        parts.extend(cur.split(os.pathsep))
+
+    home = Path.home()
+    sys_os = platform.system().lower()
+
+    candidates: list[Path] = []
+
+    if sys_os in ("darwin", "linux"):
+        candidates += [
+            Path("/usr/local/bin"),
+            Path("/opt/homebrew/bin"),
+            Path("/opt/local/bin"),                    # MacPorts
+            home / ".local" / "bin",
+            home / "bin",
+            home / ".volta" / "bin",                   # Volta
+            home / ".fnm" / "aliases" / "default" / "bin",  # fnm 默认别名
+            home / "n" / "bin",                        # n
+        ]
+        # nvm：~/.nvm/versions/node/<version>/bin —— 把所有版本都加上，按 semver 倒序
+        nvm_root = home / ".nvm" / "versions" / "node"
+        if nvm_root.is_dir():
+            try:
+                versions = [p for p in nvm_root.iterdir() if p.is_dir()]
+                versions.sort(key=_semver_sort_key, reverse=True)
+                candidates += [v / "bin" for v in versions]
+            except Exception:
+                pass
+        # fnm：~/.local/share/fnm/node-versions/<v>/installation/bin
+        fnm_root = home / ".local" / "share" / "fnm" / "node-versions"
+        if fnm_root.is_dir():
+            try:
+                versions = [p for p in fnm_root.iterdir() if p.is_dir()]
+                versions.sort(key=_semver_sort_key, reverse=True)
+                candidates += [v / "installation" / "bin" for v in versions]
+            except Exception:
+                pass
+
+    if sys_os in ("windows", "win32"):
+        candidates += [
+            Path(r"C:\Program Files\nodejs"),
+            Path(r"C:\Program Files (x86)\nodejs"),
+            home / "AppData" / "Roaming" / "npm",
+            home / "AppData" / "Local" / "Programs" / "node",
+            home / ".volta" / "bin",
+            home / "AppData" / "Roaming" / "fnm" / "aliases" / "default",
+        ]
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        if p and p not in seen and p.strip():
+            seen.add(p)
+            out.append(p)
+    for p in candidates:
+        try:
+            s = str(p)
+        except Exception:
+            continue
+        if s in seen:
+            continue
+        try:
+            if not p.is_dir():
+                continue
+        except Exception:
+            continue
+        seen.add(s)
+        out.append(s)
+    return os.pathsep.join(out)
+
+
+_SEMVER_RE = re.compile(r"v?(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+
+
+def _semver_sort_key(p: Path) -> tuple[int, int, int, str]:
+    """从 ``v20.18.1`` / ``20.18.1`` 提 (major, minor, patch, name) 排。"""
+    m = _SEMVER_RE.match(p.name)
+    if not m:
+        return (0, 0, 0, p.name)
+    g = [int(x) if x is not None else 0 for x in m.groups()]
+    return (g[0], g[1], g[2], p.name)
 
 
 def is_bootstrapped(version: str = NODE_VERSION) -> bool:
