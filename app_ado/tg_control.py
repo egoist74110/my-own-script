@@ -313,6 +313,44 @@ class TelegramController:
 
         send_telegram_photo(bot_token=token, chat_id=chat_id, photo=photo, caption=caption)
 
+    def _reply_media_group(
+        self,
+        token: str,
+        chat_id: str,
+        photos: list[tuple[str, bytes, str]],
+    ) -> None:
+        """photos = [(filename, bytes, content_type), ...]。
+
+        - 0 张：直接返回。
+        - 1 张：退回 sendPhoto。
+        - 2-10 张：一次 sendMediaGroup。
+        - >10：按 10 张一组拆开发。
+        失败静默吞掉（避免一张坏图把整个 view 流程拖死）。
+        """
+        if not photos:
+            return
+        if len(photos) == 1:
+            try:
+                self._reply_photo(token, chat_id, photos[0][1])
+            except Exception:
+                pass
+            return
+        url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
+        for i in range(0, len(photos), 10):
+            group = photos[i:i + 10]
+            media: list[dict[str, Any]] = []
+            files: dict[str, tuple[str, bytes, str]] = {}
+            for j, (name, blob, ct) in enumerate(group):
+                key = f"photo{j}"
+                media.append({"type": "photo", "media": f"attach://{key}"})
+                files[key] = (name, blob, ct or "image/png")
+            data = {"chat_id": str(chat_id), "media": json.dumps(media, ensure_ascii=False)}
+            try:
+                with httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0), follow_redirects=False) as c:
+                    c.post(url, data=data, files=files)
+            except Exception:
+                continue
+
     def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
 
@@ -782,6 +820,31 @@ class TelegramController:
                 return
             text, markup = bridge.handle_mcp_start(chat_id, wid)
             self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_v:"):
+            # 查看工单内容（文本 + 图片相册）
+            try:
+                wid = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            payload = bridge.handle_view(chat_id, wid)
+            if payload.get("error"):
+                self._reply(token, chat_id, str(payload["error"]),
+                            reply_markup=payload.get("final_kb"))
+                return
+            chunks = list(payload.get("chunks") or [])
+            photos = list(payload.get("photos") or [])
+            final_kb = payload.get("final_kb")
+            # 没图：kb 挂在最后一条文本上；有图：先发文 + 相册，再补一条带 kb 的尾巴
+            if chunks:
+                for i, chunk in enumerate(chunks):
+                    last_text = (i == len(chunks) - 1)
+                    rm = final_kb if (last_text and not photos) else None
+                    self._reply(token, chat_id, chunk, reply_markup=rm)
+            if photos:
+                self._reply_media_group(token, chat_id, photos)
+                self._reply(token, chat_id, f"—— 图片 {len(photos)} 张 ——", reply_markup=final_kb)
             return
 
         if data.startswith("wi_r:"):

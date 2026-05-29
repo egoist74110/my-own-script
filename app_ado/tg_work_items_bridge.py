@@ -26,10 +26,12 @@ from app_ado.ado_work_item_http import (
     get_work_item,
     list_work_items_by_board_column_value,
 )
+from app_ado.ado_work_item_http import get_work_item_comments
 from app_ado.ai_work_item_flow import build_mcp_prompt
 from app_ado.models import LibraryEntry, ProjectEntry, UiSettings
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings, save_ui_settings
+from app_ado.work_item_view import clean_html_to_text, collect_image_urls, fetch_image_blobs
 from app_ado.tg_work_items_inline import (
     BOARD_COLUMNS,
     wi_detail_menu,
@@ -62,6 +64,31 @@ def _short_title(title: str, *, limit: int = 50) -> str:
     if len(t) <= limit:
         return t
     return t[: limit - 1] + "…"
+
+
+def _chunk_text(text: str, *, limit: int) -> list[str]:
+    """按 TG 4096 限制把长文本切片；尽量按段落 / 行边界切。"""
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+    out: list[str] = []
+    buf = ""
+    for line in text.split("\n"):
+        if len(buf) + len(line) + 1 > limit:
+            if buf:
+                out.append(buf)
+                buf = ""
+            if len(line) > limit:
+                for j in range(0, len(line), limit):
+                    out.append(line[j:j + limit])
+                continue
+            buf = line
+        else:
+            buf = (buf + "\n" + line) if buf else line
+    if buf:
+        out.append(buf)
+    return out
 
 
 def _short_path(path: str, *, limit: int = 32) -> str:
@@ -453,6 +480,84 @@ class WorkItemsBridge:
         # 让前置消息带上工单上下文
         head = f"#{work_item_id} · {repo_name}\n{text or ''}"
         return head, kb
+
+    # ---------------- 查看（文本 + 图片相册） ----------------
+
+    def handle_view(self, chat_id: str, work_item_id: int) -> dict:
+        """拉详情 / 评论 / 图片，返回给 tg_control 派发的结构化负载：
+
+            {
+              "error": str | None,        # 非空表示出错
+              "chunks": list[str],        # 多段纯文本（按 TG 4096 限制）
+              "photos": [(filename, bytes, content_type), ...],
+              "final_kb": dict,           # 最后一条消息附带的 reply_markup
+            }
+        """
+        s = self._settings()
+        st = self._state(chat_id)
+        del s  # 不需要 settings，纯粹是为了和其他 handle_* 保持对称
+        err, item, lib, proj, pat = self._fetch_item(st, int(work_item_id))
+        if err is not None or item is None or lib is None or proj is None or pat is None:
+            return {
+                "error": err or "未知错误",
+                "chunks": [],
+                "photos": [],
+                "final_kb": wi_detail_menu(int(work_item_id), has_children=False),
+            }
+
+        try:
+            comments = get_work_item_comments(
+                lib.base_url, proj.collection, proj.project,
+                int(work_item_id), pat=pat, top=50,
+            )
+        except Exception:
+            comments = []
+
+        fields = item.fields or {}
+        head_lines = [
+            f"📄 #{item.id} {item.title or '-'}",
+            f"状态：{item.state or '-'}  ·  类型：{item.work_item_type or '-'}  ·  指派：{item.assigned_to or '-'}",
+        ]
+        priority = fields.get("Microsoft.VSTS.Common.Priority")
+        if priority is not None:
+            head_lines.append(f"优先级：{priority}")
+        area = str(fields.get("System.AreaPath") or "")
+        if area:
+            head_lines.append(f"Area：{area}")
+        tags = str(fields.get("System.Tags") or "")
+        if tags:
+            head_lines.append(f"Tags：{tags}")
+        if item.url:
+            head_lines.append(f"链接：{item.url}")
+        header = "\n".join(head_lines)
+
+        desc_text = clean_html_to_text(str(fields.get("System.Description") or ""), max_len=8000)
+        body_parts: list[str] = [header, "—— 描述 ——\n" + (desc_text or "（无描述）")]
+        if comments:
+            body_parts.append(f"—— 评论（{len(comments)}）——")
+            for c in comments[-20:]:  # 太多评论会刷屏，截后 20 条
+                who = c.created_by or "-"
+                when = c.created_date or "-"
+                txt = clean_html_to_text(c.text or "", max_len=600)
+                body_parts.append(f"· {who} · {when}\n{txt or '（空）'}")
+
+        full_text = "\n\n".join(body_parts).strip()
+        chunks = _chunk_text(full_text, limit=3900)
+
+        photo_blobs: list[tuple[str, bytes, str]] = []
+        try:
+            urls = collect_image_urls(item, comments)
+            if urls:
+                photo_blobs = fetch_image_blobs(urls, pat=pat)
+        except Exception:
+            photo_blobs = []
+
+        return {
+            "error": None,
+            "chunks": chunks,
+            "photos": photo_blobs,
+            "final_kb": wi_detail_menu(int(item.id), has_children=_has_child_relations(item)),
+        }
 
     def handle_related(self, chat_id: str, work_item_id: int) -> tuple[str, dict]:
         s = self._settings()

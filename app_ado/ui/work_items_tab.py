@@ -7,13 +7,26 @@ from typing import Callable, Optional
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, LineEdit, PushButton
 
-from app_ado.ado_work_item_http import HIERARCHY_FORWARD_REL, WorkItem, get_descendant_work_items, list_work_items_by_board_column_value
+from app_ado.ado_work_item_http import (
+    HIERARCHY_FORWARD_REL,
+    WorkItem,
+    WorkItemComment,
+    get_descendant_work_items,
+    get_work_item,
+    get_work_item_comments,
+    list_work_items_by_board_column_value,
+)
 from app_ado.ai_work_item_flow import build_mcp_prompt
 from app_ado.models import ProjectEntry, project_entry_collection, project_entry_id, project_entry_library_id, project_entry_name
 from app_ado.secrets import get_pat
 from app_ado.store import load_ui_settings, save_ui_settings
 from app_ado.ui.ai_dev_tab import AiDevTab
 from app_ado.ui.dialogs import show_error_dialog
+from app_ado.work_item_view import (
+    collect_image_urls,
+    download_images_to_cache,
+    rewrite_html_images,
+)
 from ok.gui.widget.Tab import Tab
 
 
@@ -29,6 +42,7 @@ def _has_child_relations(item: WorkItem) -> bool:
 
 
 class WorkItemMiniCard(CardWidget):
+    view_clicked = QtCore.Signal(int)
     mcp_clicked = QtCore.Signal(int)
     related_clicked = QtCore.Signal(int)
 
@@ -53,8 +67,11 @@ class WorkItemMiniCard(CardWidget):
         meta.setStyleSheet("color:#666;")
 
         row = QtWidgets.QHBoxLayout()
+        self.btn_view = PushButton("查看")
+        self.btn_view.setFixedWidth(72)
         self.btn_mcp = PushButton("MCP分析")
         self.btn_mcp.setFixedWidth(96)
+        row.addWidget(self.btn_view)
         row.addWidget(self.btn_mcp)
 
         self.btn_related: PushButton | None = None
@@ -66,6 +83,7 @@ class WorkItemMiniCard(CardWidget):
 
         row.addStretch(1)
 
+        self.btn_view.clicked.connect(lambda: self.view_clicked.emit(self.item.id))
         self.btn_mcp.clicked.connect(lambda: self.mcp_clicked.emit(self.item.id))
 
         root.addWidget(title)
@@ -75,6 +93,7 @@ class WorkItemMiniCard(CardWidget):
 
 class RelatedWorkItemsDialog(QtWidgets.QDialog):
     mcp_requested = QtCore.Signal(int)
+    view_requested = QtCore.Signal(int)
 
     def __init__(
         self,
@@ -140,6 +159,7 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
 
     def _add_card(self, item: WorkItem) -> None:
         card = WorkItemMiniCard(item)
+        card.view_clicked.connect(self.view_requested.emit)
         card.mcp_clicked.connect(self._on_card_mcp_clicked)
         if card.btn_related is not None:
             card.btn_related.setEnabled(False)
@@ -189,6 +209,167 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
 
 
 _DEFAULT_AI_PROFILE_ID = "claude_code"
+
+
+class WorkItemDetailDialog(QtWidgets.QDialog):
+    """工单查看弹窗：拉一次详情 + 评论 + 内嵌图片，渲染 HTML。
+
+    所有 HTTP 都在后台线程里跑，主线程只做 setHtml；图片用本地 file:// URL 内嵌进 QTextBrowser。
+    """
+
+    def __init__(
+        self,
+        *,
+        work_item_id: int,
+        library,
+        project: ProjectEntry,
+        pat: str,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._work_item_id = int(work_item_id)
+        self._library = library
+        self._project = project
+        self._pat = pat
+
+        self.setWindowTitle(f"#{self._work_item_id} 工单查看")
+        self.resize(880, 680)
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
+
+        self.header_label = QtWidgets.QLabel(f"#{self._work_item_id} 加载中…")
+        self.header_label.setStyleSheet("font-weight: 600; font-size: 14px;")
+        self.header_label.setWordWrap(True)
+        outer.addWidget(self.header_label)
+
+        self.meta_label = QtWidgets.QLabel("")
+        self.meta_label.setStyleSheet("color:#666;")
+        self.meta_label.setWordWrap(True)
+        self.meta_label.setOpenExternalLinks(True)
+        outer.addWidget(self.meta_label)
+
+        self.browser = QtWidgets.QTextBrowser()
+        self.browser.setOpenExternalLinks(True)
+        # 让图片优先按 viewport 宽度伸缩，避免横向滚动
+        self.browser.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+        outer.addWidget(self.browser, 1)
+
+        bottom = QtWidgets.QHBoxLayout()
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setStyleSheet("color:#888;")
+        bottom.addWidget(self.status_label, 1)
+        self.btn_close = PushButton("关闭")
+        self.btn_close.clicked.connect(self.reject)
+        bottom.addWidget(self.btn_close)
+        outer.addLayout(bottom)
+
+        QtCore.QTimer.singleShot(0, self, self._load)
+
+    # ------------------------------------------------------------------
+    # 加载
+    # ------------------------------------------------------------------
+
+    def _load(self) -> None:
+        self.status_label.setText("正在加载详情…")
+        payload: dict = {}
+
+        def run() -> None:
+            try:
+                item = get_work_item(
+                    self._library.base_url,
+                    self._work_item_id,
+                    collection=self._project.collection,
+                    project=self._project.project,
+                    pat=self._pat,
+                    expand_relations=True,
+                )
+                try:
+                    comments = get_work_item_comments(
+                        self._library.base_url,
+                        self._project.collection,
+                        self._project.project,
+                        self._work_item_id,
+                        pat=self._pat,
+                        top=50,
+                    )
+                except Exception:
+                    comments = []
+                urls = collect_image_urls(item, comments)
+                url_to_local = download_images_to_cache(
+                    urls, pat=self._pat, sub_key=str(self._work_item_id)
+                )
+                payload["item"] = item
+                payload["comments"] = comments
+                payload["url_to_local"] = url_to_local
+            except Exception as exc:
+                payload["error"] = str(exc)
+            QtCore.QTimer.singleShot(0, self, finish)
+
+        def finish() -> None:
+            err = payload.get("error")
+            if err:
+                self.status_label.setText(f"加载失败：{err}")
+                self.browser.setPlainText(str(err))
+                return
+            self._render(payload["item"], payload["comments"], payload["url_to_local"])
+            n_imgs = len(payload["url_to_local"])
+            n_comments = len(payload["comments"])
+            self.status_label.setText(
+                f"已加载（{n_comments} 条评论，{n_imgs} 张图片）"
+            )
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # 渲染
+    # ------------------------------------------------------------------
+
+    def _render(self, item: WorkItem, comments: list[WorkItemComment], url_to_local: dict) -> None:
+        fields = item.fields or {}
+        self.header_label.setText(f"#{item.id}  {item.title or '-'}")
+
+        meta_parts = [
+            f"状态：{item.state or '-'}",
+            f"类型：{item.work_item_type or '-'}",
+            f"指派：{item.assigned_to or '-'}",
+        ]
+        priority = fields.get("Microsoft.VSTS.Common.Priority")
+        if priority is not None:
+            meta_parts.append(f"优先级：{priority}")
+        area = str(fields.get("System.AreaPath") or "")
+        if area:
+            meta_parts.append(f"Area：{area}")
+        tags = str(fields.get("System.Tags") or "")
+        if tags:
+            meta_parts.append(f"Tags：{tags}")
+        url = item.url or ""
+        if url:
+            meta_parts.append(f'<a href="{url}">在浏览器打开</a>')
+        self.meta_label.setText(" · ".join(meta_parts))
+
+        desc_html = str(fields.get("System.Description") or "")
+        parts: list[str] = []
+        parts.append("<h3 style='margin:4px 0 8px 0'>描述</h3>")
+        parts.append(desc_html or "<p style='color:#999'>（无描述）</p>")
+
+        if comments:
+            parts.append("<hr/>")
+            parts.append(f"<h3 style='margin:8px 0 6px 0'>评论（{len(comments)}）</h3>")
+            for c in comments:
+                who = c.created_by or "-"
+                when = c.created_date or "-"
+                body = c.text or ""
+                parts.append(
+                    f"<div style='border-left:3px solid #ddd; padding:4px 10px; margin:6px 0'>"
+                    f"<div style='color:#888; font-size:12px'>{who} · {when}</div>"
+                    f"<div>{body}</div>"
+                    f"</div>"
+                )
+
+        html = rewrite_html_images("".join(parts), url_to_local)
+        self.browser.setHtml(html)
 
 
 class WorkItemsTab(Tab):
@@ -548,6 +729,7 @@ class WorkItemsTab(Tab):
 
         for work_item in page_items:
             item_card = WorkItemMiniCard(work_item, self.list_view)
+            item_card.view_clicked.connect(self._open_detail_view)
             item_card.mcp_clicked.connect(self._open_mcp_analysis)
             item_card.related_clicked.connect(self._open_related_dialog)
             self.list_layout.addWidget(item_card)
@@ -568,6 +750,26 @@ class WorkItemsTab(Tab):
             return
         dlg = RelatedWorkItemsDialog(root_item, library, project, pat, parent=self)
         dlg.mcp_requested.connect(self._open_mcp_analysis)
+        dlg.view_requested.connect(self._open_detail_view)
+        dlg.exec()
+
+    # ------------------------------------------------------------------
+    # 查看：弹窗展示工单详情（HTML 描述 + 内嵌图片 + 评论）
+    # ------------------------------------------------------------------
+
+    def _open_detail_view(self, work_item_id: int) -> None:
+        try:
+            library, project, pat = self._current_context()
+        except Exception as exc:
+            show_error_dialog(self, "无法查看工单", str(exc))
+            return
+        dlg = WorkItemDetailDialog(
+            work_item_id=int(work_item_id),
+            library=library,
+            project=project,
+            pat=pat,
+            parent=self,
+        )
         dlg.exec()
 
     # ------------------------------------------------------------------

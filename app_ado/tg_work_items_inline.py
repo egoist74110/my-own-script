@@ -72,7 +72,10 @@ def wi_list_menu(
 
 def wi_detail_menu(work_item_id: int, *, has_children: bool) -> dict:
     kb: list[list[dict]] = [
-        [{"text": "🔍 MCP分析", "callback_data": f"wi_m:{work_item_id}"}],
+        [
+            {"text": "👁 查看", "callback_data": f"wi_v:{work_item_id}"},
+            {"text": "🔍 MCP分析", "callback_data": f"wi_m:{work_item_id}"},
+        ],
     ]
     if has_children:
         kb.append([{"text": "🔗 关联子单", "callback_data": f"wi_r:{work_item_id}"}])
