@@ -50,6 +50,22 @@ from app_lark.store import (
     oauth_redirect_url,
     save_lark_settings,
 )
+from app_figma.figma_mcp_flow import (
+    figma_mcp_claude_cli_command,
+    figma_mcp_codex_toml,
+    figma_mcp_gemini_json_fragment,
+    figma_mcp_launch_command,
+)
+from app_figma.mcp_server_manager import (
+    is_figma_mcp_running,
+    start_figma_mcp,
+    stop_figma_mcp,
+)
+from app_figma.secrets import (
+    get_figma_token,
+    is_figma_configured,
+    set_figma_token,
+)
 
 
 LARK_HELP_HTML_TEMPLATE = """
@@ -83,6 +99,28 @@ LARK_HELP_HTML_TEMPLATE = """
   <li>点 <b>开启 Lark MCP</b></li>
 </ol>
 """
+
+FIGMA_HELP_HTML_TEMPLATE = """
+<h3>Figma MCP 配置说明</h3>
+
+<p>本 MCP 基于 Framelink <code>figma-developer-mcp</code>,通过 Figma REST API 读取设计稿
+(文件 / 节点 / 图片),供 Claude Code / Codex / Gemini 做「设计稿转代码」。</p>
+
+<p><b>一、获取 Figma Personal Access Token</b><br>
+<a href="https://www.figma.com/developers/api#access-tokens">https://www.figma.com/developers/api#access-tokens</a></p>
+<ol>
+  <li>登录 Figma → 右上角头像 → <b>Settings</b></li>
+  <li><b>Security</b> 标签 → <b>Personal access tokens</b> → <b>Generate new token</b></li>
+  <li>读取设计稿勾选 <code>File content</code> 只读权限即可,生成后<b>立刻复制</b>(只显示一次)</li>
+</ol>
+
+<p><b>二、回到本程序</b></p>
+<ol>
+  <li>把 Token 粘到本卡片「API Token」输入框 → 点 <b>保存配置</b>(存进系统钥匙串,不写入磁盘明文)</li>
+  <li>点 <b>开启 Figma MCP</b></li>
+  <li>在 Claude / Codex / Gemini 里贴上 Figma 文件链接即可读取设计稿</li>
+</ol>
+"""
 from ok.gui.widget.Tab import Tab
 
 
@@ -94,6 +132,7 @@ class McpConfigTab(Tab):
         super().__init__()
         self._build_ado_work_items_mcp_card()
         self._build_lark_mcp_card()
+        self._build_figma_mcp_card()
         self._load_all()
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(1000)
@@ -240,6 +279,7 @@ class McpConfigTab(Tab):
     def _load_all(self) -> None:
         self.ado_work_items_mcp_command_edit.setText(ado_work_items_mcp_launch_command())
         self._load_lark_form()
+        self._load_figma_form()
         self._update_all_status()
 
     def _load_lark_form(self) -> None:
@@ -268,6 +308,7 @@ class McpConfigTab(Tab):
         self._update_ado_work_items_mcp_status()
         self._update_lark_mcp_status()
         self._update_lark_login_status()
+        self._update_figma_mcp_status()
 
     # ---------------- ADO 卡 handlers ----------------
 
@@ -545,16 +586,214 @@ class McpConfigTab(Tab):
         else:
             show_error_dialog(self, "Lark MCP 关闭失败", msg)
 
-    # ---------------- 内置 Node 下载（开启 Lark MCP 缺 Node 时触发） ----------------
+    # ---------------- Figma MCP 卡 ----------------
 
-    def _prompt_install_node_then(self, on_success, *, text: str = "当前未检测到 node，是否安装？") -> None:
+    def _build_figma_mcp_card(self) -> None:
+        w = CardWidget(self)
+        form = QtWidgets.QFormLayout(w)
+        form.setLabelAlignment(QtCore.Qt.AlignLeft)
+
+        self.figma_token_edit = QtWidgets.QLineEdit()
+        self.figma_token_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.figma_token_edit.setPlaceholderText("Figma Personal Access Token,保存到系统钥匙串(不写入磁盘明文)")
+
+        self.lbl_figma_mcp_status = QtWidgets.QLabel("已关闭")
+
+        self.btn_figma_help = PushButton("配置说明")
+        self.btn_save_figma = PushButton("保存配置")
+        self.btn_toggle_figma_mcp = PushButton("开启 Figma MCP")
+        self.btn_copy_figma_mcp_command = PushButton("复制启动命令")
+        self.btn_copy_figma_mcp_claude = PushButton("复制Claude Code配置")
+        self.btn_copy_figma_mcp_codex = PushButton("复制Codex配置")
+        self.btn_copy_figma_mcp_gemini = PushButton("复制Gemini CLI配置")
+
+        row1 = QtWidgets.QHBoxLayout()
+        row1.addWidget(self.btn_figma_help)
+        row1.addWidget(self.btn_save_figma)
+        row1.addWidget(self.btn_toggle_figma_mcp)
+        row1.addStretch(1)
+
+        row2 = QtWidgets.QHBoxLayout()
+        row2.addWidget(self.btn_copy_figma_mcp_command)
+        row2.addWidget(self.btn_copy_figma_mcp_claude)
+        row2.addWidget(self.btn_copy_figma_mcp_codex)
+        row2.addWidget(self.btn_copy_figma_mcp_gemini)
+        row2.addStretch(1)
+
+        form.addRow("MCP 名称", QtWidgets.QLabel("Figma MCP"))
+        form.addRow("运行状态", self.lbl_figma_mcp_status)
+        form.addRow("API Token", self.figma_token_edit)
+        form.addRow(row1)
+        form.addRow(row2)
+
+        self.btn_figma_help.clicked.connect(self._show_figma_help)
+        self.btn_save_figma.clicked.connect(self._save_figma)
+        self.btn_toggle_figma_mcp.clicked.connect(self._toggle_figma_mcp)
+        self.btn_copy_figma_mcp_command.clicked.connect(self._copy_figma_mcp_command)
+        self.btn_copy_figma_mcp_claude.clicked.connect(self._copy_figma_mcp_claude)
+        self.btn_copy_figma_mcp_codex.clicked.connect(self._copy_figma_mcp_codex)
+        self.btn_copy_figma_mcp_gemini.clicked.connect(self._copy_figma_mcp_gemini)
+
+        self.add_card("Figma MCP", w)
+
+    def _show_figma_help(self) -> None:
+        dlg = QtWidgets.QDialog(self.window())
+        dlg.setWindowTitle("Figma MCP 配置说明")
+        dlg.resize(640, 480)
+        layout = QtWidgets.QVBoxLayout(dlg)
+        browser = QtWidgets.QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setHtml(FIGMA_HELP_HTML_TEMPLATE)
+        layout.addWidget(browser)
+        btn_close = PushButton("关闭")
+        btn_close.clicked.connect(dlg.accept)
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+        dlg.exec()
+
+    # ---------------- Figma 卡 handlers ----------------
+
+    def _load_figma_form(self) -> None:
+        existing = get_figma_token()
+        self.figma_token_edit.setPlaceholderText(
+            "已保存到系统钥匙串(留空保持不变)" if existing else "Figma Personal Access Token,保存到系统钥匙串(不写入磁盘明文)"
+        )
+        self.figma_token_edit.clear()
+
+    def _save_figma(self) -> None:
+        token = self.figma_token_edit.text().strip()
+        if token:
+            set_figma_token(token)
+            self.figma_token_edit.clear()
+            self._load_figma_form()
+            self._toast("Figma MCP", "配置已保存")
+            return
+        if is_figma_configured():
+            self._toast("Figma MCP", "Token 未改动(保持原值)")
+        else:
+            show_error_dialog(self, "Figma MCP", "请填写 Figma API Token")
+
+    def _copy_figma_mcp_command(self) -> None:
+        self._copy_text(figma_mcp_launch_command(), "Figma MCP 启动命令已复制")
+
+    def _copy_figma_mcp_claude(self) -> None:
+        self._copy_text(
+            figma_mcp_claude_cli_command(),
+            "Claude Code 接入命令已复制,粘贴到终端执行后重启 Claude Code 生效",
+        )
+
+    def _copy_figma_mcp_codex(self) -> None:
+        self._copy_text(figma_mcp_codex_toml(), "Figma MCP 的 Codex 配置已复制")
+
+    def _copy_figma_mcp_gemini(self) -> None:
+        self._copy_text(
+            figma_mcp_gemini_json_fragment(),
+            "Gemini CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
+        )
+
+    def _update_figma_mcp_status(self) -> None:
+        if is_figma_mcp_running():
+            self.lbl_figma_mcp_status.setText("已开启")
+            self.btn_toggle_figma_mcp.setText("关闭 Figma MCP")
+        else:
+            self.lbl_figma_mcp_status.setText("已关闭")
+            self.btn_toggle_figma_mcp.setText("开启 Figma MCP")
+
+    def _toggle_figma_mcp(self) -> None:
+        if is_figma_mcp_running():
+            self._stop_figma_mcp()
+        else:
+            self._start_figma_mcp()
+
+    def _start_figma_mcp(self) -> None:
+        if not is_figma_configured():
+            show_error_dialog(
+                self,
+                "Figma MCP 未配置",
+                "请先在「API Token」输入框填写 Figma Personal Access Token 并点击 \"保存配置\",再开启 MCP。",
+            )
+            return
+
+        # 优先级与 Lark 一致：内置 Node → 系统 Node → 缺失。
+        _npx, status, current_ver = find_usable_npx()
+        if status == "ok":
+            self._actually_start_figma_mcp()
+            return
+        if status == "bootstrap_too_old":
+            self._toast(
+                "Figma MCP",
+                f"内置 Node 过低（{current_ver or '?'}），正在升级到 {NODE_VERSION} …",
+            )
+            self._run_node_bootstrap(self._actually_start_figma_mcp, force=True, title="Figma MCP")
+            return
+        if status == "missing":
+            self._prompt_install_node_then(
+                self._actually_start_figma_mcp,
+                text="当前未检测到 node，是否安装？",
+                title="Figma MCP",
+            )
+            return
+        if status == "system_too_old":
+            cur = current_ver if current_ver and current_ver != "?" else "未知"
+            self._prompt_install_node_then(
+                self._actually_start_figma_mcp,
+                text=(
+                    f"本地 node 版本过低（当前 {cur}，最低需求 node 版本 "
+                    f"{min_node_version_str()}），是否下载内置 Node？"
+                ),
+                title="Figma MCP",
+            )
+            return
+        self._prompt_install_node_then(
+            self._actually_start_figma_mcp,
+            text="当前未检测到 node，是否安装？",
+            title="Figma MCP",
+        )
+
+    def _actually_start_figma_mcp(self) -> None:
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            ok, msg = start_figma_mcp()
+            result["ok"] = ok
+            result["message"] = msg
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._update_figma_mcp_status()
+            if bool(result.get("ok")):
+                self._toast("Figma MCP", "Figma MCP 已开启")
+            else:
+                show_error_dialog(self, "Figma MCP 启动失败", str(result.get("message") or "未知错误"))
+
+        QtCore.QTimer.singleShot(80, finish)
+
+    def _stop_figma_mcp(self) -> None:
+        ok, msg = stop_figma_mcp()
+        self._update_figma_mcp_status()
+        if ok:
+            self._toast("Figma MCP", "Figma MCP 已关闭")
+        else:
+            show_error_dialog(self, "Figma MCP 关闭失败", msg)
+
+    # ---------------- 内置 Node 下载（开启 Lark / Figma MCP 缺 Node 时触发） ----------------
+
+    def _prompt_install_node_then(self, on_success, *, text: str = "当前未检测到 node，是否安装？", title: str = "Lark MCP") -> None:
         """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。
 
         ``text`` 用来区分两种触发场景：完全缺 node、或本地 node 版本太老。
+        ``title`` 区分是哪张 MCP 卡触发的(Lark / Figma)。
         """
         box = QtWidgets.QMessageBox(self)
         box.setIcon(QtWidgets.QMessageBox.Question)
-        box.setWindowTitle("Lark MCP")
+        box.setWindowTitle(title)
         box.setText(text)
         btn_install = box.addButton("安装", QtWidgets.QMessageBox.AcceptRole)
         box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
@@ -562,9 +801,9 @@ class McpConfigTab(Tab):
         box.exec()
         if box.clickedButton() is not btn_install:
             return
-        self._run_node_bootstrap(on_success)
+        self._run_node_bootstrap(on_success, title=title)
 
-    def _run_node_bootstrap(self, on_success, *, force: bool = False) -> None:
+    def _run_node_bootstrap(self, on_success, *, force: bool = False, title: str = "Lark MCP") -> None:
         dlg = QtWidgets.QProgressDialog(
             f"正在下载 Node.js {NODE_VERSION} …",
             "取消",
@@ -594,13 +833,13 @@ class McpConfigTab(Tab):
         def on_done(ok: bool, message: str) -> None:
             dlg.close()
             if ok:
-                self._toast("Lark MCP", message)
+                self._toast(title, message)
                 # 自动接力：装好就接着开 MCP
                 if on_success is not None:
                     on_success()
             else:
                 if "用户取消" in message:
-                    self._toast("Lark MCP", "已取消下载", ok=False)
+                    self._toast(title, "已取消下载", ok=False)
                 else:
                     show_error_dialog(self, "下载 Node 失败", message)
 

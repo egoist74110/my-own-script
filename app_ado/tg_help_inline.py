@@ -23,8 +23,15 @@ def top_menu(
     return {"inline_keyboard": rows}
 
 
-def mcp_menu(*, ado_running: bool, lark_running: bool, lark_logged_in: bool) -> dict:
-    """MCP 配置主菜单:列两个 MCP 的状态,点击 toggle。"""
+def mcp_menu(
+    *,
+    ado_running: bool,
+    lark_running: bool,
+    lark_logged_in: bool,
+    figma_running: bool,
+    figma_configured: bool,
+) -> dict:
+    """MCP 配置主菜单:列各 MCP 的状态,点击 toggle。"""
     ado_text = "🟢 工单 MCP 已开(点击关闭)" if ado_running else "⚪ 工单 MCP 已关(点击开启)"
     if lark_running:
         lark_text = "🟢 Lark MCP 已开(点击关闭)"
@@ -32,9 +39,16 @@ def mcp_menu(*, ado_running: bool, lark_running: bool, lark_logged_in: bool) -> 
         lark_text = "🔒 Lark MCP 未登录(请到桌面端配置)"
     else:
         lark_text = "⚪ Lark MCP 已关(点击开启)"
+    if figma_running:
+        figma_text = "🟢 Figma MCP 已开(点击关闭)"
+    elif not figma_configured:
+        figma_text = "🔒 Figma MCP 未配置(请到桌面端配置)"
+    else:
+        figma_text = "⚪ Figma MCP 已关(点击开启)"
     return {"inline_keyboard": [
         [{"text": ado_text, "callback_data": "mcp:ado:tg"}],
         [{"text": lark_text, "callback_data": "mcp:lark:tg"}],
+        [{"text": figma_text, "callback_data": "mcp:figma:tg"}],
         [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
     ]}
 

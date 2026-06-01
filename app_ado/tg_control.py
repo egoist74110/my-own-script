@@ -861,12 +861,16 @@ class TelegramController:
     def _build_mcp_menu(self) -> dict:
         from app_ado.mcp_server_manager import is_ado_work_items_mcp_running
         from app_ado.tg_help_inline import mcp_menu
+        from app_figma.mcp_server_manager import is_figma_mcp_running
+        from app_figma.secrets import is_figma_configured
         from app_lark.mcp_server_manager import is_lark_logged_in, is_lark_mcp_running
 
         return mcp_menu(
             ado_running=is_ado_work_items_mcp_running(),
             lark_running=is_lark_mcp_running(),
             lark_logged_in=is_lark_logged_in(),
+            figma_running=is_figma_mcp_running(),
+            figma_configured=is_figma_configured(),
         )
 
     def _handle_mcp_callback(self, token: str, chat_id: str, data: str) -> None:
@@ -904,6 +908,24 @@ class TelegramController:
             else:
                 ok, msg = start_lark_mcp()
                 text = f"Lark MCP 已开启（{msg}）" if ok else f"开启失败：{msg}"
+            self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
+            return
+
+        if key == "figma":
+            from app_figma.mcp_server_manager import (
+                is_figma_mcp_running,
+                start_figma_mcp,
+                stop_figma_mcp,
+            )
+            from app_figma.secrets import is_figma_configured
+            if is_figma_mcp_running():
+                ok, msg = stop_figma_mcp()
+                text = f"Figma MCP 已关闭（{msg}）" if ok else f"关闭失败：{msg}"
+            elif not is_figma_configured():
+                text = "Figma MCP 未配置。请到桌面端 MCP 配置 Tab,在 Figma MCP 卡里填写 Figma API Token 并保存后再开启。"
+            else:
+                ok, msg = start_figma_mcp()
+                text = f"Figma MCP 已开启（{msg}）" if ok else f"开启失败：{msg}"
             self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
             return
 
