@@ -282,6 +282,24 @@ def augment_path_env() -> None:
     os.environ["PATH"] = augmented_search_path()
 
 
+def env_for_npx(npx: Path) -> dict[str, str]:
+    """给 ``subprocess.Popen(env=...)`` 用的环境字典。
+
+    在 :func:`augmented_search_path` 基础上**强制把 ``npx`` 的同级 bin 目录塞到 PATH
+    最前**。`augmented_search_path` 只是猜一组常见 Node 安装位置，如果用户把 Node 装
+    在我们没枚举的地方（少见但有可能），``find_npx`` 仍能通过当前 PATH 命中 ``npx``，
+    但拼出来的 augmented PATH 可能漏掉那个目录，导致子进程 ``#!/usr/bin/env node``
+    报 ``env: node: No such file or directory``。
+    """
+    env = os.environ.copy()
+    bin_dir = str(npx.parent)
+    parts = augmented_search_path().split(os.pathsep)
+    if bin_dir not in parts:
+        parts.insert(0, bin_dir)
+    env["PATH"] = os.pathsep.join(parts)
+    return env
+
+
 def augmented_search_path() -> str:
     """当前 PATH ∪ bootstrap 的 Node bin ∪ 常见系统 Node 安装位置。
 
@@ -474,9 +492,14 @@ def bootstrap_node(
                 pass
 
         # ---- 校验 + 落 stamp ----
+        # npx 跟 node 必须同时存在；否则子进程跑 npx 时 shebang `#!/usr/bin/env node`
+        # 会报 `env: node: No such file or directory`，相当于半残安装。
         npx = _npx_path_in(install_dir)
         if not npx.exists():
             return False, f"解压后未找到 npx：{npx}"
+        node = _node_path_beside(npx)
+        if not node.exists():
+            return False, f"解压后未找到 node：{node}"
         try:
             _stamp_path(install_dir).write_text(version, encoding="utf-8")
         except Exception:

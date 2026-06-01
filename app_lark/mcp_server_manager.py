@@ -12,7 +12,7 @@ from app_lark.lark_mcp_flow import (
     lark_mcp_server_script,
     tool_workspace_root,
 )
-from app_lark.node_bootstrap import augmented_search_path, find_npx
+from app_lark.node_bootstrap import augmented_search_path, env_for_npx, find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -178,7 +178,7 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(tool_workspace_root()),
-                env=_augmented_env(),
+                env=env_for_npx(npx_path),
             )
         except Exception as e:
             return False, f"启动登录失败:{e}"
@@ -247,7 +247,7 @@ def lark_logout() -> tuple[bool, str]:
             capture_output=True,
             text=True,
             timeout=60,
-            env=_augmented_env(),
+            env=env_for_npx(npx_path),
         )
     except Exception as e:
         return True, f"已清空本地状态;调用 lark-mcp logout 异常:{e}"
