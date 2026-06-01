@@ -1092,6 +1092,7 @@ class TasksTab(QtWidgets.QWidget):
                     start_wait = time.time()
                     deadline = start_wait + timeout_sec
                     last_line = ""
+                    triggered: set[str] = set()  # 已触发部署的 envId，避免每轮重复触发
 
                     while time.time() < deadline:
                         if should_stop():
@@ -1107,9 +1108,10 @@ class TasksTab(QtWidgets.QWidget):
                             last_line = line
 
                         for e in selected:
-                            if (e.status or "").lower() == "notstarted":
+                            if (e.status or "").lower() == "notstarted" and str(e.id) not in triggered:
                                 emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
                                 start_release_environment(lib.base_url, proj.collection, proj.project, rel.id, e.id, pat=pat)
+                                triggered.add(str(e.id))
 
                         if selected and all(is_done(e.status) for e in selected):
                             failed = [e for e in selected if (e.status or "").lower() not in ("succeeded",)]
@@ -1293,6 +1295,7 @@ class TasksTab(QtWidgets.QWidget):
         import threading
         import subprocess
         import shlex
+        import os
 
         # determine notification recipient and requester identity (avoid global last_requester races)
         try:
@@ -1433,14 +1436,17 @@ class TasksTab(QtWidgets.QWidget):
 
         def worker() -> None:
             try:
-                stop_source = self._stop_source
-
+                # 取消来源/触发者读本任务自己的 ctx（由 stop_one_task / _stop_task_ui /
+                # _stop_tasks_from_tg 在停止时写入），不要读全局 self._stop_*（按任务停止后这些全局值
+                # 不再更新，会拿到陈旧/空值）。在停止发生时实时读取，而非 worker 启动时快照。
                 def stop_detail(where: str) -> str:
-                    if stop_source == "tg":
-                        u = self._stop_requester_username or ""
-                        cid = self._stop_requester_chat_id or ""
+                    ctx = self._running_tasks.get(str(flow_id)) or {}
+                    src = str(ctx.get("stop_source") or "")
+                    if src == "tg":
+                        u = str(ctx.get("stop_requester_username") or "")
+                        cid = str(ctx.get("stop_requester_chat_id") or "")
                         return f"由 TG 取消 {('@'+u) if u else ''} ({cid})\n阶段：{where}".strip()
-                    if stop_source == "ui":
+                    if src == "ui":
                         return f"由程序界面取消\n阶段：{where}"
                     return f"已取消\n阶段：{where}"
 
@@ -1480,11 +1486,26 @@ class TasksTab(QtWidgets.QWidget):
                     details=f"{task_label}\nbranch={deploy_branch}\ntargets={len(targets)}",
                 )
 
-                def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
+                def run_cmd(cmd: list[str], *, timeout: float = 300.0) -> subprocess.CompletedProcess:
                     line = "$ " + " ".join(shlex.quote(x) for x in cmd)
                     emit_log(line)
                     # local_path may be empty (remote-only mode). In that case, do not set cwd.
-                    cp = subprocess.run(cmd, cwd=(local_path or None), capture_output=True, text=True)
+                    # 切断 stdin + 禁用 git 交互式认证，避免凭据弹窗等待输入而无限挂起；
+                    # timeout 兜底：git 卡死时抛 TimeoutExpired，由 worker 外层 except 捕获并清理运行状态。
+                    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+                    try:
+                        cp = subprocess.run(
+                            cmd,
+                            cwd=(local_path or None),
+                            capture_output=True,
+                            text=True,
+                            stdin=subprocess.DEVNULL,
+                            env=env,
+                            timeout=timeout,
+                        )
+                    except subprocess.TimeoutExpired:
+                        emit_log(f"⏱ 命令超时（>{int(timeout)}s）：{line}")
+                        raise RuntimeError(f"命令超时（>{int(timeout)}s）：{' '.join(cmd)}")
                     if cp.stdout:
                         emit_log(cp.stdout.strip())
                     if cp.stderr:
@@ -1905,6 +1926,7 @@ class TasksTab(QtWidgets.QWidget):
                     start_wait = time.time()
                     deadline = start_wait + timeout_sec
                     last_line = ""
+                    triggered: set[str] = set()  # 已触发部署的 envId，避免每轮重复触发
 
                     def select_envs(envs):
                         by_def_id = [e for e in envs if (e.definition_environment_id or "") in want_ids]
@@ -1930,9 +1952,10 @@ class TasksTab(QtWidgets.QWidget):
                             last_line = line
 
                         for e in selected:
-                            if (e.status or "").lower() == "notstarted":
+                            if (e.status or "").lower() == "notstarted" and str(e.id) not in triggered:
                                 emit_log(f"触发部署：{e.name} (envId={e.id}, defEnvId={e.definition_environment_id})")
                                 start_release_environment(lib.base_url, proj.collection, proj.project, rel.id, e.id, pat=pat)
+                                triggered.add(str(e.id))
 
                         if selected and all(is_done(e.status) for e in selected):
                             failed = [e for e in selected if (e.status or "").lower() not in ("succeeded",)]
