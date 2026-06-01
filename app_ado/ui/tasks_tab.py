@@ -842,9 +842,11 @@ class TasksTab(QtWidgets.QWidget):
                         return
 
                 notify_telegram("✅ 回退成功", f"{task_label}\noffset={offset}\ntargets={len(targets)}")
-                q.put(("done", ""))
             except Exception as ex:
                 emit_error("回退失败", str(ex))
+            finally:
+                # 保证任何退出路径（成功/异常/停止/阶段失败/超时 return）都发一次 done，
+                # 否则 flush() 不会 pop _running_tasks，运行状态会永久泄漏。
                 q.put(("done", ""))
 
         def flush() -> None:
@@ -1141,9 +1143,11 @@ class TasksTab(QtWidgets.QWidget):
                         return
 
                 notify_telegram("✅ 仅发布成功", f"{task_label}\nbranch={build_branch}\ntargets={len(targets)}")
-                q.put(("done", ""))
             except Exception as ex:
                 emit_error("运行异常", str(ex))
+            finally:
+                # 保证任何退出路径（成功/异常/停止/阶段失败/超时 return）都发一次 done，
+                # 否则 flush() 不会 pop _running_tasks，运行状态会永久泄漏。
                 q.put(("done", ""))
 
         def flush() -> None:
