@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -107,6 +108,32 @@ def pull_ff_only(cwd: Path, branch: str = "main") -> str:
     cp = _run(["git", "pull", "--ff-only", "origin", branch], cwd, timeout=60)
     if cp.returncode != 0:
         raise RuntimeError(cp.stderr or cp.stdout or "git pull --ff-only failed")
+    return cp.stdout.strip()
+
+
+_VERSION_RE = re.compile(r"""__version__\s*=\s*["']([^"']+)["']""")
+
+
+def get_remote_version(cwd: Path, branch: str = "main") -> str:
+    """Read __version__ from app_version.py on origin/<branch> without checking it out.
+
+    Assumes refs are already fetched (get_update_status() calls fetch()).
+    """
+    cp = _run(["git", "show", f"origin/{branch}:app_version.py"], cwd, timeout=10)
+    if cp.returncode != 0:
+        raise RuntimeError(cp.stderr or cp.stdout or "git show app_version.py failed")
+    m = _VERSION_RE.search(cp.stdout)
+    if not m:
+        raise RuntimeError("无法解析远程 app_version.py 中的 __version__")
+    return m.group(1)
+
+
+def hard_reset_to_remote(cwd: Path, branch: str = "main") -> str:
+    """Force the working tree to match origin/<branch> (used by 重新安装)."""
+    fetch(cwd)
+    cp = _run(["git", "reset", "--hard", f"origin/{branch}"], cwd, timeout=60)
+    if cp.returncode != 0:
+        raise RuntimeError(cp.stderr or cp.stdout or "git reset --hard failed")
     return cp.stdout.strip()
 
 

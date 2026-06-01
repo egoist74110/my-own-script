@@ -118,30 +118,58 @@ def main() -> None:
     w.resize(1100, 760)
     w.show()
 
-    # Auto-update on startup (GitHub): check -> pull(main) -> pip -> restart
-    from PySide6 import QtCore
+    # Startup update check (git): if origin/main is ahead, ASK before pulling.
+    from PySide6 import QtCore, QtWidgets
 
-    from app_ado.updater import check_git_clean, get_update_status, pip_sync, pull_ff_only, repo_root, restart_self
+    from app_ado.updater import (
+        check_git_clean,
+        get_remote_version,
+        get_update_status,
+        pip_sync,
+        pull_ff_only,
+        repo_root,
+        restart_self,
+    )
     from app_ado.ui.dialogs import show_error_dialog
 
     import threading
 
-    def do_update():
+    def _apply_update(root):
         try:
-            root = repo_root()
-            clean, _dirty = check_git_clean(root)
-            if not clean:
-                return
-            st = get_update_status(root, branch="main")
-            if st.behind <= 0:
-                return
             pull_ff_only(root, branch="main")
             pip_sync(root)
             QtCore.QTimer.singleShot(500, restart_self)
         except Exception as e:
-            QtCore.QTimer.singleShot(0, lambda: show_error_dialog(w, "自动更新失败", str(e)))
+            QtCore.QTimer.singleShot(0, lambda: show_error_dialog(w, "更新失败", str(e)))
 
-    threading.Thread(target=do_update, daemon=True).start()
+    def _prompt_update(root, new_ver: str):
+        ok = QtWidgets.QMessageBox.question(
+            w,
+            "发现新版本",
+            f"发现新版本：{new_ver}\n\n是否现在更新并重启？",
+        )
+        if ok == QtWidgets.QMessageBox.Yes:
+            threading.Thread(target=lambda: _apply_update(root), daemon=True).start()
+
+    def check_update():
+        try:
+            root = repo_root()
+            clean, _dirty = check_git_clean(root)
+            if not clean:
+                # Local changes present: never auto-update, don't nag.
+                return
+            st = get_update_status(root, branch="main")
+            if st.behind <= 0:
+                return
+            try:
+                new_ver = get_remote_version(root, branch="main")
+            except Exception:
+                new_ver = f"{st.behind} 个新提交"
+            QtCore.QTimer.singleShot(0, lambda: _prompt_update(root, new_ver))
+        except Exception as e:
+            QtCore.QTimer.singleShot(0, lambda: show_error_dialog(w, "检查更新失败", str(e)))
+
+    threading.Thread(target=check_update, daemon=True).start()
 
     sys.exit(app.exec())
 

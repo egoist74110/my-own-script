@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Auto-bump the 4th version segment on every commit, folding the new
+# app_version.py into the commit being made.
+#
+# Bypass with: SKIP_VERSION_BUMP=1 git commit ...   (used by release_github.sh)
+# Skipped automatically for merge commits.
+set -euo pipefail
+
+if [ "${SKIP_VERSION_BUMP:-0}" = "1" ]; then
+  exit 0
+fi
+
+GIT_DIR_PATH="$(git rev-parse --git-dir)"
+if [ -f "$GIT_DIR_PATH/MERGE_HEAD" ]; then
+  # Don't bump on merge commits.
+  exit 0
+fi
+
+REPO="$(git rev-parse --show-toplevel)"
+
+PY="python3"
+if [ -x "$REPO/.venv/bin/python" ]; then
+  PY="$REPO/.venv/bin/python"
+fi
+
+"$PY" "$REPO/scripts/bump_version.py" >/dev/null
+git add "$REPO/app_version.py"
+
+exit 0

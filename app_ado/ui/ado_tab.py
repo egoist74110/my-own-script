@@ -24,10 +24,18 @@ class AdoReleaseTab(Tab):
             InfoBar.error(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window())
 
     def _build_update_card(self) -> None:
-        """Manual update UX: check updates + update now."""
+        """Update UX over the git channel: check / update (pull) / reinstall (reset)."""
         from app_version import __version__
-        from app_ado.release_updater import get_latest_release
-        from app_ado.app_installer import default_update_cache_dir, download_file, find_app_in_volume, install_app_from_volume, mount_dmg, unmount_dmg
+        from app_ado.updater import (
+            check_git_clean,
+            get_remote_version,
+            get_update_status,
+            hard_reset_to_remote,
+            pip_sync,
+            pull_ff_only,
+            repo_root,
+            restart_self,
+        )
 
         w = CardWidget(self)
         form = QFormLayout(w)
@@ -44,8 +52,7 @@ class AdoReleaseTab(Tab):
         form.addRow("更新状态", self.lbl_update_status)
 
         self.progress = QtWidgets.QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
+        self.progress.setRange(0, 0)  # busy/indeterminate while working
         self.progress.setVisible(False)
 
         btn_row = QtWidgets.QHBoxLayout()
@@ -55,157 +62,99 @@ class AdoReleaseTab(Tab):
         form.addRow(btn_row)
         form.addRow("进度", self.progress)
 
+        # Remote version discovered by the last check; None until checked.
+        self._remote_version: str | None = None
+        self._has_update: bool = False
+        self.btn_do_update.setEnabled(False)
+
         def ui(fn) -> None:
             # Ensure UI updates always happen on the Qt main thread.
             QtCore.QTimer.singleShot(0, self, fn)
 
         def set_busy(busy: bool) -> None:
             self.btn_check_update.setEnabled(not busy)
-            if busy:
-                self.btn_do_update.setEnabled(False)
-                self.btn_reinstall.setEnabled(False)
-            else:
-                has_rel = bool(self._latest_release_asset_url or self._latest_release_url)
-                self.btn_do_update.setEnabled(has_rel and self.lbl_update_status.text().startswith("发现新版本"))
-                self.btn_reinstall.setEnabled(has_rel)
+            self.btn_reinstall.setEnabled(not busy)
+            # 【更新】only makes sense when a newer version was found.
+            self.btn_do_update.setEnabled((not busy) and self._has_update)
 
-        self._latest_release_url: str | None = None
-        self._latest_release_asset_url: str | None = None
-        self._latest_release_version: str | None = None
-        self.btn_do_update.setEnabled(False)
-        self.btn_reinstall.setEnabled(False)
-
-        def do_check(done: dict, *, auto: bool = False) -> None:
+        # ---- 检查更新 ---------------------------------------------------
+        def do_check(done: dict) -> None:
             try:
-                rel = get_latest_release()
-                self._latest_release_url = rel.html_url
-                self._latest_release_asset_url = rel.asset_url
-                self._latest_release_version = rel.version
-
-                if rel.version == __version__:
+                root = repo_root()
+                st = get_update_status(root, branch="main")  # fetches refs internally
+                if st.behind <= 0:
+                    self._has_update = False
+                    self._remote_version = None
                     ui(lambda: self.lbl_update_status.setText("已是最新"))
-                    ui(lambda: self.btn_do_update.setEnabled(False))
                 else:
-                    new_ver = rel.version
-                    ui(lambda: self.lbl_update_status.setText(f"发现新版本：{new_ver}"))
-                    ui(lambda: self.btn_do_update.setEnabled(True))
-
-                    if auto:
-                        # Auto prompt only once per app launch.
-                        def _prompt(v=new_ver):
-                            ok = QtWidgets.QMessageBox.question(
-                                self,
-                                "发现新版本",
-                                f"发现新版本：{v}\n\n是否现在更新？",
-                            )
-                            if ok == QtWidgets.QMessageBox.Yes:
-                                _start_update(force=False)
-
-                        ui(_prompt)
+                    try:
+                        new_ver = get_remote_version(root, branch="main")
+                    except Exception:
+                        new_ver = f"{st.behind} 个新提交"
+                    self._remote_version = new_ver
+                    self._has_update = True
+                    ui(lambda v=new_ver: self.lbl_update_status.setText(f"发现新版本：{v}"))
             except Exception as e:
+                self._has_update = False
                 msg = str(e)
                 ui(lambda m=msg: show_error_dialog(self, "无法检查更新", m))
                 ui(lambda: self.lbl_update_status.setText("检查失败"))
-                ui(lambda: self.btn_do_update.setEnabled(False))
             finally:
                 done["v"] = True
                 ui(lambda: set_busy(False))
 
-        def on_check_clicked(*, auto: bool = False) -> None:
+        def on_check_clicked() -> None:
             set_busy(True)
             self.lbl_update_status.setText("检查中…")
 
-            # watchdog
             done = {"v": False}
 
             def watchdog():
                 if done["v"]:
                     return
                 set_busy(False)
-                show_error_dialog(self, "检查更新超时", "检查更新超过 12 秒仍未返回。\n\n建议：稍后再试或检查网络。")
+                show_error_dialog(self, "检查更新超时", "检查更新超过 30 秒仍未返回。\n\n建议：稍后再试或检查网络。")
 
-            QtCore.QTimer.singleShot(12000, self, watchdog)
+            QtCore.QTimer.singleShot(30000, self, watchdog)
 
             import threading
 
-            threading.Thread(target=lambda: do_check(done, auto=auto), daemon=True).start()
+            threading.Thread(target=lambda: do_check(done), daemon=True).start()
 
-        def do_update(done: dict, *, force: bool = False) -> None:
-            mp = None
+        # ---- 更新 / 重新安装（共用 git 执行体）--------------------------
+        def do_apply(done: dict, *, reinstall: bool) -> None:
             try:
-                url = self._latest_release_asset_url
-                ver = self._latest_release_version
-                if not url or not ver:
-                    raise RuntimeError("请先点击【检查更新】")
+                root = repo_root()
+                if reinstall:
+                    ui(lambda: self.lbl_update_status.setText("强制对齐 origin/main…"))
+                    hard_reset_to_remote(root, branch="main")
+                else:
+                    ui(lambda: self.lbl_update_status.setText("拉取更新中…"))
+                    pull_ff_only(root, branch="main")
 
-                dmg_path = default_update_cache_dir() / f"代码工具箱-{ver}-mac.dmg"
+                ui(lambda: self.lbl_update_status.setText("同步依赖中…"))
+                pip_sync(root)
 
-                ui(lambda: self.progress.setVisible(True))
-                ui(lambda: self.progress.setRange(0, 100))
-                ui(lambda: self.progress.setValue(0))
-                ui(lambda: self.lbl_update_status.setText("下载更新中…"))
-
-                def on_prog(p):
-                    if p.total and p.total > 0:
-                        pct = int(p.downloaded * 100 / p.total)
-                        ui(lambda v=pct: self.progress.setValue(max(0, min(100, v))))
-
-                download_file(url, dmg_path, on_progress=on_prog, timeout=30.0)
-
-                ui(lambda: self.progress.setRange(0, 0))
-                ui(lambda: self.lbl_update_status.setText("挂载安装包…"))
-                mp = mount_dmg(dmg_path)
-                src_app = find_app_in_volume(mp)
-
-                ui(lambda: self.lbl_update_status.setText("安装中…（可能会弹出系统授权）"))
-                install_app_from_volume(src_app)
-
-                ui(lambda: self.lbl_update_status.setText("安装完成，正在退出旧版本…"))
-
-                # Ensure the old instance really exits even if Qt event delivery is flaky.
-                import threading
-                import os
-
-                def _hard_exit():
-                    os._exit(0)
-
-                threading.Timer(1.2, _hard_exit).start()
-
-                def _soft_exit():
-                    try:
-                        from PySide6.QtWidgets import QApplication
-
-                        inst = QApplication.instance()
-                        if inst is not None:
-                            inst.quit()
-                    except Exception:
-                        pass
-
-                ui(_soft_exit)
+                ui(lambda: self.lbl_update_status.setText("完成，正在重启…"))
+                ui(lambda: QtCore.QTimer.singleShot(400, self, restart_self))
             except Exception as e:
                 msg = str(e)
                 ui(
                     lambda m=msg: show_error_dialog(
                         self,
-                        "更新失败",
-                        m
-                        + "\n\n你可以：\n1) 打开 GitHub Releases 手动下载并安装\n2) 或点击【重新安装】重试\n",
+                        "重新安装失败" if reinstall else "更新失败",
+                        m + "\n\n提示：若本地有未提交改动，git pull/reset 可能失败；可先提交或清理工作区。",
                     )
                 )
-                if self._latest_release_url:
-                    ui(lambda: open_url(self._latest_release_url))
+                ui(lambda: self.lbl_update_status.setText("更新失败"))
             finally:
-                if mp is not None:
-                    try:
-                        unmount_dmg(mp)
-                    except Exception:
-                        pass
                 done["v"] = True
                 ui(lambda: self.progress.setVisible(False))
                 ui(lambda: set_busy(False))
 
-        def _start_update(*, force: bool) -> None:
+        def _start_apply(*, reinstall: bool) -> None:
             set_busy(True)
+            self.progress.setVisible(True)
             self.lbl_update_status.setText("更新中…")
 
             done = {"v": False}
@@ -214,55 +163,54 @@ class AdoReleaseTab(Tab):
                 if done["v"]:
                     return
                 set_busy(False)
-                show_error_dialog(self, "更新超时", "更新超过 10 分钟仍未完成。\n\n常见原因：网络慢/DMG 挂载失败/安装需要授权。")
+                self.progress.setVisible(False)
+                show_error_dialog(self, "更新超时", "更新超过 10 分钟仍未完成。\n\n常见原因：网络慢 / pip 安装卡住。")
 
             QtCore.QTimer.singleShot(600000, self, watchdog)
 
             import threading
 
-            threading.Thread(target=lambda: do_update(done, force=force), daemon=True).start()
+            threading.Thread(target=lambda: do_apply(done, reinstall=reinstall), daemon=True).start()
 
         def on_update_clicked() -> None:
-            if not self._latest_release_asset_url:
+            if not self._has_update:
                 self._toast("提示", "请先点击【检查更新】", ok=False)
                 return
 
             ok = QtWidgets.QMessageBox.question(
                 self,
                 "确认更新",
-                "发现新版本，是否现在下载并安装？\n\n（将覆盖 /Applications/代码工具箱.app，并可能弹出系统授权）",
+                f"发现新版本：{self._remote_version}\n\n是否现在拉取并重启？\n（git pull --ff-only origin/main + 同步依赖）",
             )
             if ok != QtWidgets.QMessageBox.Yes:
                 return
 
-            _start_update(force=False)
+            _start_apply(reinstall=False)
 
         def on_reinstall_clicked() -> None:
-            if not self._latest_release_asset_url:
-                self._toast("提示", "请先点击【检查更新】", ok=False)
-                return
-
             ok = QtWidgets.QMessageBox.question(
                 self,
                 "确认重新安装",
-                "将重新下载并覆盖安装当前最新版本。\n\n确认继续？",
+                "将强制把本地工作区对齐到 origin/main 并重启。\n\n"
+                "⚠️ 本地未提交/未推送的改动会被丢弃（git reset --hard）。\n\n确认继续？",
             )
             if ok != QtWidgets.QMessageBox.Yes:
                 return
 
-            _start_update(force=True)
+            _start_apply(reinstall=True)
 
-        self.btn_check_update.clicked.connect(lambda: on_check_clicked(auto=False))
+        self.btn_check_update.clicked.connect(on_check_clicked)
         self.btn_do_update.clicked.connect(on_update_clicked)
         self.btn_reinstall.clicked.connect(on_reinstall_clicked)
 
         self.add_card("更新", w)
 
-        # Auto check once when entering this page.
+        # Auto check once when entering this page — display only, never prompts
+        # (the startup check in app_main is the single place that asks to update).
         def _auto_check_once():
             if getattr(self, "_update_auto_checked", False):
                 return
             self._update_auto_checked = True
-            on_check_clicked(auto=True)
+            on_check_clicked()
 
         QtCore.QTimer.singleShot(300, self, _auto_check_once)

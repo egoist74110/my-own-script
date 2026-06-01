@@ -5,8 +5,13 @@ APP_NAME="代码工具箱"
 REPO_DIR="${REPO_DIR:-$HOME/my-own-script}"
 OUT_DIR="${OUT_DIR:-$REPO_DIR/dist}"
 
-# Version source: app_version.py (preferred), else fallback to date-based.
-VERSION="${VERSION:-}"
+# Manual release. Versions are normally auto-bumped per commit by the pre-commit
+# hook; this script just packages + publishes the current version. To cut a new
+# base version explicitly, pass it as $1 or VERSION=...  e.g.
+#   bash release_github.sh 2.0.0
+#   VERSION=2.0.0 bash release_github.sh
+# Version source priority: $1 > $VERSION > app_version.py > date-based fallback.
+VERSION="${1:-${VERSION:-}}"
 if [ -z "$VERSION" ]; then
   if [ -f "$REPO_DIR/app_version.py" ]; then
     if [ -x "$REPO_DIR/.venv/bin/python" ]; then
@@ -35,10 +40,11 @@ Keep this in sync with release notes / packaging.
 
 __version__ = "$VERSION"
 PY
-  # Commit version bump if needed
+  # Commit version bump if needed. SKIP_VERSION_BUMP=1 stops the pre-commit hook
+  # from auto-bumping again on top of this explicit version.
   if ! git diff --quiet -- app_version.py; then
     git add app_version.py
-    git commit -m "chore: bump version to $VERSION" || true
+    SKIP_VERSION_BUMP=1 git commit -m "chore: bump version to $VERSION" || true
     git push || true
   fi
 fi
