@@ -47,6 +47,7 @@ from app_lark.store import (
     DEFAULT_DOMAIN,
     DEFAULT_OAUTH_PORT,
     load_lark_settings,
+    missing_login_scopes,
     oauth_redirect_url,
     save_lark_settings,
 )
@@ -80,6 +81,7 @@ LARK_HELP_HTML_TEMPLATE = """
       <li><code>offline_access</code></li>
       <li><code>docx:document</code></li>
       <li><code>wiki:wiki</code></li>
+      <li><code>drive:drive</code>(用于把文档里的图片 token 换成下载 URL；缺这个 AI 看不到图)</li>
     </ul>
   </li>
   <li><b>安全设置 → 重定向 URL</b> → 添加:<br>
@@ -556,6 +558,21 @@ class McpConfigTab(Tab):
                 self,
                 "Lark MCP 未登录",
                 "搜索 / 深度文档读取需要 user_access_token。请先点击 \"登录\" 完成 OAuth 授权,再开启 MCP。",
+            )
+            return
+
+        # 已登录但 scope 不全（比如老用户升级后 drive:drive 还没拿到）
+        # MCP 跑起来 docx blocks / 图片下载链路会权限不足，提前提示重新登录。
+        miss = missing_login_scopes()
+        if miss:
+            show_error_dialog(
+                self,
+                "Lark MCP 登录 scope 不够",
+                "当前 UAT 缺少以下权限：\n  - "
+                + "\n  - ".join(sorted(miss))
+                + "\n\n这些 scope 用于读文档 block / 下载图片。请：\n"
+                  "1) 在 Lark 开发者后台「权限管理」补齐对应权限并发布；\n"
+                  "2) 回本卡片点「登出」再点「登录」重新走一次 OAuth。",
             )
             return
 
