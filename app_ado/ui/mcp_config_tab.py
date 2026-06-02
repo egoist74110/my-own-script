@@ -130,6 +130,10 @@ class McpConfigTab(Tab):
 
     def __init__(self):
         super().__init__()
+        # 每张卡的"加载中"flag。开关期间禁按钮 + 文案换成「正在 …」，避免被周期 timer 覆盖。
+        self._busy_ado = False
+        self._busy_lark = False
+        self._busy_figma = False
         self._build_ado_work_items_mcp_card()
         self._build_lark_mcp_card()
         self._build_figma_mcp_card()
@@ -138,6 +142,18 @@ class McpConfigTab(Tab):
         self._status_timer.setInterval(1000)
         self._status_timer.timeout.connect(self._update_all_status)
         self._status_timer.start()
+
+    # ---------------- 加载态：开关 MCP 时禁按钮 + 改文案 ----------------
+
+    def _set_busy(self, attr: str, button, text: str) -> None:
+        setattr(self, attr, True)
+        button.setEnabled(False)
+        button.setText(text)
+
+    def _clear_busy(self, attr: str, button, status_update) -> None:
+        setattr(self, attr, False)
+        button.setEnabled(True)
+        status_update()
 
     def _toast(self, title: str, content: str, ok: bool = True) -> None:
         if ok:
@@ -331,6 +347,8 @@ class McpConfigTab(Tab):
         )
 
     def _update_ado_work_items_mcp_status(self) -> None:
+        if self._busy_ado:
+            return  # 操作中：按钮文案由 start/stop handler 管，timer 别覆盖
         if is_ado_work_items_mcp_running():
             self.lbl_ado_work_items_mcp_status.setText("已开启")
             self.btn_toggle_ado_work_items_mcp.setText("关闭 ADO工单MCP")
@@ -345,6 +363,7 @@ class McpConfigTab(Tab):
             self._start_ado_work_items_mcp()
 
     def _start_ado_work_items_mcp(self) -> None:
+        self._set_busy("_busy_ado", self.btn_toggle_ado_work_items_mcp, "正在开启 ADO工单MCP …")
         result: dict[str, object] = {}
 
         def run() -> None:
@@ -359,7 +378,8 @@ class McpConfigTab(Tab):
             if th.is_alive():
                 QtCore.QTimer.singleShot(80, finish)
                 return
-            self._update_ado_work_items_mcp_status()
+            self._clear_busy("_busy_ado", self.btn_toggle_ado_work_items_mcp,
+                             self._update_ado_work_items_mcp_status)
             if bool(result.get("ok")):
                 self._toast("ADO工单MCP", "ADO工单MCP 已开启")
             else:
@@ -368,12 +388,29 @@ class McpConfigTab(Tab):
         QtCore.QTimer.singleShot(80, finish)
 
     def _stop_ado_work_items_mcp(self) -> None:
-        ok, msg = stop_ado_work_items_mcp()
-        self._update_ado_work_items_mcp_status()
-        if ok:
-            self._toast("ADO工单MCP", "ADO工单MCP 已关闭")
-        else:
-            show_error_dialog(self, "ADO工单MCP 关闭失败", msg)
+        self._set_busy("_busy_ado", self.btn_toggle_ado_work_items_mcp, "正在关闭 ADO工单MCP …")
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            ok, msg = stop_ado_work_items_mcp()
+            result["ok"] = ok
+            result["message"] = msg
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._clear_busy("_busy_ado", self.btn_toggle_ado_work_items_mcp,
+                             self._update_ado_work_items_mcp_status)
+            if bool(result.get("ok")):
+                self._toast("ADO工单MCP", "ADO工单MCP 已关闭")
+            else:
+                show_error_dialog(self, "ADO工单MCP 关闭失败", str(result.get("message") or "未知错误"))
+
+        QtCore.QTimer.singleShot(80, finish)
 
     # ---------------- Lark 卡 handlers ----------------
 
@@ -498,6 +535,8 @@ class McpConfigTab(Tab):
         )
 
     def _update_lark_mcp_status(self) -> None:
+        if self._busy_lark:
+            return
         if is_lark_mcp_running():
             self.lbl_lark_mcp_status.setText("已开启")
             self.btn_toggle_lark_mcp.setText("关闭 Lark MCP")
@@ -520,6 +559,13 @@ class McpConfigTab(Tab):
             )
             return
 
+        self._set_busy("_busy_lark", self.btn_toggle_lark_mcp, "正在开启 Lark MCP …")
+
+        # 弹窗/进度框被用户取消时，得把按钮还原；不然会一直停在「正在开启 …」
+        def restore_on_cancel() -> None:
+            self._clear_busy("_busy_lark", self.btn_toggle_lark_mcp,
+                             self._update_lark_mcp_status)
+
         # 优先级：内置 Node → 系统 Node → 缺失。其中"内置但版本过低"走静默升级，
         # 不让用户再确认一次；其它两种走「安装 / 取消」弹窗。
         _npx, status, current_ver = find_usable_npx()
@@ -531,12 +577,15 @@ class McpConfigTab(Tab):
                 "Lark MCP",
                 f"内置 Node 过低（{current_ver or '?'}），正在升级到 {NODE_VERSION} …",
             )
-            self._run_node_bootstrap(self._actually_start_lark_mcp, force=True)
+            self._run_node_bootstrap(
+                self._actually_start_lark_mcp, force=True, on_cancel=restore_on_cancel,
+            )
             return
         if status == "missing":
             self._prompt_install_node_then(
                 self._actually_start_lark_mcp,
                 text="当前未检测到 node，是否安装？",
+                on_cancel=restore_on_cancel,
             )
             return
         if status == "system_too_old":
@@ -547,15 +596,21 @@ class McpConfigTab(Tab):
                     f"本地 node 版本过低（当前 {cur}，最低需求 node 版本 "
                     f"{min_node_version_str()}），是否下载内置 Node？"
                 ),
+                on_cancel=restore_on_cancel,
             )
             return
         # 兜底：意外状态当作 missing 处理
         self._prompt_install_node_then(
             self._actually_start_lark_mcp,
             text="当前未检测到 node，是否安装？",
+            on_cancel=restore_on_cancel,
         )
 
     def _actually_start_lark_mcp(self) -> None:
+        # 进到这一步说明 Node 已就绪，进入"真正在开启"阶段 —— busy 由调用链早就 set 上了
+        if not self._busy_lark:
+            self._set_busy("_busy_lark", self.btn_toggle_lark_mcp, "正在开启 Lark MCP …")
+
         result: dict[str, object] = {}
 
         def run() -> None:
@@ -570,7 +625,8 @@ class McpConfigTab(Tab):
             if th.is_alive():
                 QtCore.QTimer.singleShot(80, finish)
                 return
-            self._update_lark_mcp_status()
+            self._clear_busy("_busy_lark", self.btn_toggle_lark_mcp,
+                             self._update_lark_mcp_status)
             if bool(result.get("ok")):
                 self._toast("Lark MCP", "Lark MCP 已开启")
             else:
@@ -579,12 +635,29 @@ class McpConfigTab(Tab):
         QtCore.QTimer.singleShot(80, finish)
 
     def _stop_lark_mcp(self) -> None:
-        ok, msg = stop_lark_mcp()
-        self._update_lark_mcp_status()
-        if ok:
-            self._toast("Lark MCP", "Lark MCP 已关闭")
-        else:
-            show_error_dialog(self, "Lark MCP 关闭失败", msg)
+        self._set_busy("_busy_lark", self.btn_toggle_lark_mcp, "正在关闭 Lark MCP …")
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            ok, msg = stop_lark_mcp()
+            result["ok"] = ok
+            result["message"] = msg
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._clear_busy("_busy_lark", self.btn_toggle_lark_mcp,
+                             self._update_lark_mcp_status)
+            if bool(result.get("ok")):
+                self._toast("Lark MCP", "Lark MCP 已关闭")
+            else:
+                show_error_dialog(self, "Lark MCP 关闭失败", str(result.get("message") or "未知错误"))
+
+        QtCore.QTimer.singleShot(80, finish)
 
     # ---------------- Figma MCP 卡 ----------------
 
@@ -694,6 +767,8 @@ class McpConfigTab(Tab):
         )
 
     def _update_figma_mcp_status(self) -> None:
+        if self._busy_figma:
+            return
         if is_figma_mcp_running():
             self.lbl_figma_mcp_status.setText("已开启")
             self.btn_toggle_figma_mcp.setText("关闭 Figma MCP")
@@ -716,6 +791,12 @@ class McpConfigTab(Tab):
             )
             return
 
+        self._set_busy("_busy_figma", self.btn_toggle_figma_mcp, "正在开启 Figma MCP …")
+
+        def restore_on_cancel() -> None:
+            self._clear_busy("_busy_figma", self.btn_toggle_figma_mcp,
+                             self._update_figma_mcp_status)
+
         # 优先级与 Lark 一致：内置 Node → 系统 Node → 缺失。
         _npx, status, current_ver = find_usable_npx()
         if status == "ok":
@@ -726,13 +807,17 @@ class McpConfigTab(Tab):
                 "Figma MCP",
                 f"内置 Node 过低（{current_ver or '?'}），正在升级到 {NODE_VERSION} …",
             )
-            self._run_node_bootstrap(self._actually_start_figma_mcp, force=True, title="Figma MCP")
+            self._run_node_bootstrap(
+                self._actually_start_figma_mcp, force=True, title="Figma MCP",
+                on_cancel=restore_on_cancel,
+            )
             return
         if status == "missing":
             self._prompt_install_node_then(
                 self._actually_start_figma_mcp,
                 text="当前未检测到 node，是否安装？",
                 title="Figma MCP",
+                on_cancel=restore_on_cancel,
             )
             return
         if status == "system_too_old":
@@ -744,15 +829,20 @@ class McpConfigTab(Tab):
                     f"{min_node_version_str()}），是否下载内置 Node？"
                 ),
                 title="Figma MCP",
+                on_cancel=restore_on_cancel,
             )
             return
         self._prompt_install_node_then(
             self._actually_start_figma_mcp,
             text="当前未检测到 node，是否安装？",
             title="Figma MCP",
+            on_cancel=restore_on_cancel,
         )
 
     def _actually_start_figma_mcp(self) -> None:
+        if not self._busy_figma:
+            self._set_busy("_busy_figma", self.btn_toggle_figma_mcp, "正在开启 Figma MCP …")
+
         result: dict[str, object] = {}
 
         def run() -> None:
@@ -767,7 +857,8 @@ class McpConfigTab(Tab):
             if th.is_alive():
                 QtCore.QTimer.singleShot(80, finish)
                 return
-            self._update_figma_mcp_status()
+            self._clear_busy("_busy_figma", self.btn_toggle_figma_mcp,
+                             self._update_figma_mcp_status)
             if bool(result.get("ok")):
                 self._toast("Figma MCP", "Figma MCP 已开启")
             else:
@@ -776,17 +867,42 @@ class McpConfigTab(Tab):
         QtCore.QTimer.singleShot(80, finish)
 
     def _stop_figma_mcp(self) -> None:
-        ok, msg = stop_figma_mcp()
-        self._update_figma_mcp_status()
-        if ok:
-            self._toast("Figma MCP", "Figma MCP 已关闭")
-        else:
-            show_error_dialog(self, "Figma MCP 关闭失败", msg)
+        self._set_busy("_busy_figma", self.btn_toggle_figma_mcp, "正在关闭 Figma MCP …")
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            ok, msg = stop_figma_mcp()
+            result["ok"] = ok
+            result["message"] = msg
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, finish)
+                return
+            self._clear_busy("_busy_figma", self.btn_toggle_figma_mcp,
+                             self._update_figma_mcp_status)
+            if bool(result.get("ok")):
+                self._toast("Figma MCP", "Figma MCP 已关闭")
+            else:
+                show_error_dialog(self, "Figma MCP 关闭失败", str(result.get("message") or "未知错误"))
+
+        QtCore.QTimer.singleShot(80, finish)
 
     # ---------------- 内置 Node 下载（开启 Lark / Figma MCP 缺 Node 时触发） ----------------
 
-    def _prompt_install_node_then(self, on_success, *, text: str = "当前未检测到 node，是否安装？", title: str = "Lark MCP") -> None:
-        """弹「安装 / 取消」。安装成功后回调 ``on_success``；取消或失败就什么也不做。
+    def _prompt_install_node_then(
+        self,
+        on_success,
+        *,
+        text: str = "当前未检测到 node，是否安装？",
+        title: str = "Lark MCP",
+        on_cancel=None,
+    ) -> None:
+        """弹「安装 / 取消」。安装成功后回调 ``on_success``；用户点取消时回调 ``on_cancel``
+        （供调用方还原按钮 loading 态用）。
 
         ``text`` 用来区分两种触发场景：完全缺 node、或本地 node 版本太老。
         ``title`` 区分是哪张 MCP 卡触发的(Lark / Figma)。
@@ -800,10 +916,19 @@ class McpConfigTab(Tab):
         box.setDefaultButton(btn_install)
         box.exec()
         if box.clickedButton() is not btn_install:
+            if on_cancel is not None:
+                on_cancel()
             return
-        self._run_node_bootstrap(on_success, title=title)
+        self._run_node_bootstrap(on_success, title=title, on_cancel=on_cancel)
 
-    def _run_node_bootstrap(self, on_success, *, force: bool = False, title: str = "Lark MCP") -> None:
+    def _run_node_bootstrap(
+        self,
+        on_success,
+        *,
+        force: bool = False,
+        title: str = "Lark MCP",
+        on_cancel=None,
+    ) -> None:
         dlg = QtWidgets.QProgressDialog(
             f"正在下载 Node.js {NODE_VERSION} …",
             "取消",
@@ -842,6 +967,9 @@ class McpConfigTab(Tab):
                     self._toast(title, "已取消下载", ok=False)
                 else:
                     show_error_dialog(self, "下载 Node 失败", message)
+                # 失败 / 取消：把"正在开启 …"的按钮还原
+                if on_cancel is not None:
+                    on_cancel()
 
         def tick(done: int, total: int, phase: str) -> None:
             if phase == "downloading":
