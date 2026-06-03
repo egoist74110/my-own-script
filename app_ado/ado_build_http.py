@@ -18,6 +18,7 @@ class PipelineRun:
     state: str
     result: str | None
     url: str | None = None
+    branch: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,31 @@ class BuildRun:
     status: str
     result: str | None
     url: str | None = None
+    branch: str | None = None
+
+
+# ADO pipeline RunState enum: inProgress | canceling | completed | unknown.
+# Only inProgress is actively running. NB: "canceling" is a run on its way out
+# (it will finish as completed/result=canceled) — treating it as "running" makes
+# the deploy attach to a dying run and then abort with result=canceled.
+_PIPELINE_RUNNING_STATES = {"inprogress"}
+# ADO build status enum: none | inProgress | completed | cancelling | postponed | notStarted.
+_BUILD_RUNNING_STATES = {"inprogress", "notstarted", "postponed"}
+
+
+def is_pipeline_running(state: str | None) -> bool:
+    return (state or "").strip().lower() in _PIPELINE_RUNNING_STATES
+
+
+def is_build_running(status: str | None) -> bool:
+    return (status or "").strip().lower() in _BUILD_RUNNING_STATES
+
+
+def _refname_to_branch(refname: str | None) -> str | None:
+    if not refname:
+        return None
+    s = str(refname)
+    return s[len("refs/heads/"):] if s.startswith("refs/heads/") else s
 
 
 def _auth_header(pat: str) -> str:
@@ -103,12 +129,14 @@ def get_pipeline_run(
     result = data.get("result")
     web = (data.get("_links") or {}).get("web") or {}
     href = web.get("href")
+    refname = (((data.get("resources") or {}).get("repositories") or {}).get("self") or {}).get("refName")
     return PipelineRun(
         pipeline_id=str(pipeline_id),
         run_id=str(run_id),
         state=str(state),
         result=str(result) if result is not None else None,
         url=str(href) if href else None,
+        branch=_refname_to_branch(refname),
     )
 
 
@@ -182,26 +210,37 @@ def find_matching_run(
     *,
     branch: str,
     pat: str,
-    max_age_min: int = 5,
 ) -> PipelineRun | BuildRun | None:
-    """Find a recent (running or completed) build run that matches definition and branch.
+    """Find an *actively running* run matching this definition and branch.
 
-    Used to avoid redundant triggers when ADO auto-trigger is active.
+    Returns the newest in-progress run on ``branch``, or ``None`` if nothing is
+    running. Used to avoid redundant triggers when ADO auto-trigger is active —
+    completed/canceled/canceling runs are deliberately ignored (a canceling run
+    is on its way out, not a live conflict).
     """
     if kind == "pipeline":
-        runs = list_pipeline_runs(base_url, collection, project, definition_id, pat=pat)
-        # pipeline runs don't directly expose branch in the list easily in some versions,
-        # but we can try to find one. If we can't verify branch, we skip to be safe
-        # or we check the first one.
-        if runs:
-            # For modern pipelines, the list often doesn't show branch without deeper call,
-            # but we can check the latest.
-            return runs[0]
+        # The runs list carries state but not branch; only resolve branch (via a
+        # per-run detail call) for runs that are actually running — cheap because
+        # in practice at most one or two runs are in-progress at a time.
+        for r in list_pipeline_runs(base_url, collection, project, definition_id, pat=pat):
+            if not is_pipeline_running(r.state):
+                continue
+            run = r
+            if run.branch is None:
+                try:
+                    run = get_pipeline_run(base_url, collection, project, definition_id, r.run_id, pat=pat)
+                except Exception:
+                    run = r
+                if not is_pipeline_running(run.state):
+                    continue
+            if run.branch is not None and run.branch != branch:
+                continue
+            return run
     else:
-        runs = list_build_runs(base_url, collection, project, definition_id, branch=branch, pat=pat, top=1)
-        if runs:
-            # list_build_runs already filters by branch
-            return runs[0]
+        # list_build_runs already filters by branch server-side.
+        for b in list_build_runs(base_url, collection, project, definition_id, branch=branch, pat=pat, top=5):
+            if is_build_running(b.status):
+                return b
     return None
 
 

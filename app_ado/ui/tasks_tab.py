@@ -1688,6 +1688,8 @@ class TasksTab(QtWidgets.QWidget):
                     wait_build,
                     wait_pipeline,
                     find_matching_run,
+                    is_pipeline_running,
+                    is_build_running,
                 )
 
                 settings = load_ui_settings()
@@ -1733,7 +1735,7 @@ class TasksTab(QtWidgets.QWidget):
 
                     if tgt.build_kind == "pipeline":
                         existing = find_matching_run(lib.base_url, proj.collection, proj.project, "pipeline", tgt.build_id, branch=branch, pat=pat)
-                        if existing and (existing.state or "").lower() != "completed":
+                        if existing and is_pipeline_running(existing.state):
                             pr = existing
                             build_run_id = pr.run_id
                             build_started = True
@@ -1804,7 +1806,7 @@ class TasksTab(QtWidgets.QWidget):
                             return
                     else:
                         existing_b = find_matching_run(lib.base_url, proj.collection, proj.project, "build_definition", tgt.build_id, branch=branch, pat=pat)
-                        if existing_b and (existing_b.status or "").lower() != "completed":
+                        if existing_b and is_build_running(existing_b.status):
                             brn = existing_b
                             build_run_id = brn.build_id
                             build_started = True
