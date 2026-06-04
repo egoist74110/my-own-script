@@ -722,6 +722,7 @@ class McpConfigTab(Tab):
                 return
             self._clear_busy("_busy_lark", self.btn_toggle_lark_mcp,
                              self._update_lark_mcp_status)
+            self._refresh_expiry_async()  # 开启后立即重测有效期,别停留在旧的"已失效"
             if bool(result.get("ok")):
                 self._toast("Lark MCP", "Lark MCP 已开启")
             else:

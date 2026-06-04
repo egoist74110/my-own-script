@@ -196,25 +196,30 @@ def lark_token_status() -> dict:
 
     out["available"] = True
     out["access_expires_at"] = access_exp
-    refresh_failing = _refresh_is_failing(state.get("logged_in_at"))
-    out["refresh_failing"] = refresh_failing
 
     now = time.time()
     n = out["instances"]
 
-    if refresh_failing:
-        out["level"] = "error"
-        out["label"] = "续期失败(20038)，约2小时后掉线，请登出后重新登录"
-    elif access_exp is None:
-        out["level"] = "warn"
-        out["label"] = "已登录，读不到访问令牌有效期"
-    elif access_exp <= now:
-        out["level"] = "warn"
-        out["label"] = "访问令牌已过期，下次调用将自动续期"
-    else:
+    # 真实 token 状态优先:访问令牌还在有效期内(刚登录/刚刷新)就是正常,
+    # 不被历史失败日志(可能是修复前的旧 20038)误判成"已失效"。
+    if access_exp and access_exp > now:
+        out["refresh_failing"] = False
         mins = int((access_exp - now) // 60)
         out["level"] = "ok"
         out["label"] = f"正常 · 访问令牌约 {mins} 分钟后续期"
+    else:
+        # 令牌已过期 / 读不到 → 这时才看刷新是否在失败
+        refresh_failing = _refresh_is_failing(state.get("logged_in_at"))
+        out["refresh_failing"] = refresh_failing
+        if refresh_failing:
+            out["level"] = "error"
+            out["label"] = "续期失败(20038)，请登出后重新登录"
+        elif access_exp is None:
+            out["level"] = "warn"
+            out["label"] = "已登录，读不到访问令牌有效期"
+        else:
+            out["level"] = "warn"
+            out["label"] = "访问令牌已过期，下次调用将自动续期"
 
     if n >= 3:
         # 多实例并发抢同一个会轮换的 refresh_token，是续期失败的根因，必须显式警告
