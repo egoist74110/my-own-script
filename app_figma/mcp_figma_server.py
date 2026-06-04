@@ -46,13 +46,17 @@ def main() -> None:
         npx,
         "-y",
         "figma-developer-mcp",
-        f"--figma-api-key={token}",
         "--stdio",
     ]
 
+    # token 经环境变量 FIGMA_API_KEY 传(figma-developer-mcp 支持),不放进命令行参数——
+    # 否则 `ps aux` 任何用户都能看到明文 token。env 默认不出现在 ps 列表里,安全得多。
+    child_env = dict(os.environ)
+    child_env["FIGMA_API_KEY"] = token
+
     # 不用 os.execvp:改成监管式 spawn,客户端断开/本进程变孤儿时连 npx→node 一起回收,
     # 避免会话结束后 figma-developer-mcp 常驻泄漏。
-    sys.exit(spawn_supervised(argv))
+    sys.exit(spawn_supervised(argv, env=child_env))
 
 
 if __name__ == "__main__":
