@@ -204,23 +204,23 @@ def lark_token_status() -> dict:
 
     if refresh_failing:
         out["level"] = "error"
-        out["label"] = "自动续期失败（错误码 20038），约 2 小时后掉线 —— 请点「登出」再「登录」修复"
+        out["label"] = "续期失败(20038)，约2小时后掉线，请登出后重新登录"
     elif access_exp is None:
         out["level"] = "warn"
-        out["label"] = "已登录，但读不到访问令牌有效期"
+        out["label"] = "已登录，读不到访问令牌有效期"
     elif access_exp <= now:
         out["level"] = "warn"
-        out["label"] = "访问令牌已过期，下次调用将尝试自动续期"
+        out["label"] = "访问令牌已过期，下次调用将自动续期"
     else:
         mins = int((access_exp - now) // 60)
         out["level"] = "ok"
-        out["label"] = f"正常 · 访问令牌约 {mins} 分钟后自动续期"
+        out["label"] = f"正常 · 访问令牌约 {mins} 分钟后续期"
 
     if n >= 3:
         # 多实例并发抢同一个会轮换的 refresh_token，是续期失败的根因，必须显式警告
         if out["level"] == "ok":
             out["level"] = "warn"
-        out["label"] += f"（检测到 {n} 个 lark-mcp 进程并发，过多会导致续期失败）"
+        out["label"] += f" · {n}个lark-mcp并发"
 
     return out
 

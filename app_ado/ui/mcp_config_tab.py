@@ -262,6 +262,7 @@ class McpConfigTab(Tab):
         self.lbl_lark_login_status = QtWidgets.QLabel("未登录")
         self.lbl_lark_expiry = QtWidgets.QLabel("检测中…")
         self.lbl_lark_expiry.setWordWrap(True)
+        _fix_wrap_label_height(self.lbl_lark_expiry)
 
         self.btn_lark_help = PushButton("配置说明")
         self.btn_save_lark = PushButton("保存配置")
@@ -773,6 +774,7 @@ class McpConfigTab(Tab):
         self.lbl_figma_mcp_status = QtWidgets.QLabel("已关闭")
         self.lbl_figma_expiry = QtWidgets.QLabel("检测中…")
         self.lbl_figma_expiry.setWordWrap(True)
+        _fix_wrap_label_height(self.lbl_figma_expiry)
 
         self.btn_figma_help = PushButton("配置说明")
         self.btn_save_figma = PushButton("保存配置")
@@ -1108,6 +1110,20 @@ class McpConfigTab(Tab):
             progress_sig.done.emit(ok, msg)
 
         threading.Thread(target=worker, daemon=True).start()
+
+
+def _fix_wrap_label_height(label) -> None:
+    """绕开 QFormLayout 对换行 QLabel 不支持 heightForWidth 的老问题。
+
+    在表单字段列里,自动换行的 QLabel 只会拿到一行的高度,换行后的第二行会和第一行
+    重叠并被裁切(见过期提示的显示 bug)。给它两行的最小高度兜底:即便文案换行也不重叠。
+    """
+    fm = label.fontMetrics()
+    label.setMinimumHeight(fm.lineSpacing() * 2 + 6)
+    label.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Expanding,
+        QtWidgets.QSizePolicy.Policy.Minimum,
+    )
 
 
 def _human_mb(n: int) -> str:
