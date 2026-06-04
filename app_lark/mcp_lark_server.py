@@ -13,6 +13,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app_lark.node_bootstrap import augment_path_env, find_npx
+from app_lark.proc_supervise import spawn_supervised
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
@@ -77,7 +78,9 @@ def main() -> None:
         "-p", str(port),
     ]
 
-    os.execvp(npx, argv)
+    # 监管式 spawn(替代 os.execvp):会话结束/孤儿时连 npx→node 一起回收。
+    # 注:推荐改用 App 托管的共享 HTTP 单实例(见 lark_mcp_flow);此 stdio 入口仅作兼容回退。
+    sys.exit(spawn_supervised(argv))
 
 
 if __name__ == "__main__":

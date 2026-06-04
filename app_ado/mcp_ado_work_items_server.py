@@ -737,6 +737,14 @@ def _handle_request(payload: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    # stdin EOF(客户端关管道)会让下面的 for 循环自然结束退出;再加孤儿兜底:
+    # 客户端被强杀、本进程被 reparent 到 launchd 时也自杀,避免常驻泄漏。
+    try:
+        from app_lark.proc_supervise import install_orphan_reaper
+
+        install_orphan_reaper()
+    except Exception:
+        pass
     for raw in sys.stdin:
         line = raw.strip()
         if not line:

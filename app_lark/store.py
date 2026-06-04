@@ -22,6 +22,8 @@ DEFAULT_TOOLS = (
     "drive.v1.media.batchGetTmpDownloadUrl"
 )
 DEFAULT_OAUTH_PORT = 3000
+# 共享 HTTP(streamable)模式监听地址。host 用 localhost 与已登记的 OAuth 重定向 URL 对齐。
+DEFAULT_HTTP_HOST = "localhost"
 # 文档读 + 搜索 + 原图下载所需 scope；drive:drive 给图片 token → URL 用
 DEFAULT_SCOPE = "offline_access docx:document wiki:wiki drive:drive"
 
@@ -81,6 +83,12 @@ def is_logged_in(app_id: str) -> bool:
 
 def oauth_redirect_url(port: int) -> str:
     return f"http://localhost:{port}/callback"
+
+
+def lark_mcp_http_url(port: int | None = None) -> str:
+    """共享 streamable HTTP 模式下，MCP 客户端要连的 URL。"""
+    p = int(port or DEFAULT_OAUTH_PORT)
+    return f"http://{DEFAULT_HTTP_HOST}:{p}/mcp"
 
 
 def _dump(obj: Any) -> str:

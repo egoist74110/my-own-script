@@ -1,25 +1,35 @@
-"""Lark MCP server 子进程的全局单例管理 + OAuth 登录托管(对齐 app_ado.mcp_server_manager)。"""
+"""Lark MCP server 全局单例管理 + OAuth 登录托管。
+
+为根治"多实例抢同一个会轮换的 refresh_token 导致 20038"——Lark MCP 改为
+**共享 streamable HTTP 单实例**:由本 App 托管一个 lark-mcp 进程(``-m streamable
+--oauth``),Claude/Codex/Gemini 全部用同一个 URL 连接。单进程=单 token 刷新器,
+不再有并发刷新竞争。App 退出时通过进程组 + atexit 回收,不留僵尸。
+"""
 
 from __future__ import annotations
 
+import atexit
 import datetime as _dt
+import os as _os
+import signal as _signal
 import subprocess
 import threading
+import urllib.error
+import urllib.request
 from typing import Optional
 
-from app_lark.lark_mcp_flow import (
-    lark_mcp_python,
-    lark_mcp_server_script,
-    tool_workspace_root,
-)
+from app_lark.lark_mcp_flow import tool_workspace_root
 from app_lark.node_bootstrap import augmented_search_path, env_for_npx, find_npx
 from app_lark.secrets import get_app_secret
 from app_lark.store import (
     DEFAULT_DOMAIN,
+    DEFAULT_HTTP_HOST,
     DEFAULT_OAUTH_PORT,
     DEFAULT_SCOPE,
+    DEFAULT_TOOLS,
     clear_lark_login_state,
     is_logged_in,
+    lark_mcp_http_url,
     load_lark_settings,
     oauth_redirect_url,
     save_lark_login_state,
@@ -36,10 +46,60 @@ _login_cancelled: bool = False
 
 def _augmented_env() -> dict[str, str]:
     """子进程跑 npx 时 env 里必须能找到 node，否则会报 `env: node: No such file or directory`。"""
-    import os as _os
     env = _os.environ.copy()
     env["PATH"] = augmented_search_path()
     return env
+
+
+def _kill_process_group(proc: subprocess.Popen) -> None:
+    """杀掉子进程所在的整个进程组(npx→node 这种父子树一并清掉，不留僵尸)。"""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        pgid = _os.getpgid(proc.pid)
+        _os.killpg(pgid, _signal.SIGTERM)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            return
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            pgid = _os.getpgid(proc.pid)
+            _os.killpg(pgid, _signal.SIGKILL)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+@atexit.register
+def _cleanup_on_exit() -> None:
+    """App 进程退出时，确保托管的 lark-mcp HTTP server 一并被回收。"""
+    global _process
+    if _process is not None:
+        _kill_process_group(_process)
+        _process = None
+
+
+def _http_health_ok(port: int, timeout: float = 1.5) -> bool:
+    """探活:GET /mcp。
+
+    streamable 的 GET /mcp 不过鉴权中间件，直接回 405 —— 所以只要能收到**任何**
+    HTTP 响应就说明 server 已起监听(连接被拒=没起)。不能用 POST initialize,因为
+    ``--oauth`` 下 POST 需要 Bearer 鉴权,未授权会 401,无法作为存活判据。
+    """
+    req = urllib.request.Request(lark_mcp_http_url(port), method="GET")
+    try:
+        urllib.request.urlopen(req, timeout=timeout)
+        return True
+    except urllib.error.HTTPError:
+        return True  # 405/401 等 = 服务在监听
+    except Exception:
+        return False
 
 
 # ---------------- MCP server 启停 ----------------
@@ -50,56 +110,80 @@ def is_lark_mcp_running() -> bool:
         return _process is not None and _process.poll() is None
 
 
+def _streamable_argv(npx: str) -> tuple[list[str], int] | tuple[None, str]:
+    """组装 streamable HTTP 单实例启动参数。返回 (argv, port) 或 (None, 错误原因)。"""
+    s = load_lark_settings()
+    app_id = (s.app_id or "").strip()
+    if not app_id:
+        return None, "未配置 App ID"
+    secret = get_app_secret(app_id)
+    if not secret:
+        return None, "找不到 App Secret(请先保存配置)"
+    port = int(s.oauth_port or DEFAULT_OAUTH_PORT)
+    argv = [
+        npx, "-y", "@larksuiteoapi/lark-mcp", "mcp",
+        "-a", app_id,
+        "-s", secret,
+        "-d", (s.domain or DEFAULT_DOMAIN).strip(),
+        "-t", (s.tools or DEFAULT_TOOLS).strip(),
+        "-m", "streamable",
+        "--host", DEFAULT_HTTP_HOST,
+        "-p", str(port),
+        "--oauth",                       # 单进程集中管 token + 刷新，根除并发刷新竞争
+        "--token-mode", "user_access_token",
+        "-l", (s.language or "zh").strip(),
+        "--scope", (s.scope or DEFAULT_SCOPE).strip(),
+    ]
+    return argv, port
+
+
 def start_lark_mcp() -> tuple[bool, str]:
-    """启动 server 子进程并做 initialize 握手。已运行则直接返回成功。"""
+    """启动共享 streamable HTTP 单实例并等 /mcp 就绪。已运行则直接返回成功。"""
     global _process
     with _lock:
         if _process is not None and _process.poll() is None:
             return True, "已在运行"
+
+        npx_path = find_npx()
+        if npx_path is None:
+            return False, "未找到 Node.js 运行时"
+        built = _streamable_argv(str(npx_path))
+        if built[0] is None:
+            return False, str(built[1])
+        argv, port = built
+
         try:
             cp = subprocess.Popen(
-                [lark_mcp_python(), lark_mcp_server_script()],
-                stdin=subprocess.PIPE,
+                argv,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(tool_workspace_root()),
-                env=_augmented_env(),
+                env=env_for_npx(npx_path),
+                start_new_session=True,  # 独立进程组,停的时候连 npx→node 整棵树一起回收
             )
         except Exception as e:
             return False, f"进程启动失败:{e}"
 
-        if cp.stdin is None or cp.stdout is None:
-            cp.terminate()
-            return False, "进程 stdio 未就绪"
+        # 轮询等 HTTP server 起监听(最多 ~10s)
+        import time as _time
+        for _ in range(40):
+            if cp.poll() is not None:  # 进程提前退出 = 启动失败
+                tail = ""
+                try:
+                    if cp.stdout is not None:
+                        tail = (cp.stdout.read() or "").strip().splitlines()[-5:]
+                        tail = "\n".join(tail)
+                except Exception:
+                    pass
+                return False, f"server 启动即退出{(':' + tail) if tail else ''}"
+            if _http_health_ok(port):
+                _process = cp
+                return True, f"已开启(HTTP {lark_mcp_http_url(port)})"
+            _time.sleep(0.25)
 
-        try:
-            cp.stdin.write(
-                '{"jsonrpc":"2.0","id":1,"method":"initialize",'
-                '"params":{"protocolVersion":"2024-11-05","capabilities":{},'
-                '"clientInfo":{"name":"toolbox","version":"1.0"}}}\n'
-            )
-            cp.stdin.flush()
-            line = cp.stdout.readline().strip()
-        except Exception as e:
-            cp.terminate()
-            return False, f"握手失败:{e}"
-
-        if not line:
-            err_tail = ""
-            try:
-                if cp.stderr is not None:
-                    err_tail = (cp.stderr.read() or "").strip()
-            except Exception:
-                pass
-            cp.terminate()
-            return False, f"server 无响应{(':' + err_tail) if err_tail else ''}"
-        if '"result"' not in line or '"serverInfo"' not in line:
-            cp.terminate()
-            return False, "initialize 响应不合法"
-
-        _process = cp
-        return True, "已开启"
+        _kill_process_group(cp)
+        return False, f"server 启动超时(端口 {port} 未就绪;是否被占用?)"
 
 
 def stop_lark_mcp() -> tuple[bool, str]:
@@ -108,12 +192,7 @@ def stop_lark_mcp() -> tuple[bool, str]:
         if _process is None or _process.poll() is not None:
             _process = None
             return True, "已停止"
-        try:
-            _process.terminate()
-            _process.wait(timeout=5)
-        except Exception as e:
-            _process = None
-            return False, f"关闭异常:{e}"
+        _kill_process_group(_process)
         _process = None
         return True, "已关闭"
 
@@ -148,6 +227,10 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
     secret = get_app_secret(app_id)
     if not secret:
         return False, "找不到 App Secret(请先保存配置)"
+
+    # 登录用的 OAuth 回调端口和共享 HTTP server 是同一个，二者不能同时占用；先停 server。
+    if is_lark_mcp_running():
+        stop_lark_mcp()
 
     npx_path = find_npx()
     if npx_path is None:

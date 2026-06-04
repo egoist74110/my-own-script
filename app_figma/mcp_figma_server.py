@@ -14,6 +14,7 @@ if __package__ in (None, ""):
 
 from app_figma.secrets import get_figma_token
 from app_lark.node_bootstrap import augment_path_env, find_npx
+from app_lark.proc_supervise import spawn_supervised
 
 
 def _die(msg: str, code: int = 2) -> None:
@@ -49,7 +50,9 @@ def main() -> None:
         "--stdio",
     ]
 
-    os.execvp(npx, argv)
+    # 不用 os.execvp:改成监管式 spawn,客户端断开/本进程变孤儿时连 npx→node 一起回收,
+    # 避免会话结束后 figma-developer-mcp 常驻泄漏。
+    sys.exit(spawn_supervised(argv))
 
 
 if __name__ == "__main__":

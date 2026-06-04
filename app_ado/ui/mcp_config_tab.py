@@ -51,6 +51,7 @@ from app_lark.store import (
     oauth_redirect_url,
     save_lark_settings,
 )
+from app_lark.token_status import lark_token_status
 from app_figma.figma_mcp_flow import (
     figma_mcp_claude_cli_command,
     figma_mcp_codex_toml,
@@ -67,6 +68,22 @@ from app_figma.secrets import (
     is_figma_configured,
     set_figma_token,
 )
+from app_figma.store import (
+    DEFAULT_EXPIRY_DAYS,
+    EXPIRY_DAY_CHOICES,
+    load_figma_settings,
+    record_token_set,
+)
+from app_figma.token_status import figma_token_status
+
+
+# 过期状态等级 → 文字颜色
+_EXPIRY_COLORS = {
+    "ok": "#2e7d32",
+    "warn": "#e67e22",
+    "error": "#c0392b",
+    "unknown": "#888888",
+}
 
 
 LARK_HELP_HTML_TEMPLATE = """
@@ -98,8 +115,14 @@ LARK_HELP_HTML_TEMPLATE = """
 <ol>
   <li>填好 App ID / App Secret → 点 <b>保存配置</b></li>
   <li>点 <b>登录</b> → 浏览器完成 OAuth 授权</li>
-  <li>点 <b>开启 Lark MCP</b></li>
+  <li>点 <b>开启 Lark MCP</b>(本 App 会托管<b>一个共享 HTTP 实例</b>,所有 AI CLI 都连它)</li>
+  <li>在 Claude / Codex / Gemini 里用<b>复制配置</b>按钮拿到的 <b>URL 接入</b>(不再各自起进程)。
+      首次连接会弹一次浏览器 OAuth 授权。</li>
 </ol>
+
+<p><b>⚠️ 为什么改成共享 HTTP:</b> 之前每个 CLI 会话各起一个 lark-mcp 进程,它们抢同一个
+会轮换的 refresh_token,导致登录后约 2 小时就报 20038 掉线。共享单实例后只有一个进程管
+token,从根上消除该问题。<b>用 Lark 时本 App 需保持开启。</b></p>
 """
 
 FIGMA_HELP_HTML_TEMPLATE = """
@@ -144,6 +167,17 @@ class McpConfigTab(Tab):
         self._status_timer.setInterval(1000)
         self._status_timer.timeout.connect(self._update_all_status)
         self._status_timer.start()
+
+        # 过期检测:重(解密 / 网络探活)，单独跑在后台线程 + 较慢节流，刷到标签上。
+        self._expiry_sig = _ExpirySignals()
+        self._expiry_sig.lark.connect(self._apply_lark_expiry)
+        self._expiry_sig.figma.connect(self._apply_figma_expiry)
+        self._expiry_busy = False
+        self._expiry_timer = QtCore.QTimer(self)
+        self._expiry_timer.setInterval(120000)  # 2 分钟一轮，足够提醒
+        self._expiry_timer.timeout.connect(self._refresh_expiry_async)
+        self._expiry_timer.start()
+        self._refresh_expiry_async()  # 进页面先测一次
 
     # ---------------- 加载态：开关 MCP 时禁按钮 + 改文案 ----------------
 
@@ -226,6 +260,8 @@ class McpConfigTab(Tab):
 
         self.lbl_lark_mcp_status = QtWidgets.QLabel("已关闭")
         self.lbl_lark_login_status = QtWidgets.QLabel("未登录")
+        self.lbl_lark_expiry = QtWidgets.QLabel("检测中…")
+        self.lbl_lark_expiry.setWordWrap(True)
 
         self.btn_lark_help = PushButton("配置说明")
         self.btn_save_lark = PushButton("保存配置")
@@ -253,6 +289,7 @@ class McpConfigTab(Tab):
         form.addRow("MCP 名称", QtWidgets.QLabel("Lark MCP"))
         form.addRow("运行状态", self.lbl_lark_mcp_status)
         form.addRow("登录状态", self.lbl_lark_login_status)
+        form.addRow("凭证有效期", self.lbl_lark_expiry)
         form.addRow("应用 ID(App ID)", self.lark_app_id_edit)
         form.addRow("应用密钥(App Secret)", self.lark_app_secret_edit)
         form.addRow("服务地区", self.lark_domain_combo)
@@ -327,6 +364,44 @@ class McpConfigTab(Tab):
         self._update_lark_mcp_status()
         self._update_lark_login_status()
         self._update_figma_mcp_status()
+
+    # ---------------- 过期检测(后台线程) ----------------
+
+    def _refresh_expiry_async(self) -> None:
+        """在后台线程算 Lark / Figma 的真实过期状态，算完经信号刷到标签。"""
+        if self._expiry_busy:
+            return
+        self._expiry_busy = True
+
+        def run() -> None:
+            try:
+                lark = lark_token_status()
+            except Exception as e:
+                lark = {"level": "unknown", "label": f"检测失败（{e}）"}
+            self._expiry_sig.lark.emit(lark)
+            try:
+                figma = figma_token_status()
+            except Exception as e:
+                figma = {"level": "unknown", "label": f"检测失败（{e}）"}
+            self._expiry_sig.figma.emit(figma)
+            self._expiry_busy = False
+
+        threading.Thread(target=run, daemon=True).start()
+
+    @staticmethod
+    def _paint_expiry(label, status: dict) -> None:
+        level = str(status.get("level") or "unknown")
+        text = str(status.get("label") or "")
+        color = _EXPIRY_COLORS.get(level, _EXPIRY_COLORS["unknown"])
+        prefix = {"ok": "✅ ", "warn": "⚠️ ", "error": "❌ "}.get(level, "")
+        label.setText(prefix + text)
+        label.setStyleSheet(f"color: {color};")
+
+    def _apply_lark_expiry(self, status: dict) -> None:
+        self._paint_expiry(self.lbl_lark_expiry, status)
+
+    def _apply_figma_expiry(self, status: dict) -> None:
+        self._paint_expiry(self.lbl_figma_expiry, status)
 
     # ---------------- ADO 卡 handlers ----------------
 
@@ -474,6 +549,7 @@ class McpConfigTab(Tab):
                 QtCore.QTimer.singleShot(200, finish)
                 return
             self._update_lark_login_status()
+            self._refresh_expiry_async()
             if bool(result.get("ok")):
                 self._toast("Lark MCP", "登录成功,可开启 MCP")
                 return
@@ -488,6 +564,7 @@ class McpConfigTab(Tab):
     def _do_logout_lark(self) -> None:
         ok, msg = lark_logout()
         self._update_lark_login_status()
+        self._refresh_expiry_async()
         if ok:
             self._toast("Lark MCP", msg)
         else:
@@ -519,7 +596,7 @@ class McpConfigTab(Tab):
             self.btn_lark_auth.setText("登录")
 
     def _copy_lark_mcp_command(self) -> None:
-        self._copy_text(lark_mcp_launch_command(), "Lark MCP 启动命令已复制")
+        self._copy_text(lark_mcp_launch_command(), "Lark MCP 连接 URL 已复制(共享 HTTP 单实例)")
 
     def _copy_lark_mcp_claude(self) -> None:
         self._copy_text(
@@ -687,7 +764,15 @@ class McpConfigTab(Tab):
         self.figma_token_edit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.figma_token_edit.setPlaceholderText("Figma Personal Access Token,保存到系统钥匙串(不写入磁盘明文)")
 
+        self.figma_expiry_combo = QtWidgets.QComboBox()
+        for d in EXPIRY_DAY_CHOICES:
+            self.figma_expiry_combo.addItem(f"{d} 天", d)
+        idx = self.figma_expiry_combo.findData(DEFAULT_EXPIRY_DAYS)
+        self.figma_expiry_combo.setCurrentIndex(idx if idx >= 0 else 0)
+
         self.lbl_figma_mcp_status = QtWidgets.QLabel("已关闭")
+        self.lbl_figma_expiry = QtWidgets.QLabel("检测中…")
+        self.lbl_figma_expiry.setWordWrap(True)
 
         self.btn_figma_help = PushButton("配置说明")
         self.btn_save_figma = PushButton("保存配置")
@@ -712,7 +797,9 @@ class McpConfigTab(Tab):
 
         form.addRow("MCP 名称", QtWidgets.QLabel("Figma MCP"))
         form.addRow("运行状态", self.lbl_figma_mcp_status)
+        form.addRow("Token 有效期", self.lbl_figma_expiry)
         form.addRow("API Token", self.figma_token_edit)
+        form.addRow("有效期(保存新 Token 时记录)", self.figma_expiry_combo)
         form.addRow(row1)
         form.addRow(row2)
 
@@ -751,14 +838,22 @@ class McpConfigTab(Tab):
             "已保存到系统钥匙串(留空保持不变)" if existing else "Figma Personal Access Token,保存到系统钥匙串(不写入磁盘明文)"
         )
         self.figma_token_edit.clear()
+        saved_days = load_figma_settings().get("expiry_days")
+        if isinstance(saved_days, int):
+            idx = self.figma_expiry_combo.findData(saved_days)
+            if idx >= 0:
+                self.figma_expiry_combo.setCurrentIndex(idx)
 
     def _save_figma(self) -> None:
         token = self.figma_token_edit.text().strip()
         if token:
             set_figma_token(token)
+            # 记录"设置时刻 + 选定有效期"，用于页面估算剩余天数并临期提醒
+            record_token_set(int(self.figma_expiry_combo.currentData() or DEFAULT_EXPIRY_DAYS))
             self.figma_token_edit.clear()
             self._load_figma_form()
             self._toast("Figma MCP", "配置已保存")
+            self._refresh_expiry_async()
             return
         if is_figma_configured():
             self._toast("Figma MCP", "Token 未改动(保持原值)")
@@ -1025,3 +1120,9 @@ class _BootstrapSignals(QtCore.QObject):
     """跨线程信号：worker 线程不能直接动 UI，必须经 signal 跳回主线程。"""
     tick = QtCore.Signal(int, int, str)
     done = QtCore.Signal(bool, str)
+
+
+class _ExpirySignals(QtCore.QObject):
+    """过期检测 worker → 主线程刷标签。"""
+    lark = QtCore.Signal(object)
+    figma = QtCore.Signal(object)
