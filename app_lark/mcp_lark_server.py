@@ -68,7 +68,6 @@ def main() -> None:
         "@larksuiteoapi/lark-mcp",
         "mcp",
         "-a", app_id,
-        "-s", secret,
         "-d", (s.domain or DEFAULT_DOMAIN).strip(),
         "-t", (s.tools or DEFAULT_TOOLS).strip(),
         "-m", "stdio",
@@ -78,9 +77,14 @@ def main() -> None:
         "-p", str(port),
     ]
 
+    # App Secret 经环境变量 APP_SECRET 传(lark-mcp 支持),不进 argv —— 否则 `ps` 任何用户
+    # 都能看到明文 secret。
+    child_env = dict(os.environ)
+    child_env["APP_SECRET"] = secret
+
     # 监管式 spawn(替代 os.execvp):会话结束/孤儿时连 npx→node 一起回收。
     # 注:推荐改用 App 托管的共享 HTTP 单实例(见 lark_mcp_flow);此 stdio 入口仅作兼容回退。
-    sys.exit(spawn_supervised(argv))
+    sys.exit(spawn_supervised(argv, env=child_env))
 
 
 if __name__ == "__main__":

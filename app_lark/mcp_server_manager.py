@@ -110,20 +110,23 @@ def is_lark_mcp_running() -> bool:
         return _process is not None and _process.poll() is None
 
 
-def _streamable_argv(npx: str) -> tuple[list[str], int] | tuple[None, str]:
-    """组装 streamable HTTP 单实例启动参数。返回 (argv, port) 或 (None, 错误原因)。"""
+def _streamable_argv(npx: str) -> tuple[list[str], int, str] | tuple[None, str, None]:
+    """组装 streamable HTTP 单实例启动参数。返回 (argv, port, secret) 或 (None, 错误原因, None)。
+
+    App Secret **不进 argv**(否则 `ps` 任何人可见明文),由调用方放进环境变量 APP_SECRET 传
+    (lark-mcp 支持)。app_id 不敏感,留在 argv 便于排错。
+    """
     s = load_lark_settings()
     app_id = (s.app_id or "").strip()
     if not app_id:
-        return None, "未配置 App ID"
+        return None, "未配置 App ID", None
     secret = get_app_secret(app_id)
     if not secret:
-        return None, "找不到 App Secret(请先保存配置)"
+        return None, "找不到 App Secret(请先保存配置)", None
     port = int(s.oauth_port or DEFAULT_OAUTH_PORT)
     argv = [
         npx, "-y", "@larksuiteoapi/lark-mcp", "mcp",
         "-a", app_id,
-        "-s", secret,
         "-d", (s.domain or DEFAULT_DOMAIN).strip(),
         "-t", (s.tools or DEFAULT_TOOLS).strip(),
         "-m", "streamable",
@@ -134,7 +137,7 @@ def _streamable_argv(npx: str) -> tuple[list[str], int] | tuple[None, str]:
         "-l", (s.language or "zh").strip(),
         "--scope", (s.scope or DEFAULT_SCOPE).strip(),
     ]
-    return argv, port
+    return argv, port, secret
 
 
 def start_lark_mcp() -> tuple[bool, str]:
@@ -147,10 +150,13 @@ def start_lark_mcp() -> tuple[bool, str]:
         npx_path = find_npx()
         if npx_path is None:
             return False, "未找到 Node.js 运行时"
-        built = _streamable_argv(str(npx_path))
-        if built[0] is None:
-            return False, str(built[1])
-        argv, port = built
+        argv, port, secret = _streamable_argv(str(npx_path))
+        if argv is None:
+            return False, str(port)
+
+        # App Secret 经环境变量 APP_SECRET 传(不进 argv,避免 ps 明文泄漏)
+        child_env = env_for_npx(npx_path)
+        child_env["APP_SECRET"] = secret
 
         try:
             cp = subprocess.Popen(
@@ -159,7 +165,7 @@ def start_lark_mcp() -> tuple[bool, str]:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(tool_workspace_root()),
-                env=env_for_npx(npx_path),
+                env=child_env,
                 start_new_session=True,  # 独立进程组,停的时候连 npx→node 整棵树一起回收
             )
         except Exception as e:
