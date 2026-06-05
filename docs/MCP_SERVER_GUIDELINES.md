@@ -54,8 +54,8 @@ not found / 已被消费)。
 ## 新增一个 MCP 前的检查清单
 
 - [ ] 凭据是**静态**还是**会自动轮换**?轮换的 → 必须单实例 HTTP;静态的 → stdio 可接受。
-- [ ] 凭据**不进进程参数**(`ps` 能看到!)。Figma 现状把 `--figma-api-key=` 放在 argv 里,
-      `ps` 可见,属已知待改项;新接入的优先用 env / 配置文件 / header 传。
+- [ ] 凭据**不进进程参数**(`ps` 能看到!)。一律用环境变量 / 配置文件 / header 传;
+      Lark 用 `APP_SECRET` env,Figma 用 `FIGMA_API_KEY` env(均已完成,勿回退)。
 - [ ] 凭据明文只进**系统钥匙串**(keyring),不落磁盘明文(本项目惯例)。
 - [ ] wrapper 用 `spawn_supervised`(不要 `os.execvp`);纯 Python server 调 `install_orphan_reaper`。
 - [ ] App 托管的常驻 server:用独立进程组启动,`stop` 时 `killpg`,并注册 `atexit` 在 App 退出时回收。
