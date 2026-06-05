@@ -273,6 +273,11 @@ class McpConfigTab(Tab):
         self.btn_copy_lark_mcp_codex = PushButton("复制Codex配置")
         self.btn_copy_lark_mcp_gemini = PushButton("复制Gemini CLI配置")
 
+        # 一键重登:仅当检测到 20038 续期失败时才显示(见 _apply_lark_expiry)。
+        # 正常情况(已注入 single-flight,几乎不再发生)保持隐藏。
+        self.btn_lark_relogin = PushButton("重新登录")
+        self.btn_lark_relogin.setVisible(False)
+
         row1 = QtWidgets.QHBoxLayout()
         row1.addWidget(self.btn_lark_help)
         row1.addWidget(self.btn_save_lark)
@@ -290,7 +295,10 @@ class McpConfigTab(Tab):
         form.addRow("MCP 名称", QtWidgets.QLabel("Lark MCP"))
         form.addRow("运行状态", self.lbl_lark_mcp_status)
         form.addRow("登录状态", self.lbl_lark_login_status)
-        form.addRow("凭证有效期", self.lbl_lark_expiry)
+        _lark_expiry_row = QtWidgets.QHBoxLayout()
+        _lark_expiry_row.addWidget(self.lbl_lark_expiry, 1)
+        _lark_expiry_row.addWidget(self.btn_lark_relogin)
+        form.addRow("凭证有效期", _lark_expiry_row)
         form.addRow("应用 ID(App ID)", self.lark_app_id_edit)
         form.addRow("应用密钥(App Secret)", self.lark_app_secret_edit)
         form.addRow("服务地区", self.lark_domain_combo)
@@ -301,6 +309,7 @@ class McpConfigTab(Tab):
         self.btn_lark_help.clicked.connect(self._show_lark_help)
         self.btn_save_lark.clicked.connect(self._save_lark)
         self.btn_lark_auth.clicked.connect(self._toggle_lark_auth)
+        self.btn_lark_relogin.clicked.connect(self._relogin_lark)
         self.btn_toggle_lark_mcp.clicked.connect(self._toggle_lark_mcp)
         self.btn_copy_lark_mcp_command.clicked.connect(self._copy_lark_mcp_command)
         self.btn_copy_lark_mcp_claude.clicked.connect(self._copy_lark_mcp_claude)
@@ -400,6 +409,9 @@ class McpConfigTab(Tab):
 
     def _apply_lark_expiry(self, status: dict) -> None:
         self._paint_expiry(self.lbl_lark_expiry, status)
+        # 仅在续期失败(20038)时露出一键重登按钮;登录进行中则不打扰。
+        show_relogin = bool(status.get("refresh_failing")) and not is_lark_login_running()
+        self.btn_lark_relogin.setVisible(show_relogin)
 
     def _apply_figma_expiry(self, status: dict) -> None:
         self._paint_expiry(self.lbl_figma_expiry, status)
@@ -561,6 +573,36 @@ class McpConfigTab(Tab):
             show_error_dialog(self, "Lark MCP 登录失败", msg)
 
         QtCore.QTimer.singleShot(200, finish)
+
+    def _relogin_lark(self) -> None:
+        """一键重登:先在后台登出(清掉已坏的 refresh_token),再走 OAuth 登录。
+
+        用于 20038 续期失败的极端兜底(注入 single-flight 后已几乎不会触发)。
+        登出走 `npx lark-mcp logout` 可能耗时,放后台线程,完成后回 UI 线程开始登录。
+        """
+        self.btn_lark_relogin.setEnabled(False)
+        self.btn_lark_relogin.setText("正在重登…")
+
+        def run() -> None:
+            try:
+                lark_logout()
+            except Exception:
+                pass
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def after() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(100, after)
+                return
+            self.btn_lark_relogin.setEnabled(True)
+            self.btn_lark_relogin.setText("重新登录")
+            self.btn_lark_relogin.setVisible(False)
+            self._update_lark_login_status()
+            self._begin_lark_login()
+
+        QtCore.QTimer.singleShot(100, after)
 
     def _do_logout_lark(self) -> None:
         ok, msg = lark_logout()

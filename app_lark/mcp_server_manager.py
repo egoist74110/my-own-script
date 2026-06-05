@@ -51,6 +51,25 @@ def _augmented_env() -> dict[str, str]:
     return env
 
 
+_SINGLEFLIGHT_PRELOAD = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lark_mcp_singleflight.js")
+
+
+def inject_singleflight(env: dict[str, str]) -> dict[str, str]:
+    """给 lark-mcp 子进程注入 single-flight 补丁(NODE_OPTIONS=--require)。
+
+    根治「UAT 过期后并发刷新各拿同一个会轮换的 refresh_token → 第一个轮换掉、其余拿旧值
+    → 20038」。补丁在 ensureGetUserAccessToken 上收敛并发刷新为单飞。详见
+    ``lark_mcp_singleflight.js``。方法名不在(上游改版)补丁会自动跳过,不影响启动。
+    """
+    if not _os.path.isfile(_SINGLEFLIGHT_PRELOAD):
+        return env
+    require_arg = f"--require {_SINGLEFLIGHT_PRELOAD}"
+    prev = (env.get("NODE_OPTIONS") or "").strip()
+    if _SINGLEFLIGHT_PRELOAD not in prev:
+        env["NODE_OPTIONS"] = f"{prev} {require_arg}".strip() if prev else require_arg
+    return env
+
+
 def _kill_process_group(proc: subprocess.Popen) -> None:
     """杀掉子进程所在的整个进程组(npx→node 这种父子树一并清掉，不留僵尸)。"""
     if proc is None or proc.poll() is not None:
@@ -157,6 +176,8 @@ def start_lark_mcp() -> tuple[bool, str]:
         # App Secret 经环境变量 APP_SECRET 传(不进 argv,避免 ps 明文泄漏)
         child_env = env_for_npx(npx_path)
         child_env["APP_SECRET"] = secret
+        # 注入 single-flight 补丁:根治 UAT 过期后并发刷新自残(20038)
+        inject_singleflight(child_env)
 
         try:
             cp = subprocess.Popen(
@@ -235,7 +256,10 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
         return False, "找不到 App Secret(请先保存配置)"
 
     # 登录用的 OAuth 回调端口和共享 HTTP server 是同一个，二者不能同时占用；先停 server。
-    if is_lark_mcp_running():
+    # 记住登录前是否在跑：登录成功后要把它原样拉回来,否则用户「登出→登录」完会发现服务
+    # 是停的(AI 工具连 3000 被拒),还得手动点「开启」,看起来就像「重登了还不行」。
+    _was_running = is_lark_mcp_running()
+    if _was_running:
         stop_lark_mcp()
 
     npx_path = find_npx()
@@ -296,6 +320,12 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
             "scope": scope,
             "logged_in_at": _dt.datetime.now().isoformat(timespec="seconds"),
         })
+        # 登录前停掉了共享 server,这里按原状拉回来,让重登后服务立即恢复(新 token 生效)。
+        if _was_running:
+            try:
+                start_lark_mcp()
+            except Exception:
+                pass
         return True, "登录成功"
     finally:
         with _login_lock:

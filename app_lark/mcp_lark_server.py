@@ -82,6 +82,13 @@ def main() -> None:
     child_env = dict(os.environ)
     child_env["APP_SECRET"] = secret
 
+    # 注入 single-flight 补丁:根治 UAT 过期后并发刷新各拿同一个会轮换的 refresh_token
+    # → 20038。详见 lark_mcp_singleflight.js。
+    _preload = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lark_mcp_singleflight.js")
+    if os.path.isfile(_preload) and _preload not in (child_env.get("NODE_OPTIONS") or ""):
+        _prev = (child_env.get("NODE_OPTIONS") or "").strip()
+        child_env["NODE_OPTIONS"] = (f"{_prev} --require {_preload}").strip()
+
     # 监管式 spawn(替代 os.execvp):会话结束/孤儿时连 npx→node 一起回收。
     # 注:推荐改用 App 托管的共享 HTTP 单实例(见 lark_mcp_flow);此 stdio 入口仅作兼容回退。
     sys.exit(spawn_supervised(argv, env=child_env))

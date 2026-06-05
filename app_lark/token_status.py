@@ -213,7 +213,7 @@ def lark_token_status() -> dict:
         out["refresh_failing"] = refresh_failing
         if refresh_failing:
             out["level"] = "error"
-            out["label"] = "续期失败(20038)，请登出后重新登录"
+            out["label"] = "续期失败(20038)，点右侧「重新登录」一键修复"
         elif access_exp is None:
             out["level"] = "warn"
             out["label"] = "已登录，读不到访问令牌有效期"
