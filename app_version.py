@@ -6,4 +6,4 @@ The 4th segment is auto-bumped on every git commit by the pre-commit hook
 the first three segments explicitly via release_github.sh.
 """
 
-__version__ = "1.0.1.2"
+__version__ = "1.0.1.3"
