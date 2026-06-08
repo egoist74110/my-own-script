@@ -22,6 +22,25 @@ def _die(msg: str, code: int = 2) -> None:
     sys.exit(code)
 
 
+_CONCURRENCY_PRELOAD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "figma_mcp_concurrency.js")
+
+
+def _inject_concurrency_guard(env: dict[str, str]) -> dict[str, str]:
+    """给 figma-developer-mcp 子进程注入并发/限流 preload(NODE_OPTIONS=--require)。
+
+    在子进程里把 globalThis.fetch 包一层:对 api.figma.com 的请求做并发闸(默认串行 1)、
+    最小间隔与 429/5xx 退避重试,根治「一次多个 tool call 并发打爆 Figma 限流」。详见
+    ``figma_mcp_concurrency.js``。文件缺失或已注入过则跳过,不影响启动。
+    """
+    if not os.path.isfile(_CONCURRENCY_PRELOAD):
+        return env
+    require_arg = f"--require {_CONCURRENCY_PRELOAD}"
+    prev = (env.get("NODE_OPTIONS") or "").strip()
+    if _CONCURRENCY_PRELOAD not in prev:
+        env["NODE_OPTIONS"] = f"{prev} {require_arg}".strip() if prev else require_arg
+    return env
+
+
 def main() -> None:
     token = (get_figma_token() or "").strip()
     if not token:
@@ -53,6 +72,11 @@ def main() -> None:
     # 否则 `ps aux` 任何用户都能看到明文 token。env 默认不出现在 ps 列表里,安全得多。
     child_env = dict(os.environ)
     child_env["FIGMA_API_KEY"] = token
+
+    # figma-developer-mcp 对 api.figma.com 既不限并发也不退避重试:AI 一次发多个 tool call
+    # → 并发 N 个请求打到 Figma REST → 命中按 token 的成本限流(尤其 /images)→ 429 整批失败。
+    # 注入 preload 在子进程里把 fetch 包一层做并发闸 + 退避重试。详见 figma_mcp_concurrency.js。
+    _inject_concurrency_guard(child_env)
 
     # 不用 os.execvp:改成监管式 spawn,客户端断开/本进程变孤儿时连 npx→node 一起回收,
     # 避免会话结束后 figma-developer-mcp 常驻泄漏。
