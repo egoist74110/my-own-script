@@ -69,10 +69,31 @@ not found / 已被消费)。
 - 别指望"定时保活去调一下"来代替:库通常**到期才刷、无提前量**,保活只能缩小窗口,消不掉竞争。
 - 兜底:页面检测到刷新失败(20038)时给**一键重登**(后台 logout→重新 OAuth),把多步恢复压成一步。
 
+### 4. 下游 API 限流:并发工具调用打爆服务端配额(无状态 MCP 也中招)
+
+**现象**:AI 一次发多个工具调用(典型 Figma:一次 5 个 `get_figma_data`/`download_figma_images`),
+MCP 进程就**并发** N 个请求打到下游 REST API,命中其按 token 的限流 → 整批 429 失败。
+
+**原因**:多数第三方 MCP **既不限并发也不退避重试**。以 `figma-developer-mcp@0.12` 为例:它把 429
+标进"可重试集合"却**根本没重试**,直接把 `Figma API rate limit hit (429)` 抛给 AI;而 Figma REST
+是按 token 的成本预算限流(`/images` 渲染尤其严),一个 PAT 同时 5 个请求必爆。这跟凭据轮换无关,
+**静态凭据(PAT)的无状态 MCP 同样中招**——纯粹是并发把下游配额打穿。
+
+**规范**:在 MCP 进程里对**下游 API 的出站请求**做**并发闸 + 退避重试**,而不是寄望 AI 少发:
+
+- Node 类 MCP 用 `NODE_OPTIONS=--require <preload>` 包住 `globalThis.fetch`,只拦目标域名
+  (如 `api.figma.com`),做:并发上限(默认串行 1)、相邻请求最小间隔、429/5xx 指数退避并尊重
+  `Retry-After`。见 `app_figma/figma_mcp_concurrency.js` + `mcp_figma_server._inject_concurrency_guard`。
+- 参数走环境变量,便于按账号档位调:`FIGMA_MAX_CONCURRENCY`(默认 1)、`FIGMA_MIN_INTERVAL_MS`
+  (默认 350)、`FIGMA_MAX_RETRY`(默认 4)。
+- 退避期间**继续持并发锁**,别让队列里其余请求此刻涌出,否则反而加重限流。
+- 这是和问题 3 同一套注入手法(`--require` preload),但目标不同:3 收敛**刷新并发**,4 收敛**出站并发**。
+
 ## 新增一个 MCP 前的检查清单
 
 - [ ] 凭据是**静态**还是**会自动轮换**?轮换的 → 必须单实例 HTTP;静态的 → stdio 可接受。
 - [ ] 轮换凭据:刷新路径是否 **single-flight**(并发只刷一次)?库缺锁就注入补丁(见问题 3)。
+- [ ] 下游有按 token 的**限流**?对出站请求做**并发闸 + 退避重试**;库不带就注入 fetch 补丁(见问题 4)。
 - [ ] 凭据**不进进程参数**(`ps` 能看到!)。一律用环境变量 / 配置文件 / header 传;
       Lark 用 `APP_SECRET` env,Figma 用 `FIGMA_API_KEY` env(均已完成,勿回退)。
 - [ ] 凭据明文只进**系统钥匙串**(keyring),不落磁盘明文(本项目惯例)。
@@ -98,4 +119,7 @@ pkill -f 'figma-developer-mcp'; pkill -f 'mcp_ado_work_items_server'
 # Lark 真实 token 状态(解密 storage.json) / 续期失败日志
 ls -la ~/Library/Logs/lark-mcp-nodejs/
 grep -i '20038\|refreshToken' ~/Library/Logs/lark-mcp-nodejs/*.log | tail
+
+# Figma 限流:确认补丁已注入到运行中的 figma-mcp 进程
+ps eww $(pgrep -f figma-developer-mcp) | tr ' ' '\n' | grep -i 'NODE_OPTIONS\|figma_mcp_concurrency'
 ```

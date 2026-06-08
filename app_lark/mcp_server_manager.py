@@ -38,6 +38,54 @@ from app_lark.store import (
 
 _lock = threading.Lock()
 _process: Optional[subprocess.Popen[str]] = None
+_log_fh = None  # 托管 server 的日志文件句柄(随进程生命周期开/关)
+
+# 托管 lark-mcp 的输出落盘到这里。放在 lark-mcp 自己的日志目录旁,排错时一处看全。
+# 注意:lark-mcp 自身的 logger 默认 WARN 且只写它的每日文件(lark-mcp-YYYY-MM-DD.log),
+# 不走 stderr——所以这个 managed 文件主要收编注入补丁的 `[lark-mcp patch]` 行 + 启动期输出;
+# 完整刷新生命周期(info/debug)靠 argv 里的 `--debug` 写进 lark-mcp 每日文件。
+_MANAGED_LOG = _os.path.expanduser("~/Library/Logs/lark-mcp-nodejs/managed.log")
+_LOG_ROTATE_BYTES = 5 * 1024 * 1024
+
+
+def lark_mcp_managed_log_path() -> str:
+    """托管 server 输出的落盘路径(供 UI/TG「查看日志」与排错用)。"""
+    return _MANAGED_LOG
+
+
+def _open_managed_log():
+    """打开(必要时先轮换)托管日志文件,返回可作 Popen stdout/stderr 的句柄;失败回退 DEVNULL。"""
+    try:
+        _os.makedirs(_os.path.dirname(_MANAGED_LOG), exist_ok=True)
+        try:
+            if _os.path.getsize(_MANAGED_LOG) > _LOG_ROTATE_BYTES:
+                _os.replace(_MANAGED_LOG, _MANAGED_LOG + ".prev")  # 单文件轮换,不让无限长
+        except OSError:
+            pass
+        return open(_MANAGED_LOG, "a", buffering=1)
+    except Exception:
+        return subprocess.DEVNULL
+
+
+def _managed_log_tail(n: int = 8) -> str:
+    """读 managed.log 末尾几行,拼成 `:...` 后缀用于启动失败提示;读不到则返回空串。"""
+    try:
+        with open(_MANAGED_LOG, "r", errors="replace") as fh:
+            lines = fh.read().strip().splitlines()[-n:]
+        tail = "\n".join(lines).strip()
+        return (":\n" + tail) if tail else ""
+    except Exception:
+        return ""
+
+
+def _close_managed_log() -> None:
+    global _log_fh
+    try:
+        if _log_fh not in (None, subprocess.DEVNULL) and hasattr(_log_fh, "close"):
+            _log_fh.close()
+    except Exception:
+        pass
+    _log_fh = None
 
 _login_lock = threading.Lock()
 _login_process: Optional[subprocess.Popen[str]] = None
@@ -102,6 +150,7 @@ def _cleanup_on_exit() -> None:
     if _process is not None:
         _kill_process_group(_process)
         _process = None
+    _close_managed_log()
 
 
 def _http_health_ok(port: int, timeout: float = 1.5) -> bool:
@@ -155,6 +204,10 @@ def _streamable_argv(npx: str) -> tuple[list[str], int, str] | tuple[None, str, 
         "--token-mode", "user_access_token",
         "-l", (s.language or "zh").strip(),
         "--scope", (s.scope or DEFAULT_SCOPE).strip(),
+        # --debug:把 lark-mcp 自身 logger 从默认 WARN 调到 DEBUG,使**完整刷新生命周期**
+        # (trying refreshToken → Successfully refreshed/expiresAt 或 20038)落进它的每日日志,
+        # 否则成功刷新是 info 级、被 WARN 压掉,过期排查全靠运气。日志 7 天自动清,growth 可控。
+        "--debug",
     ]
     return argv, port, secret
 
@@ -179,12 +232,17 @@ def start_lark_mcp() -> tuple[bool, str]:
         # 注入 single-flight 补丁:根治 UAT 过期后并发刷新自残(20038)
         inject_singleflight(child_env)
 
+        # 输出落盘到 managed.log,而不是没人 drain 的 PIPE——后者既看不到刷新日志,
+        # 还会在 pipe 缓冲(~64KB)写满时把 server 卡死。
+        global _log_fh
+        _log_fh = _open_managed_log()
+
         try:
             cp = subprocess.Popen(
                 argv,
-                stdout=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                stdout=_log_fh,
                 stderr=subprocess.STDOUT,
-                text=True,
                 cwd=str(tool_workspace_root()),
                 env=child_env,
                 start_new_session=True,  # 独立进程组,停的时候连 npx→node 整棵树一起回收
@@ -196,14 +254,7 @@ def start_lark_mcp() -> tuple[bool, str]:
         import time as _time
         for _ in range(40):
             if cp.poll() is not None:  # 进程提前退出 = 启动失败
-                tail = ""
-                try:
-                    if cp.stdout is not None:
-                        tail = (cp.stdout.read() or "").strip().splitlines()[-5:]
-                        tail = "\n".join(tail)
-                except Exception:
-                    pass
-                return False, f"server 启动即退出{(':' + tail) if tail else ''}"
+                return False, f"server 启动即退出{_managed_log_tail()}"
             if _http_health_ok(port):
                 _process = cp
                 return True, f"已开启(HTTP {lark_mcp_http_url(port)})"
@@ -221,6 +272,7 @@ def stop_lark_mcp() -> tuple[bool, str]:
             return True, "已停止"
         _kill_process_group(_process)
         _process = None
+        _close_managed_log()
         return True, "已关闭"
 
 
