@@ -45,12 +45,15 @@ def mcp_menu(
         figma_text = "🔒 Figma MCP 未配置(请到桌面端配置)"
     else:
         figma_text = "⚪ Figma MCP 已关(点击开启)"
-    return {"inline_keyboard": [
+    rows = [
         [{"text": ado_text, "callback_data": "mcp:ado:tg"}],
         [{"text": lark_text, "callback_data": "mcp:lark:tg"}],
-        [{"text": figma_text, "callback_data": "mcp:figma:tg"}],
-        [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
-    ]}
+    ]
+    if lark_logged_in:
+        rows.append([{"text": "🔑 注入 Lark 登录态到各工具(免再授权)", "callback_data": "mcp:larkinject:tg"}])
+    rows.append([{"text": figma_text, "callback_data": "mcp:figma:tg"}])
+    rows.append([{"text": "⬅ 返回", "callback_data": "help_menu:back"}])
+    return {"inline_keyboard": rows}
 
 
 def services_menu() -> dict:

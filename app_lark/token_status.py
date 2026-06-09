@@ -230,4 +230,83 @@ def lark_token_status() -> dict:
     return out
 
 
-__all__ = ["lark_token_status", "REFRESH_TOKEN_DAYS"]
+def get_active_user_access_token() -> dict:
+    """取一个可用于注入 Bearer header 的 Lark user_access_token。
+
+    供"一键注入登录态到所有工具"用:把这个 UAT 写进 Claude/Codex/Gemini 配置的
+    Authorization header,客户端即可免浏览器授权直连(lark-mcp 的 verifyAccessToken 就是
+    拿 bearer 去 store 里精确查 tokens[bearer],不绑 client、不卡 scope)。
+
+    选取规则:未过期的优先(取剩余最久的);都过期则取**带 refreshToken** 的(补丁能续命);
+    再不行才退而取任一(并标 ``stale=True`` 让调用方警告"注入了也会很快失效,请先重新登录")。
+
+    返回 dict:
+      token(str|None)、expires_at(float|None)、has_refresh(bool)、
+      expired(bool)、stale(bool,过期且无 refreshToken=注入无意义)、label(str)
+    """
+    out: dict = {
+        "token": None, "expires_at": None, "has_refresh": False,
+        "expired": True, "stale": True, "label": "",
+    }
+    state = load_lark_login_state()
+    if not state.get("logged_in_at"):
+        out["label"] = "未登录,无法注入"
+        return out
+
+    p = _storage_path()
+    if not p.exists():
+        out["label"] = "找不到 lark-mcp token 缓存"
+        return out
+    try:
+        key = keyring.get_password(LARK_KEYCHAIN_SERVICE, LARK_AES_KEY_NAME)
+        if not key:
+            out["label"] = "钥匙串里没有 lark-mcp 加密密钥"
+            return out
+        data = json.loads(_decrypt_with_node(key, p.read_text("utf-8").strip()))
+    except Exception as e:
+        out["label"] = f"读取失败({e})"
+        return out
+
+    tokens = (data.get("tokens") or {}) if isinstance(data, dict) else {}
+    now = time.time()
+
+    def _has_refresh(v: dict) -> bool:
+        extra = v.get("extra") if isinstance(v.get("extra"), dict) else {}
+        return bool(extra.get("refreshToken"))
+
+    best = None  # (rank, expiresAt, token_str, has_refresh, expired)
+    for tok, v in tokens.items():
+        if not isinstance(v, dict) or not isinstance(tok, str):
+            continue
+        ea = v.get("expiresAt")
+        ea = float(ea) if isinstance(ea, (int, float)) else None
+        expired = (ea is None) or (ea <= now)
+        has_ref = _has_refresh(v)
+        # 排序优先级:未过期(2) > 过期但有 refresh(1) > 过期且无 refresh(0);同档取 expiresAt 最大
+        rank = 2 if not expired else (1 if has_ref else 0)
+        cand = (rank, ea or 0.0, tok, has_ref, expired)
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+
+    if best is None:
+        out["label"] = "store 里没有任何 token"
+        return out
+
+    rank, ea, tok, has_ref, expired = best
+    out.update({
+        "token": tok,
+        "expires_at": (ea or None),
+        "has_refresh": has_ref,
+        "expired": expired,
+        "stale": (rank == 0),  # 过期且无 refreshToken = 注入也续不了期
+    })
+    if rank == 2:
+        out["label"] = f"可注入(访问令牌约 {int((ea - now) // 60)} 分钟后续期)"
+    elif rank == 1:
+        out["label"] = "可注入(当前已过期,但带 refresh_token,注入后会自动续期)"
+    else:
+        out["label"] = "当前 token 已过期且无 refresh_token —— 注入了也会很快失效,请先「重新登录」"
+    return out
+
+
+__all__ = ["lark_token_status", "get_active_user_access_token", "REFRESH_TOKEN_DAYS"]

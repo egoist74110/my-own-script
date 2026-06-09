@@ -52,6 +52,7 @@ from app_lark.store import (
     save_lark_settings,
 )
 from app_lark.token_status import lark_token_status
+from app_lark.lark_token_inject import inject_bearer_to_all_tools
 from app_figma.figma_mcp_flow import (
     figma_mcp_claude_cli_command,
     figma_mcp_codex_toml,
@@ -272,6 +273,8 @@ class McpConfigTab(Tab):
         self.btn_copy_lark_mcp_claude = PushButton("复制Claude Code配置")
         self.btn_copy_lark_mcp_codex = PushButton("复制Codex配置")
         self.btn_copy_lark_mcp_gemini = PushButton("复制Gemini CLI配置")
+        # 一键把 app 登录态(UAT)作为 Bearer 注入 Claude/Codex/Gemini 配置 → 各工具免浏览器授权直连
+        self.btn_inject_lark_token = PushButton("一键注入登录态(免各工具再授权)")
 
         # 一键重登:仅当检测到 20038 续期失败时才显示(见 _apply_lark_expiry)。
         # 正常情况(已注入 single-flight,几乎不再发生)保持隐藏。
@@ -292,6 +295,10 @@ class McpConfigTab(Tab):
         row2.addWidget(self.btn_copy_lark_mcp_gemini)
         row2.addStretch(1)
 
+        row3 = QtWidgets.QHBoxLayout()
+        row3.addWidget(self.btn_inject_lark_token)
+        row3.addStretch(1)
+
         form.addRow("MCP 名称", QtWidgets.QLabel("Lark MCP"))
         form.addRow("运行状态", self.lbl_lark_mcp_status)
         form.addRow("登录状态", self.lbl_lark_login_status)
@@ -305,6 +312,7 @@ class McpConfigTab(Tab):
         form.addRow("OAuth 回调端口", self.lark_oauth_port_edit)
         form.addRow(row1)
         form.addRow(row2)
+        form.addRow(row3)
 
         self.btn_lark_help.clicked.connect(self._show_lark_help)
         self.btn_save_lark.clicked.connect(self._save_lark)
@@ -315,6 +323,7 @@ class McpConfigTab(Tab):
         self.btn_copy_lark_mcp_claude.clicked.connect(self._copy_lark_mcp_claude)
         self.btn_copy_lark_mcp_codex.clicked.connect(self._copy_lark_mcp_codex)
         self.btn_copy_lark_mcp_gemini.clicked.connect(self._copy_lark_mcp_gemini)
+        self.btn_inject_lark_token.clicked.connect(self._inject_lark_token)
 
         self.add_card("Lark MCP", w)
 
@@ -655,6 +664,45 @@ class McpConfigTab(Tab):
             lark_mcp_gemini_json_fragment(),
             "Gemini CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
         )
+
+    def _inject_lark_token(self) -> None:
+        """把 app 登录态(UAT)作为 Bearer 写进 Claude/Codex/Gemini 配置 → 各工具免再授权。
+
+        读 token 要解密 store(走 node,略慢),放后台线程避免卡 UI;完成后弹结果。
+        """
+        if not is_lark_logged_in():
+            self._toast("未登录", "请先在 app 里登录 Lark,再注入登录态", ok=False)
+            return
+        self.btn_inject_lark_token.setEnabled(False)
+        self.btn_inject_lark_token.setText("正在注入…")
+
+        result: dict = {}
+
+        def run() -> None:
+            try:
+                result.update(inject_bearer_to_all_tools())
+            except Exception as e:  # noqa: BLE001
+                result.update({"ok": False, "message": f"注入异常:{e}", "results": []})
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def after() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(120, after)
+                return
+            self.btn_inject_lark_token.setEnabled(True)
+            self.btn_inject_lark_token.setText("一键注入登录态(免各工具再授权)")
+            msg = result.get("message") or "未知结果"
+            box = QtWidgets.QMessageBox(self)
+            box.setIcon(
+                QtWidgets.QMessageBox.Information if result.get("ok") else QtWidgets.QMessageBox.Warning
+            )
+            box.setWindowTitle("注入登录态到 AI 工具")
+            box.setText(msg)
+            box.exec()
+
+        QtCore.QTimer.singleShot(120, after)
 
     def _update_lark_mcp_status(self) -> None:
         if self._busy_lark:

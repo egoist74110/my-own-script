@@ -911,6 +911,17 @@ class TelegramController:
             self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
             return
 
+        if key == "larkinject":
+            from app_lark.mcp_server_manager import is_lark_logged_in
+            if not is_lark_logged_in():
+                text = "未登录,无法注入。请先到桌面端登录 Lark。"
+            else:
+                from app_lark.lark_token_inject import inject_bearer_to_all_tools
+                res = inject_bearer_to_all_tools()
+                text = res.get("message") or "注入完成"
+            self._reply(token, chat_id, text, reply_markup=self._build_mcp_menu())
+            return
+
         if key == "figma":
             from app_figma.mcp_server_manager import (
                 is_figma_mcp_running,
