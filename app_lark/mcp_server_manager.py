@@ -203,10 +203,16 @@ def _streamable_argv(npx: str) -> tuple[list[str], int, str] | tuple[None, str, 
         "--oauth",                       # 单进程集中管 token + 刷新，根除并发刷新竞争
         "--token-mode", "user_access_token",
         "-l", (s.language or "zh").strip(),
-        "--scope", (s.scope or DEFAULT_SCOPE).strip(),
-        # --debug:把 lark-mcp 自身 logger 从默认 WARN 调到 DEBUG,使**完整刷新生命周期**
-        # (trying refreshToken → Successfully refreshed/expiresAt 或 20038)落进它的每日日志,
-        # 否则成功刷新是 info 级、被 WARN 压掉,过期排查全靠运气。日志 7 天自动清,growth 可控。
+        # 关键:**故意不传 `--scope`**。lark-mcp 0.5.1 的 provider 选择是个陷阱——
+        #   传 --scope → LarkOAuth2OAuthServerProvider(authen/v1/authorize),它的 authorize() 只把
+        #                **下游 MCP 客户端请求里的 scope** 转发给 Lark(我们配的 scope 仅用于"选 provider"、
+        #                从不真正下发),客户端没带 offline_access → Lark 不发 refresh_token → 续期结构性失效
+        #                (日志实锤 `refreshToken: false`),每次过期都被迫手动重登。
+        #   不传 --scope → LarkOIDC2OAuthServerProvider(authen/v1 OIDC 流),**默认就发 refresh_token +
+        #                refresh_expires_in**,自动续期才真正成立。tool 权限由飞书后台 app 配置决定,不靠此参数。
+        # scope 设置/校验仍保留(用于提示后台是否已授予 docx/wiki/drive 权限),只是不再进 argv。
+        # --debug:把 lark-mcp 自身 logger 从默认 WARN 调到 DEBUG,使完整刷新生命周期
+        # (trying refreshToken → Successfully refreshed/expiresAt 或 20038)落进它的每日日志。日志 7 天自动清。
         "--debug",
     ]
     return argv, port, secret
@@ -321,7 +327,7 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
 
     domain = (s.domain or DEFAULT_DOMAIN).strip()
     port = int(s.oauth_port or DEFAULT_OAUTH_PORT)
-    scope = (s.scope or DEFAULT_SCOPE).strip()
+    scope = (s.scope or DEFAULT_SCOPE).strip()  # 仅作登录状态元数据 / scope 校验用,不进 argv(见下)
 
     argv = [
         npx, "-y", "@larksuiteoapi/lark-mcp", "login",
@@ -329,7 +335,8 @@ def start_lark_login(timeout_s: int = 300) -> tuple[bool, str]:
         "-s", secret,
         "-d", domain,
         "-p", str(port),
-        "--scope", scope,
+        # 同 _streamable_argv:**不传 --scope**,落到 LarkOIDC2OAuthServerProvider(authen/v1 OIDC 流),
+        # 默认发 refresh_token,自动续期才成立。传了 --scope 会走 v1 OAuth2 分支,易拿不到 refresh_token。
     ]
 
     with _login_lock:
