@@ -1814,7 +1814,7 @@ class TasksTab(QtWidgets.QWidget):
                             build_ident = brn.build_id
                             emit_log(f"检测到正在运行的 Build (自动触发或手动冲突)：build_id={brn.build_id} status={brn.status} url={brn.url or ''}")
                         else:
-                            brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat)
+                            brn = trigger_build_definition(lib.base_url, proj.collection, proj.project, tgt.build_id, branch=branch, pat=pat, queue_id=getattr(task, "agent_queue_id", None))
                             build_run_id = brn.build_id
                             build_started = True
                             build_kind = "build_definition"

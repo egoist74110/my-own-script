@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QFormLayout
 from qfluentwidgets import CardWidget, ComboBox, LineEdit, PushButton
 
+from app_ado.ado_build_http import list_agent_queues
 from app_ado.ado_http import GitBranch, GitRepo, list_branches, list_repos
 from app_ado.models import (
     DeployTarget,
@@ -104,6 +105,84 @@ class BranchPickerDialog(QtWidgets.QDialog):
 
     def selected_branch(self) -> str:
         return self.combo.currentText().strip()
+
+
+# Sentinel display text for the first item (means: no override / pipeline default).
+_DEFAULT_QUEUE_LABEL = "Default（管线默认）"
+
+
+class QueuePickerDialog(QtWidgets.QDialog):
+    """Agent pool (代理程式集区) picker. Mirrors BranchPickerDialog.
+
+    Item 0 is always Default (id=None). Refresh pulls project agent queues
+    from ADO via the parent dialog.
+    """
+
+    def __init__(self, parent: DynamicTaskConfigDialog, queues: list[tuple[str, str]], current_id: str | None = ""):
+        super().__init__(parent)
+        self.setWindowTitle("选择代理程式集区")
+        self.setFixedWidth(420)
+        self.setModal(True)
+        self._current_id = current_id or None
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        row1 = QtWidgets.QHBoxLayout()
+        label = QtWidgets.QLabel("选择代理程式集区：")
+        label.setStyleSheet("font-weight: bold;")
+        row1.addWidget(label)
+        row1.addStretch(1)
+        self.btn_refresh = PushButton("刷新")
+        self.btn_refresh.setFixedWidth(80)
+        row1.addWidget(self.btn_refresh)
+        layout.addLayout(row1)
+
+        self.combo = ComboBox()
+        self.combo.setMinimumHeight(32)
+        self._fill(queues)
+        layout.addWidget(self.combo)
+
+        self.btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self.btns.accepted.connect(self.accept)
+        self.btns.rejected.connect(self.reject)
+        layout.addWidget(self.btns)
+
+        self.btn_refresh.clicked.connect(self._do_refresh)
+
+        # Auto-pull once on open if we have nothing but the Default item.
+        if not queues:
+            QtCore.QTimer.singleShot(100, self._do_refresh)
+
+    def _fill(self, queues: list[tuple[str, str]]) -> None:
+        self.combo.clear()
+        self.combo.addItem(_DEFAULT_QUEUE_LABEL, userData=None)
+        for qid, name in queues or []:
+            self.combo.addItem(name, userData=str(qid))
+        # Pre-select current id (falls back to Default at index 0).
+        if self._current_id:
+            for i in range(self.combo.count()):
+                if self.combo.itemData(i) == self._current_id:
+                    self.combo.setCurrentIndex(i)
+                    break
+
+    def _do_refresh(self):
+        self.btn_refresh.setEnabled(False)
+        self.btn_refresh.setText("刷新中...")
+
+        def on_done():
+            self.btn_refresh.setEnabled(True)
+            self.btn_refresh.setText("刷新")
+            self._fill(getattr(self.parent(), "_queues", []))
+
+        self.parent()._refresh_agent_queues(callback=on_done)
+
+    def selected(self) -> tuple[str | None, str]:
+        """Return (queue_id_or_None, display_name)."""
+        qid = self.combo.currentData()
+        name = self.combo.currentText().strip()
+        return (str(qid) if qid else None, name)
 
 
 class DynamicTaskConfigDialog(QtWidgets.QDialog):
@@ -270,6 +349,14 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.build_branch = LineEdit(); self.build_branch.setFixedWidth(260)
         self.btn_pick_build_branch = PushButton("选择...")
 
+        # agent pool (代理程式集区) — task-level override for classic Build triggers
+        self.agent_queue_edit = LineEdit(); self.agent_queue_edit.setFixedWidth(260)
+        self.agent_queue_edit.setReadOnly(True)
+        self.agent_queue_edit.setText("Default")
+        self.btn_pick_queue = PushButton("选择...")
+        self._picked_queue_id: str | None = None
+        self._queues: list[tuple[str, str]] = []  # (id, name)
+
         # GitFlow (list)
         self.update_list = QtWidgets.QListWidget(); self.update_list.setFixedHeight(110)
         self.btn_add_update = PushButton("新增")
@@ -304,6 +391,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         form.addRow("本地仓库路径", self._row(self.repo_path, self._row(self.btn_pick_path, self.btn_clear_path)))
         form.addRow("仓库(Repo)", self.repo_combo)
         form.addRow("构建分支", self._row(self.build_branch, self.btn_pick_build_branch))
+        form.addRow("代理程式集区", self._row(self.agent_queue_edit, self.btn_pick_queue))
 
         form.addRow("更新分支（按顺序 checkout + pull --ff-only，可为空）", self._row(self.update_list, self._row(self.btn_add_update, self.btn_del_update)))
         form.addRow("合并规则（按顺序 merge origin/<source> -> <target>）", self._row(self.merge_list, self._row(self.btn_add_merge, self.btn_del_merge)))
@@ -336,6 +424,7 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
         self.btn_refresh.clicked.connect(self._refresh_repos_and_branches)
         self.repo_combo.currentIndexChanged.connect(self._on_repo_changed)
         self.btn_pick_build_branch.clicked.connect(self._pick_build_branch)
+        self.btn_pick_queue.clicked.connect(self._pick_queue)
 
         self.btn_add_update.clicked.connect(self._add_update_branch)
         self.btn_del_update.clicked.connect(self._del_update_branch)
@@ -368,6 +457,10 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
         # prefill git_flow
         self.build_branch.setText((task.git_flow.build_branch or "").strip())
+
+        # prefill agent pool
+        self._picked_queue_id = getattr(task, "agent_queue_id", None) or None
+        self.agent_queue_edit.setText(getattr(task, "agent_queue_name", None) or "Default")
         self._set_list(self.update_list, list(task.git_flow.update_branches or []))
         self._set_merge_list(self.merge_list, list(task.git_flow.merges or []))
         self._set_list(self.push_list, list(task.git_flow.push_branches or []))
@@ -506,6 +599,62 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
 
     def _fill_branches(self, branches: list[GitBranch]) -> None:
         self._branches = [b.short for b in (branches or []) if getattr(b, "short", None)]
+
+    def _pick_queue(self) -> None:
+        dlg = QueuePickerDialog(self, self._queues, current_id=self._picked_queue_id)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        qid, name = dlg.selected()
+        self._picked_queue_id = qid
+        self.agent_queue_edit.setText(name if qid else "Default")
+
+    def _refresh_agent_queues(self, *, callback: callable = None) -> None:
+        proj = self._selected_project()
+        if not proj:
+            show_error_dialog(self, "错误", "请先新增并选择项目")
+            return
+        lib = self._selected_library(proj)
+        if not lib:
+            show_error_dialog(self, "错误", "项目未关联代码库")
+            return
+        pat = get_pat(lib.id)
+        if not pat:
+            show_error_dialog(self, "错误", "该代码库未保存 PAT")
+            return
+        collection = project_entry_collection(proj)
+        project_name = project_entry_name(proj)
+        if not collection or not project_name:
+            show_error_dialog(self, "错误", "项目配置缺少 collection/project")
+            return
+
+        import threading
+
+        result: list[tuple[str, str]] | Exception | None = None
+
+        def run():
+            nonlocal result
+            try:
+                result = list_agent_queues(lib.base_url, collection, project_name, pat=pat)
+            except Exception as e:
+                result = e
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish():
+            nonlocal result
+            if th.is_alive():
+                QtCore.QTimer.singleShot(80, self, finish)
+                return
+            if isinstance(result, Exception):
+                show_error_dialog(self, "刷新失败", f"获取代理程式集区失败：{result}")
+            else:
+                self._queues = list(result or [])
+                self.status.setText(f"代理程式集区刷新完成：queues={len(self._queues)}")
+            if callback:
+                callback()
+
+        QtCore.QTimer.singleShot(80, self, finish)
 
     def _update_push_enabled(self) -> None:
         has_local = bool((self.repo_path.text() or "").strip())
@@ -652,6 +801,8 @@ class DynamicTaskConfigDialog(QtWidgets.QDialog):
             repo_id=repo_id,
             repo_name=repo_name,
             git_flow=git_flow,
+            agent_queue_id=self._picked_queue_id or None,
+            agent_queue_name=(self.agent_queue_edit.text().strip() or None) if self._picked_queue_id else None,
             targets=list(self._targets),
         )
 

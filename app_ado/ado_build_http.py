@@ -140,6 +140,56 @@ def get_pipeline_run(
     )
 
 
+# distributedtask/queues is a preview API. ADO Server builds accept different
+# preview minors (older on-prem servers reject newer ones with 400). Try a few,
+# newest→oldest, and use whichever the server accepts.
+_QUEUE_API_VERSIONS = ("7.1-preview.1", "6.0-preview.1", "5.1-preview.1", "5.0-preview.1")
+
+
+def list_agent_queues(
+    base_url: str,
+    collection: str,
+    project: str,
+    *,
+    pat: str,
+    api_version: str | None = None,
+) -> list[tuple[str, str]]:
+    """List project agent queues (代理程式集区). Returns [(id, name), ...].
+
+    api_version=None → auto-probe the candidate preview versions and use the
+    first the server accepts (400/404 means "wrong version", try the next).
+    """
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/distributedtask/queues"
+    versions = (api_version,) if api_version else _QUEUE_API_VERSIONS
+
+    last_err: Exception | None = None
+    data: Any = None
+    with _client(pat) as c:
+        for ver in versions:
+            # actionFilter=Use → queues the identity may *use* to queue builds
+            # (needs only build/use perm, not agent-pool Manage).
+            r = c.get(url, params={"api-version": ver, "actionFilter": "Use"})
+            if r.status_code in (400, 404):
+                last_err = httpx.HTTPStatusError(
+                    f"api-version {ver} rejected ({r.status_code})", request=r.request, response=r
+                )
+                continue
+            r.raise_for_status()
+            data = r.json()
+            break
+
+    if data is None:
+        raise last_err or RuntimeError("no compatible distributedtask/queues api-version")
+
+    out: list[tuple[str, str]] = []
+    for q in data.get("value") or []:
+        qid = q.get("id")
+        name = q.get("name") or ""
+        if qid is not None and name:
+            out.append((str(qid), str(name)))
+    return out
+
+
 def trigger_build_definition(
     base_url: str,
     collection: str,
@@ -148,6 +198,7 @@ def trigger_build_definition(
     *,
     branch: str,
     pat: str,
+    queue_id: str | int | None = None,
     api_version: str = "7.0",
 ) -> BuildRun:
     url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/build/builds"
@@ -155,6 +206,9 @@ def trigger_build_definition(
         "definition": {"id": int(definition_id)},
         "sourceBranch": f"refs/heads/{branch}",
     }
+    if queue_id:
+        # Override the agent pool/queue for this run (Default when unset).
+        body["queue"] = {"id": int(queue_id)}
     with _client(pat) as c:
         r = c.post(url, params={"api-version": api_version}, json=body)
         r.raise_for_status()

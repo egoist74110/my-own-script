@@ -237,6 +237,11 @@ class DynamicTaskConfig(BaseModel):
 
     git_flow: GitFlow = Field(default_factory=GitFlow)
 
+    # Agent pool (ADO Agent Queue) override for classic Build triggers.
+    # None => use the pipeline definition's default pool (Default).
+    agent_queue_id: Optional[str] = None
+    agent_queue_name: Optional[str] = None  # display-only echo
+
     # deploy targets (build+release+stages)
     targets: list[DeployTarget] = Field(default_factory=list)
 
