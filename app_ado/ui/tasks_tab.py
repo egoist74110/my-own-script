@@ -1733,7 +1733,14 @@ class TasksTab(QtWidgets.QWidget):
 
                     build_run_id: str | None = None
 
-                    if tgt.build_kind == "pipeline":
+                    # Agent-pool override only works through the Build API (queue:{id});
+                    # the pipelines/runs API has no pool field. So when a pool is set,
+                    # trigger via the classic Build path (these defs run via both APIs).
+                    queue_override = getattr(task, "agent_queue_id", None) or None
+                    if queue_override:
+                        emit_log(f"--- 代理程式集区覆盖：queue_id={queue_override} → 走 Build API 触发 ---")
+
+                    if tgt.build_kind == "pipeline" and not queue_override:
                         existing = find_matching_run(lib.base_url, proj.collection, proj.project, "pipeline", tgt.build_id, branch=branch, pat=pat)
                         if existing and is_pipeline_running(existing.state):
                             pr = existing
