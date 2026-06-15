@@ -650,7 +650,82 @@ class TelegramController:
             self._reply(token, ctx.chat_id, text, reply_markup=markup)
             return
 
+        # VPN：/vpn [on|status|off]（owner-only）——配了 Ente 种子则全自动登录连接
+        if cmd == "/vpn":
+            if role != "owner":
+                self._reply(token, ctx.chat_id, "无权限：vpn")
+                return
+            sub = parts[1].lower() if len(parts) >= 2 else "status"
+            if sub in ("status", "st"):
+                self._reply(token, ctx.chat_id, self._vpn_status_text())
+            elif sub in ("on", "connect", "login"):
+                self._vpn_connect_async(token, ctx.chat_id)
+            elif sub in ("off", "disconnect"):
+                self._reply(token, ctx.chat_id, self._vpn_off_text())
+            else:
+                self._reply(token, ctx.chat_id, "用法：/vpn [on|status|off]")
+            return
+
         self._reply(token, ctx.chat_id, f"未知命令：{cmd}，发 /help 查看")
+
+    # ---------------- VPN 远程控制 ----------------
+
+    def _vpn_status_text(self) -> str:
+        from app_ado.vpn_control import status
+        from app_ado.vpn_totp import has_secret
+
+        st = status()
+        if st["connected"]:
+            app = "在跑" if st["app_running"] else "没跑（隧道仍由后台 helper 维持）"
+            return f"🟢 VPN 已连接\nIP：{st['ip']}\napp：{app}"
+        seed = "已配置" if has_secret() else "未配置 ⚠️ 无法自动登录"
+        app = "在跑" if st["app_running"] else "没跑"
+        return (
+            "🔴 VPN 未连接\n"
+            f"app：{app}\nEnte 种子：{seed}\n\n发 /vpn on 自动登录并连接"
+        )
+
+    def _vpn_connect_async(self, token: str, chat_id: str) -> None:
+        """后台线程跑自愈阶梯 + 自动登录（login_flow 要 1-2 分钟，不能阻塞轮询线程）。"""
+        from app_ado.vpn_control import status
+        from app_ado.vpn_totp import has_secret
+
+        st = status()
+        if st["connected"]:
+            self._reply(token, chat_id, f"🟢 已经连着了：{st['ip']}")
+            return
+        if not has_secret():
+            self._reply(
+                token, chat_id,
+                "⚠️ 没配 Ente 种子，无法远程自动登录。\n请先在电脑端 App 服务页导入 Ente 种子。",
+            )
+            return
+        self._reply(token, chat_id, "🔄 正在连接 VPN…（自愈：重启/登录，约 1–2 分钟，完成通知你）")
+
+        def work() -> None:
+            from app_ado.vpn_control import ensure_connected
+            from app_ado.vpn_control import status as status2
+
+            lines: list[str] = []
+            try:
+                ok = ensure_connected(token_provider=lambda: None, log=lambda m: lines.append(m))
+            except Exception as e:  # noqa: BLE001
+                ok = False
+                lines.append(f"异常：{e}")
+            if ok:
+                self._reply(token, chat_id, f"✅ VPN 已连上：{status2().get('ip')}")
+            else:
+                tail = "\n".join(lines[-6:]) or "（无日志）"
+                self._reply(token, chat_id, f"❌ 连接失败\n\n最后日志：\n{tail}")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _vpn_off_text(self) -> str:
+        # 退 app 不会断隧道（root helper 维持）；远程彻底断开需 app 内 Disconnect 或 root。
+        return (
+            "⚠️ 远程断开暂不支持：Harmony 隧道由后台 root helper 维持，退 app 也不会断。"
+            "如需断开请在电脑上的 Harmony app 里点 Disconnect。"
+        )
 
     # ---------------- 工单：callback 分发 ----------------
 
@@ -665,6 +740,7 @@ class TelegramController:
             services_menu,
             service_actions_menu,
             service_back_menu,
+            vpn_actions_menu,
         )
 
         parts = data.split(":")
@@ -676,9 +752,10 @@ class TelegramController:
         action = parts[2] if len(parts) > 2 else ""
 
         if key == "vpn":
-            ip = svc.vpn_ip()
-            text = f"🌐 当前 Harmony VPN IP\n\n{ip}" if ip else "🌐 没有找到 Harmony VPN IP，可能 VPN 没连上。"
-            self._reply(token, chat_id, text, reply_markup=service_back_menu())
+            if action == "on":  # 点「连接」→ 后台自动登录连接
+                self._vpn_connect_async(token, chat_id)
+                return
+            self._reply(token, chat_id, self._vpn_status_text(), reply_markup=vpn_actions_menu())
             return
 
         if key in ("cs", "cf"):

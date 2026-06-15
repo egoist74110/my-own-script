@@ -59,7 +59,7 @@ def mcp_menu(
 def services_menu() -> dict:
     """服务面板二级菜单。"""
     return {"inline_keyboard": [
-        [{"text": "🌐 VPN 地址", "callback_data": "svc:vpn"}],
+        [{"text": "🌐 VPN", "callback_data": "svc:vpn"}],
         [{"text": "💻 code-server", "callback_data": "svc:cs"}],
         [{"text": "☁️ cloudflared 隧道", "callback_data": "svc:cf"}],
         [{"text": "📱 CC Pocket", "callback_data": "svc:cp"}],
@@ -91,6 +91,15 @@ def ccpocket_actions_menu() -> dict:
 def service_back_menu() -> dict:
     """只读服务（如 VPN）用的返回按钮。"""
     return {"inline_keyboard": [[{"text": "⬅ 返回", "callback_data": "help_menu:svc"}]]}
+
+
+def vpn_actions_menu() -> dict:
+    """VPN 操作菜单：连接（自动登录）/ 刷新状态。"""
+    return {"inline_keyboard": [
+        [{"text": "🔌 连接（自动登录）", "callback_data": "svc:vpn:on"}],
+        [{"text": "🔄 刷新状态", "callback_data": "svc:vpn"}],
+        [{"text": "⬅ 返回", "callback_data": "help_menu:svc"}],
+    ]}
 
 
 def tasks_menu(tasks: list[tuple[str, str]]) -> dict:
