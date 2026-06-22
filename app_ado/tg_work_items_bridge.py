@@ -469,7 +469,7 @@ class WorkItemsBridge:
         st["mcp_wizard"] = {}
 
         try:
-            text, kb = self._headless_bridge.start_session_with_prompt(
+            self._headless_bridge.start_session_with_prompt(
                 chat_id, cwd=cwd, repo_name=repo_name, prompt=prompt,
             )
         except Exception as ex:
@@ -477,9 +477,24 @@ class WorkItemsBridge:
                 f"启动 Claude 会话失败：{ex}",
                 wi_detail_menu(int(work_item_id), has_children=False),
             )
-        # 让前置消息带上工单上下文
-        head = f"#{work_item_id} · {repo_name}\n{text or ''}"
-        return head, kb
+        # 会话收发走「专属 AI 机器人」：主机器人这里只确认 + 指路，避免任务和 AI 对话混在一起。
+        bot_hint = self._ai_bot_hint(ai_id)
+        head = (
+            f"✅ #{work_item_id} · {repo_name} 已创建 Claude 会话并发出 MCP 分析。\n"
+            f"请到{bot_hint}里查看回复并继续对话。"
+        )
+        return head, wi_detail_menu(int(work_item_id), has_children=False)
+
+    def _ai_bot_hint(self, ai_id: str) -> str:
+        """返回指向专属 AI 机器人的提示文字，能取到 @用户名就带上。"""
+        try:
+            s = self._settings()
+            for b in (s.ai.bots or []):
+                if b.ai_id == ai_id and (b.username or "").strip():
+                    return f"专属 AI 机器人 {b.username.strip()}"
+        except Exception:
+            pass
+        return "专属 AI 机器人"
 
     # ---------------- 查看（文本 + 图片相册） ----------------
 

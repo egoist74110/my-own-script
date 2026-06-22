@@ -29,6 +29,28 @@ def set_telegram_token(token: str) -> None:
     keyring.set_password(APP_ID, telegram_token_key(), token)
 
 
+# ---------- 每个 AI 的专属 Telegram 机器人 Token ----------
+# 给某个 AI（AiCliProfile.id，如 claude_code）配独立机器人时，Bot Token 存这里。
+# @用户名等非密信息存 ui_settings 的 ai.bots。
+def ai_bot_token_key(ai_id: str) -> str:
+    return f"ai_bot_token:{ai_id}"
+
+
+def get_ai_bot_token(ai_id: str) -> str | None:
+    return keyring.get_password(APP_ID, ai_bot_token_key(ai_id))
+
+
+def set_ai_bot_token(ai_id: str, token: str) -> None:
+    keyring.set_password(APP_ID, ai_bot_token_key(ai_id), token)
+
+
+def delete_ai_bot_token(ai_id: str) -> None:
+    try:
+        keyring.delete_password(APP_ID, ai_bot_token_key(ai_id))
+    except Exception:
+        pass
+
+
 # ---------- Harmony SASE VPN 登录凭证 ----------
 # 远程自动登录需要的几样东西：workspace 名、数据驻留区、邮箱、密码。
 # 全部进系统钥匙串（keyring，service=APP_ID）。MFA 令牌**绝不**存，每次现取。

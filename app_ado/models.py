@@ -66,6 +66,16 @@ class AiCliProfile(BaseModel):
     builtin: bool = False
 
 
+class AiBotBinding(BaseModel):
+    """把某个 AI（对应 AiCliProfile.id）绑定到一个专属 Telegram 机器人。
+
+    Bot Token 是密钥，存系统钥匙串（keyring，key=ai_bot_token:<ai_id>），不落本文件；
+    这里只存非密信息：@用户名（可选，用于显示与生成跳转提示）。
+    """
+    ai_id: str
+    username: str = ""
+
+
 class HighModelCollaborationSettings(BaseModel):
     enabled: bool = False
     scout_profile_id: str = ""
@@ -112,6 +122,8 @@ class AiSettings(BaseModel):
     require_policy_check_before_code_change: bool = True
     allow_direct_code_change: bool = False
     tool: AiToolSettings = Field(default_factory=AiToolSettings)
+    # 每个 AI 的专属 Telegram 机器人绑定（AI 对话走各自机器人，不和任务通知混在一起）
+    bots: list[AiBotBinding] = Field(default_factory=list)
     collaboration: ModelCollaborationSettings = Field(default_factory=ModelCollaborationSettings)
     default_target_id: str = ""
     targets: list[AiTargetConfig] = Field(default_factory=list)

@@ -44,6 +44,9 @@ class TelegramController:
         on_status: Callable[[], str],
         wi_bridge: Any = None,
         headless_bridge: Any = None,
+        token_fn: Callable[[], str | None] | None = None,
+        mode: str = "main",
+        name: str = "",
     ) -> None:
         self._on_run = on_run
         self._on_deploy_only = on_deploy_only
@@ -55,15 +58,22 @@ class TelegramController:
         self._wi_bridge = wi_bridge
         # Claude headless 结构化会话桥（CC Pocket 式）；不传则禁用 /cc 相关功能
         self._headless_bridge = headless_bridge
+        # 机器人 token 来源：默认主机器人；AI 专属机器人传各自的 token_fn。
+        self._token_fn = token_fn or get_telegram_token
+        # mode="main"：完整工具箱（任务/工单/服务/MCP），不含 AI 对话；
+        # mode="ai"：只处理 Claude 会话（/cc、cc:* 回调、文字投递），任务等一律不出现。
+        self._mode = mode
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
-        self._offset_path = config_dir() / "tg_offset.json"
-        self._log_path = config_dir() / "tg_control.log"
-        self._state_path = config_dir() / "tg_control_state.json"
+        # 多机器人各自独立的轮询 offset / 状态 / 日志文件，避免互相覆盖。
+        suffix = f"_{name}" if name else ""
+        self._offset_path = config_dir() / f"tg_offset{suffix}.json"
+        self._log_path = config_dir() / f"tg_control{suffix}.log"
+        self._state_path = config_dir() / f"tg_control_state{suffix}.json"
         self._update_offset = self._load_offset()
 
         # health tracking
@@ -277,7 +287,10 @@ class TelegramController:
         return False
 
     def _bot_token(self) -> str | None:
-        return get_telegram_token()
+        try:
+            return self._token_fn()
+        except Exception:
+            return None
 
     def _delete_webhook(self, token: str) -> None:
         """Ensure polling works by removing webhook if it was set elsewhere."""
@@ -350,6 +363,70 @@ class TelegramController:
                     c.post(url, data=data, files=files)
             except Exception:
                 continue
+
+    # ---------- AI 专属机器人（mode="ai"）：只处理 Claude 会话 ----------
+
+    def _handle_ai_callback(
+        self, token: str, cb: dict, chat_id: str, data: str, role: str, group: dict | None
+    ) -> None:
+        """AI 机器人的 inline 回调：只认 cc:* / cc，其它忽略。"""
+        if self._headless_bridge is None:
+            return
+        if not (data == "cc" or data.startswith("cc:")):
+            return
+        cc_data = data if data.startswith("cc:") else "cc:menu"
+        txt, mk = self._headless_bridge.handle_callback(cc_data, chat_id, role, group)
+        # 审批 ✅/❌ 一次性：点完去掉原消息按钮
+        if cc_data.startswith("cc:appr:"):
+            mid = (cb.get("message") or {}).get("message_id")
+            if mid is not None:
+                self._strip_inline_keyboard(token, chat_id, mid)
+        if txt:
+            self._reply(token, chat_id, txt, reply_markup=mk)
+
+    def _handle_ai(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
+        """AI 机器人的消息处理：向导文字 / 投递给聚焦会话 / Claude 会话菜单。
+
+        任务、工单、服务、回退等一律不在这个机器人里出现（避免任务和 AI 对话打架）。
+        """
+        if self._headless_bridge is None:
+            return
+        t = (ctx.text or "").strip()
+
+        # 建会话向导的文字输入（手输路径可能以 / 开头，必须在命令解析前拦下）
+        if t and self._headless_bridge.wizard_expects_text(ctx.chat_id):
+            looks_like_input = (not t.startswith("/")) or t.startswith("~") or ("/" in t[1:])
+            if looks_like_input:
+                txt, mk = self._headless_bridge.handle_wizard_text(ctx.chat_id, ctx.text or "", role, group)
+                if txt:
+                    self._reply(token, ctx.chat_id, txt, reply_markup=mk)
+                return
+
+        # 非 / 文字 → 投给当前聚焦会话；没有聚焦会话则打开会话菜单
+        if t and not t.startswith("/"):
+            if self._headless_bridge.should_consume_text(ctx.chat_id, ctx.reply_to_msg_id):
+                _ok, msg = self._headless_bridge.handle_text(
+                    text=ctx.text or "",
+                    chat_id=ctx.chat_id,
+                    reply_to_msg_id=ctx.reply_to_msg_id,
+                    role=role,
+                    group=group,
+                )
+                if msg:
+                    self._reply(token, ctx.chat_id, msg)
+            else:
+                txt, mk = self._headless_bridge.handle_menu(ctx.chat_id, role, group)
+                self._reply(token, ctx.chat_id, txt or "🤖 Claude 会话", reply_markup=mk)
+            return
+
+        if not t.startswith("/"):
+            return
+        cmd = t.split()[0].lower()
+        if cmd in ("/start", "/help", "/cc", "/menu"):
+            txt, mk = self._headless_bridge.handle_menu(ctx.chat_id, role, group)
+            if txt:
+                self._reply(token, ctx.chat_id, txt, reply_markup=mk)
+        # 其它命令在 AI 机器人里不处理
 
     def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
@@ -1046,6 +1123,11 @@ class TelegramController:
                             if data2 == "help_noop":
                                 continue
 
+                            # AI 专属机器人：只认 Claude 会话（cc:*）回调，其它一概不处理。
+                            if self._mode == "ai":
+                                self._handle_ai_callback(token, cb, chat_id2, data2, role2, group2)
+                                continue
+
                             # 服务面板：svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]，仅 owner
                             if data2 == "svc" or data2.startswith("svc:"):
                                 if role2 != "owner":
@@ -1283,7 +1365,10 @@ class TelegramController:
                     ctx = TgCommandContext(
                         chat_id=chat_id, username=username, text=text, reply_to_msg_id=reply_to_msg_id
                     )
-                    self._handle(token, ctx, role=role, group=group)
+                    if self._mode == "ai":
+                        self._handle_ai(token, ctx, role=role, group=group)
+                    else:
+                        self._handle(token, ctx, role=role, group=group)
 
                 if last_id is not None:
                     self._update_offset = int(last_id) + 1

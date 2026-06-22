@@ -46,14 +46,18 @@ def main() -> None:
 
     # AI 开发：本地终端（多会话 PTY），纯本地、不再镜像到 TG
     from app_ado.ai_dev_session import AiDevSessionManager
-    from app_ado.secrets import get_telegram_token
+    from app_ado.secrets import get_ai_bot_token
     from app_ado.store import load_ui_settings as _load_ui_settings_for_dev
 
     ai_dev_manager = AiDevSessionManager()
 
-    def _dev_bot_token() -> str | None:
+    # Claude 对话走「专属 AI 机器人」（通讯配置里给 claude_code 绑定的 Bot Token），
+    # 不再借用主机器人的 token —— 这样任务通知和 AI 对话各走各的机器人，互不打架。
+    _CLAUDE_AI_ID = "claude_code"
+
+    def _ai_bot_token() -> str | None:
         try:
-            return get_telegram_token()
+            return get_ai_bot_token(_CLAUDE_AI_ID)
         except Exception:
             return None
 
@@ -64,14 +68,14 @@ def main() -> None:
         except Exception:
             return None
 
-    # Claude headless 结构化会话（CC Pocket 式）：TG 端的 AI 开发入口
+    # Claude headless 结构化会话（CC Pocket 式）：经专属 AI 机器人收发
     from app_ado.ai_headless_session import HeadlessSessionManager
     from app_ado.ai_headless_tg_bridge import AiHeadlessTgBridge
 
     headless_manager = HeadlessSessionManager()
     headless_bridge = AiHeadlessTgBridge(
         manager=headless_manager,
-        bot_token_fn=_dev_bot_token,
+        bot_token_fn=_ai_bot_token,
         owner_chat_id_fn=_dev_owner_chat_id,
     )
     headless_bridge.start()  # 启动审批落盘监听线程
@@ -90,6 +94,9 @@ def main() -> None:
 
     wi_bridge = WorkItemsBridge(headless_bridge=headless_bridge)
 
+    # 主机器人：任务/工单/服务/MCP。不传 headless_bridge → AI 对话（/cc、cc:*、🤖 Claude 会话）
+    # 不在主机器人出现。工单 MCP 分析仍可用（wi_bridge 内部持有 headless_bridge），
+    # 但会话收发走专属 AI 机器人。
     tg = TelegramController(
         on_run=tasks.run_task,
         on_deploy_only=tasks.deploy_only_task,
@@ -98,9 +105,26 @@ def main() -> None:
         on_stop_one=tasks.stop_one_task,
         on_status=tasks.status_text,
         wi_bridge=wi_bridge,
-        headless_bridge=headless_bridge,
+        headless_bridge=None,
     )
     tg.start()
+
+    # 专属 AI 机器人：只跑 Claude 会话（mode="ai"）。token 取通讯配置里给 claude_code 绑的
+    # Bot Token；没配则该轮询线程空转，不影响主机器人。
+    ai_tg = TelegramController(
+        on_run=tasks.run_task,
+        on_deploy_only=tasks.deploy_only_task,
+        on_rollback=tasks.rollback_task,
+        on_stop_menu=tasks.list_stoppable_tasks,
+        on_stop_one=tasks.stop_one_task,
+        on_status=tasks.status_text,
+        wi_bridge=None,
+        headless_bridge=headless_bridge,
+        token_fn=_ai_bot_token,
+        mode="ai",
+        name="ai",
+    )
+    ai_tg.start()
 
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
     w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
