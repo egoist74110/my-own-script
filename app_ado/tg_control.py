@@ -732,11 +732,10 @@ class TelegramController:
     def _handle_svc_callback(self, token: str, chat_id: str, data: str) -> None:
         """服务面板回调（owner-only，调用方已校验权限）。
 
-        data: svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop] / svc:cp[:start|stop|qr]
+        data: svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]
         """
         from app_ado import services_panel as svc
         from app_ado.tg_help_inline import (
-            ccpocket_actions_menu,
             services_menu,
             service_actions_menu,
             service_back_menu,
@@ -773,30 +772,6 @@ class TelegramController:
             if head:
                 text = f"{head}\n\n{text}"
             self._reply(token, chat_id, text, reply_markup=service_actions_menu(key))
-            return
-
-        if key == "cp":
-            if action == "qr":
-                png = svc.ccpocket_qr_png()
-                if png:
-                    self._reply_photo(
-                        token, chat_id, png,
-                        caption="CC Pocket 连接二维码（用 ccpocket app 扫码）",
-                    )
-                else:
-                    self._reply(token, chat_id, "暂无二维码：请先「启动」CC Pocket。",
-                                reply_markup=ccpocket_actions_menu())
-                return
-
-            head = ""
-            if action == "start":
-                _, head = svc.ccpocket_start()
-            elif action == "stop":
-                _, head = svc.ccpocket_stop()
-            text = svc.ccpocket_status()
-            if head:
-                text = f"{head}\n\n{text}"
-            self._reply(token, chat_id, text, reply_markup=ccpocket_actions_menu())
             return
 
         # 未知子项，回服务面板
