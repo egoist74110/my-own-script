@@ -421,9 +421,9 @@ class AiConfigTab(Tab):
                 QtCore.QTimer.singleShot(80, finish)
                 return
             if bool(result.get("ok")):
-                QtWidgets.QMessageBox.information(self, "测试结果", "测试正常")
+                self._toast("测试结果", "测试正常")
             else:
-                QtWidgets.QMessageBox.warning(self, "测试结果", str(result.get("message") or "命令不可用"))
+                show_error_dialog(self, "测试结果", str(result.get("message") or "命令不可用"))
 
         QtCore.QTimer.singleShot(80, finish)
 
@@ -513,29 +513,56 @@ class AiConfigTab(Tab):
                 return t
             return get_ai_bot_token(ai_id)
 
-        def _do_check() -> None:
-            from app_ado.notifier_telegram_meta import get_me
+        def _dlg_toast(title: str, content: str, ok: bool = True) -> None:
+            # 弹窗对齐全局风格：用 InfoBar（不用 Qt 自带 QMessageBox）；在模态对话框内就挂到 dlg 上才看得见。
+            if ok:
+                InfoBar.success(title, content, duration=2500, position=InfoBarPosition.TOP, parent=dlg)
+            else:
+                InfoBar.error(title, content, duration=3500, position=InfoBarPosition.TOP, parent=dlg)
 
+        def _do_check() -> None:
             tok = _effective_token()
             if not tok:
-                QtWidgets.QMessageBox.warning(self.window(), "缺 Token", "请先填入 Bot Token。")
+                _dlg_toast("缺 Token", "请先填入 Bot Token。", ok=False)
                 return
+
+            # 异步检查：不在 UI 线程里跑 get_me，避免卡住主程序；按钮给 loading 态。
             btn_check.setEnabled(False)
-            try:
-                info = get_me(bot_token=tok)
-            except Exception as e:  # noqa: BLE001
-                show_error_dialog(self, "检查失败", str(e))
-                return
-            finally:
+            old_text = btn_check.text()
+            btn_check.setText("检查中…")
+
+            result: dict[str, object] = {}
+
+            def run() -> None:
+                try:
+                    from app_ado.notifier_telegram_meta import get_me
+
+                    result["info"] = get_me(bot_token=tok)
+                except Exception as e:  # noqa: BLE001
+                    result["error"] = e
+
+            th = threading.Thread(target=run, daemon=True)
+            th.start()
+
+            def finish() -> None:
+                if th.is_alive():
+                    QtCore.QTimer.singleShot(150, finish)
+                    return
                 btn_check.setEnabled(True)
-            uname = ("@" + info.username) if info.username else ""
-            detected["username"] = uname
-            lbl_user.setText(uname or "（该 Token 没有用户名）")
-            QtWidgets.QMessageBox.information(
-                self.window(), "Token 正常",
-                f"bot_id={info.id} {uname}\n"
-                f"接下来去 Telegram 打开 {uname or '该机器人'} 发一条 /start，AI 对话就会走它。",
-            )
+                btn_check.setText(old_text)
+                if "error" in result:
+                    show_error_dialog(self, "检查失败", str(result["error"]))
+                    return
+                info = result["info"]
+                uname = ("@" + info.username) if info.username else ""
+                detected["username"] = uname
+                lbl_user.setText(uname or "（该 Token 没有用户名）")
+                _dlg_toast(
+                    "Token 正常",
+                    f"bot_id={info.id} {uname}；去 Telegram 给 {uname or '该机器人'} 发一条 /start，AI 对话就会走它。",
+                )
+
+            QtCore.QTimer.singleShot(150, finish)
 
         btn_check.clicked.connect(_do_check)
 
@@ -566,35 +593,24 @@ class AiConfigTab(Tab):
             self._settings.ai.bots = bots
             save_ui_settings(self._settings)
             self._refresh_bot_state()
-            QtWidgets.QMessageBox.information(self.window(), "已清除", f"{ai_name} 的机器人绑定已清除。")
+            self._toast("已清除", f"{ai_name} 的机器人绑定已清除。")
             return
 
         token = ed_token.text().strip()
         if token and token != "********":
             set_ai_bot_token(ai_id, token)
         elif not has_token:
-            QtWidgets.QMessageBox.warning(self.window(), "未保存", "请填入 Bot Token。")
+            self._toast("未保存", "请填入 Bot Token。", ok=False)
             return
 
-        new_user = (detected.get("username") or "").strip()
-        if not new_user:
-            tok = get_ai_bot_token(ai_id)
-            if tok:
-                try:
-                    from app_ado.notifier_telegram_meta import get_me
-
-                    info = get_me(bot_token=tok)
-                    new_user = ("@" + info.username) if info.username else ""
-                except Exception:
-                    new_user = username
+        # @用户名只用于显示：优先用「检查」时检测到的，没有就沿用旧值，绝不在这里同步联网（会卡主程序）。
+        new_user = (detected.get("username") or "").strip() or username
 
         bots.append(AiBotBinding(ai_id=ai_id, username=new_user))
         self._settings.ai.bots = bots
         save_ui_settings(self._settings)
         self._refresh_bot_state()
-        QtWidgets.QMessageBox.information(
-            self.window(), "已保存", f"{ai_name} 的专属机器人已保存。重启应用后生效。"
-        )
+        self._toast("已保存", f"{ai_name} 的专属机器人已保存。重启应用后生效。")
 
     def _add_profile(self) -> None:
         dlg = AiProfileDialog(self)
@@ -618,8 +634,9 @@ class AiConfigTab(Tab):
         if profile.id in _BUILTIN_IDS or profile.builtin:
             show_error_dialog(self, "提示", "内置 AI 不能删除（只能改名称/命令/升级命令）")
             return
-        ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除 AI 工具：{profile.name}？")
-        if ok != QtWidgets.QMessageBox.Yes:
+        from app_ado.ui.confirm import show_confirm_dialog
+
+        if not show_confirm_dialog(self, "确认删除", f"删除 AI 工具：{profile.name}？"):
             return
         self._settings.ai.tool.profiles = [x for x in (self._settings.ai.tool.profiles or []) if x.id != profile.id]
         if self._settings.ai.tool.selected_profile_id == profile.id:
