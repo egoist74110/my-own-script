@@ -53,6 +53,6 @@ def lark_mcp_codex_toml() -> str:
 
 
 def lark_mcp_gemini_json_fragment() -> str:
-    # Gemini CLI: streamable HTTP 用 httpUrl 字段
+    # Antigravity CLI（agy，沿用 ~/.gemini/settings.json）：streamable HTTP 用 httpUrl 字段
     payload = {"lark": {"httpUrl": _http_url()}}
     return json.dumps(payload, ensure_ascii=False, indent=2)

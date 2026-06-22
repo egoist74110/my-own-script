@@ -117,7 +117,7 @@ LARK_HELP_HTML_TEMPLATE = """
   <li>填好 App ID / App Secret → 点 <b>保存配置</b></li>
   <li>点 <b>登录</b> → 浏览器完成 OAuth 授权</li>
   <li>点 <b>开启 Lark MCP</b>(本 App 会托管<b>一个共享 HTTP 实例</b>,所有 AI CLI 都连它)</li>
-  <li>在 Claude / Codex / Gemini 里用<b>复制配置</b>按钮拿到的 <b>URL 接入</b>(不再各自起进程)。
+  <li>在 Claude / Codex / Antigravity 里用<b>复制配置</b>按钮拿到的 <b>URL 接入</b>(不再各自起进程)。
       首次连接会弹一次浏览器 OAuth 授权。</li>
 </ol>
 
@@ -130,7 +130,7 @@ FIGMA_HELP_HTML_TEMPLATE = """
 <h3>Figma MCP 配置说明</h3>
 
 <p>本 MCP 基于 Framelink <code>figma-developer-mcp</code>,通过 Figma REST API 读取设计稿
-(文件 / 节点 / 图片),供 Claude Code / Codex / Gemini 做「设计稿转代码」。</p>
+(文件 / 节点 / 图片),供 Claude Code / Codex / Antigravity 做「设计稿转代码」。</p>
 
 <p><b>一、获取 Figma Personal Access Token</b><br>
 <a href="https://www.figma.com/developers/api#access-tokens">https://www.figma.com/developers/api#access-tokens</a></p>
@@ -144,7 +144,7 @@ FIGMA_HELP_HTML_TEMPLATE = """
 <ol>
   <li>把 Token 粘到本卡片「API Token」输入框 → 点 <b>保存配置</b>(存进系统钥匙串,不写入磁盘明文)</li>
   <li>点 <b>开启 Figma MCP</b></li>
-  <li>在 Claude / Codex / Gemini 里贴上 Figma 文件链接即可读取设计稿</li>
+  <li>在 Claude / Codex / Antigravity 里贴上 Figma 文件链接即可读取设计稿</li>
 </ol>
 """
 from ok.gui.widget.Tab import Tab
@@ -214,7 +214,7 @@ class McpConfigTab(Tab):
         self.btn_copy_ado_work_items_mcp_command = PushButton("复制启动命令")
         self.btn_copy_ado_work_items_mcp_claude = PushButton("复制Claude Code配置")
         self.btn_copy_ado_work_items_mcp_codex = PushButton("复制Codex配置")
-        self.btn_copy_ado_work_items_mcp_gemini = PushButton("复制Gemini CLI配置")
+        self.btn_copy_ado_work_items_mcp_gemini = PushButton("复制Antigravity CLI配置")
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.btn_toggle_ado_work_items_mcp)
@@ -272,8 +272,8 @@ class McpConfigTab(Tab):
         self.btn_copy_lark_mcp_command = PushButton("复制启动命令")
         self.btn_copy_lark_mcp_claude = PushButton("复制Claude Code配置")
         self.btn_copy_lark_mcp_codex = PushButton("复制Codex配置")
-        self.btn_copy_lark_mcp_gemini = PushButton("复制Gemini CLI配置")
-        # 一键把 app 登录态(UAT)作为 Bearer 注入 Claude/Codex/Gemini 配置 → 各工具免浏览器授权直连
+        self.btn_copy_lark_mcp_gemini = PushButton("复制Antigravity CLI配置")
+        # 一键把 app 登录态(UAT)作为 Bearer 注入 Claude/Codex/Antigravity 配置 → 各工具免浏览器授权直连
         self.btn_inject_lark_token = PushButton("一键注入登录态(免各工具再授权)")
 
         # 一键重登:仅当检测到 20038 续期失败时才显示(见 _apply_lark_expiry)。
@@ -442,7 +442,7 @@ class McpConfigTab(Tab):
     def _copy_ado_work_items_mcp_gemini(self) -> None:
         self._copy_text(
             ado_work_items_mcp_gemini_json_fragment(),
-            "Gemini CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
+            "Antigravity CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
         )
 
     def _update_ado_work_items_mcp_status(self) -> None:
@@ -662,11 +662,11 @@ class McpConfigTab(Tab):
     def _copy_lark_mcp_gemini(self) -> None:
         self._copy_text(
             lark_mcp_gemini_json_fragment(),
-            "Gemini CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
+            "Antigravity CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
         )
 
     def _inject_lark_token(self) -> None:
-        """把 app 登录态(UAT)作为 Bearer 写进 Claude/Codex/Gemini 配置 → 各工具免再授权。
+        """把 app 登录态(UAT)作为 Bearer 写进 Claude/Codex/Antigravity 配置 → 各工具免再授权。
 
         读 token 要解密 store(走 node,略慢),放后台线程避免卡 UI;完成后弹结果。
         """
@@ -873,7 +873,7 @@ class McpConfigTab(Tab):
         self.btn_copy_figma_mcp_command = PushButton("复制启动命令")
         self.btn_copy_figma_mcp_claude = PushButton("复制Claude Code配置")
         self.btn_copy_figma_mcp_codex = PushButton("复制Codex配置")
-        self.btn_copy_figma_mcp_gemini = PushButton("复制Gemini CLI配置")
+        self.btn_copy_figma_mcp_gemini = PushButton("复制Antigravity CLI配置")
 
         row1 = QtWidgets.QHBoxLayout()
         row1.addWidget(self.btn_figma_help)
@@ -968,7 +968,7 @@ class McpConfigTab(Tab):
     def _copy_figma_mcp_gemini(self) -> None:
         self._copy_text(
             figma_mcp_gemini_json_fragment(),
-            "Gemini CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
+            "Antigravity CLI 配置片段已复制,合并到 ~/.gemini/settings.json 的 mcpServers 段",
         )
 
     def _update_figma_mcp_status(self) -> None:

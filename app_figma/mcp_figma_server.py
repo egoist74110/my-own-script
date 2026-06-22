@@ -1,7 +1,7 @@
 """Figma MCP server 入口:wrapper 形态 —— 从 keyring 读 Figma API Token,
 然后 exec 官方 figma-developer-mcp(Framelink) 走 stdio。
 
-可直接被 Claude Code / Codex / Gemini CLI 当作 MCP server 命令调用。
+可直接被 Claude Code / Codex / Antigravity CLI 当作 MCP server 命令调用。
 """
 
 from __future__ import annotations

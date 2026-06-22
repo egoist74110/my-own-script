@@ -63,6 +63,8 @@ class AiCliProfile(BaseModel):
     id: str
     name: str
     command: str = ""
+    # 升级命令：点「升级」按钮时跑这条（如 `npm install -g @openai/codex@latest`、`claude update`）。
+    upgrade_command: str = ""
     builtin: bool = False
 
 

@@ -1,7 +1,7 @@
 """Lark MCP server 入口:wrapper 形态 —— 从项目配置/keyring 读凭据,
 然后 exec 官方 @larksuiteoapi/lark-mcp 走 stdio。
 
-可直接被 Claude Code / Codex / Gemini CLI 当作 MCP server 命令调用。
+可直接被 Claude Code / Codex / Antigravity CLI 当作 MCP server 命令调用。
 """
 
 from __future__ import annotations

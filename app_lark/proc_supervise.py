@@ -7,7 +7,7 @@
 - :func:`install_orphan_reaper` —— 给"纯 Python server 形态"用(自己读 sys.stdin 跑循环)。
   起一个守护线程,父进程一旦消失(被 reparent 到 init/launchd)就自杀。
 
-为什么需要:MCP 客户端(Claude/Codex/Gemini)正常退出时应 SIGTERM 掉 stdio server,
+为什么需要:MCP 客户端(Claude/Codex/Antigravity)正常退出时应 SIGTERM 掉 stdio server,
 但会话被强杀 / 客户端不回收时,server 会变孤儿常驻。stdin EOF 是最可靠的"客户端走了"
 信号,孤儿检测是兜底。
 """

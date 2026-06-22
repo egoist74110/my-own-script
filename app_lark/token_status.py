@@ -233,7 +233,7 @@ def lark_token_status() -> dict:
 def get_active_user_access_token() -> dict:
     """取一个可用于注入 Bearer header 的 Lark user_access_token。
 
-    供"一键注入登录态到所有工具"用:把这个 UAT 写进 Claude/Codex/Gemini 配置的
+    供"一键注入登录态到所有工具"用:把这个 UAT 写进 Claude/Codex/Antigravity 配置的
     Authorization header,客户端即可免浏览器授权直连(lark-mcp 的 verifyAccessToken 就是
     拿 bearer 去 store 里精确查 tokens[bearer],不绑 client、不卡 scope)。
 

@@ -2,7 +2,7 @@
 
 为根治"多实例抢同一个会轮换的 refresh_token 导致 20038"——Lark MCP 改为
 **共享 streamable HTTP 单实例**:由本 App 托管一个 lark-mcp 进程(``-m streamable
---oauth``),Claude/Codex/Gemini 全部用同一个 URL 连接。单进程=单 token 刷新器,
+--oauth``),Claude/Codex/Antigravity 全部用同一个 URL 连接。单进程=单 token 刷新器,
 不再有并发刷新竞争。App 退出时通过进程组 + atexit 回收,不留僵尸。
 """
 

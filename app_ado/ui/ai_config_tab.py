@@ -4,33 +4,23 @@ import shlex
 import subprocess
 import threading
 import uuid
-from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
 from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, PushButton
 
-from app_ado.ai_policy import load_ai_change_policy
-from app_ado.model_collaboration_rules import (
-    apply_rule_to_global,
-    apply_rule_to_repo,
-    global_rule_path,
-    inspect_rule_target,
-    inspect_template_target,
-    remove_rule_from_global,
-    remove_rule_from_repo,
-    repo_rule_path,
-)
-from app_ado.models import (
-    AiCliProfile,
-    AiPolicyConfig,
-)
+from app_ado.ai_headless_session import _augment_path
+from app_ado.models import AiCliProfile
 from app_ado.store import load_ui_settings, save_ui_settings
-from app_ado.ui.confirm import show_confirm_dialog
 from app_ado.ui.dialogs import (
     show_error_dialog,
     show_text_result_dialog,
 )
 from ok.gui.widget.Tab import Tab
+
+# 三个内置（预留）AI：可以改名称/命令/升级命令，但不能删除。
+# 注：id "gemini" 现在对应 Antigravity CLI（谷歌已废弃 Gemini CLI，命令 agy）。
+# 内部 id 保持 "gemini" 不动，这样老用户绑的专属机器人 Token、模型协作映射都不会断。
+_BUILTIN_IDS: frozenset[str] = frozenset({"codex", "gemini", "claude_code"})
 
 
 class AiProfileDialog(QtWidgets.QDialog):
@@ -39,7 +29,7 @@ class AiProfileDialog(QtWidgets.QDialog):
         self._result: AiCliProfile | None = None
         self.setWindowTitle("新增 AI 配置")
         self.setModal(True)
-        self.resize(520, 180)
+        self.resize(520, 200)
 
         root = QtWidgets.QFormLayout(self)
         root.setLabelAlignment(QtCore.Qt.AlignLeft)
@@ -47,8 +37,11 @@ class AiProfileDialog(QtWidgets.QDialog):
         self.name_edit = QtWidgets.QLineEdit()
         self.command_edit = QtWidgets.QLineEdit()
         self.command_edit.setPlaceholderText("例如：my-ai-cli")
+        self.upgrade_edit = QtWidgets.QLineEdit()
+        self.upgrade_edit.setPlaceholderText("可选，例如：npm install -g xxx@latest")
         root.addRow("名称", self.name_edit)
         root.addRow("启动命令", self.command_edit)
+        root.addRow("升级命令", self.upgrade_edit)
 
         row = QtWidgets.QHBoxLayout()
         self.btn_cancel = PushButton("取消")
@@ -72,36 +65,47 @@ class AiProfileDialog(QtWidgets.QDialog):
         if not command:
             show_error_dialog(self, "错误", "启动命令不能为空")
             return
-        self._result = AiCliProfile(id=f"custom:{uuid.uuid4()}", name=name, command=command, builtin=False)
+        self._result = AiCliProfile(
+            id=f"custom:{uuid.uuid4()}",
+            name=name,
+            command=command,
+            upgrade_command=self.upgrade_edit.text().strip(),
+            builtin=False,
+        )
         self.accept()
 
 
 class AiConfigTab(Tab):
     icon = None
     name = "AI配置"
-    _project_root = Path(__file__).resolve().parents[2]
 
     def __init__(self):
         super().__init__()
         self._settings = load_ui_settings()
-        self._builtin_policy = load_ai_change_policy()
+        self._current_pid: str = ""
         self._migrate_and_seed_profiles()
 
         self._build_tool_card()
-        self._build_scope_card()
-        self._build_policy_card()
-        self._load_all()
+        self._refresh_profile_combo()
 
     def _toast(self, title: str, content: str, ok: bool = True) -> None:
         if ok:
-            InfoBar.success(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window())
+            InfoBar.success(title, content, duration=1500, position=InfoBarPosition.TOP_RIGHT, parent=self.window())
         else:
             InfoBar.error(title, content, position=InfoBarPosition.TOP_RIGHT, parent=self.window())
 
+    # ------------------------------------------------------------------
+    # 内置 AI 的默认值（仅用于新装/补空，不覆盖用户已改过的命令）
+    # ------------------------------------------------------------------
+
     def _default_profiles(self) -> list[AiCliProfile]:
         return [
-            AiCliProfile(id="codex", name="Codex", command="codex", builtin=True),
-            AiCliProfile(id="claude_code", name="Claude Code", command="claude", builtin=True),
+            AiCliProfile(id="codex", name="Codex", command="codex",
+                         upgrade_command="npm install -g @openai/codex@latest", builtin=True),
+            AiCliProfile(id="gemini", name="Antigravity CLI", command="agy",
+                         upgrade_command="agy update", builtin=True),
+            AiCliProfile(id="claude_code", name="Claude Code", command="claude",
+                         upgrade_command="claude update", builtin=True),
         ]
 
     def _migrate_and_seed_profiles(self) -> None:
@@ -123,24 +127,26 @@ class AiConfigTab(Tab):
             if not cur.name.strip():
                 cur.name = profile.name
                 changed = True
-
-        if not tool.profiles:
-            targets = list(self._settings.ai.targets or [])
-            target = None
-            if self._settings.ai.default_target_id:
-                target = next((x for x in targets if x.id == self._settings.ai.default_target_id), None)
-            if target is None and targets:
-                target = targets[0]
-            if target is not None and target.command.strip():
-                existing[f"custom:{uuid.uuid4()}"] = AiCliProfile(
-                    id=f"custom:{uuid.uuid4()}",
-                    name=(target.name or "迁移的自定义AI"),
-                    command=target.command,
-                    builtin=False,
-                )
+            # 谷歌废弃 Gemini CLI → Antigravity CLI：把内置项里残留的死名称/死命令换掉，
+            # 但用户自己改过的命令（如已是 agy 或自定义）不动。
+            if profile.id == "gemini":
+                if cur.name.strip() in ("Gemini CLI", "Gemini"):
+                    cur.name = profile.name
+                    changed = True
+                if cur.command.strip() == "gemini":
+                    cur.command = profile.command
+                    changed = True
+            # 升级命令是新字段：仅在为空时补默认，已填的不动
+            if not (cur.upgrade_command or "").strip() and profile.upgrade_command:
+                cur.upgrade_command = profile.upgrade_command
                 changed = True
 
-        tool.profiles = list(existing.values())
+        # 内置 AI 排前面、保持稳定顺序，自定义在后
+        order = ["codex", "gemini", "claude_code"]
+        builtins = [existing[i] for i in order if i in existing]
+        customs = [p for pid, p in existing.items() if pid not in order]
+        tool.profiles = builtins + customs
+
         if not tool.selected_profile_id or tool.selected_profile_id not in existing:
             tool.selected_profile_id = "codex"
             changed = True
@@ -149,6 +155,10 @@ class AiConfigTab(Tab):
             save_ui_settings(self._settings)
             self._settings = load_ui_settings()
 
+    # ------------------------------------------------------------------
+    # AI 工具接入卡片
+    # ------------------------------------------------------------------
+
     def _build_tool_card(self) -> None:
         w = CardWidget(self)
         form = QtWidgets.QFormLayout(w)
@@ -156,139 +166,70 @@ class AiConfigTab(Tab):
 
         self.profile_combo = ComboBox()
         self.profile_combo.setFixedWidth(280)
-        self.command_edit = QtWidgets.QLineEdit()
-        self.command_edit.setPlaceholderText("启动命令")
 
-        self.btn_save_tool = PushButton("保存工具配置")
+        self.name_edit = QtWidgets.QLineEdit()
+        self.name_edit.setPlaceholderText("显示名称")
+        self.command_edit = QtWidgets.QLineEdit()
+        self.command_edit.setPlaceholderText("启动命令，例如：codex / claude")
+        self.upgrade_edit = QtWidgets.QLineEdit()
+        self.upgrade_edit.setPlaceholderText("升级命令，例如：npm install -g @openai/codex@latest / claude update")
+
+        self.btn_upgrade = PushButton("升级")
         self.btn_test_tool = PushButton("测试工具")
         self.btn_add_profile = PushButton("新增")
         self.btn_delete_profile = PushButton("删除")
 
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.btn_save_tool)
+        row.addWidget(self.btn_upgrade)
         row.addWidget(self.btn_test_tool)
         row.addWidget(self.btn_add_profile)
         row.addWidget(self.btn_delete_profile)
         row.addStretch(1)
 
+        # 专属机器人：和选中的这个 AI 绑定（Bot Token 存钥匙串），AI 对话走它自己的机器人。
+        self.lbl_bot_state = QtWidgets.QLabel("-")
+        self.lbl_bot_state.setWordWrap(True)
+        self.btn_bot_edit = PushButton("编辑专属机器人")
+        bot_row = QtWidgets.QHBoxLayout()
+        bot_row.setContentsMargins(0, 0, 0, 0)
+        bot_row.setSpacing(8)
+        bot_row.addWidget(self.lbl_bot_state, 1)
+        bot_row.addWidget(self.btn_bot_edit)
+        bot_cont = QtWidgets.QWidget()
+        bot_cont.setLayout(bot_row)
+
         form.addRow("AI工具", self.profile_combo)
+        form.addRow("名称", self.name_edit)
         form.addRow("启动命令", self.command_edit)
+        form.addRow("升级命令", self.upgrade_edit)
         form.addRow(row)
+        form.addRow("专属机器人", bot_cont)
+
+        tip = QtWidgets.QLabel(
+            "三个内置 AI（Codex / Antigravity CLI / Claude Code）可改名称、命令、升级命令，但不能删除；"
+            "改完移开光标即自动生效，无需确认。点「升级」会跑上面的升级命令。\n"
+            "「专属机器人」给当前选中的 AI 绑一个 Telegram 机器人，它的对话只走自己的机器人，不和任务通知混在一起。"
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color: gray;")
+        form.addRow(tip)
 
         self.profile_combo.currentIndexChanged.connect(self._load_selected_profile)
-        self.profile_combo.currentIndexChanged.connect(self._remember_selected_profile)
-        self.btn_save_tool.clicked.connect(self._save_tool)
+        self.btn_bot_edit.clicked.connect(self._edit_bot)
+        # 改完即生效（移开光标 / 回车触发），不需要保存按钮
+        self.name_edit.editingFinished.connect(self._autosave)
+        self.command_edit.editingFinished.connect(self._autosave)
+        self.upgrade_edit.editingFinished.connect(self._autosave)
+        self.btn_upgrade.clicked.connect(self._upgrade_tool)
         self.btn_test_tool.clicked.connect(self._test_tool)
         self.btn_add_profile.clicked.connect(self._add_profile)
         self.btn_delete_profile.clicked.connect(self._delete_profile)
 
         self.add_card("AI工具接入", w)
 
-    def _build_policy_card(self) -> None:
-        w = CardWidget(self)
-        form = QtWidgets.QFormLayout(w)
-        form.setLabelAlignment(QtCore.Qt.AlignLeft)
-
-        self.chk_policy_enabled = QtWidgets.QCheckBox("启用 AI 策略检查")
-        self.chk_require_policy_check = QtWidgets.QCheckBox("改代码前必须先做策略评估")
-        self.chk_allow_direct_code_change = QtWidgets.QCheckBox("允许 AI 直接改代码")
-
-        self.prompt_template = QtWidgets.QPlainTextEdit()
-        self.prompt_template.setFixedHeight(120)
-        self.prompt_template.setPlaceholderText("这里填默认 Prompt。会作为发给 AI 的底层约束。")
-
-        self.forbidden_paths = QtWidgets.QPlainTextEdit()
-        self.forbidden_paths.setFixedHeight(100)
-        self.forbidden_paths.setPlaceholderText("每行一个路径，例如：app_ado/secrets.py")
-
-        self.deny_keywords = QtWidgets.QPlainTextEdit()
-        self.deny_keywords.setFixedHeight(100)
-        self.deny_keywords.setPlaceholderText("每行一个高风险关键词，例如：支付、权限、token")
-
-        self.btn_save_policy = PushButton("保存默认约束")
-        self.btn_reset_policy = PushButton("恢复内置默认")
-        self.btn_copy_prompt = PushButton("复制当前默认Prompt")
-
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.btn_save_policy)
-        row.addWidget(self.btn_reset_policy)
-        row.addWidget(self.btn_copy_prompt)
-        row.addStretch(1)
-
-        form.addRow(self.chk_policy_enabled)
-        form.addRow(self.chk_require_policy_check)
-        form.addRow(self.chk_allow_direct_code_change)
-        form.addRow("默认Prompt", self.prompt_template)
-        form.addRow("禁止修改路径", self.forbidden_paths)
-        form.addRow("高风险关键词", self.deny_keywords)
-        form.addRow(row)
-
-        self.btn_save_policy.clicked.connect(self._save_policy)
-        self.btn_reset_policy.clicked.connect(self._reset_policy)
-        self.btn_copy_prompt.clicked.connect(self._copy_prompt)
-
-        self.add_card("默认Prompt与限制逻辑", w)
-
-    def _build_scope_card(self) -> None:
-        w = CardWidget(self)
-        form = QtWidgets.QFormLayout(w)
-        form.setLabelAlignment(QtCore.Qt.AlignLeft)
-
-        self.model_rule_combo = ComboBox()
-        self.model_rule_combo.setFixedWidth(280)
-        self.model_rule_combo.addItem("Claude", userData="claude")
-        self.model_rule_combo.addItem("Codex", userData="codex")
-        self.model_rule_combo.addItem("Gemini", userData="gemini")
-
-        self.apply_target_combo = ComboBox()
-        self.apply_target_combo.setFixedWidth(280)
-        self.apply_target_combo.addItem("全局", userData="global")
-        self.apply_target_combo.addItem("本地仓库", userData="repo")
-
-        self.repo_target_combo = ComboBox()
-        self.repo_target_combo.setFixedWidth(360)
-
-        self.deploy_status = QtWidgets.QLabel("")
-        self.deploy_status.setWordWrap(True)
-
-        self.btn_apply_rule = PushButton("部署")
-        self.btn_remove_rule = PushButton("删除")
-
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.btn_apply_rule)
-        row.addWidget(self.btn_remove_rule)
-        row.addStretch(1)
-
-        form.addRow("模型切换", self.model_rule_combo)
-        form.addRow("模型应用切换", self.apply_target_combo)
-        form.addRow("本地仓库", self.repo_target_combo)
-        form.addRow("规则状态", self.deploy_status)
-        form.addRow(row)
-
-        self.model_rule_combo.currentIndexChanged.connect(self._refresh_rule_status)
-        self.apply_target_combo.currentIndexChanged.connect(self._update_scope_widgets)
-        self.apply_target_combo.currentIndexChanged.connect(self._refresh_rule_status)
-        self.repo_target_combo.currentIndexChanged.connect(self._refresh_rule_status)
-        self.btn_apply_rule.clicked.connect(self._apply_selected_rule)
-        self.btn_remove_rule.clicked.connect(self._remove_selected_rule)
-
-        self.add_card("规则部署", w)
-
-    def _load_all(self) -> None:
-        self._settings = load_ui_settings()
-        tool = self._settings.ai.tool
-        self._refresh_profile_combo()
-        self._refresh_scope_options()
-
-        merged = self._merge_policy(self._builtin_policy, self._settings.ai.default_policy.model_dump())
-        self.chk_policy_enabled.setChecked(bool(self._settings.ai.enabled))
-        self.chk_require_policy_check.setChecked(bool(self._settings.ai.require_policy_check_before_code_change))
-        self.chk_allow_direct_code_change.setChecked(bool(self._settings.ai.allow_direct_code_change))
-        self.prompt_template.setPlainText(tool.prompt_template)
-        self.forbidden_paths.setPlainText("\n".join(merged.get("forbidden_paths") or []))
-        self.deny_keywords.setPlainText("\n".join(merged.get("deny_keywords") or []))
-        self._update_scope_widgets()
-        self._refresh_rule_status()
+    # ------------------------------------------------------------------
+    # 读取 / 选择
+    # ------------------------------------------------------------------
 
     def _refresh_profile_combo(self) -> None:
         self._settings = load_ui_settings()
@@ -305,15 +246,6 @@ class AiConfigTab(Tab):
         self.profile_combo.blockSignals(False)
         self._load_selected_profile()
 
-    def _refresh_scope_options(self) -> None:
-        self.repo_target_combo.blockSignals(True)
-        self.repo_target_combo.clear()
-        self.repo_target_combo.addItem("未选择", userData="")
-        for repo in self._settings.local_repos or []:
-            label = f"{repo.name} ({repo.path})"
-            self.repo_target_combo.addItem(label, userData=repo.id)
-        self.repo_target_combo.blockSignals(False)
-
     def _selected_profile(self) -> AiCliProfile | None:
         pid = self.profile_combo.currentData()
         return next((x for x in (self._settings.ai.tool.profiles or []) if x.id == pid), None)
@@ -322,117 +254,143 @@ class AiConfigTab(Tab):
         self._settings = load_ui_settings()
         profile = self._selected_profile()
         if profile is None:
-            self.command_edit.setText("")
+            self._current_pid = ""
+            for ed in (self.name_edit, self.command_edit, self.upgrade_edit):
+                ed.blockSignals(True); ed.setText(""); ed.blockSignals(False)
             self.btn_delete_profile.setEnabled(False)
+            self.btn_upgrade.setEnabled(False)
+            self._refresh_bot_state()
             return
-        self.command_edit.setText(profile.command)
-        self.btn_delete_profile.setEnabled(not bool(profile.builtin))
+        self._current_pid = profile.id
+        for ed, val in (
+            (self.name_edit, profile.name),
+            (self.command_edit, profile.command),
+            (self.upgrade_edit, profile.upgrade_command),
+        ):
+            ed.blockSignals(True)
+            ed.setText(val or "")
+            ed.blockSignals(False)
+        # 内置 AI 不能删；其余可删
+        self.btn_delete_profile.setEnabled(profile.id not in _BUILTIN_IDS and not bool(profile.builtin))
+        self.btn_upgrade.setEnabled(True)
+        self._refresh_bot_state()
+        # 切换 AI 即记住选择
+        if self._settings.ai.tool.selected_profile_id != profile.id:
+            self._settings.ai.tool.selected_profile_id = profile.id
+            save_ui_settings(self._settings)
 
-    def _remember_selected_profile(self) -> None:
-        self._settings = load_ui_settings()
-        pid = self.profile_combo.currentData()
+    # ------------------------------------------------------------------
+    # 自动保存（改了就生效，不用确认）
+    # ------------------------------------------------------------------
+
+    def _autosave(self) -> None:
+        pid = self._current_pid
         if not pid:
             return
-        if self._settings.ai.tool.selected_profile_id == pid:
+        self._settings = load_ui_settings()
+        profile = next((x for x in (self._settings.ai.tool.profiles or []) if x.id == pid), None)
+        if profile is None:
             return
-        self._settings.ai.tool.selected_profile_id = str(pid)
+
+        new_name = self.name_edit.text().strip()
+        new_cmd = self.command_edit.text().strip()
+        new_up = self.upgrade_edit.text().strip()
+
+        # 名称不能清空：空了就还原显示
+        if not new_name:
+            self.name_edit.blockSignals(True)
+            self.name_edit.setText(profile.name)
+            self.name_edit.blockSignals(False)
+            new_name = profile.name
+
+        if (new_name == profile.name and new_cmd == profile.command
+                and new_up == (profile.upgrade_command or "")):
+            return  # 没变化，别瞎存
+
+        profile.name = new_name
+        profile.command = new_cmd
+        profile.upgrade_command = new_up
         save_ui_settings(self._settings)
 
-    def _merge_policy(self, base: dict, override: dict) -> dict:
-        out = dict(base)
-        for key in ("forbidden_paths", "deny_keywords"):
-            value = override.get(key)
-            if isinstance(value, list) and value:
-                out[key] = list(value)
-        return out
+        # 同步下拉里显示的名称
+        i = self.profile_combo.currentIndex()
+        if i >= 0:
+            self.profile_combo.blockSignals(True)
+            self.profile_combo.setItemText(i, new_name)
+            self.profile_combo.blockSignals(False)
+        self._toast("已生效", f"{new_name} 已更新")
 
-    def _selected_rule_model(self) -> str:
-        return str(self.model_rule_combo.currentData() or "claude")
+    # ------------------------------------------------------------------
+    # 升级 / 测试 / 新增 / 删除
+    # ------------------------------------------------------------------
 
-    def _selected_apply_target(self) -> str:
-        return str(self.apply_target_combo.currentData() or "global")
+    def _run_command_async(
+        self, title: str, command: str, *, timeout: int,
+        busy_button: PushButton | None = None, busy_text: str = "升级中…",
+    ) -> None:
+        """后台跑一条命令，跑完弹结果。用于升级（耗时）/测试。
 
-    def _update_scope_widgets(self) -> None:
-        self.repo_target_combo.setEnabled(self._selected_apply_target() == "repo")
-
-    def _selected_repo_root(self) -> Path:
-        repo_id = str(self.repo_target_combo.currentData() or "")
-        repo = next((x for x in (self._settings.local_repos or []) if x.id == repo_id), None)
-        if repo and repo.path.strip():
-            return Path(repo.path).expanduser()
-        return self._project_root
-
-    def _refresh_rule_status(self) -> None:
-        model_id = self._selected_rule_model()
-        template_result = inspect_template_target(model_id)
-        if self._selected_apply_target() == "repo":
-            target_path = repo_rule_path(model_id, self._selected_repo_root())
-            scope_label = "本地仓库"
-        else:
-            target_path = global_rule_path(model_id)
-            scope_label = "全局"
-        if not template_result.ok:
-            self.deploy_status.setText(f"当前目标：{scope_label}\n模板缺失\n{target_path}")
+        busy_button：跑命令期间禁用并显示 loading 文案，跑完恢复。
+        """
+        parts = shlex.split(command)
+        if not parts:
+            show_error_dialog(self, title, "命令格式无效")
             return
-        deploy_result = inspect_rule_target(model_id, target_path)
-        self.deploy_status.setText(f"当前目标：{scope_label}\n部署状态：{deploy_result.summary}\n{target_path}")
+        self._toast("执行中", f"正在运行：{command}")
 
-    def _save_tool(self) -> None:
-        self._settings = load_ui_settings()
+        old_text = ""
+        if busy_button is not None:
+            old_text = busy_button.text()
+            busy_button.setEnabled(False)
+            busy_button.setText(busy_text)
+
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            try:
+                env = _augment_path(__import__("os").environ.copy())
+                cp = subprocess.run(
+                    parts, capture_output=True, text=True, timeout=timeout, env=env,
+                )
+                out = (cp.stdout or "") + (("\n" + cp.stderr) if cp.stderr else "")
+                result["ok"] = cp.returncode == 0
+                result["code"] = cp.returncode
+                result["out"] = out.strip() or "(无输出)"
+            except Exception as e:
+                result["ok"] = False
+                result["out"] = str(e)
+
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def finish() -> None:
+            if th.is_alive():
+                QtCore.QTimer.singleShot(120, finish)
+                return
+            if busy_button is not None:
+                busy_button.setEnabled(True)
+                busy_button.setText(old_text)
+            ok = bool(result.get("ok"))
+            summary = ("成功" if ok else f"失败（退出码 {result.get('code', '?')}）")
+            show_text_result_dialog(self, title, f"命令：{command}\n结果：{summary}", str(result.get("out") or ""))
+            self._toast(title, summary, ok=ok)
+
+        QtCore.QTimer.singleShot(120, finish)
+
+    def _upgrade_tool(self) -> None:
         profile = self._selected_profile()
         if profile is None:
-            show_error_dialog(self, "错误", "请先选择 AI 工具")
+            show_error_dialog(self, "升级失败", "请先选择 AI 工具")
             return
-        command = self.command_edit.text().strip()
+        command = self.upgrade_edit.text().strip()
         if not command:
-            show_error_dialog(self, "错误", "启动命令不能为空")
+            show_error_dialog(self, "升级失败", "请先填写升级命令（保存后再点升级）")
             return
-        for item in self._settings.ai.tool.profiles:
-            if item.id == profile.id:
-                item.command = command
-        self._settings.ai.tool.selected_profile_id = profile.id
-        self._settings.ai.tool.prompt_template = self.prompt_template.toPlainText().strip()
-        save_ui_settings(self._settings)
-        self._refresh_profile_combo()
-        self._toast("已保存", "AI 工具配置已保存")
-
-    def _show_rule_result(self, result) -> None:
-        show_text_result_dialog(self, result.title, result.summary, result.details)
-        self._toast("已完成", result.summary, ok=bool(result.ok))
-        self._refresh_rule_status()
-
-    def _apply_selected_rule(self) -> None:
-        model_id = self._selected_rule_model()
-        template_status = inspect_template_target(model_id)
-        if not template_status.ok:
-            show_error_dialog(self, "保存失败", template_status.details)
-            return
-        if self._selected_apply_target() == "repo":
-            result = apply_rule_to_repo(model_id, self._selected_repo_root())
-        else:
-            result = apply_rule_to_global(model_id)
-        self._show_rule_result(result)
-
-    def _confirm_remove(self, scope_label: str, details: str) -> bool:
-        if not show_confirm_dialog(self, f"确认删除{scope_label}规则", details):
-            return False
-        return show_confirm_dialog(self, f"再次确认删除{scope_label}规则", "只会删除当前模型写入的受控片段，不会删除其它已有内容。确认继续？")
-
-    def _remove_selected_rule(self) -> None:
-        model_id = self._selected_rule_model()
-        if self._selected_apply_target() == "repo":
-            scope_label = "仓库"
-            details = f"将从仓库规则文件中删除 {model_id} 的受控片段：\n{self._selected_repo_root()}\n不会删除其它内容。"
-        else:
-            scope_label = "全局"
-            details = f"将从全局规则文件中删除 {model_id} 的受控片段。不会删除其它内容。"
-        if not self._confirm_remove(scope_label, details):
-            return
-        if self._selected_apply_target() == "repo":
-            result = remove_rule_from_repo(model_id, self._selected_repo_root())
-        else:
-            result = remove_rule_from_global(model_id)
-        self._show_rule_result(result)
+        self._autosave()  # 确保升级命令已落盘
+        self._run_command_async(
+            f"升级 {profile.name}", command, timeout=600,
+            busy_button=self.btn_upgrade, busy_text="升级中…",
+        )
 
     def _test_tool(self) -> None:
         command = self.command_edit.text().strip()
@@ -443,13 +401,13 @@ class AiConfigTab(Tab):
         if not parts:
             show_error_dialog(self, "测试失败", "命令格式无效")
             return
-
         self._toast("测试中", "正在检测命令是否可用")
         result: dict[str, object] = {}
 
         def run() -> None:
             try:
-                cp = subprocess.run(parts + ["--help"], capture_output=True, text=True, timeout=15)
+                env = _augment_path(__import__("os").environ.copy())
+                cp = subprocess.run(parts[:1] + ["--help"], capture_output=True, text=True, timeout=15, env=env)
                 result["ok"] = cp.returncode == 0
             except Exception as e:
                 result["ok"] = False
@@ -468,6 +426,175 @@ class AiConfigTab(Tab):
                 QtWidgets.QMessageBox.warning(self, "测试结果", str(result.get("message") or "命令不可用"))
 
         QtCore.QTimer.singleShot(80, finish)
+
+    # ------------------------------------------------------------------
+    # 专属机器人（绑到当前选中的 AI；Bot Token 存钥匙串，@用户名存 ai.bots）
+    # ------------------------------------------------------------------
+
+    def _refresh_bot_state(self) -> None:
+        from app_ado.secrets import get_ai_bot_token
+
+        pid = self._current_pid
+        if not pid:
+            self.lbl_bot_state.setText("（未选择 AI）")
+            self.btn_bot_edit.setEnabled(False)
+            return
+        self.btn_bot_edit.setEnabled(True)
+        has_token = bool(get_ai_bot_token(pid))
+        username = ""
+        for b in (self._settings.ai.bots or []):
+            if b.ai_id == pid:
+                username = (b.username or "").strip()
+                break
+        if has_token:
+            self.lbl_bot_state.setText("🟢 已配置机器人" + (f"（{username}）" if username else ""))
+        else:
+            self.lbl_bot_state.setText("⚪ 未配置机器人")
+
+    def _edit_bot(self) -> None:
+        """给当前选中的 AI 配专属机器人：只填 Bot Token，点【检查】自动识别 @用户名。
+
+        机器人必须有 Token 才能收发消息（BotFather 给的，和主机器人一样）；Telegram 没有
+        「用户名换 Token」的接口，所以这里只填 Token，@用户名由 Token 自动检测、无需手输。
+        """
+        from app_ado.secrets import (
+            delete_ai_bot_token,
+            get_ai_bot_token,
+            set_ai_bot_token,
+        )
+        from app_ado.models import AiBotBinding
+
+        profile = self._selected_profile()
+        if profile is None:
+            return
+        ai_id = profile.id
+        ai_name = profile.name
+        has_token = bool(get_ai_bot_token(ai_id))
+        self._settings = load_ui_settings()
+        username = ""
+        for b in (self._settings.ai.bots or []):
+            if b.ai_id == ai_id:
+                username = (b.username or "").strip()
+                break
+
+        dlg = QtWidgets.QDialog(self.window())
+        dlg.setWindowTitle(f"{ai_name} 专属机器人")
+        dlg.setMinimumWidth(440)
+        form = QtWidgets.QFormLayout(dlg)
+
+        ed_token = QtWidgets.QLineEdit()
+        ed_token.setEchoMode(QtWidgets.QLineEdit.Password)
+        ed_token.setPlaceholderText("BotFather 给的 Bot Token，如 123456:ABC-xxx")
+        if has_token:
+            ed_token.setText("********")
+
+        lbl_user = QtWidgets.QLabel(username or "（未检测）")
+        btn_check = PushButton("检查 Bot Token（自动识别 @用户名）")
+
+        form.addRow("Bot Token", ed_token)
+        form.addRow("@用户名", lbl_user)
+        form.addRow(btn_check)
+
+        tip = QtWidgets.QLabel(
+            "怎么拿 Token：在 Telegram 找 @BotFather → /newbot 建机器人（或 /mybots 选已有的 →"
+            " API Token）→ 复制那串 Token 贴到上面（和当初配主机器人一样）。\n"
+            "贴好后点【检查 Bot Token】，会自动识别并填好 @用户名。\n"
+            "Token 存系统钥匙串；光有 @用户名无法收发消息，必须有 Token。"
+        )
+        tip.setStyleSheet("color: gray;")
+        tip.setWordWrap(True)
+        form.addRow(tip)
+
+        detected = {"username": username}
+
+        def _effective_token() -> str | None:
+            t = ed_token.text().strip()
+            if t and t != "********":
+                return t
+            return get_ai_bot_token(ai_id)
+
+        def _do_check() -> None:
+            from app_ado.notifier_telegram_meta import get_me
+
+            tok = _effective_token()
+            if not tok:
+                QtWidgets.QMessageBox.warning(self.window(), "缺 Token", "请先填入 Bot Token。")
+                return
+            btn_check.setEnabled(False)
+            try:
+                info = get_me(bot_token=tok)
+            except Exception as e:  # noqa: BLE001
+                show_error_dialog(self, "检查失败", str(e))
+                return
+            finally:
+                btn_check.setEnabled(True)
+            uname = ("@" + info.username) if info.username else ""
+            detected["username"] = uname
+            lbl_user.setText(uname or "（该 Token 没有用户名）")
+            QtWidgets.QMessageBox.information(
+                self.window(), "Token 正常",
+                f"bot_id={info.id} {uname}\n"
+                f"接下来去 Telegram 打开 {uname or '该机器人'} 发一条 /start，AI 对话就会走它。",
+            )
+
+        btn_check.clicked.connect(_do_check)
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel
+        )
+        btn_clear = btns.addButton("清除绑定", QtWidgets.QDialogButtonBox.DestructiveRole)
+        form.addRow(btns)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+
+        cleared = {"v": False}
+
+        def _do_clear() -> None:
+            cleared["v"] = True
+            dlg.accept()
+
+        btn_clear.clicked.connect(_do_clear)
+
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+
+        self._settings = load_ui_settings()
+        bots = [b for b in (self._settings.ai.bots or []) if b.ai_id != ai_id]
+
+        if cleared["v"]:
+            delete_ai_bot_token(ai_id)
+            self._settings.ai.bots = bots
+            save_ui_settings(self._settings)
+            self._refresh_bot_state()
+            QtWidgets.QMessageBox.information(self.window(), "已清除", f"{ai_name} 的机器人绑定已清除。")
+            return
+
+        token = ed_token.text().strip()
+        if token and token != "********":
+            set_ai_bot_token(ai_id, token)
+        elif not has_token:
+            QtWidgets.QMessageBox.warning(self.window(), "未保存", "请填入 Bot Token。")
+            return
+
+        new_user = (detected.get("username") or "").strip()
+        if not new_user:
+            tok = get_ai_bot_token(ai_id)
+            if tok:
+                try:
+                    from app_ado.notifier_telegram_meta import get_me
+
+                    info = get_me(bot_token=tok)
+                    new_user = ("@" + info.username) if info.username else ""
+                except Exception:
+                    new_user = username
+
+        bots.append(AiBotBinding(ai_id=ai_id, username=new_user))
+        self._settings.ai.bots = bots
+        save_ui_settings(self._settings)
+        self._refresh_bot_state()
+        QtWidgets.QMessageBox.information(
+            self.window(), "已保存", f"{ai_name} 的专属机器人已保存。重启应用后生效。"
+        )
 
     def _add_profile(self) -> None:
         dlg = AiProfileDialog(self)
@@ -488,8 +615,8 @@ class AiConfigTab(Tab):
         profile = self._selected_profile()
         if profile is None:
             return
-        if profile.builtin:
-            show_error_dialog(self, "提示", "默认配置不能删除")
+        if profile.id in _BUILTIN_IDS or profile.builtin:
+            show_error_dialog(self, "提示", "内置 AI 不能删除（只能改名称/命令/升级命令）")
             return
         ok = QtWidgets.QMessageBox.question(self, "确认删除", f"删除 AI 工具：{profile.name}？")
         if ok != QtWidgets.QMessageBox.Yes:
@@ -500,40 +627,3 @@ class AiConfigTab(Tab):
         save_ui_settings(self._settings)
         self._refresh_profile_combo()
         self._toast("已删除", f"AI 工具已删除：{profile.name}")
-
-    def _policy_from_form(self) -> AiPolicyConfig:
-        def lines(box: QtWidgets.QPlainTextEdit) -> list[str]:
-            return [x.strip() for x in box.toPlainText().splitlines() if x.strip()]
-
-        return AiPolicyConfig(
-            forbidden_paths=lines(self.forbidden_paths),
-            deny_keywords=lines(self.deny_keywords),
-        )
-
-    def _save_policy(self) -> None:
-        self._settings = load_ui_settings()
-        self._settings.ai.enabled = bool(self.chk_policy_enabled.isChecked())
-        self._settings.ai.require_policy_check_before_code_change = bool(self.chk_require_policy_check.isChecked())
-        self._settings.ai.allow_direct_code_change = bool(self.chk_allow_direct_code_change.isChecked())
-        self._settings.ai.default_policy = self._policy_from_form()
-        self._settings.ai.tool.prompt_template = self.prompt_template.toPlainText().strip()
-        save_ui_settings(self._settings)
-        self._toast("已保存", "默认 Prompt 与限制逻辑已保存")
-
-    def _reset_policy(self) -> None:
-        self._settings = load_ui_settings()
-        self._settings.ai.default_policy = AiPolicyConfig()
-        save_ui_settings(self._settings)
-        self._load_all()
-        self._toast("已恢复", "已恢复为内置默认限制逻辑")
-
-    def _copy_prompt(self) -> None:
-        text = self.prompt_template.toPlainText().strip()
-        if not text:
-            show_error_dialog(self, "提示", "当前默认 Prompt 为空")
-            return
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
-        app.clipboard().setText(text)
-        self._toast("已复制", "默认 Prompt 已复制到剪贴板")

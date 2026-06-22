@@ -1,7 +1,7 @@
 """把 app 登录拿到的 Lark user_access_token 作为静态 Bearer 注入各 AI 工具的 MCP 配置。
 
 背景:lark-mcp 跑 ``--oauth``,每个连上来的客户端本来都得自己走一遍浏览器 OAuth 才能拿 bearer
-——app 在自己这边登录拿到的 token 从不交给客户端,于是"在程序里登过了,Claude/Gemini 还要再登"。
+——app 在自己这边登录拿到的 token 从不交给客户端,于是"在程序里登过了,Claude/Antigravity 还要再登"。
 而 lark-mcp 的 ``verifyAccessToken(bearer)`` 只是拿 bearer 去 store 里精确查 ``tokens[bearer]``
 (不绑 client、不卡 scope),所以只要把 app 的 UAT 写进各工具配置的 Authorization header,客户端
 就能免授权直连。配合已注入的 verifyAccessToken/supersession 补丁,这个静态 bearer 过期后也会被
@@ -81,7 +81,9 @@ def _inject_claude(url: str, token: str) -> InjectResult:
         return InjectResult("Claude Code", False, f"失败:{e}")
 
 
-# ---------------- Gemini CLI (~/.gemini/settings.json) ----------------
+# ---------------- Antigravity CLI (~/.gemini/settings.json) ----------------
+# 谷歌废弃 Gemini CLI 后，Antigravity CLI（agy）仍沿用 ~/.gemini 这个 home，
+# 也仍读 ~/.gemini/settings.json 的 mcpServers，所以注入目标不变，只是叫法改了。
 def _inject_gemini(url: str, token: str) -> InjectResult:
     path = Path.home() / ".gemini" / "settings.json"
     try:
@@ -93,9 +95,9 @@ def _inject_gemini(url: str, token: str) -> InjectResult:
         servers["lark"] = {"httpUrl": url, "headers": {"Authorization": f"Bearer {token}"}}
         _backup(path)
         _atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
-        return InjectResult("Gemini CLI", True, f"已写入 {path}(mcpServers.lark.headers)")
+        return InjectResult("Antigravity CLI", True, f"已写入 {path}(mcpServers.lark.headers)")
     except Exception as e:
-        return InjectResult("Gemini CLI", False, f"失败:{e}")
+        return InjectResult("Antigravity CLI", False, f"失败:{e}")
 
 
 # ---------------- Codex (~/.codex/config.toml) ----------------
