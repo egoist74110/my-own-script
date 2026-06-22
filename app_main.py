@@ -114,6 +114,42 @@ def main() -> None:
     )
     codex_bridge.start()  # 占位（codex 无审批落盘线程）
 
+    # Antigravity CLI（agy，谷歌废弃 Gemini CLI 的继任者）对话走「专属 AI 机器人」
+    # （通讯配置里给内部 id "gemini" 绑的 Bot Token）。agy --print 只回纯文本、按 cwd 归档会话，
+    # 规则和 Claude/Codex 都不同，所以单独一套 manager + bridge。
+    from app_ado.antigravity_headless_session import AntigravitySessionManager
+    from app_ado.antigravity_headless_tg_bridge import AntigravityHeadlessTgBridge
+
+    _AGY_AI_ID = "gemini"  # 内部 id 仍叫 gemini（保住老用户的 Bot Token 绑定），命令是 agy
+
+    def _agy_bot_token() -> str | None:
+        try:
+            return get_ai_bot_token(_AGY_AI_ID)
+        except Exception:
+            return None
+
+    def _agy_command() -> str:
+        """agy 可执行命令：取 AI 配置里 gemini profile 的启动命令，缺省 "agy"。"""
+        try:
+            s = _load_ui_settings_for_dev()
+            for p in (s.ai.tool.profiles or []):
+                if p.id == _AGY_AI_ID and (p.command or "").strip():
+                    # profile.command 可能带参数（如 "agy --dangerously-skip-permissions"），
+                    # 这里只取可执行名，沙箱/审批由会话按档位自己补，避免重复/冲突。
+                    return p.command.strip().split()[0]
+        except Exception:
+            pass
+        return "agy"
+
+    agy_manager = AntigravitySessionManager()
+    agy_bridge = AntigravityHeadlessTgBridge(
+        manager=agy_manager,
+        bot_token_fn=_agy_bot_token,
+        owner_chat_id_fn=_dev_owner_chat_id,
+        command_fn=_agy_command,
+    )
+    agy_bridge.start()  # 占位（agy 无审批落盘线程）
+
     ai_dev = AiDevTab(ai_dev_manager)
 
     # 工单页：MCP 分析按钮要能在 AI 开发 Tab 起会话并跳过去
@@ -129,7 +165,7 @@ def main() -> None:
     # 工单 MCP 分析按需路由到对应 AI 的专属机器人：claude_code → Claude 桥，codex → Codex 桥。
     wi_bridge = WorkItemsBridge(
         headless_bridge=headless_bridge,
-        bridges={"claude_code": headless_bridge, "codex": codex_bridge},
+        bridges={"claude_code": headless_bridge, "codex": codex_bridge, "gemini": agy_bridge},
     )
 
     # 主机器人：任务/工单/服务/MCP。不传 headless_bridge → AI 对话（/cc、cc:*、🤖 Claude 会话）
@@ -181,6 +217,23 @@ def main() -> None:
     )
     codex_tg.start()
 
+    # Antigravity 专属机器人：只跑 agy 会话（mode="ai"，headless_bridge=agy_bridge）。
+    # token 取通讯配置里给内部 id "gemini" 绑的 Bot Token；没配则该轮询线程空转。
+    agy_tg = TelegramController(
+        on_run=tasks.run_task,
+        on_deploy_only=tasks.deploy_only_task,
+        on_rollback=tasks.rollback_task,
+        on_stop_menu=tasks.list_stoppable_tasks,
+        on_stop_one=tasks.stop_one_task,
+        on_status=tasks.status_text,
+        wi_bridge=None,
+        headless_bridge=agy_bridge,
+        token_fn=_agy_bot_token,
+        mode="ai",
+        name="antigravity_ai",
+    )
+    agy_tg.start()
+
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
     w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
     w.addSubInterface(services, FluentIcon.GLOBE, "服务")
@@ -192,7 +245,7 @@ def main() -> None:
     w.addSubInterface(ai_dev, FluentIcon.COMMAND_PROMPT, "AI开发")
 
     # 退出时清理：终止所有 AI 开发会话
-    app.aboutToQuit.connect(lambda: (ai_dev_manager.shutdown(), ai_dev.shutdown(), headless_bridge.shutdown(), codex_bridge.shutdown()))
+    app.aboutToQuit.connect(lambda: (ai_dev_manager.shutdown(), ai_dev.shutdown(), headless_bridge.shutdown(), codex_bridge.shutdown(), agy_bridge.shutdown()))
 
     w.resize(1100, 760)
     w.show()
