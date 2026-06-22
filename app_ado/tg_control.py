@@ -11,7 +11,7 @@ import httpx
 
 from app_ado.notifier_telegram import send_telegram_message
 from app_ado.secrets import get_telegram_token
-from app_ado.store import config_dir, load_ui_settings, load_task_settings
+from app_ado.store import config_dir, load_ui_settings, load_task_settings, save_ui_settings
 
 
 @dataclass
@@ -247,7 +247,16 @@ class TelegramController:
         s = load_ui_settings()
 
         # owner
-        if s.telegram_chat_id and str(chat_id) == str(s.telegram_chat_id):
+        owner_chat = str(s.telegram_chat_id or "").strip()
+        if not owner_chat:
+            # 还没绑定 owner：第一个私聊机器人的人自动成为 owner（对齐「只填 Token」的配置方式，
+            # 不再手填 Chat ID）。群聊 id 是负数，不让群抢 owner。
+            cid = str(chat_id).strip()
+            if cid and not cid.startswith("-"):
+                s.telegram_chat_id = cid
+                save_ui_settings(s)
+                return "owner", None
+        elif str(chat_id) == owner_chat:
             return "owner", None
 
         # legacy whitelist treated as viewer group
