@@ -80,6 +80,40 @@ def main() -> None:
     )
     headless_bridge.start()  # 启动审批落盘监听线程
 
+    # Codex 对话走「专属 AI 机器人」（通讯配置里给 codex 绑定的 Bot Token）。
+    # Codex 规则和 Claude 不同（每轮一个 codex exec 进程、模型/思考强度/沙箱审计各自配），
+    # 所以单独一套 manager + bridge，不复用 Claude 的 headless。
+    from app_ado.codex_headless_session import CodexSessionManager
+    from app_ado.codex_headless_tg_bridge import CodexHeadlessTgBridge
+
+    _CODEX_AI_ID = "codex"
+
+    def _codex_bot_token() -> str | None:
+        try:
+            return get_ai_bot_token(_CODEX_AI_ID)
+        except Exception:
+            return None
+
+    def _codex_command() -> str:
+        """codex 可执行命令：取 AI 配置里 codex profile 的启动命令，缺省 "codex"。"""
+        try:
+            s = _load_ui_settings_for_dev()
+            for p in (s.ai.tool.profiles or []):
+                if p.id == _CODEX_AI_ID and (p.command or "").strip():
+                    return p.command.strip()
+        except Exception:
+            pass
+        return "codex"
+
+    codex_manager = CodexSessionManager()
+    codex_bridge = CodexHeadlessTgBridge(
+        manager=codex_manager,
+        bot_token_fn=_codex_bot_token,
+        owner_chat_id_fn=_dev_owner_chat_id,
+        command_fn=_codex_command,
+    )
+    codex_bridge.start()  # 占位（codex 无审批落盘线程）
+
     ai_dev = AiDevTab(ai_dev_manager)
 
     # 工单页：MCP 分析按钮要能在 AI 开发 Tab 起会话并跳过去
@@ -92,7 +126,11 @@ def main() -> None:
     from app_ado.tg_control import TelegramController
     from app_ado.tg_work_items_bridge import WorkItemsBridge
 
-    wi_bridge = WorkItemsBridge(headless_bridge=headless_bridge)
+    # 工单 MCP 分析按需路由到对应 AI 的专属机器人：claude_code → Claude 桥，codex → Codex 桥。
+    wi_bridge = WorkItemsBridge(
+        headless_bridge=headless_bridge,
+        bridges={"claude_code": headless_bridge, "codex": codex_bridge},
+    )
 
     # 主机器人：任务/工单/服务/MCP。不传 headless_bridge → AI 对话（/cc、cc:*、🤖 Claude 会话）
     # 不在主机器人出现。工单 MCP 分析仍可用（wi_bridge 内部持有 headless_bridge），
@@ -126,6 +164,23 @@ def main() -> None:
     )
     ai_tg.start()
 
+    # Codex 专属机器人：只跑 Codex 会话（mode="ai"，headless_bridge=codex_bridge）。
+    # token 取通讯配置里给 codex 绑的 Bot Token；没配则该轮询线程空转，不影响其它机器人。
+    codex_tg = TelegramController(
+        on_run=tasks.run_task,
+        on_deploy_only=tasks.deploy_only_task,
+        on_rollback=tasks.rollback_task,
+        on_stop_menu=tasks.list_stoppable_tasks,
+        on_stop_one=tasks.stop_one_task,
+        on_status=tasks.status_text,
+        wi_bridge=None,
+        headless_bridge=codex_bridge,
+        token_fn=_codex_bot_token,
+        mode="ai",
+        name="codex_ai",
+    )
+    codex_tg.start()
+
     w.addSubInterface(tasks, FluentIcon.BOOK_SHELF, "任务")
     w.addSubInterface(work_items, FluentIcon.APPLICATION, "工单")
     w.addSubInterface(services, FluentIcon.GLOBE, "服务")
@@ -137,7 +192,7 @@ def main() -> None:
     w.addSubInterface(ai_dev, FluentIcon.COMMAND_PROMPT, "AI开发")
 
     # 退出时清理：终止所有 AI 开发会话
-    app.aboutToQuit.connect(lambda: (ai_dev_manager.shutdown(), ai_dev.shutdown(), headless_bridge.shutdown()))
+    app.aboutToQuit.connect(lambda: (ai_dev_manager.shutdown(), ai_dev.shutdown(), headless_bridge.shutdown(), codex_bridge.shutdown()))
 
     w.resize(1100, 760)
     w.show()

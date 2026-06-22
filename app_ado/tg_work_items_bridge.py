@@ -48,8 +48,8 @@ from app_ado.tg_work_items_inline import (
 _CACHE_TTL_SEC = 600.0
 _PAGE_SIZE = 10
 
-# TG 端目前只接了 claude stream-json；其它 AI 选了会礼貌报错。
-_TG_SUPPORTED_AI_IDS: frozenset[str] = frozenset({"claude_code"})
+# 哪些 AI 已对接 TG 桥，是动态的：取决于 app 启动时给 WorkItemsBridge 传了哪些 headless 桥
+# （见 self._bridges）。当前已接：claude_code（Claude stream-json）、codex（codex exec）。
 
 
 def _has_child_relations(item: WorkItem) -> bool:
@@ -102,10 +102,22 @@ def _short_path(path: str, *, limit: int = 32) -> str:
 
 
 class WorkItemsBridge:
-    def __init__(self, *, headless_bridge: Any = None) -> None:
+    def __init__(self, *, headless_bridge: Any = None, bridges: dict[str, Any] | None = None) -> None:
         # chat_id -> {project_id, column_idx, page, cached_items, cache_ts, last_open_id, mcp_wizard}
         self._chat_state: dict[str, dict[str, Any]] = {}
         self._headless_bridge = headless_bridge
+        # ai_id -> 该 AI 的 headless TG 桥（每个 AI 各起各的会话、推给各自专属机器人）。
+        # 向后兼容：旧调用只传 headless_bridge 时，把它当作 claude_code 的桥。
+        self._bridges: dict[str, Any] = {k: v for k, v in (bridges or {}).items() if v is not None}
+        if headless_bridge is not None:
+            self._bridges.setdefault("claude_code", headless_bridge)
+
+    def _is_supported(self, ai_id: str) -> bool:
+        """该 AI 是否已对接 TG（取决于启动时是否给它传了 headless 桥）。"""
+        return bool(self._bridges.get(ai_id))
+
+    def _bridge_for(self, ai_id: str) -> Any:
+        return self._bridges.get(ai_id)
 
     # ---------------- ACL ----------------
 
@@ -399,7 +411,7 @@ class WorkItemsBridge:
             )
         _rid, name, _path = repos[repo_idx]
         ai_rows = [
-            (idx, label, (pid in _TG_SUPPORTED_AI_IDS))
+            (idx, label, self._is_supported(pid))
             for idx, (pid, label) in enumerate(ais)
         ]
         return (
@@ -422,13 +434,16 @@ class WorkItemsBridge:
             return "无效的 AI 选择。", wi_detail_menu(int(work_item_id), has_children=False)
 
         ai_id, ai_label = ais[ai_idx]
-        if ai_id not in _TG_SUPPORTED_AI_IDS:
+        if not self._is_supported(ai_id):
             ai_rows = [
-                (idx, label, (pid in _TG_SUPPORTED_AI_IDS))
+                (idx, label, self._is_supported(pid))
                 for idx, (pid, label) in enumerate(ais)
             ]
+            supported = "、".join(
+                lbl for pid, lbl in ais if self._is_supported(pid)
+            ) or "（暂无）"
             return (
-                f"🚫 {ai_label} 暂未对接 TG 桥，目前只支持 Claude Code（桌面端可以跑这些 AI）。",
+                f"🚫 {ai_label} 暂未对接 TG 桥。已对接：{supported}（桌面端可以跑这些 AI）。",
                 wi_pick_ai_menu(int(work_item_id), repo_idx, ai_rows),
             )
 
@@ -452,9 +467,10 @@ class WorkItemsBridge:
         except Exception as ex:
             return f"生成 MCP 提示词失败：{ex}", wi_detail_menu(int(work_item_id), has_children=False)
 
-        if self._headless_bridge is None:
+        bridge = self._bridge_for(ai_id)
+        if bridge is None:
             return (
-                "AI 开发桥未加载，无法自动启动 Claude 会话。",
+                f"AI 开发桥未加载，无法自动启动 {ai_label} 会话。",
                 wi_detail_menu(int(work_item_id), has_children=False),
             )
 
@@ -469,18 +485,18 @@ class WorkItemsBridge:
         st["mcp_wizard"] = {}
 
         try:
-            self._headless_bridge.start_session_with_prompt(
+            bridge.start_session_with_prompt(
                 chat_id, cwd=cwd, repo_name=repo_name, prompt=prompt,
             )
         except Exception as ex:
             return (
-                f"启动 Claude 会话失败：{ex}",
+                f"启动 {ai_label} 会话失败：{ex}",
                 wi_detail_menu(int(work_item_id), has_children=False),
             )
         # 会话收发走「专属 AI 机器人」：主机器人这里只确认 + 指路，避免任务和 AI 对话混在一起。
         bot_hint = self._ai_bot_hint(ai_id)
         head = (
-            f"✅ #{work_item_id} · {repo_name} 已创建 Claude 会话并发出 MCP 分析。\n"
+            f"✅ #{work_item_id} · {repo_name} 已创建 {ai_label} 会话并发出 MCP 分析。\n"
             f"请到{bot_hint}里查看回复并继续对话。"
         )
         return head, wi_detail_menu(int(work_item_id), has_children=False)
