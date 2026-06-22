@@ -65,6 +65,7 @@ class TelegramController:
         self._mode = mode
 
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
+        self._cf_url_wait: set[str] = set()  # chat_id：正在等用户发「指定启动」的 URL
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -439,6 +440,36 @@ class TelegramController:
 
     def _handle(self, token: str, ctx: TgCommandContext, *, role: str, group: dict | None) -> None:
         t = (ctx.text or "").strip()
+
+        # 「指定启动」两步输入：上一步点了 ➕ 指定启动 → 这一条消息当作 URL。
+        # 放在命令解析之前：URL 不以 / 开头，不会被当命令。发 /cancel 取消；
+        # 发其它 / 命令则放弃等待并正常走命令（不吞掉 /help 等）。
+        if str(ctx.chat_id) in self._cf_url_wait and t:
+            if t.lower() in ("/cancel", "取消"):
+                self._cf_url_wait.discard(str(ctx.chat_id))
+                self._reply(token, ctx.chat_id, "已取消指定启动。")
+                return
+            if t.startswith("/"):
+                # 用户改发别的命令 → 放弃这次指定启动，往下交给正常命令解析（不 return）。
+                self._cf_url_wait.discard(str(ctx.chat_id))
+            else:
+                self._cf_url_wait.discard(str(ctx.chat_id))
+                if role != "owner":
+                    self._reply(token, ctx.chat_id, "无权限")
+                    return
+                from app_ado import services_panel as svc
+                from app_ado.tg_help_inline import service_actions_menu
+                _, head = svc.cloudflared_custom_start(ctx.text or "")
+                text = f"{head}\n\n{svc.cloudflared_status()}"
+                self._reply(
+                    token, ctx.chat_id, text,
+                    reply_markup=service_actions_menu(
+                        "cf",
+                        cf_protocol=svc.cloudflared_protocol(),
+                        cf_customs=svc.cloudflared_custom_list(),
+                    ),
+                )
+                return
 
         # Claude headless 向导文字输入：手输路径可能以 / 开头（绝对路径），会被 TG 当命令，
         # 必须在命令解析之前拦下。仅当输入「像路径/关键字」时拦截，保留 /help、/cc 等真命令逃生。
@@ -844,6 +875,18 @@ class TelegramController:
             return
 
         if key in ("cs", "cf"):
+            # 「指定启动」：进入两步输入——记下 chat，提示发 URL，由 _handle 接住下一条消息。
+            if key == "cf" and action == "custom":
+                self._cf_url_wait.add(str(chat_id))
+                self._reply(
+                    token, chat_id,
+                    "➕ 指定启动：请发一条 URL（或完整命令），必须含 URL。\n"
+                    "例：http://localhost:5173\n"
+                    "或：cloudflared tunnel --url http://localhost:5173\n"
+                    "（这是独立隧道，不影响全局隧道；发 /cancel 取消）",
+                )
+                return
+
             starter = svc.codeserver_start if key == "cs" else svc.cloudflared_start
             stopper = svc.codeserver_stop if key == "cs" else svc.cloudflared_stop
             status = svc.codeserver_status if key == "cs" else svc.cloudflared_status
@@ -853,11 +896,31 @@ class TelegramController:
                 _, head = starter()
             elif action == "stop":
                 _, head = stopper()
+            elif key == "cf" and action == "proto":
+                # svc:cf:proto:<http2|quic> —— 切换隧道协议（运行中会重启、域名会变）
+                proto = parts[3] if len(parts) > 3 else ""
+                _, head = svc.set_cloudflared_protocol(proto)
+            elif key == "cf" and action == "cstop":
+                # svc:cf:cstop:<i> —— 按当前自定义隧道列表下标关闭这一条
+                customs = svc.cloudflared_custom_list()
+                try:
+                    idx = int(parts[3]) if len(parts) > 3 else -1
+                except Exception:
+                    idx = -1
+                if 0 <= idx < len(customs):
+                    _, head = svc.cloudflared_custom_stop(customs[idx]["url"])
+                else:
+                    head = "ℹ️ 该隧道已不在列表（可能已关闭），已刷新。"
 
             text = status()
             if head:
                 text = f"{head}\n\n{text}"
-            self._reply(token, chat_id, text, reply_markup=service_actions_menu(key))
+            cf_proto = svc.cloudflared_protocol() if key == "cf" else None
+            cf_customs = svc.cloudflared_custom_list() if key == "cf" else None
+            self._reply(
+                token, chat_id, text,
+                reply_markup=service_actions_menu(key, cf_protocol=cf_proto, cf_customs=cf_customs),
+            )
             return
 
         # 未知子项，回服务面板

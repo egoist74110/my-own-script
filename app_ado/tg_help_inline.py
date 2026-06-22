@@ -66,14 +66,41 @@ def services_menu() -> dict:
     ]}
 
 
-def service_actions_menu(key: str) -> dict:
-    """单个服务的启停/刷新菜单。key 取 'cs' 或 'cf'。"""
-    return {"inline_keyboard": [
+def service_actions_menu(
+    key: str,
+    *,
+    cf_protocol: str | None = None,
+    cf_customs: list[dict] | None = None,
+) -> dict:
+    """单个服务的启停/刷新菜单。key 取 'cs' 或 'cf'。
+
+    cf 专属：
+      - 一行协议切换（HTTP/2 ↔ QUIC）；cf_protocol 传入当前生效协议以打 ✅。
+      - 「全局启停」是上面那行（其他模块依赖的那条隧道）。
+      - 「➕ 指定启动」+ 每条自定义隧道一行「⏹ 关闭」；cf_customs 传 cloudflared_custom_list()，
+        关闭回调按列表下标 svc:cf:cstop:<i>（URL 含特殊字符且 callback_data 限 64B，不直接塞 URL）。
+    """
+    rows = [
         [{"text": "▶️ 启动", "callback_data": f"svc:{key}:start"},
          {"text": "⏹ 关闭", "callback_data": f"svc:{key}:stop"}],
-        [{"text": "🔄 刷新状态", "callback_data": f"svc:{key}"}],
-        [{"text": "⬅ 返回", "callback_data": "help_menu:svc"}],
-    ]}
+    ]
+    if key == "cf":
+        h2 = ("✅ " if cf_protocol == "http2" else "") + "HTTP/2 (稳)"
+        qc = ("✅ " if cf_protocol == "quic" else "") + "QUIC (快)"
+        rows.append([
+            {"text": h2, "callback_data": "svc:cf:proto:http2"},
+            {"text": qc, "callback_data": "svc:cf:proto:quic"},
+        ])
+        rows.append([{"text": "➕ 指定启动（自定义 URL）", "callback_data": "svc:cf:custom"}])
+        for i, c in enumerate(cf_customs or []):
+            url = c.get("url", "")
+            short = url.split("://", 1)[-1]  # 去掉 scheme，更短
+            dom = c.get("domain")
+            label = f"⏹ {short}" + (f" → {dom.split('://',1)[-1]}" if dom else "")
+            rows.append([{"text": label[:60], "callback_data": f"svc:cf:cstop:{i}"}])
+    rows.append([{"text": "🔄 刷新状态", "callback_data": f"svc:{key}"}])
+    rows.append([{"text": "⬅ 返回", "callback_data": "help_menu:svc"}])
+    return {"inline_keyboard": rows}
 
 
 def service_back_menu() -> dict:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 
 from PySide6 import QtCore, QtWidgets
-from qfluentwidgets import CardWidget, InfoBar, InfoBarPosition, PushButton
+from qfluentwidgets import CardWidget, ComboBox, InfoBar, InfoBarPosition, PushButton
 
 from app_ado import services_panel as svc
 from app_ado.ui.dialogs import show_error_dialog
@@ -265,11 +265,91 @@ class ServicesTab(Tab):
         for b in (self.btn_cf_toggle, self.btn_cf_copy):
             row.addWidget(b)
         row.addStretch(1)
+        # 协议切换：HTTP/2(TCP·穿透好) ↔ QUIC(UDP·更快·烂网易断)。切换会重启隧道，域名会变。
+        self.btn_cf_http2 = PushButton("HTTP/2")
+        self.btn_cf_quic = PushButton("QUIC")
+        proto_row = QtWidgets.QHBoxLayout()
+        proto_row.addWidget(QtWidgets.QLabel("协议："))
+        for b in (self.btn_cf_http2, self.btn_cf_quic):
+            proto_row.addWidget(b)
+        proto_row.addStretch(1)
+        # 指定启动：自己填 URL 起一条独立隧道（不和全局隧道冲突）+ 下拉选中 + 右侧关闭选中。
+        self.btn_cf_custom = PushButton("指定启动")
+        self.cmb_cf_custom = ComboBox()
+        self.cmb_cf_custom.setMinimumWidth(280)
+        self.btn_cf_custom_copy = PushButton("复制域名")
+        self.btn_cf_custom_stop = PushButton("关闭选中")
+        custom_row = QtWidgets.QHBoxLayout()
+        custom_row.addWidget(self.btn_cf_custom)
+        custom_row.addWidget(self.cmb_cf_custom, 1)
+        custom_row.addWidget(self.btn_cf_custom_copy)
+        custom_row.addWidget(self.btn_cf_custom_stop)
         lay.addWidget(self.lbl_cf)
         lay.addLayout(row)
+        lay.addLayout(proto_row)
+        lay.addLayout(custom_row)
         self.btn_cf_toggle.clicked.connect(self._toggle_cloudflared)
         self.btn_cf_copy.clicked.connect(lambda: self._copy(svc.cloudflared_domain(), "cloudflared 域名已复制"))
+        self.btn_cf_http2.clicked.connect(lambda: self._set_cf_protocol("http2"))
+        self.btn_cf_quic.clicked.connect(lambda: self._set_cf_protocol("quic"))
+        self.btn_cf_custom.clicked.connect(self._custom_start_cf)
+        self.btn_cf_custom_copy.clicked.connect(self._custom_copy_cf)
+        self.btn_cf_custom_stop.clicked.connect(self._custom_stop_cf)
+        self._cf_custom_sig = None  # 上次下拉内容签名，变了才重建，避免刷新打断用户选择
         self.add_card("☁️ cloudflared 临时隧道", w)
+
+    def _set_cf_protocol(self, proto: str) -> None:
+        # 切换协议（运行中会重启隧道、域名会变）；放线程，避免重启等待阻塞 UI。
+        self._run_action(f"切换隧道协议 {proto}", lambda: svc.set_cloudflared_protocol(proto))
+
+    def _custom_start_cf(self) -> None:
+        text, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "指定启动隧道",
+            "输入 URL 或完整命令（必须含 URL）：\n例：http://localhost:5173\n或：cloudflared tunnel --url http://localhost:5173",
+        )
+        if not ok or not text.strip():
+            return
+        self._run_action("指定启动隧道", lambda: svc.cloudflared_custom_start(text))
+
+    def _custom_copy_cf(self) -> None:
+        url = self.cmb_cf_custom.currentData()
+        if not url:
+            self._toast("无法复制", "没有选中的隧道", ok=False)
+            return
+        dom = next((c.get("domain") for c in svc.cloudflared_custom_list() if c["url"] == url), None)
+        if not dom:
+            self._toast("无法复制", "该隧道域名暂未就绪，稍后再试", ok=False)
+            return
+        self._copy(dom, f"已复制域名：{dom}")
+
+    def _custom_stop_cf(self) -> None:
+        url = self.cmb_cf_custom.currentData()
+        if not url:
+            self._toast("无法关闭", "没有选中的隧道", ok=False)
+            return
+        self._run_action("关闭选中隧道", lambda: svc.cloudflared_custom_stop(url))
+
+    def _refresh_cf_custom(self) -> None:
+        """把在跑的自定义隧道刷进下拉框；内容没变就不重建，保住用户当前选择。"""
+        items = svc.cloudflared_custom_list()
+        sig = tuple((it["url"], it.get("domain")) for it in items)
+        if sig == self._cf_custom_sig:
+            return
+        self._cf_custom_sig = sig
+        cur = self.cmb_cf_custom.currentData()
+        self.cmb_cf_custom.clear()
+        for it in items:
+            dom = it.get("domain") or "（域名待刷新）"
+            self.cmb_cf_custom.addItem(f"{it['url']} → {dom}", userData=it["url"])
+        # 尽量保留原选择
+        for i in range(self.cmb_cf_custom.count()):
+            if self.cmb_cf_custom.itemData(i) == cur:
+                self.cmb_cf_custom.setCurrentIndex(i)
+                break
+        has = self.cmb_cf_custom.count() > 0
+        self.btn_cf_custom_stop.setEnabled(has and not self._busy)
+        self.btn_cf_custom_copy.setEnabled(has)
 
     def _toggle_cloudflared(self) -> None:
         if svc.cloudflared_running():
@@ -286,11 +366,18 @@ class ServicesTab(Tab):
         if not self._busy:
             self.btn_cs_toggle.setText("关闭" if svc.codeserver_running() else "启动")
             self.btn_cf_toggle.setText("关闭" if svc.cloudflared_running() else "启动")
+            proto = svc.cloudflared_protocol()
+            self.btn_cf_http2.setText("✅ HTTP/2" if proto == "http2" else "HTTP/2")
+            self.btn_cf_quic.setText("✅ QUIC" if proto == "quic" else "QUIC")
+            self._refresh_cf_custom()
 
     # ---------- 启停（放到线程，避免阻塞 UI；cloudflared 启动会等十几秒抓域名）----------
 
     def _action_buttons(self) -> list[PushButton]:
-        return [self.btn_cs_toggle, self.btn_cf_toggle]
+        return [
+            self.btn_cs_toggle, self.btn_cf_toggle, self.btn_cf_http2, self.btn_cf_quic,
+            self.btn_cf_custom, self.btn_cf_custom_stop,
+        ]
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
