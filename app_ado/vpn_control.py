@@ -52,93 +52,57 @@ def quit_app(log: LogFn = print) -> None:
         time.sleep(1.0)
 
 
-# 更新提示：app 内偶尔弹英文更新窗（按钮含 Install/Restart/Update…），会挡住自动连接导致卡死。
-# 检测到就点「安装/重启」类按钮触发自动更新（更新完 app 一般自动重开自动连），剩下靠自愈轮询兜。
-# 只点正向按钮，且排除「稍后/取消/跳过」类，避免误点关掉更新。
-_UPDATE_DISMISS_SCRIPT = r'''
-tell application "System Events"
-  if not (exists process "Harmony SASE") then return ""
-  tell process "Harmony SASE"
-    set pos to {"install", "restart", "relaunch", "update", "download"}
-    set neg to {"later", "not now", "skip", "remind", "cancel", "dismiss", "close", "no thanks"}
-    repeat with w in windows
-      try
-        set els to entire contents of w
-      on error
-        set els to {}
-      end try
-      repeat with el in els
-        try
-          if (role of el) is "AXButton" then
-            set nm to ""
-            try
-              set nm to name of el
-            end try
-            if nm is "" then
-              try
-                set nm to description of el
-              end try
-            end if
-            if nm is not "" then
-              set bad to false
-              repeat with nk in neg
-                if nm contains nk then set bad to true
-              end repeat
-              if not bad then
-                repeat with pk in pos
-                  if nm contains pk then
-                    click el
-                    return nm
-                  end if
-                end repeat
-              end if
-            end if
-          end if
-        end try
-      end repeat
-    end repeat
-  end tell
-end tell
-return ""
-'''
-
-
+# 更新提示：Harmony 偶尔弹英文「是否更新」横幅（按钮 Install/Update），挡住自动连接导致卡死。
+# 难点：Harmony 是 background-only 的 Electron 菜单栏应用，主窗对辅助功能(AX)**完全不可见**
+# （进程只有菜单栏、0 个 window 节点），窗口内按钮 AX 既扫不到也点不到——实测验证过。
+# 唯一稳的办法：截屏 + macOS Vision OCR 找 Install/Update 文字 + 合成鼠标点击。实现见 vpn_update.py。
+# 需要「屏幕录制」权限（截屏）+「辅助功能」权限（合成点击）。
 def click_update_prompt(log: LogFn = print) -> "str | None":
-    """扫 Harmony SASE 窗口，发现更新提示就点安装/重启类按钮。返回点了的按钮名或 None。"""
+    """发现 Harmony 更新提示就点其 Install/Update 按钮。返回点了的按钮文字或 None。"""
     if not app_running():
         return None
     try:
-        r = subprocess.run(
-            ["osascript", "-e", _UPDATE_DISMISS_SCRIPT],
-            capture_output=True, text=True, timeout=15,
-        )
+        from app_ado.vpn_update import click_update_prompt as _do
+        return _do(log)
     except Exception as e:  # noqa: BLE001
-        log(f"[update] 扫更新窗失败：{e}")
+        log(f"[update] 更新检测不可用：{e}")
         return None
-    name = (r.stdout or "").strip()
-    if name:
-        log(f"[update] 检测到更新提示，已点「{name}」，等更新+重启…")
-        return name
-    return None
 
 
-def wait_connected(timeout: float = 30.0, log: LogFn = print, *, watch_update: bool = True) -> "str | None":
+def resolve_window(log: LogFn = print) -> "tuple | None":
+    """换出大窗 + 一次 OCR 处理两件事：有更新提示就点 Install；否则若显示 Connect 就点它连上。
+
+    返回 ("update"|"connect", 按钮文字) 或 None。比浏览器登录轻得多——session 还在、
+    只是没自动连时，点一下窗口里的 Connect 就好。
+    """
+    if not app_running():
+        return None
+    try:
+        from app_ado.vpn_update import resolve_stuck
+        return resolve_stuck(log)
+    except Exception as e:  # noqa: BLE001
+        log(f"[window] 窗口自愈不可用：{e}")
+        return None
+
+
+def wait_connected(timeout: float = 30.0, log: LogFn = print, *, watch_window: bool = True) -> "str | None":
     """轮询直到拿到 VPN IP 或超时。返回 IP 或 None。
 
-    watch_update：途中周期性检测更新提示并点安装。一旦点了更新就把等待延长到 ≥180s
-    （更新下载+重启耗时），避免更新进行中被误判超时落到登录档。
+    watch_window：途中周期性换出大窗 OCR 自愈——有更新提示就点 Install（并把等待延长到
+    ≥180s，因更新下载+重启耗时，免得被误判超时落到登录档）；否则若显示 Connect 就点它连上。
     """
     deadline = time.time() + timeout
-    last_upd = 0.0
+    last_chk = 0.0
     extended = False
     while time.time() < deadline:
         ip = get_vpn_ip()
         if ip:
             return ip
         now = time.time()
-        if watch_update and now - last_upd > 4:
-            last_upd = now
-            if click_update_prompt(log) and not extended:
+        if watch_window and now - last_chk > 4:
+            last_chk = now
+            r = resolve_window(log)
+            if r and r[0] == "update" and not extended:
                 deadline = now + 180.0
                 extended = True
         time.sleep(1.5)
@@ -285,11 +249,23 @@ def main() -> None:
     elif cmd == "check-update":
         name = click_update_prompt(print)
         print("结果：", f"已点「{name}」" if name else "当前没有更新提示")
+    elif cmd == "connect":
+        # 大窗显示 Connect 时点它连上（轻量自愈，不走浏览器登录）
+        from app_ado.vpn_update import click_connect_button
+        name = click_connect_button(print) if app_running() else None
+        print("结果：", f"已点「{name}」" if name else "没找到 Connect 按钮")
+        if name:
+            ip = wait_connected(30, print)
+            print("连接后：", ip or "仍未连上")
+    elif cmd == "resolve":
+        r = resolve_window(print)
+        print("结果：", r or "更新/连接 都没有可点的")
     elif cmd == "relogin":
         ok = relogin(token_provider=lambda: input("请输入 6 位令牌：").strip(), log=print)
         print("结果：", "✅ 已连上" if ok else "❌ 未连上")
     else:
-        print("用法：python -m app_ado.vpn_control [status|on|test-ab|restart|check-update|relogin]")
+        print("用法：python -m app_ado.vpn_control "
+              "[status|on|test-ab|restart|check-update|connect|resolve|relogin]")
 
 
 if __name__ == "__main__":
