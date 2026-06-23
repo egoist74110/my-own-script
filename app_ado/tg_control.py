@@ -67,6 +67,12 @@ class TelegramController:
         self._rollback_wizard: dict[str, dict] = {}  # chat_id -> state
         self._cf_url_wait: set[str] = set()  # chat_id：正在等用户发「指定启动」的 URL
 
+        # BotFather 式「就地更新」：处理控制面板 inline 回调时，把本次回调的
+        # 来源消息（chat_id + message_id）记在这里。_reply 的第一条回复会
+        # editMessageText 改写原消息而不是发新消息（点完按钮后菜单原地变化）。
+        # AI(cc:*) 回复不走这套——保持发新消息。每条 update 开头清空，避免泄漏。
+        self._cb_edit: dict | None = None
+
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -328,7 +334,42 @@ class TelegramController:
             raise RuntimeError(f"telegram getUpdates failed: {data}")
         return data
 
+    def _edit_message(self, token: str, chat_id: str, message_id: int, text: str, *, reply_markup: dict | None = None) -> bool:
+        """BotFather 式就地更新：用 editMessageText 改写原消息（含按钮）。
+
+        成功返回 True；失败（消息过旧/带媒体/网络错误等）返回 False，调用方据此退回发新消息。
+        Telegram 在内容完全相同时返回 "message is not modified"，这里视作成功（无需重复发）。
+        """
+        try:
+            url = f"https://api.telegram.org/bot{token}/editMessageText"
+            payload: dict[str, Any] = {
+                "chat_id": str(chat_id),
+                "message_id": int(message_id),
+                "text": text,
+                "disable_web_page_preview": True,
+                # 不带 markup 时显式清空，避免旧按钮残留在改写后的消息上。
+                "reply_markup": json.dumps(reply_markup or {"inline_keyboard": []}, ensure_ascii=False),
+            }
+            with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False) as c:
+                r = c.post(url, data=payload)
+            j = r.json()
+            if j.get("ok"):
+                return True
+            if "message is not modified" in str(j.get("description") or "").lower():
+                return True
+            return False
+        except Exception:
+            return False
+
     def _reply(self, token: str, chat_id: str, text: str, *, reply_markup: dict | None = None) -> None:
+        # 若本次正在处理控制面板回调，第一条回复就地改写来源消息（BotFather 式）。
+        tgt = self._cb_edit
+        if tgt is not None and str(tgt.get("chat_id")) == str(chat_id):
+            self._cb_edit = None  # 一次性：只改写来源消息一次，后续回复正常发新消息
+            mid = tgt.get("message_id")
+            if mid is not None and self._edit_message(token, chat_id, int(mid), text, reply_markup=reply_markup):
+                return
+            # 编辑失败（消息过旧/带媒体等）则退回发新消息
         send_telegram_message(bot_token=token, chat_id=chat_id, text=text, reply_markup=reply_markup)
 
     def _reply_photo(self, token: str, chat_id: str, photo: bytes, *, caption: str | None = None) -> None:
@@ -1173,6 +1214,8 @@ class TelegramController:
 
                 for u in items:
                     last_id = u.get("update_id")
+                    # 每条 update 开头清空就地更新目标，避免跨回调/跨消息泄漏。
+                    self._cb_edit = None
 
                     # callback_query (inline buttons)
                     cb = u.get("callback_query")
@@ -1200,6 +1243,12 @@ class TelegramController:
                                 self._handle_ai_callback(token, cb, chat_id2, data2, role2, group2)
                                 continue
 
+                            # 控制面板回调：开启 BotFather 式就地更新——本次回调的第一条
+                            # 回复改写来源消息（点哪个按钮，原消息就地变成对应面板）。
+                            src_mid2 = msg2.get("message_id")
+                            if src_mid2 is not None:
+                                self._cb_edit = {"chat_id": chat_id2, "message_id": int(src_mid2)}
+
                             # 服务面板：svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]，仅 owner
                             if data2 == "svc" or data2.startswith("svc:"):
                                 if role2 != "owner":
@@ -1210,6 +1259,8 @@ class TelegramController:
 
                             # Claude headless 会话（CC Pocket 式）：所有 cc:* 回调
                             if self._headless_bridge is not None and (data2 == "cc" or data2.startswith("cc:")):
+                                # AI 对话保持发新消息（不就地改写），关掉本次的就地更新目标。
+                                self._cb_edit = None
                                 cc_data = data2 if data2.startswith("cc:") else "cc:menu"
                                 txt, mk = self._headless_bridge.handle_callback(
                                     cc_data, chat_id2, role2, group2
