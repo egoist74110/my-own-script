@@ -176,6 +176,33 @@ def _pick_target(items: list[dict]) -> dict | None:
     return cands[0]
 
 
+def _pick_update_cta(items: list[dict]) -> dict | None:
+    """挑出主按钮位置的「Update」CTA（更新可用时 Connect 按钮会变成 Update 文字）。
+
+    用**精确短词**匹配（update / update now / upgrade），避免误点 "Update available" 这类标题。
+    点它之后才会弹出二步的 Install 提示（由 _pick_target 接手）。
+    """
+    cands = []
+    for it in items:
+        t = (it["text"] or "").strip()
+        low = t.lower()
+        if not t or len(t) > _MAX_BTN_LEN:
+            continue
+        if any(nk in low for nk in _NEG):
+            continue
+        if low.replace(" ", "") in ("update", "updatenow", "upgrade"):
+            cands.append(it)
+    if not cands:
+        return None
+    cands.sort(key=lambda it: len(it["text"].strip()))
+    return cands[0]
+
+
+def _pick_update(items: list[dict]) -> dict | None:
+    """更新相关按钮：优先二步提示里的 Install/Restart（substring），否则主按钮 Update CTA（精确）。"""
+    return _pick_target(items) or _pick_update_cta(items)
+
+
 def _pick_connect(items: list[dict]) -> dict | None:
     """挑出大窗里的「Connect / Reconnect」按钮（未连接时要点它连上）。
 
@@ -220,13 +247,40 @@ def _click(x: float, y: float) -> None:
         time.sleep(0.04)
 
 
-# ----------------------------- 对外入口 -----------------------------
+def harmony_rects() -> list[tuple]:
+    """Harmony 所有普通层窗口的屏幕矩形 [(x,y,w,h)…]，全局点坐标。
 
-def _find_button(picker, log: LogFn = print, *, surface: bool = True) -> tuple | None:
-    """扫所有显示器，用 picker 从 OCR 文字里挑按钮。
+    关键：Harmony 的 Electron 窗对辅助功能(AX)不可见，但 **CGWindowList**（合成器层面）
+    能列出它的真实坐标。收集全部普通层(layer 0)窗口（大主窗 + 可能的独立更新子窗），
+    用来把 OCR 匹配**限制在 Harmony 窗内**，避免点到屏幕上别的窗口里的同名文字。
+    """
+    import Quartz
+    info = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+    rects = []
+    for w in (info or []):
+        if (w.get("kCGWindowOwnerName") or "").lower() != _APP_NAME.lower():
+            continue
+        if w.get("kCGWindowLayer", 0) != 0:  # 排除菜单栏状态项等高层窗
+            continue
+        b = w.get("kCGWindowBounds")
+        if not b:
+            continue
+        rects.append((b["X"], b["Y"], b["Width"], b["Height"]))
+    return rects
 
-    找到返回 (文字, x, y, display_id, 全部OCR文字)，否则 None。
-    surface=True（默认）会先把 Harmony 大主窗换出来（节流），否则只 OCR 当前屏。
+
+def _in_rects(x: float, y: float, rects: list[tuple]) -> bool:
+    for (rx, ry, rw, rh) in rects:
+        if rx <= x <= rx + rw and ry <= y <= ry + rh:
+            return True
+    return False
+
+
+def _harmony_items(log: LogFn = print, *, surface: bool = True) -> list[dict] | None:
+    """换出大窗 + OCR，只返回落在 Harmony 窗口矩形内的文字（每条带全局坐标 gx,gy）。
+
+    没屏幕录制权限 → None；CGWindowList 找不到 Harmony 窗（没换出来/最小化）→ None。
     """
     import Quartz
 
@@ -234,24 +288,43 @@ def _find_button(picker, log: LogFn = print, *, surface: bool = True) -> tuple |
         log("[update] 没有「屏幕录制」权限，截不了屏。"
             "去 系统设置→隐私与安全性→屏幕录制 勾选运行方（或先跑 perm 授权）。")
         return None
-
     if surface:
         surface_app()
+    rects = harmony_rects()
+    if not rects:
+        log("[window] CGWindowList 找不到 Harmony 窗口（没换出来/最小化？）")
+        return None
 
+    out: list[dict] = []
     for did in (_active_displays() or [Quartz.CGMainDisplayID()]):
         img = Quartz.CGDisplayCreateImage(did)
         if not img:
             continue
-        items = _ocr(img)
-        target = picker(items)
-        if target:
-            x, y = _norm_to_screen(target, did)
-            return (target["text"].strip(), x, y, did, items)
-    return None
+        for it in _ocr(img):
+            gx, gy = _norm_to_screen(it, did)
+            if _in_rects(gx, gy, rects):
+                out.append({**it, "gx": gx, "gy": gy})
+    return out
+
+
+# ----------------------------- 对外入口 -----------------------------
+
+def _find_button(picker, log: LogFn = print, *, surface: bool = True) -> tuple | None:
+    """换出大窗 + OCR（只看 Harmony 窗内文字），用 picker 挑按钮。
+
+    找到返回 (文字, gx, gy, None, 窗内全部文字)，否则 None。
+    """
+    items = _harmony_items(log, surface=surface)
+    if not items:
+        return None
+    target = picker(items)
+    if not target:
+        return None
+    return (target["text"].strip(), target["gx"], target["gy"], None, items)
 
 
 def find_update_button(log: LogFn = print, *, surface: bool = True) -> tuple | None:
-    return _find_button(_pick_target, log, surface=surface)
+    return _find_button(_pick_update, log, surface=surface)
 
 
 def find_connect_button(log: LogFn = print, *, surface: bool = True) -> tuple | None:
@@ -290,39 +363,28 @@ def click_connect_button(log: LogFn = print, *, dry_run: bool = False) -> str | 
 
 
 def resolve_stuck(log: LogFn = print, *, dry_run: bool = False) -> tuple | None:
-    """换出大窗 + 一次 OCR，优先处理更新提示（点 Install），否则点 Connect。
+    """换出大窗 + 一次 OCR（只看 Harmony 窗内），优先处理更新（点 Update/Install），否则点 Connect。
 
-    返回 ("update"|"connect", 按钮文字) 或 None。比分别调两个 click_* 省一半截屏。
+    返回 ("update"|"connect", 按钮文字) 或 None。窗内限定避免点到屏上别的窗口的同名文字。
     """
-    import Quartz
-
-    if not has_screen_permission():
-        log("[update] 没有「屏幕录制」权限，截不了屏。"
-            "去 系统设置→隐私与安全性→屏幕录制 勾选运行方（或先跑 perm 授权）。")
+    items = _harmony_items(log)
+    if not items:
         return None
-
-    surface_app()
-    for did in (_active_displays() or [Quartz.CGMainDisplayID()]):
-        img = Quartz.CGDisplayCreateImage(did)
-        if not img:
-            continue
-        items = _ocr(img)
-        upd = _pick_target(items)
-        if upd:
-            x, y = _norm_to_screen(upd, did)
-            text = upd["text"].strip()
-            if not dry_run:
-                _click(x, y)
-            log(f"[update] 检测到更新提示，{'(dry)' if dry_run else '已点'}「{text}」，等更新+重启…")
-            return ("update", text)
-        con = _pick_connect(items)
-        if con:
-            x, y = _norm_to_screen(con, did)
-            text = con["text"].strip()
-            if not dry_run:
-                _click(x, y)
-            log(f"[connect] 检测到未连接，{'(dry)' if dry_run else '已点'}「{text}」连接…")
-            return ("connect", text)
+    upd = _pick_update(items)
+    if upd:
+        text = upd["text"].strip()
+        if not dry_run:
+            _click(upd["gx"], upd["gy"])
+        log(f"[update] 检测到更新相关，{'(dry)' if dry_run else '已点'}「{text}」"
+            "（Update→稍后会再点 Install），等更新+重启…")
+        return ("update", text)
+    con = _pick_connect(items)
+    if con:
+        text = con["text"].strip()
+        if not dry_run:
+            _click(con["gx"], con["gy"])
+        log(f"[connect] 检测到未连接，{'(dry)' if dry_run else '已点'}「{text}」连接…")
+        return ("connect", text)
     return None
 
 
