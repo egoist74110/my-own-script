@@ -255,17 +255,25 @@ def login_flow(
         # —— Step 4: 等回调 / 连接 ——
         # 实测坑：冷启动时 app 的 harmonysase:// URL handler 还没注册好，第一发深链会被丢。
         # 所以：先 open -a 并**轮询等 app 真起来**，再**周期性重发深链**直到连上（重发幂等、安全）。
-        from app_ado.vpn_control import app_running
+        from app_ado.vpn_control import app_running, click_update_prompt
 
         deadline = time.time() + connect_timeout
         launched = False
         last_fire = 0.0
+        last_upd = 0.0
+        update_extended = False
         while time.time() < deadline:
             ip = get_vpn_ip()
             if ip:
                 log(f"✅ 已连上 VPN：{ip}")
                 ctx.close()
                 return True
+            # app 起来后偶尔弹更新窗挡住连接 → 点安装类按钮，并延长等待让它更新+重启
+            if time.time() - last_upd > 4:
+                last_upd = time.time()
+                if click_update_prompt(log) and not update_extended:
+                    deadline = max(deadline, time.time() + 180.0)
+                    update_extended = True
             if captured["url"]:
                 if not launched:
                     if not app_running():
