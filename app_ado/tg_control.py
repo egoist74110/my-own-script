@@ -83,12 +83,6 @@ class TelegramController:
         self._state_path = config_dir() / f"tg_control_state{suffix}.json"
         self._update_offset = self._load_offset()
 
-        # health tracking
-        self._consecutive_errors: int = 0
-        self._first_error_ts: float = 0.0
-        self._last_error_ts: float = 0.0
-        self._last_alert_ts: float = 0.0
-
     def _answer_callback(self, token: str, callback_query_id: str, *, text: str = "") -> None:
         try:
             url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -1205,9 +1199,6 @@ class TelegramController:
 
             try:
                 data = self._get_updates(token, timeout=20)
-                # success -> reset health counters
-                self._consecutive_errors = 0
-                self._first_error_ts = 0.0
                 self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error="-")
                 items = data.get("result") or []
                 last_id: int | None = None
@@ -1499,52 +1490,14 @@ class TelegramController:
 
             except Exception as e:
                 msg = str(e)
-                now = time.time()
 
-                # Treat intermittent network issues as normal; only surface when repeated.
+                # Treat intermittent network issues as normal; log only, never notify.
                 is_timeout = ("timed out" in msg.lower()) or ("read operation timed out" in msg.lower())
 
-                # update counters
-                if self._last_error_ts and (now - self._last_error_ts) > 90:
-                    self._consecutive_errors = 0
-                    self._first_error_ts = 0.0
-                if not self._first_error_ts:
-                    self._first_error_ts = now
-                self._last_error_ts = now
-                # cap to avoid unbounded growth (long outages)
-                self._consecutive_errors = min(int(self._consecutive_errors) + 1, 999999)
-
-                # log
                 self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {msg}")
 
                 # keep state running but remember last error
                 self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=msg)
-
-                # alert owner if errors keep happening (rate limited)
-                try:
-                    # alert if repeated failures (rate limited)
-                    # At most once per day to avoid spamming.
-                    if self._consecutive_errors >= 3 and (now - self._last_alert_ts) > 86400:
-                        s2 = load_ui_settings()
-                        owner_chat = str(getattr(s2, "telegram_chat_id", "") or "").strip()
-                        tok = self._bot_token() or ""
-                        if owner_chat and tok:
-                            since = int(now - float(self._first_error_ts or now))
-                            cnt = int(self._consecutive_errors)
-                            send_telegram_message(
-                                bot_token=tok,
-                                chat_id=owner_chat,
-                                text=(
-                                    "⚠️ TG 控制网络异常（轮询失败多次）\n"
-                                    + f"错误：{msg}\n"
-                                    + f"连续次数：{cnt}（持续约 {since}s）\n"
-                                    + "说明：这通常是本机网络/DNS/代理导致无法连接 api.telegram.org。\n"
-                                    + "建议：检查网络、VPN、代理、DNS。"
-                                ),
-                            )
-                            self._last_alert_ts = now
-                except Exception:
-                    pass
 
                 # 409 can happen if webhook is set or another poller is active.
                 if "409" in msg or "Conflict" in msg:
