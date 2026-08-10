@@ -415,7 +415,10 @@ def get_work_item_comments(
         is_deleted = bool(item.get("isDeleted"))
         if is_deleted and not include_deleted:
             continue
-        cid = item.get("commentId")
+        # ADO REST 评论接口返回的主键字段是 "id"（部分版本兼容 "commentId"）。
+        cid = item.get("id")
+        if cid is None:
+            cid = item.get("commentId")
         if cid is None:
             continue
         out.append(

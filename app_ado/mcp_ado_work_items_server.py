@@ -71,31 +71,35 @@ def _normalize_name(value: str) -> str:
 def _resolve_context(arguments: dict[str, Any]) -> tuple[Any, Any, str]:
     settings = load_ui_settings()
 
-    library_id = str(arguments.get("library_id") or settings.active_library_id or "").strip()
-    project_id = str(arguments.get("project_id") or settings.active_project_id or "").strip()
-    library_name = str(arguments.get("library_name") or "").strip()
-    project_name = str(arguments.get("project_name") or "").strip()
+    # 显式入参优先；仅当既未传 id 也未传 name 时，才回落到 UI 的 active_*。
+    # （旧实现把 active_* 灌进 *_id 变量，导致 `if *_id:` 恒真、显式传入的 *_name 永远被忽略。）
+    arg_library_id = str(arguments.get("library_id") or "").strip()
+    arg_library_name = str(arguments.get("library_name") or "").strip()
+    arg_project_id = str(arguments.get("project_id") or "").strip()
+    arg_project_name = str(arguments.get("project_name") or "").strip()
 
     library = None
-    if library_id:
-        library = next((x for x in settings.libraries if x.id == library_id), None)
-    if library is None and library_name:
-        library = next((x for x in settings.libraries if _normalize_name(x.name) == _normalize_name(library_name)), None)
+    if arg_library_id:
+        library = next((x for x in settings.libraries if x.id == arg_library_id), None)
+    if library is None and arg_library_name:
+        library = next((x for x in settings.libraries if _normalize_name(x.name) == _normalize_name(arg_library_name)), None)
+    if library is None and not arg_library_id and not arg_library_name:
+        library = next((x for x in settings.libraries if x.id == settings.active_library_id), None)
     if library is None:
         raise RuntimeError("找不到 library 配置，请传 library_id/library_name，或先在 UI 中设置 active_library_id。")
 
     project = None
-    if project_id:
-        project = next((x for x in settings.projects if x.id == project_id), None)
-    if project is None and project_name:
+    if arg_project_id:
+        project = next((x for x in settings.projects if x.id == arg_project_id), None)
+    if project is None and arg_project_name:
         project = next(
             (
                 x for x in settings.projects
-                if x.library_id == library.id and _normalize_name(x.project) == _normalize_name(project_name)
+                if x.library_id == library.id and _normalize_name(x.project) == _normalize_name(arg_project_name)
             ),
             None,
         )
-    if project is None:
+    if project is None and not arg_project_id and not arg_project_name:
         project = next((x for x in settings.projects if x.id == settings.active_project_id and x.library_id == library.id), None)
     if project is None:
         raise RuntimeError("找不到 project 配置，请传 project_id/project_name，或先在 UI 中设置 active_project_id。")
