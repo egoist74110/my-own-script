@@ -262,6 +262,7 @@ def login_flow(
         last_fire = 0.0
         last_upd = 0.0
         update_extended = False
+        capture_extended = False
         while time.time() < deadline:
             ip = get_vpn_ip()
             if ip:
@@ -275,6 +276,12 @@ def login_flow(
                     deadline = max(deadline, time.time() + 180.0)
                     update_extended = True
             if captured["url"]:
+                # 深链是异步 CDP 回调截到的，可能刚好卡在 deadline 边上——见过截到后
+                # 循环下一次就因超时退出，导致从没来得及 open 这个深链交给 app。
+                # 截到就至少再给 30s，保证走完「拉起 app → 发深链 → 等 IP」这一套。
+                if not capture_extended:
+                    deadline = max(deadline, time.time() + 30.0)
+                    capture_extended = True
                 if not launched:
                     if not app_running():
                         log("先确保 Harmony app 在跑…")
