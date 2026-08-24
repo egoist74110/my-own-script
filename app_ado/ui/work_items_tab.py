@@ -44,6 +44,7 @@ def _has_child_relations(item: WorkItem) -> bool:
 class WorkItemMiniCard(CardWidget):
     view_clicked = QtCore.Signal(int)
     mcp_clicked = QtCore.Signal(int)
+    copy_prompt_clicked = QtCore.Signal(int)
     related_clicked = QtCore.Signal(int)
 
     def __init__(self, item: WorkItem, parent: QtWidgets.QWidget | None = None) -> None:
@@ -71,8 +72,11 @@ class WorkItemMiniCard(CardWidget):
         self.btn_view.setFixedWidth(72)
         self.btn_mcp = PushButton("MCP分析")
         self.btn_mcp.setFixedWidth(96)
+        self.btn_copy_prompt = PushButton("复制提示词")
+        self.btn_copy_prompt.setFixedWidth(96)
         row.addWidget(self.btn_view)
         row.addWidget(self.btn_mcp)
+        row.addWidget(self.btn_copy_prompt)
 
         self.btn_related: PushButton | None = None
         if _has_child_relations(item):
@@ -85,6 +89,7 @@ class WorkItemMiniCard(CardWidget):
 
         self.btn_view.clicked.connect(lambda: self.view_clicked.emit(self.item.id))
         self.btn_mcp.clicked.connect(lambda: self.mcp_clicked.emit(self.item.id))
+        self.btn_copy_prompt.clicked.connect(lambda: self.copy_prompt_clicked.emit(self.item.id))
 
         root.addWidget(title)
         root.addWidget(meta)
@@ -93,6 +98,7 @@ class WorkItemMiniCard(CardWidget):
 
 class RelatedWorkItemsDialog(QtWidgets.QDialog):
     mcp_requested = QtCore.Signal(int)
+    copy_prompt_requested = QtCore.Signal(int)
     view_requested = QtCore.Signal(int)
 
     def __init__(
@@ -161,6 +167,7 @@ class RelatedWorkItemsDialog(QtWidgets.QDialog):
         card = WorkItemMiniCard(item)
         card.view_clicked.connect(self.view_requested.emit)
         card.mcp_clicked.connect(self._on_card_mcp_clicked)
+        card.copy_prompt_clicked.connect(self.copy_prompt_requested.emit)
         if card.btn_related is not None:
             card.btn_related.setEnabled(False)
         self.list_layout.insertWidget(self.list_layout.count() - 1, card)
@@ -731,6 +738,7 @@ class WorkItemsTab(Tab):
             item_card = WorkItemMiniCard(work_item, self.list_view)
             item_card.view_clicked.connect(self._open_detail_view)
             item_card.mcp_clicked.connect(self._open_mcp_analysis)
+            item_card.copy_prompt_clicked.connect(self._copy_mcp_prompt)
             item_card.related_clicked.connect(self._open_related_dialog)
             self.list_layout.addWidget(item_card)
 
@@ -750,6 +758,7 @@ class WorkItemsTab(Tab):
             return
         dlg = RelatedWorkItemsDialog(root_item, library, project, pat, parent=self)
         dlg.mcp_requested.connect(self._open_mcp_analysis)
+        dlg.copy_prompt_requested.connect(self._copy_mcp_prompt)
         dlg.view_requested.connect(self._open_detail_view)
         dlg.exec()
 
@@ -771,6 +780,30 @@ class WorkItemsTab(Tab):
             parent=self,
         )
         dlg.exec()
+
+    # ------------------------------------------------------------------
+    # 复制提示词：生成 MCP 分析提示词并写入剪贴板
+    # ------------------------------------------------------------------
+
+    def _copy_mcp_prompt(self, work_item_id: int) -> None:
+        raw_proj = self._selected_project()
+        if raw_proj is None:
+            show_error_dialog(self, "错误", "请先选择项目")
+            return
+        try:
+            project = self._normalized_project(raw_proj)
+        except Exception as exc:
+            show_error_dialog(self, "错误", str(exc))
+            return
+
+        try:
+            prompt = build_mcp_prompt(project=project, work_item_id=int(work_item_id))
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                app.clipboard().setText(prompt)
+            self._toast("已复制", f"#{work_item_id} MCP 分析提示词已复制到剪贴板")
+        except Exception as exc:
+            self._toast("复制失败", str(exc), ok=False)
 
     # ------------------------------------------------------------------
     # MCP 分析：选仓库 → 选 AI → 在 AI 开发面板里新开一个会话并自动发提示词

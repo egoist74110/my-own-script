@@ -512,6 +512,26 @@ class WorkItemsBridge:
             pass
         return "专属 AI 机器人"
 
+    def handle_copy_prompt(self, chat_id: str, work_item_id: int) -> tuple[str, dict]:
+        st = self._state(chat_id)
+        s = self._settings()
+        proj = self._resolve_project(s, st)
+        if proj is None:
+            return "未选定项目，请先在「工单」主菜单里选择项目。", wi_detail_menu(
+                int(work_item_id), has_children=False
+            )
+        try:
+            prompt = build_mcp_prompt(project=proj, work_item_id=int(work_item_id))
+        except Exception as ex:
+            return f"生成 MCP 提示词失败：{ex}", wi_detail_menu(int(work_item_id), has_children=False)
+
+        cached_items: list[WorkItem] = st.get("cached_items") or []
+        item = next((x for x in cached_items if int(x.id) == int(work_item_id)), None)
+        has_children = _has_child_relations(item) if item else False
+
+        msg = f"📋 #{work_item_id} MCP 分析提示词（点击下方代码块复制）：\n\n```\n{prompt}\n```"
+        return msg, wi_detail_menu(int(work_item_id), has_children=has_children)
+
     # ---------------- 查看（文本 + 图片相册） ----------------
 
     def handle_view(self, chat_id: str, work_item_id: int) -> dict:

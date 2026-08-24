@@ -75,6 +75,7 @@ def wi_detail_menu(work_item_id: int, *, has_children: bool) -> dict:
         [
             {"text": "👁 查看", "callback_data": f"wi_v:{work_item_id}"},
             {"text": "🔍 MCP分析", "callback_data": f"wi_m:{work_item_id}"},
+            {"text": "📋 复制提示词", "callback_data": f"wi_cp:{work_item_id}"},
         ],
     ]
     if has_children:

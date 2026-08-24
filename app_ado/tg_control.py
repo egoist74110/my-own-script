@@ -328,7 +328,16 @@ class TelegramController:
             raise RuntimeError(f"telegram getUpdates failed: {data}")
         return data
 
-    def _edit_message(self, token: str, chat_id: str, message_id: int, text: str, *, reply_markup: dict | None = None) -> bool:
+    def _edit_message(
+        self,
+        token: str,
+        chat_id: str,
+        message_id: int,
+        text: str,
+        *,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> bool:
         """BotFather 式就地更新：用 editMessageText 改写原消息（含按钮）。
 
         成功返回 True；失败（消息过旧/带媒体/网络错误等）返回 False，调用方据此退回发新消息。
@@ -344,9 +353,16 @@ class TelegramController:
                 # 不带 markup 时显式清空，避免旧按钮残留在改写后的消息上。
                 "reply_markup": json.dumps(reply_markup or {"inline_keyboard": []}, ensure_ascii=False),
             }
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
             with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False) as c:
                 r = c.post(url, data=payload)
-            j = r.json()
+                j = r.json()
+                if not j.get("ok") and parse_mode:
+                    # markdown 解析失败：退回纯文本重试一次
+                    payload.pop("parse_mode", None)
+                    r = c.post(url, data=payload)
+                    j = r.json()
             if j.get("ok"):
                 return True
             if "message is not modified" in str(j.get("description") or "").lower():
@@ -355,16 +371,28 @@ class TelegramController:
         except Exception:
             return False
 
-    def _reply(self, token: str, chat_id: str, text: str, *, reply_markup: dict | None = None) -> None:
+    def _reply(
+        self,
+        token: str,
+        chat_id: str,
+        text: str,
+        *,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
         # 若本次正在处理控制面板回调，第一条回复就地改写来源消息（BotFather 式）。
         tgt = self._cb_edit
         if tgt is not None and str(tgt.get("chat_id")) == str(chat_id):
             self._cb_edit = None  # 一次性：只改写来源消息一次，后续回复正常发新消息
             mid = tgt.get("message_id")
-            if mid is not None and self._edit_message(token, chat_id, int(mid), text, reply_markup=reply_markup):
+            if mid is not None and self._edit_message(
+                token, chat_id, int(mid), text, reply_markup=reply_markup, parse_mode=parse_mode
+            ):
                 return
             # 编辑失败（消息过旧/带媒体等）则退回发新消息
-        send_telegram_message(bot_token=token, chat_id=chat_id, text=text, reply_markup=reply_markup)
+        send_telegram_message(
+            bot_token=token, chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
 
     def _reply_photo(self, token: str, chat_id: str, photo: bytes, *, caption: str | None = None) -> None:
         from app_ado.notifier_telegram import send_telegram_photo
@@ -1056,6 +1084,16 @@ class TelegramController:
                 return
             text, markup = bridge.handle_mcp_start(chat_id, wid)
             self._reply(token, chat_id, text, reply_markup=markup)
+            return
+
+        if data.startswith("wi_cp:"):
+            # 复制 MCP 分析提示词
+            try:
+                wid = int(data.split(":", 1)[1].strip())
+            except ValueError:
+                return
+            text, markup = bridge.handle_copy_prompt(chat_id, wid)
+            self._reply(token, chat_id, text, reply_markup=markup, parse_mode="Markdown")
             return
 
         if data.startswith("wi_v:"):
