@@ -18,6 +18,7 @@ if __package__ in (None, ""):
 
 from app_ado.ado_work_item_http import (
     DEFAULT_WORK_ITEM_FIELDS,
+    create_work_item,
     fetch_attachment_bytes,
     get_work_item,
     get_work_item_comments,
@@ -542,6 +543,83 @@ def _tool_ado_evaluate_change_policy(arguments: dict[str, Any]) -> dict[str, Any
     )
 
 
+def _tool_ado_create_work_item(arguments: dict[str, Any]) -> dict[str, Any]:
+    library, project, pat = _resolve_context(arguments)
+
+    work_item_type = str(arguments.get("work_item_type") or "").strip()
+    title = str(arguments.get("title") or "").strip()
+    if not work_item_type:
+        raise RuntimeError("缺少参数 work_item_type")
+    if not title:
+        raise RuntimeError("缺少参数 title")
+
+    fields: dict[str, Any] = {"System.Title": title}
+    if arguments.get("description"):
+        fields["System.Description"] = str(arguments["description"])
+    if arguments.get("acceptance_criteria"):
+        fields["Microsoft.VSTS.Common.AcceptanceCriteria"] = str(arguments["acceptance_criteria"])
+    if arguments.get("tags"):
+        tags = arguments["tags"]
+        fields["System.Tags"] = "; ".join(str(x) for x in tags) if isinstance(tags, list) else str(tags)
+    if arguments.get("area_path"):
+        fields["System.AreaPath"] = str(arguments["area_path"])
+    if arguments.get("iteration_path"):
+        fields["System.IterationPath"] = str(arguments["iteration_path"])
+    if arguments.get("assigned_to"):
+        fields["System.AssignedTo"] = str(arguments["assigned_to"])
+
+    extra_fields = arguments.get("extra_fields")
+    if extra_fields:
+        if not isinstance(extra_fields, dict):
+            raise RuntimeError("extra_fields 必须是对象")
+        for k, v in extra_fields.items():
+            fields[str(k)] = v
+
+    relations: list[dict[str, Any]] = []
+    parent_id = arguments.get("parent_work_item_id")
+    if parent_id is not None:
+        parent = get_work_item(
+            library.base_url,
+            int(parent_id),
+            collection=project.collection,
+            project=project.project,
+            pat=pat,
+            fields=["System.Id"],
+        )
+        parent_url = parent.url or (
+            f"{library.base_url.rstrip('/')}/{project.collection}/{project.project}"
+            f"/_apis/wit/workItems/{int(parent_id)}"
+        )
+        relations.append({"rel": "System.LinkTypes.Hierarchy-Reverse", "url": parent_url})
+
+    validate_only = bool(arguments.get("validate_only"))
+    item = create_work_item(
+        library.base_url,
+        project.collection,
+        project.project,
+        work_item_type,
+        pat=pat,
+        fields=fields,
+        relations=relations,
+        validate_only=validate_only,
+    )
+    return _tool_result_text(
+        {
+            "library": library.name,
+            "project": project.project,
+            "validate_only": validate_only,
+            "work_item": {
+                "id": item.id,
+                "title": item.title,
+                "state": item.state,
+                "work_item_type": item.work_item_type,
+                "url": item.url,
+                "fields": item.fields,
+            },
+        }
+    )
+
+
 TOOLS: dict[str, dict[str, Any]] = {
     "ado_get_work_item": {
         "description": "按 work item id 读取 ADO 工作项详情。",
@@ -646,6 +724,31 @@ TOOLS: dict[str, dict[str, Any]] = {
             "required": ["attachment_url"],
         },
         "handler": _tool_ado_get_attachment,
+    },
+    "ado_create_work_item": {
+        "description": "新建一个 ADO 工作项（如任务/测试用例/Bug），可选挂到某个 parent work item 下。",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "work_item_type": {"type": "string", "description": "工作项类型，如 任务、测试用例、Bug"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "acceptance_criteria": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "area_path": {"type": "string"},
+                "iteration_path": {"type": "string"},
+                "assigned_to": {"type": "string"},
+                "parent_work_item_id": {"type": "integer"},
+                "extra_fields": {"type": "object"},
+                "validate_only": {"type": "boolean", "description": "true 时只做字段校验，不真正创建"},
+                "library_id": {"type": "string"},
+                "library_name": {"type": "string"},
+                "project_id": {"type": "string"},
+                "project_name": {"type": "string"},
+            },
+            "required": ["work_item_type", "title"],
+        },
+        "handler": _tool_ado_create_work_item,
     },
     "ado_evaluate_change_policy": {
         "description": "按本地策略评估某个 work item 是否允许 AI 自动改代码。",

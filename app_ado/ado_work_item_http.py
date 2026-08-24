@@ -234,6 +234,49 @@ def get_work_item(
     return _parse_work_item(data)
 
 
+def create_work_item(
+    base_url: str,
+    collection: str,
+    project: str,
+    work_item_type: str,
+    *,
+    pat: str,
+    fields: dict[str, Any],
+    relations: list[dict[str, Any]] | None = None,
+    validate_only: bool = False,
+    api_version: str = "7.0",
+    timeout_sec: float = 15.0,
+) -> WorkItem:
+    type_seg = quote(work_item_type, safe="")
+    url = f"{base_url.rstrip('/')}/{collection}/{project}/_apis/wit/workitems/${type_seg}"
+    ops: list[dict[str, Any]] = []
+    for key, value in fields.items():
+        if value is None:
+            continue
+        ops.append({"op": "add", "path": f"/fields/{key}", "value": value})
+    for rel in relations or []:
+        ops.append({"op": "add", "path": "/relations/-", "value": rel})
+
+    params: dict[str, Any] = {"api-version": api_version}
+    if validate_only:
+        params["validateOnly"] = "true"
+
+    timeout = httpx.Timeout(timeout_sec, connect=5.0)
+    with httpx.Client(
+        timeout=timeout,
+        headers={
+            "Authorization": _auth_header(pat),
+            "Accept": "application/json",
+            "Content-Type": "application/json-patch+json",
+        },
+        follow_redirects=False,
+    ) as c:
+        r = c.post(url, params=params, json=ops)
+        _raise_http_error(r, url=url)
+        data: Any = r.json()
+    return _parse_work_item(data)
+
+
 def download_authenticated_file(
     url: str,
     *,
