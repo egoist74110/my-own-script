@@ -26,6 +26,7 @@ class ServicesTab(Tab):
         self._build_vpn_card()
         self._build_codeserver_card()
         self._build_cloudflared_card()
+        self._build_dsh_card()
         self._refresh_all()
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(3000)
@@ -253,6 +254,50 @@ class ServicesTab(Tab):
         else:
             self._run_action("code-server 启动", svc.codeserver_start)
 
+    # ---------- dsh ----------
+
+    def _build_dsh_card(self) -> None:
+        w = CardWidget(self)
+        lay = QtWidgets.QVBoxLayout(w)
+        self.lbl_dsh = self._status_label()
+        self.btn_dsh_toggle = PushButton("启动")
+        self.btn_dsh_tunnel = PushButton("🌐 开隧道")
+        self.btn_dsh_copydom = PushButton("复制域名")
+        self.btn_dsh_copykey = PushButton("复制密钥")
+        self.btn_dsh_rekey = PushButton("换密钥")
+        row = QtWidgets.QHBoxLayout()
+        for b in (self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_copydom, self.btn_dsh_copykey, self.btn_dsh_rekey):
+            row.addWidget(b)
+        row.addStretch(1)
+        lay.addWidget(self.lbl_dsh)
+        lay.addLayout(row)
+        self.btn_dsh_toggle.clicked.connect(self._toggle_dsh)
+        # 隧道按钮：一个按钮按隧道当前状态切换——开着→关隧道，关着→开隧道
+        self.btn_dsh_tunnel.clicked.connect(self._toggle_dsh_tunnel)
+        self.btn_dsh_copydom.clicked.connect(lambda: self._copy(svc.dsh_domain(), "dsh 隧道域名已复制"))
+        self.btn_dsh_copykey.clicked.connect(lambda: self._copy(svc.dsh_password(), "dsh 密钥已复制"))
+        self.btn_dsh_rekey.clicked.connect(self._rekey_dsh)
+        self.add_card("🧠 dsh", w)
+
+    def _toggle_dsh(self) -> None:
+        if svc.dsh_running():
+            self._run_action("dsh 关闭", svc.dsh_stop)
+        else:
+            self._run_action("dsh 启动", svc.dsh_start)
+
+    def _toggle_dsh_tunnel(self) -> None:
+        # 后端按当前网络动态决定开/关（局域网→开，非局域网→关）
+        self._run_action("dsh 临时隧道", svc.dsh_tunnel_toggle)
+
+    def _rekey_dsh(self) -> None:
+        text, ok = QtWidgets.QInputDialog.getText(
+            self, "换 dsh 密钥", "输入新密钥（至少 6 位；网关在跑会重启生效）：",
+            QtWidgets.QLineEdit.Password,
+        )
+        if not ok or not text.strip():
+            return
+        self._run_action("dsh 换密钥", lambda: svc.dsh_set_password(text))
+
     # ---------- cloudflared ----------
 
     def _build_cloudflared_card(self) -> None:
@@ -363,9 +408,13 @@ class ServicesTab(Tab):
         self._refresh_vpn()
         self.lbl_cs.setText(svc.codeserver_status())
         self.lbl_cf.setText(svc.cloudflared_status())
+        self.lbl_dsh.setText(svc.dsh_status())
         if not self._busy:
             self.btn_cs_toggle.setText("关闭" if svc.codeserver_running() else "启动")
             self.btn_cf_toggle.setText("关闭" if svc.cloudflared_running() else "启动")
+            self.btn_dsh_toggle.setText("关闭" if svc.dsh_running() else "启动")
+            # 隧道按钮动态文案：按隧道当前状态——开着→关隧道，关着→开隧道
+            self.btn_dsh_tunnel.setText("⏹ 关隧道" if svc.dsh_tunnel_running() else "🌐 开隧道")
             proto = svc.cloudflared_protocol()
             self.btn_cf_http2.setText("✅ HTTP/2" if proto == "http2" else "HTTP/2")
             self.btn_cf_quic.setText("✅ QUIC" if proto == "quic" else "QUIC")
@@ -377,6 +426,7 @@ class ServicesTab(Tab):
         return [
             self.btn_cs_toggle, self.btn_cf_toggle, self.btn_cf_http2, self.btn_cf_quic,
             self.btn_cf_custom, self.btn_cf_custom_stop,
+            self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_rekey,
         ]
 
     def _set_busy(self, busy: bool) -> None:

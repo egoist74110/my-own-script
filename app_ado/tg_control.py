@@ -912,7 +912,7 @@ class TelegramController:
     def _handle_svc_callback(self, token: str, chat_id: str, data: str) -> None:
         """服务面板回调（owner-only，调用方已校验权限）。
 
-        data: svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]
+        data: svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop] / svc:dsh[:start|stop]
         """
         from app_ado import services_panel as svc
         from app_ado.tg_help_inline import (
@@ -937,7 +937,7 @@ class TelegramController:
             self._reply(token, chat_id, self._vpn_status_text(), reply_markup=vpn_actions_menu())
             return
 
-        if key in ("cs", "cf"):
+        if key in ("cs", "cf", "dsh"):
             # 「指定启动」：进入两步输入——记下 chat，提示发 URL，由 _handle 接住下一条消息。
             if key == "cf" and action == "custom":
                 self._cf_url_wait.add(str(chat_id))
@@ -950,9 +950,12 @@ class TelegramController:
                 )
                 return
 
-            starter = svc.codeserver_start if key == "cs" else svc.cloudflared_start
-            stopper = svc.codeserver_stop if key == "cs" else svc.cloudflared_stop
-            status = svc.codeserver_status if key == "cs" else svc.cloudflared_status
+            _svc_map = {
+                "cs": (svc.codeserver_start, svc.codeserver_stop, svc.codeserver_status),
+                "cf": (svc.cloudflared_start, svc.cloudflared_stop, svc.cloudflared_status),
+                "dsh": (svc.dsh_start, svc.dsh_stop, svc.dsh_status),
+            }
+            starter, stopper, status = _svc_map[key]
 
             head = ""
             if action == "start":
@@ -974,15 +977,21 @@ class TelegramController:
                     _, head = svc.cloudflared_custom_stop(customs[idx]["url"])
                 else:
                     head = "ℹ️ 该隧道已不在列表（可能已关闭），已刷新。"
+            elif key == "dsh" and action == "tunnel":
+                # svc:dsh:tunnel —— 按隧道当前状态切换 dsh 临时隧道（开着→关，关着→开）
+                _, head = svc.dsh_tunnel_toggle()
 
             text = status()
             if head:
                 text = f"{head}\n\n{text}"
             cf_proto = svc.cloudflared_protocol() if key == "cf" else None
             cf_customs = svc.cloudflared_custom_list() if key == "cf" else None
+            dsh_tunnel_label = ("⏹ 关隧道" if svc.dsh_tunnel_running() else "🌐 开隧道") if key == "dsh" else None
             self._reply(
                 token, chat_id, text,
-                reply_markup=service_actions_menu(key, cf_protocol=cf_proto, cf_customs=cf_customs),
+                reply_markup=service_actions_menu(
+                    key, cf_protocol=cf_proto, cf_customs=cf_customs, dsh_tunnel_label=dsh_tunnel_label,
+                ),
             )
             return
 
@@ -1278,7 +1287,7 @@ class TelegramController:
                             if src_mid2 is not None:
                                 self._cb_edit = {"chat_id": chat_id2, "message_id": int(src_mid2)}
 
-                            # 服务面板：svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop]，仅 owner
+                            # 服务面板：svc / svc:vpn / svc:cs[:start|stop] / svc:cf[:start|stop] / svc:dsh[:start|stop]，仅 owner
                             if data2 == "svc" or data2.startswith("svc:"):
                                 if role2 != "owner":
                                     self._reply(token, chat_id2, "无权限")

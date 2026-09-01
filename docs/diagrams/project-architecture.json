@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "my-own-script · 代码工具箱架构",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1620,
+      640
+    ]
+  },
+  "components": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "app_main.py · 应用入口（代码工具箱）",
+      "sublabel": "PySide6 · qfluentwidgets · 9 个选项卡 · 启动拉起 TG 轮询 / 更新线程",
+      "pos": [
+        200,
+        30
+      ],
+      "size": [
+        1000,
+        120
+      ]
+    },
+    {
+      "id": "ado",
+      "type": "backend",
+      "label": "ADO 流水线",
+      "sublabel": "git 同步 → 构建 → 发布 / 回滚",
+      "pos": [
+        200,
+        250
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "ai_dev",
+      "type": "backend",
+      "label": "AI 开发会话",
+      "sublabel": "PTY 终端 + Claude / Codex / agy headless",
+      "pos": [
+        420,
+        250
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP 服务",
+      "sublabel": "ADO 工单 / 飞书 / Figma",
+      "pos": [
+        640,
+        250
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "vpn",
+      "type": "backend",
+      "label": "VPN · Harmony SASE",
+      "sublabel": "自愈 / Playwright 登录 / TOTP",
+      "pos": [
+        860,
+        250
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "svc",
+      "type": "backend",
+      "label": "服务管理",
+      "sublabel": "code-server / cloudflared / dsh web",
+      "pos": [
+        1080,
+        250
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "store",
+      "type": "security",
+      "label": "配置与密钥",
+      "sublabel": "store.py YAML · secrets.py → Keychain",
+      "pos": [
+        200,
+        480
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "ok",
+      "type": "backend",
+      "label": "ok-script 框架",
+      "sublabel": "图像识别自动化 · vendored（ok/）",
+      "pos": [
+        510,
+        480
+      ],
+      "size": [
+        200,
+        88
+      ]
+    },
+    {
+      "id": "tg",
+      "type": "external",
+      "label": "Telegram 机器人",
+      "sublabel": "主 Bot + AI 专属 ×3",
+      "pos": [
+        1360,
+        60
+      ],
+      "size": [
+        220,
+        70
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub Releases",
+      "sublabel": "dmg 发布 / 应用内自更新",
+      "pos": [
+        1360,
+        180
+      ],
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "ado_cloud",
+      "type": "cloud",
+      "label": "Azure DevOps",
+      "sublabel": "构建 / 发布 / Git / 工单",
+      "pos": [
+        1360,
+        360
+      ],
+      "size": [
+        220,
+        80
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "my-own-script 仓库（macOS 桌面应用）",
+      "wraps": [
+        "ui",
+        "ado",
+        "ai_dev",
+        "mcp",
+        "vpn",
+        "svc",
+        "store",
+        "ok"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "tg_ui",
+      "from": "tg",
+      "to": "ui",
+      "label": "指令 / 通知 / AI Bot",
+      "labelAt": [
+        1280,
+        78
+      ]
+    },
+    {
+      "id": "ui_ado",
+      "from": "ui",
+      "to": "ado",
+      "label": "任务触发",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ui_aidev",
+      "from": "ui",
+      "to": "ai_dev",
+      "label": "会话管理",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ui_mcp",
+      "from": "ui",
+      "to": "mcp",
+      "label": "MCP 启停 / 凭据",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        730,
+        225
+      ]
+    },
+    {
+      "id": "ui_vpn",
+      "from": "ui",
+      "to": "vpn",
+      "label": "VPN 自愈 / 登录",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ui_svc",
+      "from": "ui",
+      "to": "svc",
+      "label": "服务启停",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ado_cloud_edge",
+      "from": "ado",
+      "to": "ado_cloud",
+      "label": "REST (PAT)",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          290,
+          400
+        ],
+        [
+          1360,
+          400
+        ]
+      ]
+    },
+    {
+      "id": "ui_gh",
+      "from": "ui",
+      "to": "github",
+      "label": "自更新 / 发布",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          1280,
+          90
+        ],
+        [
+          1280,
+          220
+        ]
+      ],
+      "labelAt": [
+        1280,
+        170
+      ]
+    },
+    {
+      "id": "store_ui",
+      "from": "store",
+      "to": "ui",
+      "label": "YAML / Keychain",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [
+        [
+          150,
+          524
+        ],
+        [
+          150,
+          90
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两条主线",
+      "items": [
+        "代码工具箱：PySide6 单窗口应用，9 个 Tab（任务 / 工单 / 服务 / 通讯 / 代码 / 设置 / AI / MCP / AI开发）",
+        "ok-script：vendored 图像识别自动化框架（ok/），截图、模板匹配、OCR、浮层",
+        "Python 3.14 · .venv 隔离 · bash dev_run.sh 一键运行"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "外部依赖",
+      "items": [
+        "Azure DevOps：构建 / 发布 / Git / 工单，PAT 只存 Keychain",
+        "Telegram：主 Bot 控制任务，Claude / Codex / agy 各走专属 Bot 轮询线程",
+        "GitHub Releases：dmg 发布；应用启动 git 检查更新（ff pull + 重启）"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "配置与红线",
+      "items": [
+        "非密配置：~/.config/my-own-script YAML（store.py，pydantic 校验 + 自动迁移）",
+        "密钥红线：PAT / Bot Token / VPN / OTP 全部走 macOS Keychain（secrets.py），禁止明文",
+        "AI 改动准入：config/ai_change_policy.yaml 评估 allow / review / deny"
+      ]
+    }
+  ]
+}

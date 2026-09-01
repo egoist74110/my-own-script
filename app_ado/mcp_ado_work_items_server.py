@@ -548,10 +548,11 @@ def _tool_ado_create_work_item(arguments: dict[str, Any]) -> dict[str, Any]:
 
     work_item_type = str(arguments.get("work_item_type") or "").strip()
     title = str(arguments.get("title") or "").strip()
-    if not work_item_type:
-        raise RuntimeError("缺少参数 work_item_type")
     if not title:
         raise RuntimeError("缺少参数 title")
+    if not work_item_type:
+        # 兜底：AI 漏传类型时按「用户情景」建单，测试在用户情景看板可见
+        work_item_type = "用户情景"
 
     fields: dict[str, Any] = {"System.Title": title}
     if arguments.get("description"):
@@ -726,11 +727,17 @@ TOOLS: dict[str, dict[str, Any]] = {
         "handler": _tool_ado_get_attachment,
     },
     "ado_create_work_item": {
-        "description": "新建一个 ADO 工作项（如任务/测试用例/Bug），可选挂到某个 parent work item 下。",
+        "description": "新建一个 ADO 工作项。默认类型用「用户情景」（User Story），这样测试能在用户情景看板看到；可选挂到某个 parent work item 下。",
         "schema": {
             "type": "object",
             "properties": {
-                "work_item_type": {"type": "string", "description": "工作项类型，如 任务、测试用例、Bug"},
+                "work_item_type": {
+                    "type": "string",
+                    "description": (
+                        "工作项类型。新需求、客户/测试反馈一律用「用户情景」（User Story）；"
+                        "只有明确拆分子任务时才用「任务」；其他可选类型：测试用例、Bug 等。"
+                    ),
+                },
                 "title": {"type": "string"},
                 "description": {"type": "string"},
                 "acceptance_criteria": {"type": "string"},

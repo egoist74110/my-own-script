@@ -27,6 +27,7 @@
 - 改分析提示词：`app_ado/ai_work_item_flow.py` 的 `build_mcp_prompt`。
 
 ## 注意坑
+- AI 建单类型：`ado_create_work_item` 的 `work_item_type` 默认/推荐「用户情景」（User Story），保证测试在用户情景看板可见；「任务」仅用于明确拆分的子任务。AI 漏传类型时 handler 兜底为「用户情景」。
 - 权限：TG 侧工单操作目前仅 owner；MCP 分析走的是各 AI **专属机器人**（`bridges` 按 ai_id 路由 claude_code/codex/gemini）。
 - 附件走认证下载（`fetch_attachment_bytes`），图片落盘前原地压缩，别直接把原图塞进提示词。
 - ADO 调用全同步、无后台线程（TG 侧在轮询线程里跑）；长操作注意别卡住轮询。

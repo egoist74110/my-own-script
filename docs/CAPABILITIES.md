@@ -78,6 +78,7 @@
 | 能力 | 一句话说明 | 入口/关键文件 | 详细文档 |
 | --- | --- | --- | --- |
 | code-server / cloudflared 启停 | detached 进程 + 状态落盘 + 端口/签名扫描双兜底 | `app_ado/services_panel.py`、`app_ado/ui/services_tab.py` | [services](capabilities/services.md) |
+| dsh web 启停（带密钥） | 优先复用已在跑的 dsh（不新起、不空白），找不到才用 `dsh web`/`npx` 新起（钉死 home+cwd）+ **Basic Auth + Cookie 网关**（监听 **0.0.0.0**；页面 Basic Auth 通过时下发 `dsh_auth` cookie，之后 **WS 握手 + fetch 自动带 cookie** 过认证——解决手机不把 Basic Auth 缓存到 XHR 的空白问题；WS 认 cookie、HTTP 认 cookie 或 key）；手机在外网走 **Cloudflare 命名隧道**（主用、固定域名、稳；token 只进钥匙串、按完整 token 精确匹配进程；无 token 回退快速隧道）、同内网可直连 `Mac IP:网关口`；密钥/隧道 token 只进钥匙串 | `app_ado/services_panel.py`（`dsh_*`、`_lan_ip`）、`app_ado/dsh_gateway.py`、`app_ado/secrets.py` | [services](capabilities/services.md) |
 
 ### 配置与密钥存储
 

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "visual-check",
+  "status": "fail",
+  "visualReview": "pending",
+  "artifact": {
+    "path": "/Users/wesker/my-own-script/docs/diagrams/project-architecture.html",
+    "sha256": "f49feb609d0d1ea1bcfd98fde6ce2cac5a8af8662de137c81c618c9c864f316f",
+    "bytes": 639695
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "containment": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "fail",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "project-architecture.visual-check.json",
+    "contactSheet": "project-architecture.visual-check.html"
+  },
+  "error": "Chrome exited before visual-check completed (null)"
+}

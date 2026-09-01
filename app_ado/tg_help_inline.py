@@ -62,6 +62,7 @@ def services_menu() -> dict:
         [{"text": "🌐 VPN", "callback_data": "svc:vpn"}],
         [{"text": "💻 code-server", "callback_data": "svc:cs"}],
         [{"text": "☁️ cloudflared 隧道", "callback_data": "svc:cf"}],
+        [{"text": "🧠 dsh", "callback_data": "svc:dsh"}],
         [{"text": "⬅ 返回", "callback_data": "help_menu:back"}],
     ]}
 
@@ -71,19 +72,25 @@ def service_actions_menu(
     *,
     cf_protocol: str | None = None,
     cf_customs: list[dict] | None = None,
+    dsh_tunnel_label: str | None = None,
 ) -> dict:
-    """单个服务的启停/刷新菜单。key 取 'cs' 或 'cf'。
+    """单个服务的启停/刷新菜单。key 取 'cs' / 'cf' / 'dsh'（dsh 走通用启停行）。
 
     cf 专属：
       - 一行协议切换（HTTP/2 ↔ QUIC）；cf_protocol 传入当前生效协议以打 ✅。
       - 「全局启停」是上面那行（其他模块依赖的那条隧道）。
       - 「➕ 指定启动」+ 每条自定义隧道一行「⏹ 关闭」；cf_customs 传 cloudflared_custom_list()，
         关闭回调按列表下标 svc:cf:cstop:<i>（URL 含特殊字符且 callback_data 限 64B，不直接塞 URL）。
+    dsh 专属：
+      - 一行「临时隧道」开关，文案由调用方按当前网络动态给出（dsh_tunnel_label，
+        如「🌐 开隧道」/「⏹ 关隧道」），点击走 svc:dsh:tunnel。
     """
     rows = [
         [{"text": "▶️ 启动", "callback_data": f"svc:{key}:start"},
          {"text": "⏹ 关闭", "callback_data": f"svc:{key}:stop"}],
     ]
+    if key == "dsh" and dsh_tunnel_label:
+        rows.append([{"text": dsh_tunnel_label, "callback_data": "svc:dsh:tunnel"}])
     if key == "cf":
         h2 = ("✅ " if cf_protocol == "http2" else "") + "HTTP/2 (稳)"
         qc = ("✅ " if cf_protocol == "quic" else "") + "QUIC (快)"

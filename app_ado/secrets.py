@@ -77,6 +77,63 @@ def vpn_config_complete() -> bool:
     return all(cfg.get(f) for f in _VPN_FIELDS)
 
 
+# ---------- dsh web 登录密钥 ----------
+# dsh web 本身没有密码登录，由 app_ado/dsh_gateway.py 做 Basic Auth 把关；
+# 密钥只进钥匙串（红线），首次启动服务时自动生成。
+def dsh_password_key() -> str:
+    return "dsh_web_password"
+
+
+def get_dsh_password() -> str | None:
+    return keyring.get_password(APP_ID, dsh_password_key())
+
+
+def set_dsh_password(pw: str) -> None:
+    keyring.set_password(APP_ID, dsh_password_key(), pw)
+
+
+def clear_dsh_password() -> None:
+    try:
+        keyring.delete_password(APP_ID, dsh_password_key())
+    except Exception:
+        pass
+
+
+# dsh 隧道 token（Cloudflare 命名隧道，主控制台 Networking > Tunnels 创建，免费计划可用、
+# 无需绑卡；token 只进钥匙串，红线同 dsh 密钥）。面板「隧道」按钮优先用它（固定域名、稳）。
+def dsh_tunnel_token_key() -> str:
+    return "dsh_web_tunnel_token"
+
+
+def get_dsh_tunnel_token() -> str | None:
+    return keyring.get_password(APP_ID, dsh_tunnel_token_key())
+
+
+def set_dsh_tunnel_token(token: str) -> None:
+    keyring.set_password(APP_ID, dsh_tunnel_token_key(), token)
+
+
+def clear_dsh_tunnel_token() -> None:
+    try:
+        keyring.delete_password(APP_ID, dsh_tunnel_token_key())
+    except Exception:
+        pass
+
+
+# 命名隧道自定义主机名（路由 CNAME，如 dsh.<域名>）；面板「复制域名」优先显示它，
+# 没设就显示从 token 推导的 <tunnel-id>.cfargotunnel.com。
+def dsh_tunnel_domain_key() -> str:
+    return "dsh_web_tunnel_domain"
+
+
+def get_dsh_tunnel_domain() -> str | None:
+    return (keyring.get_password(APP_ID, dsh_tunnel_domain_key()) or "").strip() or None
+
+
+def set_dsh_tunnel_domain(domain: str) -> None:
+    keyring.set_password(APP_ID, dsh_tunnel_domain_key(), domain)
+
+
 # ---------- TOTP 种子（从 Ente 导出一次后存这里，登录时本地算 6 位码）----------
 # 注意：存了种子 = 本机同时持有「密码 + MFA 两个因子」，MFA 不再额外加固本机。
 # 这是用户为远程便利的明确取舍。种子只在 keyring，导出文件读完即删。
