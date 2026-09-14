@@ -1211,17 +1211,276 @@ def dsh_set_password(pw: str) -> tuple[bool, str]:
     return True, f"✅ 密钥已更新并重启网关（端口 {dsh_port} / 网关 {gw_port}）"
 
 
+# ---------- dsh 版本 / 更新 ----------
+# 版本探测与更新沿用 dsh 的两种官方形式（同 _dsh_launch_argv 红线）：
+#   1) 全局安装（PATH 里有 dsh）→ `dsh --version` 取版本；`npm install -g` 更新
+#   2) npx 形式（PATH 里没有 dsh）→ 读 npx 缓存里的 package.json 取版本；
+#      `npx -y @deepseek-ai/dsh@latest` 把缓存刷到最新
+# 查最新版直接 HTTP 请求 npm registry 的 JSON，不跑 `npm view`：GUI app 环境里
+# npm 缓存可能含 root 属主文件（EPERM），HTTP 干净且不受缓存权限影响。
+
+DSH_NPM_PKG = "@deepseek-ai/dsh"
+_dsh_version_cache: dict[str, tuple[float, str | None]] = {}
+_DSH_VER_TTL = 60.0       # 本机版本缓存 60s（状态标签 3s 轮询，不能每次都起 node）
+_DSH_LATEST_TTL = 600.0   # registry 最新版缓存 10 分钟
+
+
+def _semver_key(v: str) -> tuple | None:
+    """`x.y.z[-pre]` 形式版本（如 0.1.5-rc.1）的可比较键；解析不出返回 None。
+
+    标准 semver 优先级规则：
+      - 数字段逐位比（缺位补 0）；
+      - 数字段相同：无 pre-release > 有 pre-release（正式版 > rc/alpha）；
+      - pre-release 逐段比：数字段 < 字母段，字母段按字典序（alpha < rc）。
+    """
+    v = (v or "").strip().lstrip("v")
+    core, _, pre = v.partition("-")
+    parts = core.split(".")
+    if not parts or not all(p.isdigit() for p in parts):
+        return None
+    nums = tuple(int(p) for p in parts[:3]) + (0,) * max(0, 3 - len(parts))
+    if not pre:
+        return (nums, 1, ())
+    ids = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
+    return (nums, 0, ids)
+
+
+def _dsh_node_bin_dirs() -> list[str]:
+    """可能装有 dsh 的 node bin 目录（与 _dsh_node_env 同一优先级：
+    PATH 里的 node → nvm 各版本（新→旧）→ homebrew → /usr/local）。"""
+    dirs: list[str] = []
+    nd = shutil.which("node")
+    if nd:
+        dirs.append(os.path.dirname(nd))
+    dirs += [str(p.parent) for p in sorted(Path.home().glob(".nvm/versions/node/*/bin/node"), reverse=True)]
+    dirs += ["/opt/homebrew/bin", "/usr/local/bin"]
+    out: list[str] = []
+    for d in dirs:
+        if d and os.path.isdir(d) and d not in out:
+            out.append(d)
+    return out
+
+
+def _dsh_which(path: str, name: str) -> str | None:
+    """在给定 PATH 串里找可执行文件（GUI app 自身 PATH 受限，不能只用 shutil.which）。"""
+    for d in (path or "").split(os.pathsep):
+        if not d:
+            continue
+        p = os.path.join(d, name)
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def dsh_version() -> str | None:
+    """本机安装的 dsh 版本（60s 缓存）；None = 探测不到。
+
+    三层兜底（与 dsh 的两种官方安装形式对应）：
+      1) `dsh --version` —— PATH 里有 dsh 时最权威（实际生效的就是它）；
+      2) node 目录下的全局 node_modules 里 package.json 的 version；
+      3) npx 缓存（~/.npm/_npx/*/node_modules/@deepseek-ai/dsh/package.json，
+         按 mtime 取最新一份）——覆盖 `npx -y @deepseek-ai/dsh` 拉起的方式。
+    """
+    now = time.time()
+    hit = _dsh_version_cache.get("installed")
+    if hit and now - hit[0] < _DSH_VER_TTL:
+        return hit[1]
+    ver: str | None = None
+    # 在完整环境上叠加 node PATH + DSH_HOME（subprocess 的 env 是整体替换，不能丢 HOME）
+    env = dict(os.environ)
+    env.update(_dsh_node_env_with_home())
+    path = env.get("PATH", os.environ.get("PATH", ""))
+    dsh = _dsh_which(path, "dsh")
+    if dsh:
+        try:
+            r = subprocess.run([dsh, "--version"], capture_output=True, text=True, timeout=15, env=env)
+            for line in (r.stdout or "").splitlines():
+                line = line.strip()
+                if re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?", line):
+                    ver = line.lstrip("v")
+                    break
+        except Exception:
+            pass
+    if not ver:
+        for d in _dsh_node_bin_dirs():
+            pj = Path(d).parent / "lib" / "node_modules" / DSH_NPM_PKG / "package.json"
+            if pj.exists():
+                try:
+                    v = json.loads(pj.read_text(encoding="utf-8")).get("version")
+                    if v:
+                        ver = str(v)
+                        break
+                except Exception:
+                    pass
+    if not ver:
+        try:
+            npx_pjs = sorted(
+                Path.home().glob(".npm/_npx/*/node_modules/@deepseek-ai/dsh/package.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+        except Exception:
+            npx_pjs = []
+        for pj in npx_pjs:
+            try:
+                v = json.loads(pj.read_text(encoding="utf-8")).get("version")
+                if v:
+                    ver = str(v)
+                    break
+            except Exception:
+                pass
+    _dsh_version_cache["installed"] = (now, ver)
+    return ver
+
+
+def dsh_latest_version() -> str | None:
+    """npm registry 上 @deepseek-ai/dsh 的最新版（dist-tags.latest，10 分钟缓存）。
+
+    直接 HTTP 取 registry JSON（不走 npm 命令，避免 npm 缓存权限问题）；
+    None = 网络失败/解析失败（调用方据此放弃更新，而不是瞎装）。
+    """
+    import urllib.request
+
+    now = time.time()
+    hit = _dsh_version_cache.get("latest")
+    if hit and now - hit[0] < _DSH_LATEST_TTL:
+        return hit[1]
+    ver: str | None = None
+    try:
+        req = urllib.request.Request(
+            f"https://registry.npmjs.org/{DSH_NPM_PKG}/latest",
+            headers={"User-Agent": "code-toolsbox", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            ver = (json.loads(resp.read()).get("version") or None)
+    except Exception:
+        ver = None
+    _dsh_version_cache["latest"] = (now, ver)
+    return ver
+
+
+def dsh_has_update() -> bool | None:
+    """是否有可用更新（latest > installed）。None = 无法判断（版本探测不到或网络失败）。"""
+    cur, latest = dsh_version(), dsh_latest_version()
+    if not cur or not latest:
+        return None
+    kc, kl = _semver_key(cur), _semver_key(latest)
+    if kc is None or kl is None:
+        return None
+    return kl > kc
+
+
+def dsh_has_update_cached() -> bool | None:
+    """同 dsh_has_update，但**只读已有缓存**（不发网络、不起子进程）。
+
+    给 UI 3s 轮询用：版本缓存由后台线程负责刷新（services_tab 的后台循环），
+    轮询线程只做一次纯内存比较。None = 缓存还没就位/判断不了 → 按「无更新」处理
+    （更新按钮不显示）——宁可不显示，也不在无把握时露出按钮。
+    """
+    hit_cur = _dsh_version_cache.get("installed")
+    cur = hit_cur[1] if hit_cur else None
+    hit_latest = _dsh_version_cache.get("latest")
+    latest = hit_latest[1] if hit_latest else None
+    if not cur or not latest:
+        return None
+    kc, kl = _semver_key(cur), _semver_key(latest)
+    if kc is None or kl is None:
+        return None
+    return kl > kc
+
+
+def dsh_update() -> tuple[bool, str]:
+    """「更新」按钮：先检查版本，**只有检测到有更新时才真正安装**。
+
+    - 判断不了（最新版取不到 / 版本解析失败）→ 不动任何东西，报原因；
+    - 已是最新 → (True, 已是最新)，不执行任何安装命令；
+    - 检测到更新 → 全局安装形式跑 `npm install -g @deepseek-ai/dsh@latest`
+      （装进 PATH 里 dsh 所在的同一个 node 前缀）；npx 形式跑
+      `npx -y @deepseek-ai/dsh@latest --version`（把 npx 缓存刷到最新）。
+    装完若 dsh 还在运行，提示重启后生效——绝不自动杀用户那份 dsh。
+    """
+    cur = dsh_version()
+    latest = dsh_latest_version()
+    if not latest:
+        return False, "❌ 取不到 npm registry 最新版（网络问题？），不做更新"
+    kc, kl = _semver_key(cur or ""), _semver_key(latest)
+    if kc is None or kl is None:
+        return False, f"❌ 版本无法解析（本机 {cur or '探测不到'} / 最新 {latest}），不做更新"
+    if kl <= kc:
+        return True, f"✅ 已是最新版本 {latest}（未检测到更新，无需更新）"
+
+    env = dict(os.environ)
+    env.update(_dsh_node_env_with_home())
+    path = env.get("PATH", os.environ.get("PATH", ""))
+    dsh = _dsh_which(path, "dsh")
+    if dsh:
+        npm = _dsh_which(path, "npm") or shutil.which("npm")
+        if not npm:
+            return False, f"❌ 检测到更新 {cur or '未知'} → {latest}，但找不到 npm，无法安装"
+        cmd = [npm, "install", "-g", f"{DSH_NPM_PKG}@latest"]
+    else:
+        npx = _dsh_which(path, "npx") or shutil.which("npx")
+        if not npx:
+            return False, (
+                f"❌ 检测到更新（{cur or '未安装'} → {latest}），但找不到 dsh 和 npx，"
+                f"请手动安装：npm install -g {DSH_NPM_PKG}"
+            )
+        cmd = [npx, "-y", f"{DSH_NPM_PKG}@latest", "--version"]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=300)
+    except subprocess.TimeoutExpired:
+        return False, f"❌ 更新超时（5 分钟）：{' '.join(cmd)}"
+    except Exception as e:
+        return False, f"❌ 更新执行失败：{e}"
+    if r.returncode != 0:
+        tail = "\n".join((r.stderr or r.stdout or "").splitlines()[-5:])
+        return False, f"❌ 更新失败（{cur or '未知'} → {latest}）：{tail}"
+
+    _dsh_version_cache.pop("installed", None)  # 装完重新探测
+    new_ver = dsh_version() or latest
+    lines = [f"✅ dsh 已更新：{cur or '未知'} → {new_ver}"]
+    if dsh_running():
+        lines.append("⚠️ dsh 正在运行，新版本需重启后生效（点「关闭」再「启动」）")
+    return True, "\n".join(lines)
+
+
+def _dsh_version_status_line() -> str:
+    """dsh_status 的版本行：本机版本 + 更新提示。
+
+    状态路径**不发起网络请求**：最新版只取此前成功 dsh_latest_version() 的缓存
+    （GUI 里由 services_tab 的后台线程定期刷新），取不到就先只显示本机版本：
+      - 确认已是最新（含本地比 registry 还新）→ 「当前已是最新版本，无需更新」
+      - 检测到新版 → 「发现新版 x.y.z，点「更新」可升级」
+      - 最新版未知 → 只显示「版本：x.y.z」
+    """
+    cur = dsh_version()
+    if not cur:
+        return "版本：（未探测到）"
+    hit = _dsh_version_cache.get("latest")
+    latest = hit[1] if hit else None
+    if not latest or latest == cur:
+        if latest == cur:
+            return f"版本：{cur}（当前已是最新版本，无需更新）"
+        return f"版本：{cur}"
+    kc, kl = _semver_key(cur), _semver_key(latest)
+    if kc and kl and kl > kc:
+        return f"版本：{cur}（发现新版 {latest}，点「更新」可升级）"
+    return f"版本：{cur}（当前已是最新版本，无需更新）"
+
+
 def dsh_status() -> str:
     st = _read_state("dsh")
     port = st.get("port") or DSH_DEFAULT_PORT
     gw_port = st.get("gw_port") or DSH_GATEWAY_PORT
     key = dsh_password() or "(未设置)"
     if not dsh_running():
-        return f"🧠 dsh：🔴 未运行\n端口：{port}（网关 {gw_port}）\n密钥：{key}"
+        return f"🧠 dsh：🔴 未运行\n端口：{port}（网关 {gw_port}）\n密钥：{key}\n{_dsh_version_status_line()}"
     lines = [
         "🧠 dsh：🟢 运行中",
         f"端口：{port}（网关 {gw_port}）",
         f"密钥：{key}",
+        _dsh_version_status_line(),
     ]
     on_lan = is_on_lan()
     lines.append(f"网络：{'🏠 局域网' if on_lan else '📶 非局域网'}（隧道按钮据此{'开' if on_lan else '关'}）")

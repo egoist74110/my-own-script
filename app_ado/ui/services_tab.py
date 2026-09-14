@@ -32,6 +32,26 @@ class ServicesTab(Tab):
         self._timer.setInterval(3000)
         self._timer.timeout.connect(self._refresh_all)
         self._timer.start()
+        # dsh 版本检查放后台线程：轮询线程只读缓存，UI 线程永不碰网络/子进程
+        self._dsh_ver_thread = threading.Thread(target=self._dsh_version_bg_loop, daemon=True)
+        self._dsh_ver_thread.start()
+
+    def _dsh_version_bg_loop(self) -> None:
+        """后台循环：定期刷新 dsh 版本缓存（本机版本 + registry 最新版）。
+
+        本机版本缓存 60s、最新版缓存 10 分钟（TTL 在 services_panel 内），
+        这里每 5 分钟唤醒一次，确保「最新版」缓存不陈旧。
+        版本行文案与「更新」按钮的显隐都由 3s 轮询读缓存自动跟上。
+        """
+        import time as _time
+
+        while True:
+            try:
+                svc.dsh_version()
+                svc.dsh_latest_version()
+            except Exception:
+                pass
+            _time.sleep(300)
 
     # ---------- 通用 ----------
 
@@ -265,8 +285,11 @@ class ServicesTab(Tab):
         self.btn_dsh_copydom = PushButton("复制域名")
         self.btn_dsh_copykey = PushButton("复制密钥")
         self.btn_dsh_rekey = PushButton("换密钥")
+        self.btn_dsh_update = PushButton("🔄 更新")
+        # 默认隐藏：只有后台确认「检测到有更新」时 _refresh_all 才显示（判断不了也隐藏）
+        self.btn_dsh_update.setVisible(False)
         row = QtWidgets.QHBoxLayout()
-        for b in (self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_copydom, self.btn_dsh_copykey, self.btn_dsh_rekey):
+        for b in (self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_copydom, self.btn_dsh_copykey, self.btn_dsh_rekey, self.btn_dsh_update):
             row.addWidget(b)
         row.addStretch(1)
         lay.addWidget(self.lbl_dsh)
@@ -277,6 +300,8 @@ class ServicesTab(Tab):
         self.btn_dsh_copydom.clicked.connect(lambda: self._copy(svc.dsh_domain(), "dsh 隧道域名已复制"))
         self.btn_dsh_copykey.clicked.connect(lambda: self._copy(svc.dsh_password(), "dsh 密钥已复制"))
         self.btn_dsh_rekey.clicked.connect(self._rekey_dsh)
+        # 更新按钮：后端先查 registry，只有检测到有更新时才安装（已是最新则不动）
+        self.btn_dsh_update.clicked.connect(lambda: self._run_action("dsh 更新", svc.dsh_update))
         self.add_card("🧠 dsh", w)
 
     def _toggle_dsh(self) -> None:
@@ -415,6 +440,8 @@ class ServicesTab(Tab):
             self.btn_dsh_toggle.setText("关闭" if svc.dsh_running() else "启动")
             # 隧道按钮动态文案：按隧道当前状态——开着→关隧道，关着→开隧道
             self.btn_dsh_tunnel.setText("⏹ 关隧道" if svc.dsh_tunnel_running() else "🌐 开隧道")
+            # 更新按钮：只在后台确认「检测到有更新」时显示（只读缓存，判断不了/已是最新都隐藏）
+            self.btn_dsh_update.setVisible(svc.dsh_has_update_cached() is True)
             proto = svc.cloudflared_protocol()
             self.btn_cf_http2.setText("✅ HTTP/2" if proto == "http2" else "HTTP/2")
             self.btn_cf_quic.setText("✅ QUIC" if proto == "quic" else "QUIC")
@@ -426,7 +453,7 @@ class ServicesTab(Tab):
         return [
             self.btn_cs_toggle, self.btn_cf_toggle, self.btn_cf_http2, self.btn_cf_quic,
             self.btn_cf_custom, self.btn_cf_custom_stop,
-            self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_rekey,
+            self.btn_dsh_toggle, self.btn_dsh_tunnel, self.btn_dsh_rekey, self.btn_dsh_update,
         ]
 
     def _set_busy(self, busy: bool) -> None:
