@@ -59,6 +59,11 @@ export async function unwrap<R extends Result>(req: Promise<R>): Promise<NonNull
   return result.data as NonNullable<R['data']>
 }
 
+/** PAT 最小长度（前端先挡，与后端约定一致）。返回错误文案或 null。 */
+export const PAT_MIN_LENGTH = 8
+export const patError = (value: string): string | null =>
+  value.length < PAT_MIN_LENGTH ? `PAT 至少 ${PAT_MIN_LENGTH} 个字符` : null
+
 export function originOf(url: string): string | null {
   try {
     return new URL(url).origin

@@ -28,9 +28,52 @@ const isActive = computed(
     ctx.ado.data.value?.active_library_id === props.project.library_id,
 )
 
+/** 编辑基线：开始编辑（选中/新建）时的字段值与当时的 revision；外部变更不改它。 */
+type Fields = { library_id: string; collection: string; project: string }
+let baseline: Fields & { revision: number | null } = {
+  library_id: '',
+  collection: '',
+  project: '',
+  revision: null,
+}
+function captureBaseline() {
+  baseline = {
+    library_id: props.project?.library_id ?? '',
+    collection: props.project?.collection ?? '',
+    project: props.project?.project ?? '',
+    revision: ctx.ado.data.value?.revision ?? null,
+  }
+}
+
+/** revision_conflict 后：用户改过的字段保留，未改字段换成服务器新值，基线整体更新。 */
+function mergeConflict(): boolean {
+  const fresh = ctx.ado.data.value
+  const p = fresh?.projects.find((x) => x.id === props.project?.id)
+  if (!fresh || !p) return false
+  if (libraryId.value === baseline.library_id) libraryId.value = p.library_id
+  if (collection.value.trim() === baseline.collection) collection.value = p.collection
+  if (projectName.value.trim() === baseline.project) projectName.value = p.project
+  baseline = {
+    library_id: p.library_id,
+    collection: p.collection,
+    project: p.project,
+    revision: fresh.revision,
+  }
+  return true
+}
+
+/** setActive 用缓存 revision：若只有本次写入推进了 revision，则基线随之前进。 */
+async function activate() {
+  const r = await ctx.setActive(props.project!.library_id, props.project!.id)
+  const d = r.ok ? (r.data as { revision?: number }) : undefined
+  if (r.ok && r.rev !== null && r.rev === baseline.revision && typeof d?.revision === 'number')
+    baseline.revision = d.revision
+}
+
 watch(
   () => props.project?.id ?? null,
   () => {
+    captureBaseline()
     libraryId.value = props.project?.library_id ?? libraries.value[0]?.id ?? ''
     collection.value = props.project?.collection ?? ''
     projectName.value = props.project?.project ?? ''
@@ -68,10 +111,15 @@ async function save() {
   }
   const p = props.project!
   const body: { library_id?: string; collection?: string; project?: string } = {}
-  if (libraryId.value !== p.library_id) body.library_id = libraryId.value
-  if (collection.value.trim() !== p.collection) body.collection = collection.value.trim()
-  if (projectName.value.trim() !== p.project) body.project = projectName.value.trim()
-  if (Object.keys(body).length) await ctx.patchProject(p.id, body)
+  if (libraryId.value !== baseline.library_id) body.library_id = libraryId.value
+  if (collection.value.trim() !== baseline.collection) body.collection = collection.value.trim()
+  if (projectName.value.trim() !== baseline.project) body.project = projectName.value.trim()
+  if (!Object.keys(body).length) return
+  const r = await ctx.patchProject(p.id, body, {
+    ...(baseline.revision !== null ? { revision: baseline.revision } : {}),
+    onConflict: mergeConflict,
+  })
+  if (r.ok) baseline = { ...baseline, ...body, revision: r.data.revision }
 }
 
 async function fetchRemote() {
@@ -147,7 +195,7 @@ async function remove() {
         variant="ghost"
         data-testid="project-activate"
         :disabled="disabled || isActive"
-        @click="ctx.setActive(project!.library_id, project!.id)"
+        @click="activate"
       >
         设为当前
       </AppButton>

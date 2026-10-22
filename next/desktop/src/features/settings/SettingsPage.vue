@@ -80,6 +80,9 @@ const ASIDE: Record<string, string> = {
     <ul v-if="ctx.notice.value.tasks?.length" class="st-list" data-testid="notice-tasks">
       <li v-for="t in ctx.notice.value.tasks" :key="t">{{ t }}</li>
     </ul>
+    <ul v-if="ctx.notice.value.warnings?.length" class="st-list" data-testid="notice-warnings">
+      <li v-for="w in ctx.notice.value.warnings" :key="w">{{ w }}</li>
+    </ul>
     <button type="button" class="close" @click="ctx.clearNotice()">关闭提示</button>
   </section>
 

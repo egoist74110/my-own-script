@@ -6,6 +6,7 @@ import TextInput from '@/components/TextInput.vue'
 import {
   CATEGORY_TEXT,
   originOf,
+  patError,
   type ApiError,
   type ConnectionResult,
   type LibraryView,
@@ -26,7 +27,8 @@ const pat = ref('')
 const collection = ref('')
 const result = ref<ConnectionResult | null>(null)
 const confirmDelete = ref(false)
-const originChange = ref<string | null>(null)
+/** 待确认的 origin 变更：冻结的完整请求体与目标 origin（确认只提交它，期间名称/地址输入禁用）。 */
+const pending = ref<{ body: { name?: string; base_url?: string }; origin: string } | null>(null)
 const localError = ref<string | null>(null)
 
 const isNew = computed(() => props.library === null)
@@ -35,16 +37,59 @@ const projects = computed(() =>
 )
 const disabled = computed(() => ctx.busy.value || !ctx.writable.value)
 
+/** 编辑基线：开始编辑（选中/新建）时的字段值与当时的 revision；外部变更不改它。 */
+let baseline: { name: string; base_url: string; revision: number | null } = {
+  name: '',
+  base_url: '',
+  revision: null,
+}
+function captureBaseline() {
+  baseline = {
+    name: props.library?.name ?? '',
+    base_url: props.library?.base_url ?? '',
+    revision: ctx.ado.data.value?.revision ?? null,
+  }
+}
+const baseOpts = () => ({
+  ...(baseline.revision !== null ? { revision: baseline.revision } : {}),
+  onConflict: mergeConflict,
+})
+
+/** revision_conflict 后：用户改过的字段保留，未改字段换成服务器新值，基线整体更新。 */
+function mergeConflict(): boolean {
+  pending.value = null
+  const fresh = ctx.ado.data.value
+  const lib = fresh?.libraries.find((l) => l.id === props.library?.id)
+  if (!fresh || !lib) return false
+  if (name.value.trim() === baseline.name) name.value = lib.name
+  if (baseUrl.value.trim() === baseline.base_url) baseUrl.value = lib.base_url
+  baseline = { name: lib.name, base_url: lib.base_url, revision: fresh.revision }
+  return true
+}
+
+function applySaved(body: { name?: string; base_url?: string }, revision: number) {
+  baseline = { ...baseline, ...body, revision }
+  pending.value = null
+}
+
+/** PAT 类写操作用缓存 revision：若只有本次写入推进了 revision，则基线随之前进。 */
+function advanceBaseline(r: { ok: boolean; rev: number | null; data?: unknown }) {
+  const d = r.data as { revision?: number } | undefined
+  if (r.ok && r.rev !== null && r.rev === baseline.revision && typeof d?.revision === 'number')
+    baseline.revision = d.revision
+}
+
 watch(
   () => props.library?.id ?? null,
   () => {
+    captureBaseline()
     name.value = props.library?.name ?? ''
     baseUrl.value = props.library?.base_url ?? ''
     pat.value = ''
     collection.value = projects.value[0]?.collection ?? ''
     result.value = null
     confirmDelete.value = false
-    originChange.value = null
+    pending.value = null
     localError.value = null
   },
   { immediate: true },
@@ -63,18 +108,24 @@ async function create() {
   localError.value = validate()
   if (localError.value) return
   const value = pat.value
+  if (value) {
+    localError.value = patError(value)
+    if (localError.value) return
+  }
+  let sent = false
   try {
     const r = await ctx.createLibrary(name.value.trim(), baseUrl.value.trim(), value || null)
+    sent = r.sent
     if (r.ok && r.data.id) emit('select', r.data.id)
   } finally {
-    pat.value = ''
+    if (sent) pat.value = ''
   }
 }
 
 function changed() {
   const body: { name?: string; base_url?: string } = {}
-  if (name.value.trim() !== props.library!.name) body.name = name.value.trim()
-  if (baseUrl.value.trim() !== props.library!.base_url) body.base_url = baseUrl.value.trim()
+  if (name.value.trim() !== baseline.name) body.name = name.value.trim()
+  if (baseUrl.value.trim() !== baseline.base_url) body.base_url = baseUrl.value.trim()
   return body
 }
 
@@ -83,52 +134,81 @@ async function save() {
   if (localError.value || !props.library) return
   const body = changed()
   if (!Object.keys(body).length) return
-  const r = await ctx.patchLibrary(props.library.id, body, (e: ApiError) => {
-    if (e.code !== 'pat_origin_change') return false
-    originChange.value = originOf(baseUrl.value.trim())
-    return true
-  })
-  if (r.ok) originChange.value = null
+  const r = await ctx.patchLibrary(
+    props.library.id,
+    body,
+    (e: ApiError) => {
+      if (e.code !== 'pat_origin_change') return false
+      pending.value = {
+        body: { ...body },
+        origin: originOf(body.base_url ?? baseline.base_url) ?? '',
+      }
+      return true
+    },
+    baseOpts(),
+  )
+  if (r.ok) applySaved(body, r.data.revision)
 }
 
 async function resolveOrigin(mode: 'keep' | 'replace') {
-  if (!props.library) return
+  const frozen = pending.value
+  if (!props.library || !frozen) return
   const value = pat.value
-  if (mode === 'replace' && !value) {
-    localError.value = '请输入新的 PAT'
-    return
+  if (mode === 'replace') {
+    localError.value = !value ? '请输入新的 PAT' : patError(value)
+    if (localError.value) return
   }
   localError.value = null
+  let sent = false
   try {
-    const r = await ctx.patchLibrary(props.library.id, {
-      ...changed(),
-      ...(mode === 'keep' ? { keep_pat: true } : { pat: value }),
-    })
-    if (r.ok) originChange.value = null
+    const r = await ctx.patchLibrary(
+      props.library.id,
+      { ...frozen.body, ...(mode === 'keep' ? { keep_pat: true } : { pat: value }) },
+      undefined,
+      baseOpts(),
+    )
+    sent = r.sent
+    if (r.ok) applySaved(frozen.body, r.data.revision)
   } finally {
-    pat.value = ''
+    if (sent) pat.value = ''
   }
 }
 
 async function savePat() {
   if (!props.library || !pat.value) return
   const value = pat.value
+  localError.value = patError(value)
+  if (localError.value) return
+  let sent = false
   try {
-    await ctx.putPat(props.library.id, value)
+    const r = await ctx.putPat(props.library.id, value)
+    sent = r.sent
+    advanceBaseline(r)
   } finally {
-    pat.value = ''
+    if (sent) pat.value = ''
   }
+}
+
+async function removePat() {
+  if (!props.library) return
+  advanceBaseline(await ctx.deletePat(props.library.id))
 }
 
 async function test() {
   if (!props.library) return
   const value = pat.value
+  if (value) {
+    localError.value = patError(value)
+    if (localError.value) return
+  }
   result.value = null
+  let sent = false
   try {
     const r = await ctx.testConnection(props.library.id, collection.value.trim(), value || null)
+    sent = r.sent
     if (r.ok) result.value = r.data
   } finally {
-    pat.value = ''
+    if (sent) pat.value = ''
   }
 }
 
@@ -157,11 +237,21 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
 
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">名称</span>
-      <TextInput v-model="name" label="library 名称" placeholder="例如：公司 ADO" />
+      <TextInput
+        v-model="name"
+        label="library 名称"
+        placeholder="例如：公司 ADO"
+        :disabled="!!pending"
+      />
     </div>
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">地址</span>
-      <TextInput v-model="baseUrl" label="library 地址" placeholder="https://ado.example.com/tfs" />
+      <TextInput
+        v-model="baseUrl"
+        label="library 地址"
+        placeholder="https://ado.example.com/tfs"
+        :disabled="!!pending"
+      />
       <BlockTag v-if="isHttp" tone="warn" data-testid="http-warning"
         >HTTP 明文：PAT 将以明文传输</BlockTag
       >
@@ -172,15 +262,18 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
     </p>
 
     <div
-      v-if="originChange"
+      v-if="pending"
       class="st-box"
       data-tone="warn"
       role="alert"
       data-testid="pat-origin-change"
     >
       <strong class="st-warn">PAT 将发往新地址</strong>
-      <div class="st-mono">{{ originChange }}</div>
-      <div>地址的 origin 变了。请明确选择：保留已存 PAT（发往新地址），或输入新 PAT 替换。</div>
+      <div class="st-mono">{{ pending.origin }}</div>
+      <div>
+        地址的 origin 变了。请明确选择：保留已存 PAT（发往新地址），或输入新 PAT
+        替换。确认期间名称与地址已锁定。
+      </div>
       <div class="st-actions">
         <AppButton
           variant="ghost"
@@ -197,6 +290,9 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
           @click="resolveOrigin('replace')"
         >
           用输入框中的 PAT 替换
+        </AppButton>
+        <AppButton variant="ghost" data-testid="origin-cancel" @click="pending = null">
+          取消修改地址
         </AppButton>
       </div>
     </div>
@@ -231,7 +327,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
         </dd>
       </dl>
       <div class="st-actions">
-        <AppButton data-testid="library-save" :disabled="disabled" @click="save"
+        <AppButton data-testid="library-save" :disabled="disabled || !!pending" @click="save"
           >保存修改</AppButton
         >
         <AppButton
@@ -247,7 +343,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
           variant="ghost"
           data-testid="pat-delete"
           :disabled="disabled"
-          @click="ctx.deletePat(library!.id)"
+          @click="removePat"
         >
           删除 PAT
         </AppButton>

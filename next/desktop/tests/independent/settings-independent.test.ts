@@ -321,7 +321,7 @@ describe('409 与错误码文案', () => {
     await click(b, 'library-save')
     expect(patchesOf(fake)).toHaveLength(1)
     expect(byTid(b, 'settings-notice').attributes('role')).toBe('alert')
-    expect(byTid(b, 'settings-notice').text()).toContain('已刷新')
+    expect(byTid(b, 'settings-notice').text()).toContain('已合并最新内容')
     await flushPromises()
     expect(patchesOf(fake)).toHaveLength(1)
     await click(b, 'library-save')

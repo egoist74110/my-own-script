@@ -353,7 +353,7 @@ describe('ADO 连接：增改删与校验', () => {
     await click(b, 'library-save')
     expect(fake.calls.filter((c) => c.method === 'PATCH')).toHaveLength(1)
     expect(fake.to('GET', '/api/ado').length).toBeGreaterThan(before)
-    expect(byTid(b, 'settings-notice').text()).toContain('已刷新')
+    expect(byTid(b, 'settings-notice').text()).toContain('已合并最新内容')
     await b.done()
   })
 

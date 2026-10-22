@@ -19,9 +19,27 @@ export interface Notice {
   kind: 'ok' | 'warn' | 'error'
   text: string
   tasks?: string[]
+  warnings?: string[]
 }
 
-export type ActResult<T> = { ok: true; data: T } | { ok: false; error: ApiError }
+/**
+ * `sent`：请求是否真正发出（被 busy/不可写/未加载拒绝的为 false，调用方据此决定是否清空 PAT）。
+ * `rev`：本次写请求所用的 revision（未发出为 null）。
+ */
+export type ActResult<T> =
+  | { ok: true; data: T; sent: boolean; rev: number | null }
+  | { ok: false; error: ApiError; sent: boolean; rev: number | null }
+
+export interface ActOptions {
+  /** 默认 true：写操作（受 writable 约束、可能带 warnings）；只读类 POST/GET 传 false。 */
+  write?: boolean
+  /** revision_conflict 刷新后调用；返回 true 表示调用方已按基线合并，提示改用合并文案。 */
+  onConflict?: () => boolean
+  /** 显式 revision（编辑基线）；缺省用缓存中的最新值。 */
+  revision?: number
+}
+
+const PREFLIGHT = new Set(['busy', 'not_writable', 'not_loaded', 'not_connected'])
 
 const QK = ['settings'] as const
 
@@ -62,7 +80,17 @@ export function useSettingsContext() {
     () => void qc.invalidateQueries({ queryKey: QK }),
   )
 
-  const writable = computed(() => overview.data.value?.store_state === 'ok')
+  // 写请求收到 503 store_unavailable 后置位，直到刷新确认 store_state=ok 才解除
+  const storeFault = ref(false)
+  // 任何一次 overview 刷新确认 store_state=ok（含 settings.changed 触发的）即解除
+  watch(
+    () => overview.dataUpdatedAt.value,
+    () => {
+      if (overview.isSuccess.value && overview.data.value?.store_state === 'ok')
+        storeFault.value = false
+    },
+  )
+  const writable = computed(() => overview.data.value?.store_state === 'ok' && !storeFault.value)
   const revision = computed(() => ado.data.value?.revision ?? overview.data.value?.revision ?? null)
   const loadError = computed(() =>
     overview.error.value || ado.error.value || credentials.error.value ? '读取设置失败' : null,
@@ -74,6 +102,11 @@ export function useSettingsContext() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: QK })
 
+  function overviewConfirmedOk(): boolean {
+    const st = qc.getQueryState<SettingsResponse>([...QK, 'overview'])
+    return st?.status === 'success' && st.data?.store_state === 'ok'
+  }
+
   /**
    * 执行一次写操作。`handle` 返回 true 表示调用方已自行展示该错误（如 pat_origin_change），
    * 其余错误统一进 notice。revision_conflict 会刷新数据并提示。
@@ -82,24 +115,54 @@ export function useSettingsContext() {
     fn: (revision: number) => Promise<T>,
     okText?: string,
     handle?: (e: ApiError) => boolean,
+    opts: ActOptions = {},
   ): Promise<ActResult<T>> {
-    if (busy.value) return { ok: false, error: new ApiError(0, 'busy', '操作进行中') }
+    const write = opts.write ?? true
+    if (busy.value) {
+      notice.value = { kind: 'warn', text: '操作进行中，请稍候' }
+      return { ok: false, error: new ApiError(0, 'busy', '操作进行中'), sent: false, rev: null }
+    }
+    if (write && !writable.value) {
+      notice.value = { kind: 'error', text: '存储当前不可写，写操作已停用' }
+      return {
+        ok: false,
+        error: new ApiError(0, 'not_writable', '存储当前不可写'),
+        sent: false,
+        rev: null,
+      }
+    }
     busy.value = true
     notice.value = null
+    let sent = false
+    let used: number | null = null
     try {
-      const rev = revision.value
+      const rev = opts.revision ?? revision.value
       if (rev === null) throw new ApiError(0, 'not_loaded', '设置尚未加载')
+      used = rev
+      sent = true
       const data = await fn(rev)
       await refresh()
-      if (okText) notice.value = { kind: 'ok', text: okText }
-      return { ok: true, data }
+      const w = write ? (data as { warnings?: unknown } | null)?.warnings : undefined
+      const warnings = Array.isArray(w)
+        ? w.filter((x): x is string => typeof x === 'string' && x !== '')
+        : []
+      if (warnings.length) {
+        notice.value = { kind: 'warn', text: '操作已完成，但有需要留意的警告', warnings }
+      } else if (okText) {
+        notice.value = { kind: 'ok', text: okText }
+      }
+      return { ok: true, data, sent, rev: used }
     } catch (e) {
       const error = e instanceof ApiError ? e : new ApiError(0, 'unknown', '操作失败')
+      if (PREFLIGHT.has(error.code) && error.status === 0) sent = false
       if (error.code === 'revision_conflict') {
         await refresh()
+        const merged = opts.onConflict?.() ?? false
         notice.value = {
           kind: 'warn',
-          text: '配置已被其他窗口或进程更新，已刷新为最新内容，请确认后重试。',
+          text: merged
+            ? '设置已被其他窗口修改，已合并最新内容，请核对后再保存'
+            : '配置已被其他窗口或进程更新，已刷新为最新内容，请确认后重试。',
         }
       } else if (!handle?.(error)) {
         notice.value = {
@@ -108,14 +171,22 @@ export function useSettingsContext() {
           ...(error.code === 'in_use' ? { tasks: error.tasks } : {}),
         }
       }
-      return { ok: false, error }
+      if (error.code === 'store_unavailable') {
+        storeFault.value = true
+        await refresh()
+        if (overviewConfirmedOk()) storeFault.value = false
+      }
+      return { ok: false, error, sent, rev: used }
     } finally {
       busy.value = false
     }
   }
 
   const actions = {
-    previewImport: () => act(() => unwrap(api().POST('/api/settings/import/preview'))),
+    previewImport: () =>
+      act(() => unwrap(api().POST('/api/settings/import/preview')), undefined, undefined, {
+        write: false,
+      }),
     executeImport: (fingerprint: string, handle?: (e: ApiError) => boolean) =>
       act(
         () => unwrap(api().POST('/api/settings/import/execute', { body: { fingerprint } })),
@@ -138,6 +209,7 @@ export function useSettingsContext() {
       id: string,
       body: { name?: string; base_url?: string; keep_pat?: boolean; pat?: string },
       handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
     ) =>
       act(
         (revision) =>
@@ -149,6 +221,7 @@ export function useSettingsContext() {
           ),
         '已保存 library',
         handle,
+        opts,
       ),
     deleteLibrary: (id: string) =>
       act(
@@ -182,21 +255,29 @@ export function useSettingsContext() {
         'PAT 已删除',
       ),
     testConnection: (id: string, collection: string, pat: string | null) =>
-      act(() =>
-        unwrap(
-          api().POST('/api/ado/libraries/{id}/test', {
-            params: { path: { id } },
-            body: { collection, ...(pat ? { pat } : {}) },
-          }),
-        ),
+      act(
+        () =>
+          unwrap(
+            api().POST('/api/ado/libraries/{id}/test', {
+              params: { path: { id } },
+              body: { collection, ...(pat ? { pat } : {}) },
+            }),
+          ),
+        undefined,
+        undefined,
+        { write: false },
       ),
     remoteProjects: (id: string, collection: string) =>
-      act(() =>
-        unwrap(
-          api().GET('/api/ado/libraries/{id}/remote-projects', {
-            params: { path: { id }, query: { collection } },
-          }),
-        ),
+      act(
+        () =>
+          unwrap(
+            api().GET('/api/ado/libraries/{id}/remote-projects', {
+              params: { path: { id }, query: { collection } },
+            }),
+          ),
+        undefined,
+        undefined,
+        { write: false },
       ),
     createProject: (library_id: string, collection: string, project: string) =>
       act(
@@ -211,6 +292,7 @@ export function useSettingsContext() {
     patchProject: (
       id: string,
       body: { library_id?: string; collection?: string; project?: string },
+      opts?: { revision?: number; onConflict?: () => boolean },
     ) =>
       act(
         (revision) =>
@@ -221,6 +303,8 @@ export function useSettingsContext() {
             }),
           ),
         '已保存 project',
+        undefined,
+        opts,
       ),
     deleteProject: (id: string) =>
       act(
