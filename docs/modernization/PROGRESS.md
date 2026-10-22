@@ -288,7 +288,7 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | --- | --- | --- | --- | --- |
 | S1-A 后端 | codex exec，requested gpt-6.1-sol / medium（两轮，同一 session `01a16325-b180-7292-8e40-cdfb5c46dee7`），sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；actual unknown | codex exec gpt-6-luna / high，session `01a16343-2c78-73d1-b587-25a5d717be8b`，independent=true，两轮共 55 例（`tests/independent/s1/`），未发现产品缺陷 | s1a-cross round1 dispatched | passed（自动验收），集成提交 `814a921` |
 | S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df`；actual unknown（无提供方回执） | 施工者派 haiku / medium，independent=true，新增 37 例（`tests/independent/s1c-{ui,guard}.test.ts`），未发现缺陷 | s05-cross round2 dispatched | passed（自动验收），集成提交 `fd22770` |
-| S1-B 设置页 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1b` @ `c954533` | 施工者派 haiku / medium | pending | dispatched |
+| S1-B 设置页 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1b` @ `c954533`；actual unknown | 施工者派 haiku / medium，independent=true，新增 34 例（`tests/independent/settings-independent.test.ts`），未发现缺陷 | not_dispatched（待 S1-D 后与修复一并审） | passed（自动验收），集成提交 `21957f6` |
 
 请求原文与输出在 git 忽略的 `.local/dispatch/s1a/`。
 
@@ -347,3 +347,12 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 - S1-D 合同已写入 WORK_PACKAGES，排在 S1-B 集成之后（文件重叠）。
 - cleanup：审计者在会话 scratchpad 留下 `c814/`（`git archive` 导出副本，无密钥）与 `probe/`（探针脚本）；审计者与主控的删除命令均被权限拦截，未绕过，留待用户处理。
+
+### S1-B 集成（主控）
+
+- 集成：限定 `next/desktop`、`next/backend` 的 binary patch（34 文件，无缓存/产物），`git apply --check` 后应用。集成版本：前端 `typecheck`、`lint`、`build`、`guard:dist`、`contracts:check` exit 0，`rm -rf dist && pnpm test` **349 passed**；后端 `ruff` 通过，`pytest` **363 passed**；`git diff --check` 通过；旧应用守卫 `66 passed / 2 skipped`（与基线一致）。
+- 主控审阅：PAT 只在 `LibraryPanel` 局部 `ref`，每次带 PAT 的请求后在 `finally` 清空；写操作不用 `useMutation`（避免 variables 进 mutation 缓存）；密码框 `autocomplete=off`；dev 假凭据仅 `--dev`+memory，错误信息不含值。CR-S05-003 收尾：AppTabs `panelId`（`TabsTrigger as-child` 自带 id/aria-controls）+ 插槽面板；两条固化空面板的断言改为页面级断言。
+- 主控联调（`pnpm dev:web` 隔离环境，浏览器窗格 1440×960）：预览导入（4 文件存在、library 含 HTTP 明文标签与旧 PAT“已找到”、project、任务规则“由旧 flows 生成任务”、保留段、警告）→ 二次确认 → 执行，revision 0→3；ADO 连接页 library/project 与“当前”标记；凭据页“ADO PAT · 存在 · 导入 · 正常”无值；常规页数据目录为临时目录 `toolbox-dev-web-*`、旧配置目录为仓库 fixture。页面 DOM、localStorage、sessionStorage 均不含假 PAT 字符串。控制台仅有指向端口 55739 的旧 WS 报错（施工者早先会话残留于同一窗格，本次后端端口 58944 无报错）。结束：按 pid SIGTERM `pnpm dev:web`，后端退出、1420 释放、临时数据目录已删。截图未落盘（窗格截图只在会话内）。
+- 偏差：施工者报告以**进程名** SIGTERM 回收其 dev:web（违反通用合同“不按进程名批量 kill”）；事后核对无误杀，记录为流程违规，后续派工单重申按 pid 回收。施工者“测试连接后也清空 PAT 输入”比合同更严，接受。
+- 观察（未处置）：写操作 busy 时再次点击被静默忽略；busy 被拒时 PAT 输入仍被清空且无提示。列入 S1 收尾的 UX 小项。
+- 未测：Tauri 内渲染、Playwright e2e、真实 Keychain/ADO、真实浏览器 axe 扫描与焦点可见性、只读错误态的实机截图（单测覆盖）。
