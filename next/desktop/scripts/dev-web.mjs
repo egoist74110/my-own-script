@@ -14,6 +14,8 @@ const backendDir = fileURLToPath(new URL('../../backend', import.meta.url))
 const dataDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-web-'))
 const legacyDir = join(backendDir, 'tests', 'fixtures', 'legacy')
 const fakeCredentials = join(backendDir, 'tests', 'fixtures', 'dev-credentials.json')
+// 本地假 ADO（S2 合同）：后端仅在 --dev + memory 凭据下接受，出站请求改读 fixture，不连任何真实服务。
+const fakeAdo = join(backendDir, 'tests', 'fixtures', 'fake-ado')
 function removeDataDir() {
   try {
     rmSync(dataDir, { recursive: true, force: true })
@@ -83,6 +85,7 @@ function startBackend() {
         TOOLBOX_LEGACY_CONFIG_DIR: legacyDir,
         TOOLBOX_CREDENTIALS: 'memory',
         TOOLBOX_DEV_FAKE_CREDENTIALS: fakeCredentials,
+        TOOLBOX_DEV_FAKE_ADO: fakeAdo,
       },
       stdio: ['pipe', 'pipe', 'inherit'],
     })

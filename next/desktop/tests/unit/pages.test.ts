@@ -2,6 +2,8 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeSocket, alertEvent, hello, resetSeq } from './helpers'
 import { boot } from './boot'
+import { createWiFake, detail, summary } from './wi-fake'
+import { openRow, openWi, settle } from './wi-helpers'
 
 const press = (key: string, target: EventTarget = window) =>
   target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
@@ -9,6 +11,7 @@ const press = (key: string, target: EventTarget = window) =>
 beforeEach(() => {
   FakeSocket.reset()
   resetSeq()
+  localStorage.clear() // 工单页会把项目/列写入 localStorage
 })
 afterEach(() => {
   document.body.innerHTML = ''
@@ -139,55 +142,82 @@ describe('任务页', () => {
 })
 
 describe('工单页', () => {
-  it('列表 | 详情 | AI 分析：选择工单更新详情与提示词；详情 Tabs；AI 单选；复制/开始为 mock', async () => {
-    const b = await boot({ path: '/work-items' })
+  // 工单页已接真实接口（S2-B）：以下为原 mock 断言的等价版本，数据来自按 openapi 形状的假后端
+  const wiFake = () => {
+    const f = createWiFake()
+    f.lists['proj:a|开发中'] = {
+      items: [
+        summary(48213, { title: '权限缓存未刷新' }),
+        summary(48177, { title: '移动端上传头像' }),
+        summary(48100),
+      ],
+      truncated: false,
+      omitted: 0,
+    }
+    f.lists['proj:a|新建'] = {
+      items: [summary(1, { title: '新建一' }), summary(2)],
+      truncated: false,
+      omitted: 0,
+    }
+    f.details[48213] = detail(48213, {
+      title: '权限缓存未刷新',
+      child_ids: [1, 2, 3],
+      attachments: [
+        {
+          name: 'x.png',
+          size: 1,
+          is_image: true,
+          media_id: null,
+          blocked_origin: 'https://cdn.example.test:443',
+        },
+      ],
+    })
+    f.details[48177] = detail(48177, { title: '移动端上传头像' })
+    f.comments[48213] = {
+      comments: [
+        { id: 1, author: 'a', created_date: null, modified_date: null, html: '<p>只读成员</p>' },
+      ],
+      truncated: false,
+    }
+    return f
+  }
+
+  it('列表 | 详情 | 检查器：选择工单更新详情；详情五个页签；AI 面板整体禁用（S5）', async () => {
+    const b = await openWi(wiFake())
     const w = b.wrapper
     expect(w.get('h1').text()).toBe('工单')
     expect(w.findAll('[data-testid^=wi-row-]')).toHaveLength(3) // 默认列「开发中」
-    expect(w.get('section[aria-label=工单详情]').text()).toContain('#48213')
-    expect(w.get('[data-testid=wi-prompt]').text()).toContain('#48213')
-    expect(w.find('[data-testid=wi-ai]').exists()).toBe(true)
-    expect(w.get('[data-testid=wi-ai]').text()).toContain('AI 分析')
+    expect(w.find('section[aria-label=工单详情]').text()).toContain('选择一个工单')
+    expect(w.get('[data-testid=wi-ai]').text()).toContain('S5')
 
-    await w.get('[data-testid=wi-row-48177]').trigger('click')
+    await openRow(b, 48177)
     expect(w.get('section[aria-label=工单详情]').text()).toContain('移动端上传头像')
-    expect(w.get('[data-testid=wi-prompt]').text()).toContain('#48177')
-    await w.get('[data-testid=wi-row-48213]').trigger('click')
-
+    await openRow(b, 48213)
     const detailTabs = w.get('section[aria-label=工单详情]').findAll('[role=tab]')
     expect(detailTabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual([
       '描述',
-      '评论 2',
+      '评论',
       '子项 3',
-      '附件 2',
-      '关联 PR 1',
+      '历史',
+      '附件 1',
     ])
     await detailTabs[1]!.trigger('mousedown', { button: 0 })
     await flushPromises()
     expect(w.get('[data-testid=wi-body]').text()).toContain('只读成员')
-    await detailTabs[3]!.trigger('mousedown', { button: 0 })
+    await detailTabs[4]!.trigger('mousedown', { button: 0 })
     await flushPromises()
-    expect(w.get('[data-testid=wi-body]').text()).toContain('外部图片已拦截')
-
-    const radios = w.findAll('[role=radio]')
-    expect(radios.map((r) => r.attributes('aria-checked'))).toEqual(['true', 'false', 'false'])
-    await w.get('[data-testid=agent-codex]').trigger('click')
-    expect(w.get('[data-testid=agent-codex]').attributes('aria-checked')).toBe('true')
-    expect(w.get('[data-testid=agent-claude]').attributes('aria-checked')).toBe('false')
-
-    expect(w.get('[data-testid=copy-prompt]').text()).toBe('复制提示词')
-    await w.get('[data-testid=copy-prompt]').trigger('click')
-    expect(w.get('[data-testid=copy-prompt]').text()).toBe('已复制')
-    await w.get('[data-testid=start-analysis]').trigger('click')
-    expect(w.get('[data-testid=start-analysis]').text()).toContain('mock')
+    expect(w.get('[data-testid=wi-body]').text()).toContain('已拦截外部附件')
+    for (const btn of w.get('[data-testid=wi-ai]').findAll('button')) {
+      expect(btn.attributes('disabled')).toBeDefined()
+    }
     await b.done()
   })
 
   it('看板列切换与搜索', async () => {
-    const b = await boot({ path: '/work-items' })
+    const b = await openWi(wiFake())
     const colTabs = b.wrapper.get('[role=tablist][aria-label=看板列]').findAll('[role=tab]')
     await colTabs[0]!.trigger('mousedown', { button: 0 })
-    await flushPromises()
+    await settle()
     expect(b.wrapper.findAll('[data-testid^=wi-row-]')).toHaveLength(2)
     await b.wrapper.get('input[type=search]').setValue('不存在')
     expect(b.wrapper.text()).toContain('没有匹配的工单')
@@ -195,13 +225,12 @@ describe('工单页', () => {
   })
 
   it('告警态：横幅出现且页面按钮仍可点击', async () => {
-    const b = await boot({ path: '/work-items' })
-    b.sock.emit(hello())
+    const b = await openWi(wiFake())
     b.sock.emit(alertEvent(true, 'x'))
     await flushPromises()
     expect(b.wrapper.find('[data-testid=alert-banner]').exists()).toBe(true)
-    await b.wrapper.get('[data-testid=copy-prompt]').trigger('click')
-    expect(b.wrapper.get('[data-testid=copy-prompt]').text()).toBe('已复制')
+    await openRow(b, 48213)
+    expect(b.wrapper.get('[data-testid=wi-row-48213]').attributes('aria-current')).toBe('true')
     await b.done()
   })
 })

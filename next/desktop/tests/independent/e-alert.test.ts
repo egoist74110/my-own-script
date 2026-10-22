@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { boot, json } from '../unit/boot'
 import { FakeSocket, env, resetSeq } from '../unit/helpers'
+import { createWiFake, summary } from '../unit/wi-fake'
 
 const DEFAULT_REASON = '后端报告告警（未提供原因）'
 const QUIET = { active: false, reason: null, changed_at: '2026-10-22T10:00:00Z' }
@@ -168,18 +169,19 @@ describe('告警态：同时出现在横幅、任务行、检查器、导航角�
   })
 
   it('告警横幅在 /work-items 与 /ai 页同样出现，页面内容仍渲染', async () => {
+    // /work-items 页内容由真实接口提供（假后端），不再是 mock 行
+    const wi = createWiFake()
+    wi.lists['proj:a|开发中'] = { items: [summary(7)], truncated: false, omitted: 0 }
     for (const path of ['/work-items', '/ai']) {
-      const b = await boot({ path })
+      const b = await boot({ path, ...(path === '/work-items' ? { fetchImpl: wi.fetch } : {}) })
+      b.sock.emit(helloEnv(99))
       b.sock.emit(alertEnv(100, true, 'x'))
       await flushPromises()
       await vi.waitFor(() => {
         expect(b.wrapper.find('[data-testid=alert-banner]').exists()).toBe(true)
       })
       if (path === '/work-items') {
-        expect(
-          b.wrapper.find('[data-testid=wi-row-w1]').exists() ||
-            b.wrapper.find('[data-testid^=wi-row-]').exists(),
-        ).toBe(true)
+        await vi.waitFor(() => expect(b.wrapper.find('[data-testid=wi-row-7]').exists()).toBe(true))
       } else {
         expect(b.wrapper.find('[data-testid=session-s1]').exists()).toBe(true)
       }

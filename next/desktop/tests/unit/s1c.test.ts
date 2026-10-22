@@ -8,8 +8,24 @@ import { ref } from 'vue'
 import AppTabs from '@/components/AppTabs.vue'
 import { tabTriggerId } from '@/components/tabs'
 import { scan } from '../../scripts/forbidden-scan.mjs'
-import { FakeSocket, resetSeq } from './helpers'
+import { FakeSocket, hello, resetSeq } from './helpers'
 import { boot, bootUnconnected } from './boot'
+import { createWiFake, detail, summary } from './wi-fake'
+
+/** 工单页真实接口的假后端（原 mock 数据的等价物）。 */
+function wiFetch() {
+  const f = createWiFake()
+  f.lists['proj:a|开发中'] = { items: [summary(48213)], truncated: false, omitted: 0 }
+  f.lists['proj:a|新建'] = { items: [summary(1)], truncated: false, omitted: 0 }
+  f.details[48213] = detail(48213)
+  f.comments[48213] = {
+    comments: [
+      { id: 1, author: 'a', created_date: null, modified_date: null, html: '<p>只读成员</p>' },
+    ],
+    truncated: false,
+  }
+  return f.fetch
+}
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'src', p), 'utf8')
 const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
@@ -19,6 +35,7 @@ const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')
 beforeEach(() => {
   FakeSocket.reset()
   resetSeq()
+  localStorage.clear() // 工单页会把项目/列写入 localStorage
 })
 afterEach(() => {
   document.body.innerHTML = ''
@@ -139,12 +156,14 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
   // 页面级：当前页签 aria-controls 解析到的元素可见，包含当前真实内容，并由当前页签标注
   const pageCases: [string, string, string, string][] = [
     ['/tasks', '视图', 'task-row-t1', '运行中'],
-    ['/work-items', '看板列', 'wi-row-48213', '测试中'],
+    ['/work-items', '看板列', 'wi-row-48213', '新建'],
     ['/ai', '按 AI 筛选', 'session-s1', 'Claude'],
   ]
   for (const [path, label, testid, other] of pageCases) {
     it(`${path}：「${label}」当前页签的 aria-controls 指向可见、含真实内容的 tabpanel（切换后仍成立）`, async () => {
-      const b = await boot({ path })
+      const b = await boot({ path, ...(path === '/work-items' ? { fetchImpl: wiFetch() } : {}) })
+      b.sock.emit(hello())
+      await flushPromises()
       await flushPromises()
       const list = b.wrapper.get(`[role=tablist][aria-label="${label}"]`)
       const check = () => {
@@ -169,7 +188,11 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
   }
 
   it('/work-items 详情页签：面板是真实 tabpanel，显示当前页签的真实内容', async () => {
-    const b = await boot({ path: '/work-items' })
+    const b = await boot({ path: '/work-items', fetchImpl: wiFetch() })
+    b.sock.emit(hello())
+    for (let i = 0; i < 5; i++) await flushPromises()
+    await b.wrapper.get('[data-testid=wi-row-48213]').trigger('click')
+    await flushPromises()
     await flushPromises()
     const list = b.wrapper.get('[role=tablist][aria-label="工单内容"]')
     const current = list.get('[role=tab][aria-selected=true]')
@@ -179,6 +202,7 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
     expect(panel.querySelector('[data-testid=wi-body]')).not.toBeNull()
     const comments = list.findAll('[role=tab]').find((t) => t.text().includes('评论'))!
     await comments.trigger('mousedown')
+    await flushPromises()
     await flushPromises()
     const cur = list.get('[role=tab][aria-selected=true]')
     const p2 = document.getElementById(cur.attributes('aria-controls')!)!

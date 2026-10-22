@@ -590,7 +590,8 @@ describe('页签：可访问关联与键盘', () => {
     expect(panel.getAttribute('role')).toBe('tabpanel')
     expect(panel.getAttribute('aria-labelledby')).toBe(sel().attributes('id'))
     const before = sel().text()
-    await b.wrapper.findAll('[role=tab]')[1]!.trigger('keydown', { key: 'ArrowRight' })
+    // 看板列固定为五列、默认「开发中」（mock 删除后不再是原来的列序）：在当前选中的页签上按 →
+    await sel().trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
     expect(sel().text()).not.toBe(before)
     expect(panel.getAttribute('aria-labelledby')).toBe(sel().attributes('id'))

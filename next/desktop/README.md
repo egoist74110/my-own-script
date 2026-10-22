@@ -1,22 +1,22 @@
 # TOOLBOX 桌面前端（S0.5：方向 E 液态玻璃 × 游戏 UI · 工具优先）
 
 Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + vue-query。
-骨架：208px 侧栏（编号导航 + Pinned）｜主区（工具栏 + 内容）｜可收起的右侧检查器｜底部状态栏。三屏 mock：任务 `/tasks`、工单 `/work-items`、AI 会话 `/ai`（`/` 重定向 `/tasks`）。
+骨架：208px 侧栏（编号导航 + Pinned）｜主区（工具栏 + 内容）｜可收起的右侧检查器｜底部状态栏。任务 `/tasks` 与 AI 会话 `/ai` 仍是 mock；工单 `/work-items` 已接真实接口（S2-B）；设置 `/settings` 已接真实接口（`/` 重定向 `/tasks`）。
 
 ## 命令（在 `next/desktop`）
 
-| 命令                             | 作用                                                                                                                                               |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | 安装依赖（pnpm-lock.yaml 入库）                                                                                                                    |
-| `pnpm dev:web`                   | 拉起 `../backend`（`uv run python -m toolbox_backend --dev`），解析 READY 行，把端口/token 以环境变量注入 vite（1420，strictPort），退出时回收后端 |
-| `pnpm dev`                       | 只启动 vite（Tauri `beforeDevCommand` 用；连接信息由 Tauri 命令 `backend_connection` 提供）                                                        |
-| `pnpm typecheck`                 | vue-tsc                                                                                                                                            |
-| `pnpm lint`                      | ESLint（flat）+ Prettier 检查                                                                                                                      |
-| `pnpm test`                      | Vitest（jsdom，假 WebSocket / 假 fetch / 假定时器，不连任何真实服务）                                                                              |
-| `pnpm build`                     | 类型检查 + vite build                                                                                                                              |
-| `pnpm guard:dist`                | 产物禁词守卫（Rhine/Arknights/莱茵/fonts.googleapis 与残留 `--denied`）；**必须在 `pnpm build` 之后**单独运行，dist 不存在即失败                   |
-| `pnpm contracts:gen`             | `../contracts/openapi.json` -> `src/api/schema.d.ts`                                                                                               |
-| `pnpm contracts:check`           | 重新生成并与入库文件比对                                                                                                                           |
+| 命令                             | 作用                                                                                                                                                                                                                                                      |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | 安装依赖（pnpm-lock.yaml 入库）                                                                                                                                                                                                                           |
+| `pnpm dev:web`                   | 拉起 `../backend`（`uv run python -m toolbox_backend --dev`，带 `TOOLBOX_DEV_FAKE_ADO` 指向 `../backend/tests/fixtures/fake-ado`，工单页读本地假 ADO，不连真实服务），解析 READY 行，把端口/token 以环境变量注入 vite（1420，strictPort），退出时回收后端 |
+| `pnpm dev`                       | 只启动 vite（Tauri `beforeDevCommand` 用；连接信息由 Tauri 命令 `backend_connection` 提供）                                                                                                                                                               |
+| `pnpm typecheck`                 | vue-tsc                                                                                                                                                                                                                                                   |
+| `pnpm lint`                      | ESLint（flat）+ Prettier 检查                                                                                                                                                                                                                             |
+| `pnpm test`                      | Vitest（jsdom，假 WebSocket / 假 fetch / 假定时器，不连任何真实服务）                                                                                                                                                                                     |
+| `pnpm build`                     | 类型检查 + vite build                                                                                                                                                                                                                                     |
+| `pnpm guard:dist`                | 产物禁词守卫（Rhine/Arknights/莱茵/fonts.googleapis 与残留 `--denied`）；**必须在 `pnpm build` 之后**单独运行，dist 不存在即失败                                                                                                                          |
+| `pnpm contracts:gen`             | `../contracts/openapi.json` -> `src/api/schema.d.ts`                                                                                                                                                                                                      |
+| `pnpm contracts:check`           | 重新生成并与入库文件比对                                                                                                                                                                                                                                  |
 
 ## 连接与安全
 
@@ -30,7 +30,7 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 - `src/app`：壳（`App.vue`）、路由、runtime、`inspector.ts`（检查器容器注入）、`mock/`（侧栏 Pinned、状态栏 VPN/TG/MCP 的 mock）。
 - `src/design`：`tokens.css`（令牌）、`ui.css`（玻璃/切角/斜切/条纹/动效关键帧）、`app.css`（入口与 body 背景）。
 - `src/components`：基础组件；`ui/` 为 shadcn-vue 拷入件（仅 Switch）。
-- `src/features/{tasks,work-items,ai}`：页面；各自 `mock/` 放虚构数据。feature 之间不互相引用内部文件。
+- `src/features/{tasks,ai}`：页面；各自 `mock/` 放虚构数据。`src/features/work-items`：工单页（真实接口，无 mock）。feature 之间不互相引用内部文件。
 - `src/shared/cn.ts`：类名合并。注意不能放 `src/lib/`（仓库根 `.gitignore` 的 `lib/` 规则会让它不入库）。
 - `src/api`、`src/stores`：连接、客户端、事件、Pinia（`backend` 连接/告警；`ui` 检查器开合）。
 - 测试在 `tests/unit`；`tests/independent` 为独立验证用例目录。`pnpm test` 不依赖 `dist/`（源码禁词仍在测试里检查）；产物检查用 `pnpm guard:dist`（build 之后）。测试夹具 `tests/unit/boot.ts`：`boot()` 起连接，`bootUnconnected()` 不调用 `runtime.start()`（用于“未取得连接”场景）。
@@ -50,3 +50,12 @@ mock 只在 `src/features/<feature>/mock/` 与 `src/app/mock/`。页面只调用
 ## 来源
 
 视觉语言与字体许可见 `../THIRD_PARTY.md`。设计参考见 `docs/modernization/design/e-tool-first/`（只作参考，未拷贝）。
+
+## 工单页（S2-B）
+
+- 取数：vue-query，键 `['work-items','ado']` 与 `['work-items','p',projectId,...]`；`staleTime` 30s、不因窗口聚焦重取、工具栏「刷新」强制重取；切换项目清掉旧项目查询；`settings.changed` 使全部 `work-items` 查询失效。看板列固定五列（默认「开发中」），只请求当前列；筛选与分页（10/50/100）在前端。
+- `localStorage`（键 `toolbox.work-items.selection`）只存 `{project_id, column}`，读写 try/catch。
+- 外部 HTML：后端 nh3 清洗后，前端 `components/safe-html.ts`（DOMPurify 显式白名单）再清洗，`components/SafeHtml.vue` 渲染。`<img>` 无 src，只有 `data-media-id`；`components/media.ts` 的页面级缓存带 Bearer 取字节生成 `blob:` URL，同一详情内相同 id 复用，详情卸载/切换工单或项目时 `URL.revokeObjectURL`（含中止进行中的请求）。token 不进任何 URL/DOM/存储。
+- 链接：点击一律拦截（`components/open-external.ts`），Tauri 内用 opener 插件，`pnpm dev:web` 下 `window.open(url,'_blank','noopener')`；只放行 http(s)（opener 的 capability scope 同样只含 `http://*`、`https://*`），WebView 自身永不导航。mailto 在两种环境下都不打开。
+- 检查器的 AI 分析面板整体禁用并标 S5（MCP 分析 / 提示词 / AI 会话在 S5）。
+- 未在真实环境验证：Tauri 内 opener 与 blob 图片渲染、真实 ADO。

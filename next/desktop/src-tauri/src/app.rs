@@ -94,6 +94,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main_window(app);
         }))
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![backend_connection, backend_status])
         .on_window_event(|window, event| {
             // Closing the window only hides it; the backend keeps running.
