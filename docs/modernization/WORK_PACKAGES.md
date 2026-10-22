@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 3（2026-10-22 追加 S0；同日追加 S0.5 方向 E 前端改造）
+- revision: 4（2026-10-22 追加 S0；同日追加 S0.5 方向 E 前端改造；同日追加 S1 合同草案）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
@@ -321,3 +321,224 @@
 - 集成版本重跑上述 6 条 pnpm 命令；`git diff --check`；`next/desktop` 与文档以外无改动。
 - `pnpm dev:web`（真实本地新后端、假环境）截图三屏常态 + 任务告警，与设计稿对照，差异写进 PROGRESS。
 - 交叉审计异步派发，不阻塞。
+
+# S1：设置与凭据
+
+依据：[MIGRATION_PLAN.md](MIGRATION_PLAN.md) S1 行与 §4 WP-13 处置；[ARCHITECTURE.md](ARCHITECTURE.md) §3、§5；本文件 WP-13 的迁移判定规则；PROGRESS 中 S0、S0.5 的遗留发现。状态：**合同草案，待用户确认后派工**（2026-10-22）。
+
+用户已定（不再讨论）：
+
+1. 从旧配置导入是**一次性**的：预览 → 用户确认 → 执行一次；此后不同步、永不回写旧配置。
+2. Keychain：旧条目只作导入来源（只读），新应用写自己的服务名，永不修改/删除旧条目。
+3. 设置页本轮范围：导入（预览 + 确认执行）、ADO 连接（library/project 增删改、PAT 录入/替换、测试连接）、凭据状态（存在与否、来源，永不显示值）、常规（数据目录、版本）。TG/VPN/MCP/AI CLI 配置留给 S4/S8/S6/S5。
+
+## S1 旧应用事实核实（主控，只读代码，`main` @ `885d186`）
+
+- 配置目录 `~/.config/my-own-script/`（`app_ado/store.py`，`APP_ID="my-own-script"`）。YAML（无 PyYAML 时退回 JSON），**无 schema 版本**，直接 `write_text` 非原子写；`load_*` 读取时会回写迁移结果（D05）。
+- 本切片导入源（配置类）：
+  - `ui_settings.yaml` → `UiSettings`：`libraries[{id,name,base_url}]`、`projects[{id,library_id,collection,project}]`、`local_repos[{id,name,path}]`、`active_library_id`、`active_project_id`、`telegram_*`（chat_id、whitelist、control_enabled、notify_include_details、acl_groups、acl_members）、`work_items_{team,board,project_id,local_repo_id}`、`ai{...}`。模型未设 `extra=allow`，旧应用一保存就丢未知键，但原始文件里仍可能有。项目条目存在历史别名：id←`project_id`，library_id←`repo_id`，collection←`collection_name`，project←`name`/`project_name`（`models.project_entry_*`）。
+  - `tasks.yaml` → `TaskSettings{tasks[DynamicTaskConfig], flows[FlowTaskConfig]}`（均 `extra=allow`）；`task_migrate.migrate_task_settings` 在 `tasks` 为空时从 `flows` 生成（D04 根源）；`store.migrate_acl_task_ids` 把 ACL 中的旧 flow id 映射为新任务 UUID（依赖 `legacy_flow_id`）。
+  - `lark_settings.yaml`、`figma_settings.yaml`：非密设置（app_id、domain、tools、scope、端口等）。
+- 不导入（运行状态/缓存，归各自切片且多数与所有权切换相关）：`tg_offset*.json`、`tg_control_state*.json`、`tg_control*.log`、`task_history.jsonl`、`services/`、`lark_login_state.json`、`lark_mcp_min_node.json`、`node/`、`vpn_chrome_profile/`、`work_item_view/`、`work_item_media/`、`cc_*`、`ccpocket/`。（主控只列了目录文件名，未读内容。）
+- Keychain：`keyring`，service 恒为 `my-own-script`，account：
+  - `azuredevops_pat:<library_id>`（ADO PAT，`app_ado/secrets.py`）
+  - `telegram_bot_token`、`ai_bot_token:<ai_id>`、`harmony_vpn:{workspace,residency,email,password}`、`harmony_vpn:totp_secret`、`harmony_vpn:totp_filter`、`dsh_web_password`、`dsh_web_tunnel_token`、`dsh_web_tunnel_domain`、`figma_api_token`（`app_figma/secrets.py`）、`lark_app_secret:<app_id>`（`app_lark/secrets.py`）。
+  - 另有 lark-mcp 自己的 service `lark-mcp` / account `encryption-key`（keytar 写，旧应用只读），属于轮换凭据体系，S1 不碰。
+- library/project 管理（`ui/dialogs.py`、`ui/code_config_tab.py`）：新建 id `lib:<uuid4>` / `proj:<uuid4>`；名称不能为空，library 名唯一，base_url 去尾 `/`；project 名全局唯一（不分 library/collection）；删 library 级联删其 projects，**不删 Keychain 中的 PAT**、不检查任务引用；PAT 只写不读回 UI。
+- 连通性：`httpx_ado.get_projects` → `GET {base_url}/{collection}/_apis/projects?api-version=7.0`，`Authorization: Basic base64(":"+PAT)`，`follow_redirects=False`，超时 10s/连接 5s。“获取 Collections”在旧应用是未实现的桩。
+
+## S1 数据模型与访问边界（主控已定，施工者不得自行更改）
+
+### 架构五问
+
+1. **产生的数据**：新 store 文件 `config.json`（下述 schema v1）；新 Keychain service 下的 PAT 条目；导入时一份旧配置原文快照；`settings.changed` 事件。
+2. **数据流**：页面 →（Bearer HTTP）→ `api/settings` 路由 → `services/settings`（唯一写入所有者）→ `adapters/config_store`（文件+锁）/ `adapters/credentials`（Keychain）/ `adapters/ado_http`（测试连接）。导入：`adapters/legacy_config`（只读旧 YAML）+ `adapters/credentials` 的只读旧条目源 → 服务层组装 → 一次写入。后续 MCP stdio 进程经同一 `config_store` 读写（S6 接入）。
+3. **谁能访问**：单用户本机应用，唯一主体是持本次启动 token 的壳/页面（S0 鉴权）。没有多用户/IDOR 问题；资源边界改为“凭据值永不出后端”“PAT 只发往其所属 library 的 origin”。
+4. **并发**：同一后端内多请求、多窗口，以及未来 MCP 进程同时写同一文件 → 进程内 `asyncio.Lock` + 跨进程 `fcntl.flock` + 乐观并发（`revision`）。
+5. **失败与清理**：见下文「一致性与失败残留」逐步列出。
+
+### 位置与标识
+
+- 新应用存储标识 `APP_STORE_ID`（**待用户拍板，见合同末“待决”第 1 项**；下文以 `<store-id>` 表示）。
+- 数据目录：默认 `~/Library/Application Support/<store-id>/`；可由命令行 `--data-dir` 或环境变量 `TOOLBOX_DATA_DIR` 覆盖（测试与 dev:web 必用）。目录 0700，文件 0600。
+- 旧配置来源目录：默认 `~/.config/my-own-script/`；`TOOLBOX_LEGACY_CONFIG_DIR` 覆盖。后端对它**只打开读**（`open(..., "rb")`），不 mkdir、不写、不改权限、不跟随指向目录外的符号链接（`resolve()` 后须仍在该目录下）。
+- 新 Keychain service：`<store-id>`；旧 service：`my-own-script`（只读）。account 命名：`ado_pat:<library_id>`。
+
+### store schema v1（`<data-dir>/config.json`）
+
+```text
+{
+  "schema_version": 1,
+  "revision": <int, 每次成功写 +1，从 1 起>,
+  "updated_at": "<RFC3339>",
+  "ado": {
+    "libraries": [{"id","name","base_url"}],
+    "projects":  [{"id","library_id","collection","project"}],
+    "local_repos": [{"id","name","path"}],
+    "active_library_id": str|null, "active_project_id": str|null
+  },
+  "tasks": {"items": [DynamicTask...], "legacy_flows": [原样对象...]},
+  "imported": {"telegram": {...}, "work_items": {...}, "ai": {...}, "lark": {...}, "figma": {...}, "extra": {...}},
+  "import": {"state": "none|in_progress|completed|declined|failed", "source_dir", "fingerprint", "started_at", "finished_at",
+             "summary": {...}, "error": str|null, "written_credentials": [account...]},
+  "credentials": {"<account>": {"kind": "ado_pat", "ref": "<library_id>", "source": "imported|manual",
+                                "updated_at", "state": "active|pending_delete"}}
+}
+```
+
+- `ado`、`import`、`credentials` 由 S1 完整类型化与校验。`tasks.items` 按旧 `DynamicTaskConfig` 字段类型化且保留未知字段（S3 才提供编辑）；`imported.*` 是旧配置中非 S1 范围的段，**原样保留**（只校验为 JSON 对象），由 S4/S5/S6 等切片通过 schema 迁移类型化；`imported.extra` 收纳旧文件中所有未知顶层键。
+- 凭据**值**永不进入该文件；`credentials` 只是元数据索引（便于显示来源、发现孤立条目）。
+- id：导入的 id 原样保留（任务/ACL 引用依赖它），须匹配 `^[A-Za-z0-9:_.\-]{1,128}$`，不匹配则预览列为阻断错误；新建一律 `lib:<uuid4>` / `proj:<uuid4>`。
+- 校验（新建与导入相同）：`name` 去空白后 1–100 字符，library 名唯一；`base_url` 只允许 `http`/`https`，必须有 host，不得含 userinfo/query/fragment，去尾 `/`，≤2048；`collection`、`project` 1–256，不含 `/`、`\`、控制字符（会拼进 URL 路径，按段 percent-encode）；project 唯一键为 `(library_id, collection, project)`（比旧应用的全局同名更准确）；`project.library_id` 必须存在；`active_*` 必须指向存在的条目或为 null。
+
+### store 读写规则（D04/D05，原 WP-13）
+
+- **唯一写入所有者**：`services/settings` 通过 `config_store.update(expected_revision, mutate_fn)` 写；其他代码只读快照。读取永不写盘、永不迁移。
+- 写入：取进程内锁 → `flock(<data-dir>/config.lock, LOCK_EX)`（等待上限 5s，超时返回“存储忙”）→ 重新读盘 → 比较 `revision`（不等即冲突，不写）→ 在副本上应用变更 → 完整校验 → 写同目录临时文件（0600）→ `flush`+`fsync` → `os.replace` → `fsync` 目录 → revision+1 → 释放锁 → 广播 `settings.changed {revision}`。文件 IO 在线程中执行，不阻塞事件循环。
+- 启动：文件不存在 → 视为空 store（`revision 0`，`import.state none`），首次写时创建。`schema_version` 低于当前 → 加锁迁移，先把原件复制为 `config.json.bak-v<旧版本>-<时间戳>` 再替换；高于当前（更新版本写的）或 JSON/校验损坏 → **不覆盖原件**，store 进入只读错误态，所有写接口返回 `store_unavailable`，设置页显示原因与文件位置；不自动重置。
+- 导入时旧任务的判定（WP-13 规则，**在任何模型默认值注入前对原始 YAML 映射判定键存在性**）：
+  - 原始 `tasks` 键缺失且 `flows` 为非空列表 → 按旧 `migrate_task_settings` 的 flows→tasks 规则生成（新 UUID，写 `legacy_flow_id`），`summary.tasks_rule="migrated_from_flows"`；
+  - 原始 `tasks` 键存在（含 `[]`）→ 保留其意图，**不从 flows 补回**，只做旧应用的轻量规范化（全 0 时补 `sort_order`、空 `build_branch` 按最后 merge target/update branch 推断），`kept_tasks`；
+  - 两者都缺失 → 空任务，`empty`；
+  - `tasks: null` 或非列表、`flows` 非列表、元素非对象 → 预览报阻断错误，不回退成空；
+  - 任何情况下 `flows` 原样存入 `tasks.legacy_flows`；随后对 `imported.telegram.acl_groups[].task_ids` 做旧 flow id → 新 UUID 映射（同旧 `migrate_acl_task_ids`）。
+- 测试必须覆盖：旧 flows、新 tasks、空 tasks、null/错误类型、旧 ACL 映射、重复执行导入被拒、写入中途崩溃（替换前/后注入异常）原件完好、损坏文件只读态、两个写者冲突（同进程两协程 + 两个子进程各持锁写，后者以旧 revision 写被拒）、更高 schema 版本只读态、迁移前备份存在。
+
+### 导入流程
+
+- 状态机：`none → in_progress → completed`；`none → declined`；`in_progress → failed → in_progress`（重试）。`completed`/`declined` 为终态，接口不提供重新导入（用户已定一次性）。
+- **前提**：`import.state ∈ {none, failed}` 且 store 中 `ado.libraries`、`ado.projects`、`tasks.items` 都为空（首次运行）；否则预览/执行返回 `import_not_allowed` 并说明原因。用户可选择“跳过导入”→ `declined`。
+- 预览（只读，无任何写入）：读取 4 个 YAML 原文 → `fingerprint = sha256(各文件名 + 原文字节)`（缺失文件计入“缺失”）→ 解析与校验 → 对每个 library 用旧 service 读 `azuredevops_pat:<id>` 判定 `found|missing|unreadable`（值读入内存仅判空，立即丢弃，不返回、不缓存）→ 返回摘要：源目录、文件存在/解析错误、将导入的 libraries（id/name/base_url/PAT 状态）、projects、`tasks_rule` 与任务数、保留段名称、警告（如 http 明文 base_url、别名字段被规范化、跳过的未知元素）与阻断错误列表。YAML 用 `yaml.safe_load`（新增依赖 PyYAML），单文件上限 1 MiB，超限为阻断错误。
+- 执行（请求携带预览得到的 `fingerprint`）：
+  1. 加锁，重读源文件并重算指纹；不一致 → `import_source_changed`（须重新预览），不写任何东西。
+  2. store 写：`import.state=in_progress`、`started_at`、`fingerprint`、计划写入的 account 列表。
+  3. 逐个 library：从旧 service 读 PAT → 写新 service `ado_pat:<id>`（覆盖写，幂等）→ 记入 `written_credentials`。读不到的跳过并在摘要标 `missing`。
+  4. 一次 store 写：`ado`、`tasks`、`imported`、`credentials`（source=imported）、`import.state=completed`、`summary`、`finished_at`，同时把源文件原文复制到 `<data-dir>/import/legacy-<时间戳>/`（只含这 4 个 YAML，0600）。
+  - 第 3 步任一失败 → store 写 `import.state=failed` + 脱敏错误；已写入的新 PAT 条目保留并列在 `written_credentials`（重试时被同值覆盖，或用户“放弃导入”时由服务删除这些新条目后置 `declined`）。配置数据只在第 4 步一次性写入，不存在“半导入”的配置。
+  - 第 4 步失败 → 同上进入 `failed`，配置保持空。
+- 任何路径都不对旧目录和旧 Keychain 条目做写/删。
+
+### 凭据（Keychain 适配器）
+
+- 接口（`adapters/credentials.py`）：`CredentialStore`（新 service：`get/set/delete`）与 `LegacyCredentialSource`（旧 service：只有 `get`）。生产实现基于 `keyring`（新增依赖），**只在生产启动路径构造**；测试与 `--dev` 下可通过 `TOOLBOX_CREDENTIALS=memory` 使用内存实现（非 `--dev` 时设置该变量 → 启动失败）。
+- PAT 只写：`PUT /api/ado/libraries/{id}/pat`；值用 `SecretStr`，长度 1–1024、无空白/控制字符。永不读回、永不出现在响应/日志/事件/异常文本中；写入后把该值登记到脱敏器的已知密钥集合（进程内）。
+- 凭据状态：`present` 由一次 Keychain 查询判定（值立即丢弃）；`source`/`updated_at` 来自索引；Keychain 有值但索引缺 → `source: unknown`；索引有但 ref 已不存在或 `pending_delete` → `orphan`（可删除）。Keychain 访问失败 → `unreadable`，不报成“不存在”。
+- 删除 library：先 store 写（删 library 及其 projects、清理 `active_*`、索引项置 `pending_delete`），再删新 service 条目，成功后 store 写移除索引项；Keychain 删除失败则保留 `pending_delete` 并在响应中给警告，凭据页可重试。若有 `tasks.items` 引用该 library 下的任一 project → 拒绝删除（409，列出任务名）；删 project 同理。
+
+### ADO 测试连接（出站 HTTP 边界）
+
+- 只对已保存 library 的 `base_url` origin 发请求：`GET {base_url}/{collection}/_apis/projects?api-version=7.0&$top=1`，Basic 认证同旧应用；`follow_redirects=False`（3xx 视为失败并报告“被重定向到 <origin>”，不跟随、不转发 PAT）；超时 10s/连接 5s；响应体最多读 1 MiB；结果只返回 `{ok, http_status, category: ok|unauthorized|forbidden|not_found|redirect|tls|timeout|network|bad_response, message}`，message 经脱敏，不含响应原文、不含 PAT。
+- 可在请求体带未保存的候选 PAT 测试（同样只发往该 library origin，不保存）；不带则用已存 PAT，无 PAT → `category: no_credential`，不发请求。
+- 修改 library 的 `base_url` 导致 origin 变化且已存 PAT 时：请求必须带新 PAT 或显式 `keep_pat: true`，否则 409 `pat_origin_change`（防止 PAT 被静默发往新主机）。
+- 获取远端项目列表（新增项目时选择用）：`GET /api/ado/libraries/{id}/remote-projects?collection=...` 同上边界，返回 `[{name}]`（最多 500 条）。collection 列表不做（旧应用也是桩）。
+- 适配器使用可注入的 `httpx` transport；测试一律 `MockTransport`，并用 socket 守卫让任何非 127.0.0.1 连接直接失败。
+
+### HTTP 接口（全部在 S0 Bearer/Host/CORS 之后；契约由 Pydantic 模型生成）
+
+| 方法 路径 | 说明 |
+| --- | --- |
+| `GET /api/settings` | `{revision, schema_version, store_state: ok|readonly_error, store_error?, data_dir, legacy_config_dir, app_version, import: {state, summary?, finished_at?}}` |
+| `POST /api/settings/import/preview` | 返回预览（POST 是因为会读 Keychain，可能触发系统授权弹窗） |
+| `POST /api/settings/import/execute` | `{fingerprint}` → 导入结果或 `import_source_changed`/`import_not_allowed` |
+| `POST /api/settings/import/decline` | 跳过导入；`failed` 状态下同时删除 `written_credentials` 中的新条目 |
+| `GET /api/ado` | libraries（含 `credential: {present, source}`）、projects、local_repos、active_* |
+| `POST /api/ado/libraries`、`PATCH /api/ado/libraries/{id}`、`DELETE /api/ado/libraries/{id}` | 变更请求体/查询带 `revision`；新建可同时带 `pat` |
+| `PUT /api/ado/libraries/{id}/pat`、`DELETE /api/ado/libraries/{id}/pat` | PAT 只写/删除 |
+| `POST /api/ado/libraries/{id}/test` | `{collection, pat?}` → 测试结果 |
+| `GET /api/ado/libraries/{id}/remote-projects` | `?collection=` |
+| `POST /api/ado/projects`、`PATCH /api/ado/projects/{id}`、`DELETE /api/ado/projects/{id}` | 同上带 `revision` |
+| `PUT /api/ado/active` | `{revision, library_id, project_id}` |
+| `GET /api/credentials` | 凭据状态列表（kind、ref、ref_name、present、source、state、updated_at；**无值字段**） |
+| `DELETE /api/credentials/{account}` | 只允许删除 `orphan`/`pending_delete` 项 |
+
+- 错误统一 `{"detail": {"code": "...", "message": "..."}}`：`revision_conflict`(409，附当前 revision)、`validation_error`(422，不回显输入)、`not_found`(404)、`in_use`(409)、`pat_origin_change`(409)、`store_unavailable`(503)、`store_busy`(503)、`import_*`(409)、`credential_backend_error`(502)。
+- 事件：新增 `settings.changed {revision}`（topic `settings`），加入 `events.schema.json`。
+- 安全基础设施（并入的遗留项）：
+  - **S0A-007**：新增 ASGI 中间件限制请求体（默认 64 KiB，`Settings.max_body_bytes` 可注入）：`Content-Length` 超限或流式累计超限 → 413，不读完整体；顺序 Host → CORS → Auth → BodyLimit。
+  - **S0A-006**：WS 握手**必须**带 Origin 且在允许列表，无 Origin 拒绝（相应调整 S0 测试，测试客户端显式带 Origin）。
+  - CORS `allow_methods` 增加 `PUT, PATCH, DELETE`。
+
+### 安全核对表（施工与验收都按此）
+
+| 风险 | 处置 |
+| --- | --- |
+| 未认证访问 | 全部新路由走 S0 中间件；测试逐个路由断言无 token 401 |
+| 越权/IDOR | 单主体；以“凭据值不出后端、PAT 只发往所属 origin”替代 |
+| 注入 | 无 SQL/shell；collection/project 按段编码进 URL 路径并拒绝 `/`、`\`、控制字符 |
+| 路径穿越 | 只读固定文件名；旧目录 `resolve()` 后校验；数据目录内文件名固定，不接受用户路径（`local_repos.path` 只存储不访问） |
+| SSRF | 出站仅限已保存 library 的 base_url origin；scheme 白名单；不跟随重定向；回应不回显原文 |
+| 日志泄密 | 不记录请求体；422 不回显输入；PAT 登记脱敏器；Keychain/httpx 异常经 `redact_exception` 后再记录或返回 |
+| 硬编码密钥 | 无；测试用明显的假值 |
+| 请求体大小 | 64 KiB 上限（413） |
+| 本地文件权限 | 数据目录 0700、文件 0600；快照同样 0600 |
+
+## S1 通用合同
+
+- 输入版本：本合同提交后的 `rewrite/next` commit（派工时写明 SHA）。
+- 授权：在各自目录内联网安装依赖（后端 `uv add pyyaml keyring`，前端如需 pnpm 依赖），用户级缓存可用；不装全局工具；不装 Playwright 浏览器（e2e 推迟，列入未测）。
+- 施工位置：`git worktree add --detach .local/worktrees/<包> <SHA>`；施工者不 commit，主控按限定路径 patch 集成并提交。
+- **测试隔离（硬性）**：数据目录、旧配置目录一律 `tmp_path`；凭据只用 fake/内存实现，`conftest.py` 自动夹具把 `keyring` 后端设为“任何调用即抛错并记录”的守卫后端（子进程设 `PYTHON_KEYRING_BACKEND` 指向同等守卫），并在会话结束断言守卫记录为空——仅改 HOME 不足以隔离 Keychain；HTTP 只用 `MockTransport`，socket 守卫拦截非回环连接。不读真实 `~/.config/my-own-script`、真实 Keychain，不连真实 ADO/TG。
+- `pnpm dev:web` 联调：脚本必须给后端设 `TOOLBOX_DATA_DIR`（临时目录）、`TOOLBOX_LEGACY_CONFIG_DIR`（仓库内假旧配置 fixture）、`TOOLBOX_CREDENTIALS=memory`（预置假 PAT），不得落到真实目录与 Keychain。
+- 禁止：改 `next/` 以外文件；在任何响应/日志/事件/快照/测试快照中出现 PAT 值；对旧目录或旧 Keychain service 写/删；为通过检查删除或放宽既有连接/安全测试（S0A-006 的 Origin 变更除外，须改为显式带 Origin 而非删除用例）。
+- 升级条件：需要改本合同已定的 schema、接口、错误码或安全边界；扩大写入范围；同类失败两次 → 停下交主控。
+- 模型：后端施工 GPT 6.1 Sol / medium（codex），其测试子 agent GPT 6 Luna / high；前端施工 Sonnet 5.5 / medium（Claude），其测试子 agent Haiku 5.5 / medium。不可用记 unavailable，不静默替换。交叉审计异步，不阻塞。
+
+## S1-A：后端 store、导入、凭据与 ADO 设置接口
+
+- 依赖：本合同。可与 S1-C 并行。
+- write_scope：`next/backend/**`、`next/contracts/**`。
+- 内容：上文「数据模型与访问边界」全部后端部分 + S0A-006、S0A-007、CORS 方法；`--data-dir` 参数；`TOOLBOX_*` 环境变量；`next/backend/README.md` 更新；在 `next/backend/tests/fixtures/legacy/` 放假旧配置（覆盖：旧 flows、`tasks: []`、别名项目字段、未知键、http base_url），供测试与 dev:web 共用。
+- 验收（自动化）：
+  1. `UV_PYTHON_DOWNLOADS=never uv sync --frozen`、`uv run pytest -q`、`uv run ruff check .`、`uv run python -m toolbox_backend.contracts --check` exit 0。
+  2. store：「store 读写规则」末尾列出的全部场景。
+  3. 导入：预览零写入（数据目录、旧目录 mtime/内容 SHA 前后一致，fake 凭据只有 get 调用）；执行后数据正确、源目录与 fake 旧凭据未被写；指纹变化被拒；非首次被拒；第 3、4 步注入失败 → `failed`、配置为空、重试成功；`decline` 删除已写新条目；`completed` 后再执行被拒。
+  4. 凭据：任何接口响应、stderr 日志、事件、`config.json`、导入快照中都搜不到假 PAT（测试对全部产物做字符串搜索）；状态 `present/missing/unreadable/orphan` 四种；删除 library 的 Keychain 失败路径留下 `pending_delete` 并可重试。
+  5. ADO：校验规则（非法 scheme/userinfo/query/重复名/悬空 library_id/路径分隔符）；`revision` 冲突 409；被引用拒删 409；origin 变更 409；测试连接各分类（含 3xx 不跟随且 PAT 只出现在发往原 origin 的请求里、超 1 MiB 截断、无 PAT 不发请求）。
+  6. 安全：每个新路由无 token 401；64 KiB+1 → 413（含无 Content-Length 的分块上传）；WS 无 Origin 拒绝；`PATCH/DELETE` 预检通过。
+  7. 守卫：会话结束时 keyring 守卫、socket 守卫无违规记录。
+- 回退：恢复 `next/backend`、`next/contracts` 到输入 SHA。
+
+## S1-C：S0/S0.5 前端遗留修复（先于 S1-B）
+
+- 依赖：本合同；与 S1-A 并行（不碰设置页、不碰 `src/api/schema.d.ts`）。
+- write_scope：`next/desktop/**`（不含 `src-tauri/**`）。
+- 内容：
+  - **CR-S05-001**：补回测试——未取得连接时点击告警开关 → 零请求 + 显示“后端未连接”（需让测试启动夹具可不调用 `runtime.start()`）。
+  - **CR-S05-002**：状态栏告警开关点击目标 ≥32px（可保持视觉尺寸，扩大命中区）；尺寸测试纳入 Switch。
+  - **CR-S05-003**：`AppTabs` 提供 tabpanel（Reka `TabsContent`）与 `aria-controls`/`aria-labelledby` 关联；不需要面板的用法保持可用。
+  - **CR-S05-004**：AI 会话对话内容移到 `features/ai/mock/`，页面经 `useAiSessions()` 取。
+  - **CR-S05-005**：`sent`、审批记录按会话 id 隔离；切换会话不残留。
+  - **S0B-007**：`pnpm test` 在无 `dist/` 的干净检出上通过；dist 禁词检查改为 `pnpm guard:dist`（`build` 之后单独运行），不得删除该检查。
+  - **S05-005**（S0 语义复核）：保持现语义——`system.hello` 的 alert 由后端模型生成，非法值只可能来自异常对端，store 保留上一状态是安全退化；主控记 rejected，本包不改。
+  - **S0B-008**：S0.5 已删除总览页，界面不再显示 UPTIME；主控核实后记为 obsolete。若施工中任何位置重新显示运行时长，必须随 `system.heartbeat` 刷新。
+- 验收：`pnpm install --frozen-lockfile`、`typecheck`、`lint`、`test`（先 `rm -rf dist` 再跑）、`build`、`guard:dist`、`contracts:check` exit 0；上述每项有对应测试。
+- 修复后：主控续接 Codex 会话 `01a16310-6d52-7d10-b3c3-e8d1302038c4` 做 s05-cross 第二轮复核（异步）。
+- 回退：恢复 `next/desktop` 到输入 SHA。
+
+## S1-B：设置页（第一个接真实接口的页面）
+
+- 依赖：S1-A 与 S1-C 集成后（用正式 `openapi.json` 生成 `schema.d.ts`）。
+- write_scope：`next/desktop/**`（不含 `src-tauri/**`）；`scripts/dev-web.mjs` 的隔离环境变量（见通用合同）。
+- 结构（方向 E，沿用 S0.5 组件）：导航“08 设置”启用 → `/settings`；工具栏页签 `导入 · ADO 连接 · 凭据 · 常规`；主区表格/列表；检查器显示所选 library/project 详情与 PAT 表单。
+  - 导入：`none`/`failed` 时显示“预览导入”，预览结果分块列出（文件、libraries + PAT 状态、projects、任务规则与数量、保留段、警告、阻断错误）；无阻断错误时“确认导入”（二次确认文案说明一次性、不回写旧配置）；“跳过导入”；`import_source_changed` 提示重新预览。`completed`/`declined` 显示只读摘要。
+  - ADO 连接：libraries 与 projects 列表、增/改/删（删除二次确认；`in_use` 列出引用任务）；PAT 输入为密码框、从不预填，保存后立即清空；`pat_origin_change` 时提示“PAT 将发往新地址”并提供保留/替换选择；测试连接显示分类结果；新增 project 时可“获取远端项目”。http 明文 base_url 显示警告标签。
+  - 凭据：表格显示 kind、所属、存在、来源、状态；孤立项可删除；**界面上没有任何显示凭据值的位置**。
+  - 常规：数据目录、旧配置目录、应用版本、schema 版本、store 状态（只读错误态显示原因）。
+- 数据：`@tanstack/vue-query` + 生成客户端；变更请求携带当前 `revision`，`revision_conflict` 时刷新并提示；收到 `settings.changed` 使查询失效。PAT 只存在于表单组件局部状态，提交后清空；不进 Pinia、query 缓存、localStorage、URL、console。
+- 验收：
+  1. 六条 pnpm 命令 + `guard:dist` exit 0。
+  2. 组件/页面测试（假 fetch，按 openapi 形状）：导入四种状态与阻断/指纹变化；library/project 增改删、校验错误展示、409 三类；PAT 提交后输入为空且请求体之外的任何 DOM/存储/console 中无该值；测试连接各分类；凭据页无值字段；`settings.changed` 触发重新取数；页签键盘可达。
+  3. 主控 `pnpm dev:web`（隔离环境）截图四个页签常态 + 只读错误态，写入 PROGRESS。
+- 回退：恢复 `next/desktop` 到 S1-B 输入 SHA。
+
+## S1 集成验收（主控）
+
+- 集成版本重跑 S1-A、S1-B/C 全部命令；`git diff --check`；`next/` 与本目录文档以外无改动；旧应用守卫测试不回退。
+- 对照旧能力文档列功能清单（迁移/改进/有意放弃），写入 PROGRESS；资源所有权：S1 不切换任何单例资源（TG/MCP/Lark 刷新仍归旧应用）。
+- 未测（允许，列入账本）：真实 Keychain 读旧条目时的系统授权弹窗与“始终允许”行为、真实 ADO 测试连接、Tauri 内渲染、Playwright e2e。
+- 交叉审计：S1-A、S1-B 各一轮，异步，跨厂商优先。
+
+## S1 待决（需用户拍板后派工）
+
+1. **新应用存储标识 `<store-id>`**（数据目录名 + 新 Keychain service 名）：建议固定为 `toolbox-next`，与 Tauri bundle id（`dev.toolbox.next`，S9 前会改）解耦，S9 改名不需要迁移凭据和数据目录。备选：直接用 `dev.toolbox.next`，S9 改名时做一次迁移。
+2. **本轮导入哪些密钥**：建议只导入 ADO PAT（本轮唯一用到的）；TG Bot Token、AI 专属机器人、VPN/TOTP、dsh、Figma、Lark app secret 由 S4/S5/S6/S7/S8 在启用对应能力时各做一次“该能力的一次性导入”（同样只读旧条目）。理由：最小权限，TOTP 种子与 VPN 密码不提前复制一份；每次只弹该能力的 Keychain 授权。备选：S1 一次性导入全部静态密钥（Lark 轮换凭据除外）。
