@@ -62,10 +62,13 @@ def view_cache_dir() -> Path:
     return Path.home() / ".config" / "my-own-script" / "work_item_view"
 
 
-def download_images_to_cache(urls: list[str], *, pat: str, sub_key: str) -> dict[str, Path]:
+def download_images_to_cache(
+    urls: list[str], *, pat: str, sub_key: str, trusted_base_url: str
+) -> dict[str, Path]:
     """把图片下载到 ``~/.config/my-own-script/work_item_view/<sub_key>/``，返回 ``{url: 本地路径}``。
 
-    每次调用前会清空对应子目录，避免不同工单串图。
+    每次调用前会清空对应子目录，避免不同工单串图。非 ``trusted_base_url`` 同源的图片（含重定向越界）
+    一律跳过，不发请求、不带 PAT，也不会改成匿名抓取。
     """
     cache = view_cache_dir() / str(sub_key)
     if cache.exists():
@@ -75,14 +78,18 @@ def download_images_to_cache(urls: list[str], *, pat: str, sub_key: str) -> dict
     for i, url in enumerate(urls, start=1):
         try:
             hint = _filename_hint(url, i)
-            p = download_authenticated_file(url, pat=pat, dest_path=cache / hint)
+            p = download_authenticated_file(
+                url, pat=pat, dest_path=cache / hint, trusted_base_url=trusted_base_url
+            )
             out[url] = p
         except Exception:
             continue
     return out
 
 
-def fetch_image_blobs(urls: list[str], *, pat: str) -> list[tuple[str, bytes, str]]:
+def fetch_image_blobs(
+    urls: list[str], *, pat: str, trusted_base_url: str
+) -> list[tuple[str, bytes, str]]:
     """直接拉成内存字节流（TG sendMediaGroup 用，不落盘）。
 
     返回 ``[(filename, bytes, content_type), ...]``。会跳过：
@@ -93,7 +100,7 @@ def fetch_image_blobs(urls: list[str], *, pat: str) -> list[tuple[str, bytes, st
     out: list[tuple[str, bytes, str]] = []
     for i, url in enumerate(urls, start=1):
         try:
-            data, ct = fetch_attachment_bytes(url, pat=pat)
+            data, ct = fetch_attachment_bytes(url, pat=pat, trusted_base_url=trusted_base_url)
         except Exception:
             continue
         if not data:

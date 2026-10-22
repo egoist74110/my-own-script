@@ -459,7 +459,9 @@ def _tool_ado_get_attachment(arguments: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    data, mime_type = fetch_attachment_bytes(attachment_url, pat=pat)
+    data, mime_type = fetch_attachment_bytes(
+        attachment_url, pat=pat, trusted_base_url=str(library.base_url)
+    )
     original_bytes = len(data)
     cache_path.write_bytes(data)
 

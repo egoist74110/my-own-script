@@ -305,7 +305,10 @@ class WorkItemDetailDialog(QtWidgets.QDialog):
                     comments = []
                 urls = collect_image_urls(item, comments)
                 url_to_local = download_images_to_cache(
-                    urls, pat=self._pat, sub_key=str(self._work_item_id)
+                    urls,
+                    pat=self._pat,
+                    sub_key=str(self._work_item_id),
+                    trusted_base_url=self._library.base_url,
                 )
                 payload["item"] = item
                 payload["comments"] = comments

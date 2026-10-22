@@ -10,6 +10,7 @@ from typing import Callable, Any
 import httpx
 
 from app_ado.notifier_telegram import send_telegram_message
+from app_ado.redact import redact_exception, redact_text
 from app_ado.secrets import get_telegram_token
 from app_ado.store import config_dir, load_ui_settings, load_task_settings, save_ui_settings
 
@@ -195,7 +196,7 @@ class TelegramController:
             self._reply(token, ctx.chat_id, "\n".join(lines), reply_markup=offset_buttons(int(max_offset)))
             return
         except Exception as ex:
-            self._reply(token, ctx.chat_id, "无法获取回退版本：" + str(ex))
+            self._reply(token, ctx.chat_id, "无法获取回退版本：" + redact_exception(ex, token))
             self._rollback_wizard.pop(str(ctx.chat_id), None)
             return
 
@@ -221,6 +222,8 @@ class TelegramController:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
             import json
 
+            if isinstance(kv.get("last_error"), str):  # 纵深防御：兜底清理 bot URL / 认证头
+                kv["last_error"] = redact_text(kv["last_error"])
             self._state_path.write_text(json.dumps(kv, ensure_ascii=False, indent=2), "utf-8")
         except Exception:
             pass
@@ -229,7 +232,7 @@ class TelegramController:
         try:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
             with self._log_path.open("a", encoding="utf-8") as f:
-                f.write(text.rstrip() + "\n")
+                f.write(redact_text(text).rstrip() + "\n")
         except Exception:
             pass
 
@@ -692,8 +695,8 @@ class TelegramController:
             except Exception as e:
                 # log why inline help failed, then fall back
                 try:
-                    self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} help inline failed: {e}")
-                    self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=str(e))
+                    self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} help inline failed: {redact_exception(e, token)}")
+                    self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=redact_exception(e, token))
                 except Exception:
                     pass
                 # fallback to text list
@@ -891,7 +894,7 @@ class TelegramController:
                 ok = ensure_connected(token_provider=lambda: None, log=lambda m: lines.append(m))
             except Exception as e:  # noqa: BLE001
                 ok = False
-                lines.append(f"异常：{e}")
+                lines.append(f"异常：{redact_exception(e, token)}")
             if ok:
                 self._reply(token, chat_id, f"✅ VPN 已连上：{status2().get('ip')}")
             else:
@@ -1419,7 +1422,7 @@ class TelegramController:
                                 try:
                                     ok, msg = self._on_deploy_only(str(tid), chat_id2, username2)
                                 except Exception as ex:
-                                    ok, msg = False, str(ex)
+                                    ok, msg = False, redact_exception(ex, token)
                                 self._reply(token, chat_id2, msg if msg else ("收到，开始仅发布" if ok else "执行失败"))
                                 continue
 
@@ -1536,10 +1539,12 @@ class TelegramController:
                     self._save_offset(self._update_offset)
 
             except Exception as e:
-                msg = str(e)
+                msg = redact_exception(e, token)
+                # 分支判定沿用原语义（仅看 str(e)，不展开异常链）；该原文不写入日志/状态。
+                raw = str(e)
 
                 # Treat intermittent network issues as normal; log only, never notify.
-                is_timeout = ("timed out" in msg.lower()) or ("read operation timed out" in msg.lower())
+                is_timeout = ("timed out" in raw.lower()) or ("read operation timed out" in raw.lower())
 
                 self._log(f"{time.strftime('%Y-%m-%d %H:%M:%S')} tg_control error: {msg}")
 
@@ -1547,7 +1552,7 @@ class TelegramController:
                 self._write_state(state="运行中", last_poll=time.strftime('%Y-%m-%d %H:%M:%S'), last_error=msg)
 
                 # 409 can happen if webhook is set or another poller is active.
-                if "409" in msg or "Conflict" in msg:
+                if "409" in raw or "Conflict" in raw:
                     self._delete_webhook(token)
                     time.sleep(5.0)
                 else:
