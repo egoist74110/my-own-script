@@ -647,3 +647,9 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 工具限制：Serena索引初始化失败（服务PATH找不到uv/uvx），改用只读文本核对；未安装工具、未修改全局配置。无额外worktree/子进程/临时仓库需清理。
 - 安全范围：未读真实配置/凭据、未连真实ADO/TG、未执行远端push或触发构建/发布；旧目录源码未改。当前仅文档及既有pre-commit自动递增版本；未重新执行功能全量测试，572/755仍是S2历史基线，不称为本轮验证结果。
 - 本轮提交前验证：`git diff --check` exit0；后端 `.venv/bin/python -m toolbox_backend.contracts --check` exit0（契约无漂移）；文档结构/六项待决/围栏与S3-C实际集成路径检查exit0。仅本合同和账本有人工改动；未运行S3功能验收，尚无实现。
+
+### S3 合同确认与启动准备（2026-10-23）
+
+- 用户原答复“均按你推荐的来”，六项均按推荐确认；WORK_PACKAGES「S3 已决」已更新。主控可继续派工、离线测试、异步只读审计及本地提交；真实远端写/凭据/旧应用仍不在本轮测试授权范围。
+- 运行时预检：codex exec/resume与Claude Code help可用；`agy models` exit0，仅列出的Gemini高档为 `gemini-3.8-flash-high`（Gemini 3.8 Flash High），前端选此型号，无Gemini Pro，不替换厂商。Claude尚未执行审计请求，型号可用性与modelUsage在实际审计回执核实。
+- 后端无新增依赖；先从本确认提交创建S3-A worktree并离线同步uv.lock。S3-A先实现运行内核/配置/Git；S3-B接入ADO后才开放完整真实执行链；S3-C随后替换任务mock。派工结果另追加，不把准备状态记成已开工。
