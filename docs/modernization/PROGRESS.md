@@ -394,10 +394,10 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | fixed（S1-F）；待审计复核 |
-| CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | fixed（S1-F）；待审计复核 |
-| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | fixed（S1-F）；待审计复核 |
-| CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | fixed（S1-F）；待审计复核 |
+| CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | fixed（S1-F）；round2 确认 |
+| CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | fixed（S1-F）；round2 确认（跨条目延迟响应另列 005） |
+| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | partially_fixed（round2）：离线时以错误前的缓存 ok 解除禁写 → S1-G |
+| CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | fixed（S1-F）；round2 确认 |
 
 ### S1-E / S1-F 派工
 
@@ -444,3 +444,16 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 | s1a-cross-814a921 / round3 | `597faed..13bc292` 的 `next/backend`（S1-E） | 同一原生子 agent 续接，requested opus / medium；actual unknown | returned | **pass**：007、008 fixed（复跑探针：滴流 10.1s timeout；三种提交故障场景旧 PAT 均不落到新 origin），无新发现；390 passed、ruff/contracts 通过；探针已自删。S1-A 审计发现 CR-S1A-001..008 全部闭环 |
 
 info（记录）：提交实际成功但返回 503 时不广播 `settings.changed`（前端 S1-F 收到 `store_unavailable` 会刷新）；持续读盘失败时索引可能残留 `active` 而 PAT 已删（凭据页显示 missing，无泄露）；单个压缩块解压后可能超 1 MiB（既有，需用户自配恶意服务器）。
+
+### S1-B 交叉审计第二轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s1b-cross-21957f6 / round2 | `13bc292..687948a` 的 `next/desktop`（S1-F） | codex exec resume，同一 session `01a16373-…`，gpt-6.1-sol / high；连续 | returned（exit 0） | rework required：001/002/004 fixed，003 partially_fixed，新增 005（major）；PAT 清空 8 个分支验证通过、无新外泄路径；只读 vitest 374 passed / 1 skipped |
+
+主控核对代码属实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S1B-005 | major | 保存进行中仍可切换选中条目；A 的延迟响应（`pat_origin_change` 回调、`applySaved`、冲突合并）写入当前组件状态，确认时用当前 `props.library.id` → 把 A 的地址修改 PATCH 到 B（审计内存复现）；成功路径污染 B 的基线导致 B 的合法草稿不发请求。ProjectPanel 同类 | open → S1-G |
+| CR-S1B-003（剩余） | major | `overviewConfirmedOk()` 只看缓存状态；离线（查询 `enabled:false`）时 503 后不发刷新，却以错误前缓存的 `ok` 解除禁写 | open → S1-G |
