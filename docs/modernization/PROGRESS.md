@@ -301,7 +301,14 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 处置 |
 | --- | --- |
-| CR-S05-001..005 | fixed（主控核实，`fd22770`）；第二轮复核：续接 Codex 会话 `01a16310-…`，gpt-6.1-sol / high，pending |
+| CR-S05-001、002、004、005 | fixed；s05-cross round2 确认 fixed |
+| CR-S05-003 | round2：partially_fixed（属实，主控核实：四处页面用法均未传插槽，`aria-controls` 指向空的隐藏面板；两条测试固化了该状态）→ open，并入 S1-B（合同已补“CR-S05-003 收尾”） |
 | S0B-007 | fixed（`fd22770`） |
 | S0B-008 | obsolete：`grep -rniE "uptime|运行时长" src` 仅命中 `src/api/schema.d.ts` 契约字段；界面不显示运行时长；加了守卫测试 |
 | S05-005 | rejected（主控裁决，见 S1-C 合同） |
+
+### s05-cross 第二轮复核
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 连续性/结果 |
+| --- | --- | --- | --- | --- |
+| s05-cross-3a5dac1 / round2 | `2e0e4c5..fd22770` 的 `next/desktop` | codex exec resume，gpt-6.1-sol / high（CLI 头部回执 model/effort），沙箱继承首轮 read-only | returned（exit 0） | 同一 session `01a16310-6d52-7d10-b3c3-e8d1302038c4`，连续；结论 pass after minor fixes：4 fixed、CR-S05-003 partially_fixed，无新编号；审计者只读跑 251 passed / 1 skipped（排除写临时目录的用例）；请求与输出在 `.local/reviews/s05-cross-3a5dac1/round2-*` |

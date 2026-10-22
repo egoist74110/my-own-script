@@ -524,6 +524,7 @@
   - ADO 连接：libraries 与 projects 列表、增/改/删（删除二次确认；`in_use` 列出引用任务）；PAT 输入为密码框、从不预填，保存后立即清空；`pat_origin_change` 时提示“PAT 将发往新地址”并提供保留/替换选择；测试连接显示分类结果；新增 project 时可“获取远端项目”。http 明文 base_url 显示警告标签。
   - 凭据：表格显示 kind、所属、存在、来源、状态；孤立项可删除；**界面上没有任何显示凭据值的位置**。
   - 常规：数据目录、旧配置目录、应用版本、schema 版本、store 状态（只读错误态显示原因）。
+- **CR-S05-003 收尾**（s05-cross round2：partially_fixed）：页签必须与真实内容建立可访问关联。工单详情页签与设置页页签用 AppTabs 插槽面板承载真实内容；筛选型用法（任务视图、工单看板列、AI 筛选）给 AppTabs 增加 `panelId` 属性——不渲染内部空面板，各 trigger 的 `aria-controls` 指向页面上承载列表的容器，该容器设 `role="tabpanel"`、`id=panelId`、`aria-labelledby` 为当前 trigger。改写 `tests/unit/s1c.test.ts:98`、`tests/independent/s1c-ui.test.ts:74` 中固化“空隐藏面板”的断言为页面级断言：当前页签 `aria-controls` 解析到的元素可见且包含当前真实内容。
 - 数据：`@tanstack/vue-query` + 生成客户端；变更请求携带当前 `revision`，`revision_conflict` 时刷新并提示；收到 `settings.changed` 使查询失效。PAT 只存在于表单组件局部状态，提交后清空；不进 Pinia、query 缓存、localStorage、URL、console。
 - 验收：
   1. 六条 pnpm 命令 + `guard:dist` exit 0。
