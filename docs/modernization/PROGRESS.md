@@ -513,3 +513,22 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 集成：限定 `next/backend`、`next/contracts` 的 binary patch（26 文件），`git apply --check` 后应用；`pnpm contracts:gen` 重新生成 `schema.d.ts`。集成版本：后端 `uv sync --frozen`、ruff、contracts 通过，`pytest` **531 passed**；前端 `contracts:check`、typecheck、lint 通过，`pnpm test` 422 passed；`git diff --check` 通过。补丁与输出在 `.local/dispatch/s2a/`。
 - 未测：真实 ADO（含 CR-NEXT-004）、真实 Keychain、前端联调。
 - S2 并行派工（主控，基线 `6ed7fd1`）：S2-B 工单页（Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s2b`；write_scope 另加 `scripts/dev-web.mjs` 的 `TOOLBOX_DEV_FAKE_ADO`）；S2-C 设置页本地仓库 + UX 两项（同上，worktree `.local/worktrees/s2c`）；两者测试子 agent requested haiku / medium，须新增独立用例。S2-A 交叉审计 s2a-cross-bd90107 round1：原生子 agent requested opus / medium，只读，跨厂商。actual 均 unknown（无提供方回执）。
+
+### S2-A 异步交叉审计
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s2a-cross-bd90107 / round1 | `dc377b4..bd90107` 的 `next/backend`、`next/contracts` | Claude Code 原生子 agent，requested opus / medium，只读，跨厂商；中途因账号会话额度 429 中断，额度重置后 SendMessage 续接同一 agent（连续）；actual unknown | returned | pass after minor fixes：0 blocker/major，4 minor，4 info；在主仓库干净 HEAD 跑 531 passed；探针（MockTransport/ASGITransport）在 scratchpad，已自删 |
+
+主控复现 001（`within` 对 `/ro%6Ft/x.png`、`/root%2Fz.png` 返回 True，原始路径不在前缀下）、002（孤立代理字符 → UnicodeEncodeError）、003（`<p lang title>` 保留），004 经代码核实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S2A-001 | minor | 前缀判断用解码路径，实际请求用原始路径；他人编写的工单内容可让 PAT 发往同 origin 下原始路径不在前缀内的地址（需按原始路径路由的反向代理） | open → S2-D |
+| CR-S2A-002 | minor | 远端畸形数据（孤立代理字符、`fields` 非对象、`relations.added` 非列表）返回 500 而非 502 bad_response | open → S2-D |
+| CR-S2A-003 | minor | nh3 默认 generic 属性保留 `lang`/`title`，偏离合同属性白名单（前端 DOMPurify 会去掉） | open → S2-D |
+| CR-S2A-004 | minor | HTML 清洗在事件循环线程同步执行（约 0.8 s/MiB，单请求可阻塞约 3 s）；单次响应可登记大量媒体挤掉登记表 | open → S2-D |
+| I-1 | info | 总时长按跳设置读超时，最坏约 2 倍 | accepted（同 S1-E） |
+| I-2 | info | 二次取消时许可可能在线程结束前释放 | open → S2-D |
+| I-3 | info | S1 测试连接超限文案变化、新增 busy 等 | accepted（分类不变） |
+| I-4 | info | 存量重名条目只改路径也被拒；空 PATCH 推进 revision；`isdir` 网络挂载延迟 | 第一项 → S2-D；其余 accepted |
