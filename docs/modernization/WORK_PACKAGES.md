@@ -498,6 +498,16 @@
   7. 守卫：会话结束时 keyring 守卫、socket 守卫无违规记录。
 - 回退：恢复 `next/backend`、`next/contracts` 到输入 SHA。
 
+### S1-A 主控裁决（2026-10-22，施工首轮交回 partial 后）
+
+1. **S0 契约测试的精确集合**（`tests/test_contracts.py:30/:41`）：S0 断言“恰好两条路径/三种事件”是当时合同的快照，不是不变量。改为“S0 的路径与事件仍存在且字段不变”+“S1 新路径与 `settings.changed` 存在”。这是合同演进，不算放宽。
+2. **`tests/independent/test_fault_http.py:261`（拒绝 PUT/PATCH/DELETE 预检）与 `:201`（超限请求）**：S1 合同明确改变了这两处语义。改为断言允许方法恰好为 `GET, POST, PUT, PATCH, DELETE, OPTIONS`（其他如 `TRACE`/`CONNECT` 仍拒绝，非法 origin 仍拒绝）；超限请求断言 413 且不是 500。
+3. **schema 迁移**：v1 是首个版本，不存在低版本数据。实现可注入的迁移注册表（`{from_version: step_fn}`，生产为空）与“迁移前备份 `config.json.bak-v<旧>-<时间戳>` → 加锁替换”的流程；测试注册一个合成的 v0→v1 步骤验证备份与替换，以及无对应步骤的低版本 → 只读错误态。
+4. **指纹不一致时创建了数据目录/`config.lock`**：接受。合同中“不写任何东西”指 `config.json`、导入快照与新 Keychain 条目；数据目录与锁文件属于基础设施，可提前创建（0700/0600）。测试断言上述三类无变化即可。
+5. **远端项目列表失败**：不用 422。参数非法 → 422 `validation_error`；请求已发出但失败 → 502 `ado_request_failed`，`detail` 额外带 `category`（与测试连接同一分类集合）与脱敏 `message`；无 PAT → 409 `no_credential`。
+6. **沙箱内无法 bind 端口**：codex 沙箱限制，不是代码问题。施工者在沙箱内跑不依赖端口的子集；依赖真实端口的回归由主控在沙箱外运行并把结果回传。主控已在沙箱外跑首轮全量：268 passed，失败仅上述 1、2 两类共 6 条。
+7. README 必须更新（合同交付物）。
+
 ## S1-C：S0/S0.5 前端遗留修复（先于 S1-B）
 
 - 依赖：本合同；与 S1-A 并行（不碰设置页、不碰 `src/api/schema.d.ts`）。
