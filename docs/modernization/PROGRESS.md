@@ -257,7 +257,7 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 ### 资源与清理
 
 - dev:web 按 pid 结束，后端与 vite 随之退出（核对无 `toolbox_backend`/`dev-web.mjs` 残留）；浏览器窗格视口已复位。
-- 施工 worktree `.local/worktrees/s05` 保留，待用户确认后移除；patch 与日志在会话 scratchpad。
+- 施工 worktree `.local/worktrees/s05`：用户确认后移除（移除前无未提交改动，HEAD 为 `3a5dac1`；`git worktree remove --force` + `prune`，约 311 MB）；patch 与日志在会话 scratchpad。
 
 ### 异步交叉审计
 
