@@ -338,15 +338,15 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | open → S1-D |
-| CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | open → S1-D |
-| CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | open → S1-D |
-| CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | open → S1-D |
-| CR-S1A-005 | minor | PAT 元数据/Keychain/base_url 提交顺序导致状态漂移；极端情况下（磁盘写失败）新 PAT 留在旧 origin 下 | open → S1-D |
-| CR-S1A-006 | minor | “日志无 PAT”断言先经脱敏格式化再判断，近似恒真；缺进程级 stderr 检查 | open → S1-D |
+| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | fixed（S1-D）；待审计复核 |
+| CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | fixed（S1-D）；待审计复核 |
+| CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | fixed（S1-D）；待审计复核 |
+| CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | fixed（S1-D）；待审计复核 |
+| CR-S1A-005 | minor | PAT 元数据/Keychain/base_url 提交顺序导致状态漂移；极端情况下（磁盘写失败）新 PAT 留在旧 origin 下 | fixed（S1-D）；待审计复核 |
+| CR-S1A-006 | minor | “日志无 PAT”断言先经脱敏格式化再判断，近似恒真；缺进程级 stderr 检查 | fixed（S1-D）；待审计复核 |
 
 - S1-D 合同已写入 WORK_PACKAGES，排在 S1-B 集成之后（文件重叠）。
-- cleanup：审计者在会话 scratchpad 留下 `c814/`（`git archive` 导出副本，无密钥）与 `probe/`（探针脚本）；审计者与主控的删除命令均被权限拦截，未绕过，留待用户处理。
+- cleanup：审计者在会话 scratchpad 留下 `c814/`（`git archive` 导出副本，无密钥）与 `probe/`（探针脚本）；审计者与主控的删除命令均被权限拦截，未绕过；用户 2026-10-22 手动删除，主控复核已不存在。
 
 ### S1-B 集成（主控）
 
@@ -356,3 +356,15 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 - 偏差：施工者报告以**进程名** SIGTERM 回收其 dev:web（违反通用合同“不按进程名批量 kill”）；事后核对无误杀，记录为流程违规，后续派工单重申按 pid 回收。施工者“测试连接后也清空 PAT 输入”比合同更严，接受。
 - 观察（未处置）：写操作 busy 时再次点击被静默忽略；busy 被拒时 PAT 输入仍被清空且无提示。列入 S1 收尾的 UX 小项。
 - 未测：Tauri 内渲染、Playwright e2e、真实 Keychain/ADO、真实浏览器 axe 扫描与焦点可见性、只读错误态的实机截图（单测覆盖）。
+
+### S1-D 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S1-D 审计修复 | codex exec，requested gpt-6.1-sol / medium，session `01a16365-fd27-7670-9316-e33ab615cf2f`，worktree `.local/worktrees/s1d` @ `1ffc729`；actual unknown | 施工者在 codex 内派原生子 agent `/root/s1d_test`（requested gpt-6-luna / high，actual unknown），只复跑施工者的 17 例回归与 lint，**未补独立用例**——独立性弱，记录 | passed（自动验收），集成提交见下 |
+
+- 修前失败证据：施工者在改产品代码前运行新回归 `tests/test_s1d_regressions.py` → 12 failed（覆盖 001–006 全部六项），修后通过；另 5 例为补充回归（无修前证据）。既有断言改写仅 1 处：`test_s1_settings.py` 日志产物改为原始 `record.getMessage()`/`caplog.text`，formatter 覆盖拆为独立用例。
+- 主控沙箱外全量：首次 381 passed / 1 failed——`test_cr006_dev_memory_process_stderr_never_contains_pat` 假设“绑定未监听端口 → 连接被拒（network）”，macOS 实测为 5 秒连接超时（timeout）。属测试环境假设错误：主控将该断言放宽为 `category in {network, timeout}`（stderr 不含 PAT 的核心断言不变）并注释原因。
+- 主控审阅：`connection` 在锁内同一快照取 `(library, PAT)`，锁外 `to_thread` 发请求；进程内锁 `wait_for(acquire, 5s)` → `store_busy`；与审计建议一致。
+- 集成版本：后端 `ruff`、`contracts --check` 通过，`pytest` **382 passed**；契约无漂移，前端 `contracts:check` 通过（前端代码无改动）。施工者交付报告移至 git 忽略的 `.local/dispatch/s1d/S1-D-REPORT.md`，未入库。
+- 注意：PAT 最小长度现为 8，前端设置页未做同样的前置校验，短 PAT 由后端 422 拒绝并显示固定文案（可接受，列入 S1 收尾 UX 小项）。
