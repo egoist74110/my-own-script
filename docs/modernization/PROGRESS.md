@@ -383,3 +383,18 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | open → S1-E：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
 
 info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（当前无记录路径）；恰为配置 JSON 固定子串的 ≥8 位 PAT 会触发写入闸门（真实 ADO PAT 52 位）；create 回滚时 Keychain `set` 抛错但实际已写入会留下未索引条目；新 service 的 Keychain 读取仍在锁内（其他请求 5s 后 `store_busy`）。
+
+### S1-B 异步交叉审计
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s1b-cross-21957f6 / round1 | `c954533..21957f6` 的 `next/desktop`、`next/backend` | codex exec，gpt-6.1-sol / high（CLI 头部回执），sandbox read-only，session `01a16373-c2c4-7502-860f-e628f2a2d9dc`；跨厂商（施工为 Claude） | returned（exit 0） | rework required：3 major、1 minor；未发现 PAT 进入 Pinia/缓存/存储/URL/console/DOM；CR-S05-003 确认收尾；审计者只读跑 vitest 331 passed / 1 skipped（排除需写入的守卫用例），用内存注入复现 4 项；请求与输出在 `.local/reviews/s1b-cross-21957f6/` |
+
+主控核对代码，4 项属实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | open → S1-F |
+| CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | open → S1-F |
+| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | open → S1-F |
+| CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | open → S1-F |

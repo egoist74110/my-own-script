@@ -558,6 +558,27 @@
 - 每条附回归测试（修前失败、修后通过）。验收命令同 S1-A。
 - 修复后续接 S1-A 审计者做第二轮复核（异步）。
 
+## S1-E：后端审计收尾（CR-S1A-007、008）
+
+- 依赖：S1-D 集成（`9c94613`）。可与 S1-F 并行（文件不重叠）。
+- write_scope：`next/backend/**`、`next/contracts/**`。
+- 已定修法：
+  1. **CR-S1A-007**：`patch_library` 提交新 base_url 抛错后，先重读磁盘配置再决定 Keychain 处置：磁盘上该 library 的 base_url 已是新值 → 保留新 PAT（若本次写了新 PAT）；仍是旧值 → 恢复旧 PAT（原先无值则删除）；重读失败或 library 不存在 → 删除该条目并尽力标 `pending_delete`，**任何情况下不把旧 PAT 恢复到可能已是新 origin 的条目上**。
+  2. **CR-S1A-008**：出站读取改为逐原始块（`iter_raw()` 或不指定 `chunk_size`）检查 deadline 与 1 MiB 上限；回归用小块滴流（如每 0.5 秒 1 字节）断言约 10 秒内以 `timeout` 结束、超限以 `bad_response` 结束。
+- 每项回归先在修前失败；验收命令同 S1-A（端口用例由主控沙箱外运行）。
+
+## S1-F：设置页审计收尾（CR-S1B-001..004 + UX 小项）
+
+- 依赖：S1-B 集成（`21957f6`）。可与 S1-E 并行。
+- write_scope：`next/desktop/**`（不含 `src-tauri/**`）。
+- 已定修法：
+  1. **CR-S1B-001**：编辑开始（选中条目或新建）时记录**基线**（字段值 + 当时的 revision）。patch 只包含用户相对基线改动过的字段，请求携带**基线 revision**（不是缓存中的最新值）。收到 `revision_conflict`：刷新数据，保留用户改动过的字段、未改动字段更新为服务器新值，基线 revision 更新为新值，提示“设置已被其他窗口修改，已合并最新内容，请核对后再保存”；不自动重试。外部 `settings.changed` 只更新显示，不改基线（因此后续保存必然 409 → 走上述合并）。library 与 project 同样处理。
+  2. **CR-S1B-002**：收到 `pat_origin_change` 时把**完整待提交请求体与目标 origin**冻结为待确认对象；确认（保留/替换）只提交该冻结请求体（再附 `keep_pat`/`pat`）；待确认期间地址与名称输入框禁用，或任何输入变化立即撤销待确认对象（二选一，须测试）；提示文案显示冻结的 origin。
+  3. **CR-S1B-003**：任何写请求返回 `store_unavailable` 或 `store_busy` 以外的 503 时，立即刷新 overview；在刷新确认 `store_state=ok` 之前 `writable=false`；`act()` 入口在不可写时直接拒绝并提示。
+  4. **CR-S1B-004**：写响应含 `warnings` 时显示为警告提示（不显示成功文案），凭据页随即刷新以显示 `pending_delete`。
+  5. UX：写操作进行中再次触发 → 提示“操作进行中，请稍候”，不静默；被拒的请求不清空 PAT 输入（只有请求真正发出后才在 `finally` 清空）；PAT 前端校验最小 8 字符（与后端一致），不满足时不发请求并提示。
+- 每项有回归测试（先失败后通过）；测试子 agent 只在 `tests/independent/` 下补用例。验收命令同 S1-B。
+
 ## S1 集成验收（主控）
 
 - 集成版本重跑 S1-A、S1-B/C 全部命令；`git diff --check`；`next/` 与本目录文档以外无改动；旧应用守卫测试不回退。
