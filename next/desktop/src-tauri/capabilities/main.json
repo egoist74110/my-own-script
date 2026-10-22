@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Minimal permissions for the main window: backend handshake commands, status events and window dragging.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-backend-connection",
+    "allow-backend-status",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
+  ]
+}

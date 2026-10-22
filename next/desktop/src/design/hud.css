@@ -1,0 +1,111 @@
+/* HUD 通用组件样式（改写自设计稿 Hud-Main 的 <style>）。 */
+.mono {
+  font-family: var(--font-mono);
+}
+.chip {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--inv);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 7px;
+  line-height: 1.1;
+}
+.micro {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 1.7;
+  color: var(--mute);
+  letter-spacing: 0.3px;
+}
+.sq {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--ink);
+}
+.glass {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 70%, transparent),
+    color-mix(in srgb, var(--card) 50%, transparent)
+  );
+  backdrop-filter: blur(24px) saturate(0.8);
+  -webkit-backdrop-filter: blur(24px) saturate(0.8);
+  box-shadow:
+    10px 18px 46px color-mix(in srgb, #3b3226 calc(22% - var(--denied) * 10%), transparent),
+    inset 2px 2px 0 rgba(255, 255, 255, calc(0.85 - var(--denied) * 0.75));
+}
+.plate {
+  position: relative;
+  overflow: hidden;
+  background: #101112;
+  color: #fff;
+}
+.smoke {
+  position: absolute;
+  inset: -10%;
+  background:
+    radial-gradient(40% 50% at 30% 40%, rgba(255, 255, 255, 0.16), transparent 70%),
+    radial-gradient(35% 45% at 70% 65%, rgba(255, 255, 255, 0.1), transparent 70%),
+    radial-gradient(50% 40% at 55% 20%, rgba(255, 255, 255, 0.07), transparent 70%);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes blink {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  71%,
+  100% {
+    opacity: 0.25;
+  }
+}
+@keyframes drift {
+  from {
+    transform: translate(-3%, -2%) scale(1.04);
+  }
+  to {
+    transform: translate(3%, 2%) scale(1.1);
+  }
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-spin {
+  animation: spin 9s linear infinite;
+}
+.anim-spin-rev {
+  animation: spin 14s linear infinite reverse;
+}
+.anim-blink {
+  animation: blink 860ms steps(1) infinite;
+}
+.anim-drift {
+  animation: drift 30s ease-in-out infinite alternate;
+}
+.anim-row-in {
+  animation: row-in 0.4s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-spin,
+  .anim-spin-rev,
+  .anim-blink,
+  .anim-drift,
+  .anim-row-in {
+    animation: none !important;
+  }
+}

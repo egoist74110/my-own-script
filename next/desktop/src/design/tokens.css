@@ -1,0 +1,50 @@
+/*
+ * 设计令牌：工业 HUD。数值来自设计稿 Hud-Main 的 `.hud` 令牌；
+ * 视觉语言来源见 next/THIRD_PARTY.md。
+ * `--denied`：0 = 常态，1 = 告警；注册为 <number> 以便过渡。
+ * 令牌必须定义在 `.hud` 元素上（而非 :root），color-mix 才会随该元素的 --denied 重新计算。
+ */
+@property --denied {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.hud {
+  --orange: #ff7b00;
+  --lime: #b9e432;
+  --paper: color-mix(in srgb, #e7e5e1, #0b0b0c calc(var(--denied) * 100%));
+  --ink: color-mix(in srgb, #111214, #f2f0eb calc(var(--denied) * 100%));
+  --inv: color-mix(in srgb, #f2f0eb, #111214 calc(var(--denied) * 100%));
+  /* 文字灰 #5f5c57：纸面对比度 >= 4.5:1 */
+  --mute: color-mix(in srgb, #5f5c57, #9a9893 calc(var(--denied) * 100%));
+  --faint: color-mix(in srgb, #c9c6c0, #2b2b2d calc(var(--denied) * 100%));
+  --card: color-mix(in srgb, #f6f5f2, #151618 calc(var(--denied) * 100%));
+  --tab: color-mix(in srgb, #dcdad5, #1d1e20 calc(var(--denied) * 100%));
+  --accent: color-mix(in srgb, #7fa316, var(--orange) calc(var(--denied) * 100%));
+  --accent-fill: color-mix(in srgb, var(--lime), var(--orange) calc(var(--denied) * 100%));
+  --fa: color-mix(in srgb, #ffffff, #5a2a08 calc(var(--denied) * 100%));
+  --fb: color-mix(in srgb, #cdc8bf, #120b06 calc(var(--denied) * 100%));
+  --fe: color-mix(
+    in srgb,
+    rgba(17, 18, 20, 0.35),
+    rgba(255, 123, 0, 0.9) calc(var(--denied) * 100%)
+  );
+
+  --font-sans: 'Montserrat', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* 微型字号下限 */
+  --text-micro: 10px;
+
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  background: var(--paper);
+  color: var(--ink);
+  transition: --denied 0.6s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud {
+    transition: none;
+  }
+}

@@ -1,0 +1,39 @@
+[project]
+name = "toolbox-backend"
+version = "0.1.0"
+description = "TOOLBOX next: local FastAPI backend process"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.159.1",
+    "pydantic>=2.14.1",
+    "uvicorn>=0.54.0",
+    "websockets>=17.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.1",
+    "websockets>=17.3",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501", "ASYNC109", "ASYNC210", "ASYNC230", "ASYNC251", "UP031", "B904", "B017"]

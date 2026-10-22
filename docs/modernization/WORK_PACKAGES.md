@@ -155,7 +155,7 @@
 - 启动：`python -m toolbox_backend [--dev]`。只绑 `127.0.0.1`，端口由后端自行 `bind(("127.0.0.1", 0))` 取得后交给 uvicorn（不先探测再释放端口，避免竞争）。不提供监听其他地址的选项。
 - token：每次启动 `secrets.token_urlsafe(32)`；不写文件、不进日志、不进环境变量。
 - 握手：服务**已开始接受连接后**，向 stdout 写且只写一行并 flush：`TOOLBOX_READY {"v":1,"port":<int>,"token":"<str>","pid":<int>}`。之后 stdout 不再输出任何内容；日志一律走 stderr，且经脱敏（不得含 token）。
-- 生命周期：stdin 收到 EOF 即协调退出（壳崩溃时不留孤儿）；SIGTERM/SIGINT 协调退出，退出码 0；启动失败非 0 退出且不打印 READY 行。
+- 生命周期：stdin 收到 EOF 即协调退出（壳崩溃时不留孤儿）；READY 之后 SIGTERM/SIGINT 协调退出，退出码 0（READY 之前的信号可能早于解释器执行 Python 代码，允许被信号终止，但不得挂起或再打印 READY；2026-10-22 主控裁决 S0A-003）；启动失败非 0 退出且不打印 READY 行。
 - 安全中间件顺序：Host 校验 → CORS → 鉴权。
   - Host 必须等于 `127.0.0.1:<port>`，否则 400（防 DNS rebinding）；`localhost:<port>` 也拒绝。
   - CORS 允许 origin：`tauri://localhost`、`http://tauri.localhost`；`--dev` 时追加 `http://localhost:1420`、`http://127.0.0.1:1420`。允许头 `Authorization, Content-Type`，不允许 credentials。预检请求不需要 token。
