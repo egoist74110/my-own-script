@@ -12,6 +12,8 @@ from toolbox_backend.api.settings_schemas import (
     ImportRequest,
     LibraryCreate,
     LibraryPatch,
+    LocalRepoCreate,
+    LocalRepoPatch,
     MutationResponse,
     NoCredentialErrorResponse,
     PatRequest,
@@ -128,3 +130,18 @@ async def credentials(request: Request):
 @router.delete("/api/credentials/{account}", response_model=MutationResponse)
 async def delete_credential(account: str, revision: Revision, request: Request):
     return await service(request).delete_orphan(account, revision)
+
+
+@router.post("/api/ado/local-repos", response_model=MutationResponse)
+async def create_local_repo(body: LocalRepoCreate, request: Request):
+    return await service(request).local_repo(body)
+
+
+@router.patch("/api/ado/local-repos/{id}", response_model=MutationResponse)
+async def patch_local_repo(id: str, body: LocalRepoPatch, request: Request):
+    return await service(request).local_repo(body, id)
+
+
+@router.delete("/api/ado/local-repos/{id}", response_model=MutationResponse)
+async def delete_local_repo(id: str, revision: Revision, request: Request):
+    return await service(request).delete_local_repo(id, revision)

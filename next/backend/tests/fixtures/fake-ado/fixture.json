@@ -1,0 +1,88 @@
+{
+  "projects": [
+    {
+      "name": "Sample"
+    }
+  ],
+  "items": [
+    {
+      "id": 101,
+      "rev": 3,
+      "fields": {
+        "System.Title": "虚构：检查发布说明",
+        "System.WorkItemType": "用户情景",
+        "System.State": "开发中",
+        "System.BoardColumn": "开发中",
+        "System.AssignedTo": {
+          "displayName": "示例开发者"
+        },
+        "System.Tags": "演示; 虚构",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "System.Description": "<p>全部为虚构数据。</p><img src=\"/tfs/Collection/Sample/_apis/wit/attachments/demo.png\" alt=\"同源示例\"><img src=\"https://external.example.test/picture.png\" alt=\"跨源示例\">"
+      },
+      "relations": [
+        {
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "/tfs/Collection/Sample/_apis/wit/workitems/102"
+        },
+        {
+          "rel": "AttachedFile",
+          "url": "/tfs/Collection/Sample/_apis/wit/attachments/readme.txt",
+          "attributes": {
+            "name": "示例附件.txt",
+            "resourceSize": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "rev": 1,
+      "fields": {
+        "System.Title": "虚构：核对文案",
+        "System.WorkItemType": "任务",
+        "System.State": "新建",
+        "System.BoardColumn": "新建"
+      },
+      "relations": []
+    }
+  ],
+  "comments": {
+    "101": [
+      {
+        "id": 1,
+        "createdBy": {
+          "displayName": "示例评审者"
+        },
+        "createdDate": "2026-10-22T00:00:00Z",
+        "text": "<p>虚构评论：请检查图片。</p>"
+      }
+    ]
+  },
+  "updates": {
+    "101": [
+      {
+        "id": 1,
+        "rev": 3,
+        "revisedBy": {
+          "displayName": "示例开发者"
+        },
+        "revisedDate": "2026-10-22T00:00:00Z",
+        "fields": {
+          "System.Title": {
+            "oldValue": "虚构旧标题",
+            "newValue": "虚构：检查发布说明"
+          }
+        },
+        "relations": {
+          "added": [],
+          "removed": []
+        }
+      }
+    ]
+  },
+  "media": {
+    "demo.png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1sAAAAASUVORK5CYII=",
+    "readme.txt": "6Jma5p6E6ZmE5Lu2Cg=="
+  }
+}

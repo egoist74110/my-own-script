@@ -41,6 +41,10 @@ def setup_logging(secrets: list[str], level: int = logging.INFO) -> None:
     handler.setFormatter(
         RedactingFormatter(secrets, "%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
+    # HTTP client diagnostics include complete request paths/query strings.
+    # The backend emits only its own fixed messages/origins.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)

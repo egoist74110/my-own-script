@@ -1,7 +1,7 @@
-# toolbox-backend (S0 / S1-A)
+# toolbox-backend (S0 / S1 / S2-A)
 
 TOOLBOX next 的本地后端进程：FastAPI + uvicorn，Python >= 3.14，uv 管理依赖（`uv.lock` 入库）。
-接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1 及「S1-A 主控裁决」。
+接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1、S2 及「S1-A 主控裁决」。
 
 ## 分层
 
@@ -31,6 +31,7 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
 | `TOOLBOX_LEGACY_CONFIG_DIR` | 默认 `~/.config/my-own-script/`；开发/测试指定假旧配置目录 |
 | `TOOLBOX_CREDENTIALS` | 默认 `keyring`；`memory` 仅在 `--dev` 下允许，否则启动失败；内存值不持久化 |
 | `TOOLBOX_DEV_FAKE_CREDENTIALS` | 指向 `{"legacy": {account: 值}, "current": {account: 值}}` 的 JSON 文件，分别预置旧/新内存凭据；**仅 `--dev` 且 `TOOLBOX_CREDENTIALS=memory` 时接受**，否则启动失败；仓库样例 `tests/fixtures/dev-credentials.json`（全为明显假值），`pnpm dev:web` 使用 |
+| `TOOLBOX_DEV_FAKE_ADO` | 虚构 ADO fixture 目录（含 `fixture.json`），仅 `--dev` 且 `TOOLBOX_CREDENTIALS=memory` 时接受；用进程内 MockTransport 替换出站，不监听假 ADO 端口 |
 | `--dev` | 允许 Vite 的两个本机 Origin；不会自动替换生产凭据后端或目录 |
 | `TOOLBOX_HEARTBEAT_INTERVAL_S` | 默认 5 秒，用于测试缩短心跳间隔 |
 
@@ -42,6 +43,15 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
   进程内可通过 `Settings(heartbeat_interval_s=..., ws_auth_timeout_s=..., ws_queue_size=...)` 注入。
 - 手动试用（token 在 READY 行里）：
   `curl -H "Authorization: Bearer <token>" http://127.0.0.1:<port>/health`
+
+## S2 虚构 ADO 联调
+
+在上述开发命令基础上，同时设置 `TOOLBOX_DEV_FAKE_CREDENTIALS=$PWD/tests/fixtures/dev-credentials.json`
+和 `TOOLBOX_DEV_FAKE_ADO=$PWD/tests/fixtures/fake-ado`。保持 `TOOLBOX_CREDENTIALS=memory`、
+`--dev`，数据目录使用独立临时目录；在设置页预览并执行导入虚构旧配置，然后选择示例项目。
+fixture 全部为虚构数据：101/102 两张工单、同源 PNG、跨源图片占位、附件、子项、评论与历史。
+媒体同源 URL 使用 `/tfs/…` 相对路径，兼容虚构 library 的 http/https origin。
+非法 fake 模式在监听端口之前失败；正常开发后端仍按 S0 监听随机回环端口。
 
 ## store 与凭据
 
@@ -89,12 +99,39 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
 WS 必须带允许的 Origin，随后通过首帧 token 认证。CORS 方法恰好为 GET、POST、PUT、PATCH、DELETE、OPTIONS。
 
 PAT 输入长度为 8–1024；短于 8 的旧值不会登记到脱敏器。
-ADO 请求在锁内取得同一快照的 library/PAT，释放锁后发送；collection/project 拒绝点路径段，
+S1 ADO 请求在锁内取得同一快照的 library/PAT，释放锁后发送；collection/project 拒绝点路径段，
 最终请求路径必须在 base_url 路径下。不跟随重定向，总时长截止 10 秒（响应流逐块检查）/连接 5 秒，
 响应最多读取 1 MiB。修改 origin 且已有 PAT 时必须替换 PAT 或显式 keep_pat。
 候选 PAT 测试不保存；响应、错误、事件和日志不返回 PAT 或远端响应原文。
 远端项目列表成功返回最多 500 个 `{name}`；非法参数返回 422 `validation_error`，无 PAT 返回
 409 `no_credential`，出站失败返回 502 `ado_request_failed`，detail 包含测试连接同一分类集合的 category 和脱敏 message。
+
+## S2 工单与媒体
+
+- `GET /api/work-items/columns` 返回固定五列；列表 `GET /api/work-items?project_id=&column=`
+  只查当前列，WIQL `$top=500`，每批 ≤200 项，不带 relations；含 `truncated`/`omitted`。
+- `GET /api/work-items/{id}` 及 `/{id}/comments`、`/{id}/updates`、`/{id}/children`
+  接收 store 中的 `project_id`；工单 id 为 1..2147483647。详情返回网页地址、清洗后 HTML、
+  关系摘要和不透明媒体 id，不返回原始 fields/relations 或附件 URL。评论和历史各 ≤100 项；
+  子项按 BFS 最深 8 层、最多 500 项、环去重。
+- `adapters/ado_read.py` 是 S1/S2 的同一出站实现；S1 兼容入口保留 10 秒/1 MiB/既有分类。
+  S2 JSON 总时长 15 秒、4 MiB；媒体 30 秒，图片 10 MiB/附件 25 MiB；连接最多 5 秒。
+  进程级并发 6，排队超过 15 秒返回 503 `busy`。响应和客户端由上下文关闭；取消请求时等待线程关闭再归还并发许可。
+- 媒体登记表只在事件循环内操作：随机 128 bit id、同 project/URL 复用、登记起 TTL 30 分钟、
+  最多 4096 项，按登记顺序淘汰。媒体字节与工单 JSON 均不缓存、不落盘。取媒体时重新核对
+  project/library、来源与路径前缀以及 PAT；已过期返回 404 `media_expired`。
+- `GET /api/work-items/media/{media_id}` 不接受任意 URL。首跳和每次重定向均检查所属 library
+  的 origin 与 base 路径前缀，最多 5 跳；跨源、降级、userinfo、路径越界立即终止，目标零请求。
+  图片仅接受 PNG/JPEG/GIF/WebP/BMP 魔数，其他返回 415 `unsupported_media`；附件强制下载、
+  文件名清理并编码。成功响应都有 nosniff、sandbox CSP、private/no-store 三项头。
+- HTML 经 nh3 HTML5 解析和白名单清洗；图片仅保留后端生成的 `data-media-id` 或来源占位。
+  禁止 style/src/srcset/on* 等属性；单字段原文 >1 MiB 标记 `omitted: too_large`。
+  Updates 字段转纯文本并截断到 2000 字符。前端仍须按 S2-B 做第二次清洗和 blob 生命周期管理。
+- `POST/PATCH/DELETE /api/ado/local-repos[/id]` 由 SettingsService 单次 store 提交，沿用 revision
+  冲突规则。新/修改路径须绝对、≤1024、无控制字符与 `..` 段，仅规范化、不 resolve。
+  存量条目保持可读，`GET /api/ado` 增加 `exists` 与 `warnings`，只调用 isdir、不读取目录内容。
+- 全部新路由走 S0 认证；PAT 不进响应/事件/配置，远端 JSON 的凭据回显递归脱敏，包含凭据的
+  媒体拒绝返回。生产日志关闭 HTTPX/httpcore 的 URL 诊断，出站失败只返回固定分类/文案。
 
 ## 测试
 
@@ -115,8 +152,17 @@ S1 出站请求只使用 MockTransport，测试扫描响应、日志、事件、
 禁止监听端口的沙箱内使用以下子集；真实 HTTP/WS/进程启动回归由主控在沙箱外执行：
 
 ```sh
-.venv/bin/python -m pytest -q tests/test_s1_store.py tests/test_s1_settings.py tests/test_s1_ado.py tests/test_s1d_regressions.py tests/test_hub.py tests/test_contracts.py tests/independent/test_fault_contracts.py tests/test_slow_client.py::test_stalled_connection_closed_with_4408_via_handler
+.venv/bin/python -m pytest -q \
+  --ignore=tests/test_http.py --ignore=tests/test_ws.py --ignore=tests/test_process.py \
+  --ignore=tests/test_s1d_process.py --ignore=tests/independent/test_fault_http.py \
+  --ignore=tests/independent/test_fault_ws.py --ignore=tests/independent/test_fault_lifecycle.py \
+  --ignore=tests/independent/s1/test_s1_live_boundaries.py \
+  --deselect=tests/test_slow_client.py::test_stalled_client_does_not_affect_fast_client_end_to_end
 ```
+
+上述忽略文件内的全部 HTTP/WS/进程测试，以及被 deselect 的慢客户端端到端用例，均交主控沙箱外运行。
+新增 `tests/test_s2_{work_items,ado_read,sanitize_regressions}.py` 与 `tests/independent/s2a/`
+均不需要端口，已包含于子集中。
 
 S1-D 进程 stderr 用例 `tests/test_s1d_process.py::test_cr006_dev_memory_process_stderr_never_contains_pat`
 需要回环端口，由主控在沙箱外运行（或沙箱外运行完整 `pytest -q`）。

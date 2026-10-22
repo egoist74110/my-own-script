@@ -15,12 +15,15 @@ from pathlib import Path
 
 import uvicorn
 
+from toolbox_backend.adapters.ado_http import AdoHTTP
+from toolbox_backend.adapters.ado_read import AdoRead
 from toolbox_backend.adapters.credentials import (
     KeyringCredentials,
     KeyringLegacySource,
     MemoryCredentials,
     seed_fake_credentials,
 )
+from toolbox_backend.adapters.fake_ado import fake_transport
 from toolbox_backend.adapters.stdin import watch_stdin_eof
 from toolbox_backend.app import create_app
 from toolbox_backend.logging_setup import setup_logging
@@ -70,8 +73,15 @@ async def serve(settings: Settings, sock: socket.socket) -> int:
     if fake_file:
         assert isinstance(credentials, MemoryCredentials) and isinstance(legacy, MemoryCredentials)
         seed_fake_credentials(Path(fake_file), legacy=legacy, current=credentials)
+    transport = fake_transport(settings.dev)
     config = uvicorn.Config(
-        create_app(settings, credentials=credentials, legacy_credentials=legacy),
+        create_app(
+            settings,
+            credentials=credentials,
+            legacy_credentials=legacy,
+            ado_http=AdoHTTP(transport),
+            ado_read=AdoRead(transport),
+        ),
         log_config=None,
         ws="websockets-sansio",
         timeout_graceful_shutdown=3,
@@ -115,6 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging([token])
     sock = None
     try:
+        # Validate dev fixture mode before even attempting to bind.
+        if os.environ.get("TOOLBOX_DEV_FAKE_ADO") is not None:
+            if not (args.dev and os.environ.get("TOOLBOX_CREDENTIALS") == "memory"):
+                raise ValueError(
+                    "TOOLBOX_DEV_FAKE_ADO requires --dev and TOOLBOX_CREDENTIALS=memory"
+                )
         sock = bind_socket()
         port = sock.getsockname()[1]
         heartbeat = float(os.environ.get(HEARTBEAT_ENV, "5"))

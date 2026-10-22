@@ -12,6 +12,7 @@ from toolbox_backend.domain.settings import (
     Name,
     Pat,
     Project,
+    RepoPath,
     Segment,
     StrictModel,
 )
@@ -48,6 +49,21 @@ class ProjectPatch(RevisionRequest):
     library_id: Id | None = None
     collection: Segment | None = None
     project: Segment | None = None
+
+
+class LocalRepoCreate(RevisionRequest):
+    name: Name
+    path: RepoPath
+
+
+class LocalRepoPatch(RevisionRequest):
+    name: Name | None = None
+    path: RepoPath | None = None
+
+
+class LocalRepoView(LocalRepo):
+    exists: bool
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ActiveRequest(RevisionRequest):
@@ -95,7 +111,7 @@ class AdoResponse(StrictModel):
     revision: int
     libraries: list[LibraryView]
     projects: list[Project]
-    local_repos: list[LocalRepo]
+    local_repos: list[LocalRepoView]
     active_library_id: str | None
     active_project_id: str | None
 

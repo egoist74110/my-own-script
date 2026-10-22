@@ -1,5 +1,6 @@
 """S1 persistent schema. Credentials contain metadata only."""
 
+import os
 import re
 import unicodedata
 from typing import Annotated, Literal
@@ -30,11 +31,24 @@ def name(value: str) -> str:
 
 
 def segment(value: str) -> str:
-    if value in {".", ".."} or not 1 <= len(value) <= 256 or any(
-        c in "/\\" or unicodedata.category(c).startswith("C") for c in value
+    if (
+        value in {".", ".."}
+        or not 1 <= len(value) <= 256
+        or any(c in "/\\" or unicodedata.category(c).startswith("C") for c in value)
     ):
         raise ValueError("invalid path segment")
     return value
+
+
+def repo_path(value: str) -> str:
+    if (
+        len(value) > 1024
+        or not os.path.isabs(value)
+        or any(unicodedata.category(c).startswith("C") for c in value)
+        or ".." in value.split("/")
+    ):
+        raise ValueError("invalid repository path")
+    return os.path.normpath(value)
 
 
 def base_url(value: str) -> str:
@@ -82,6 +96,7 @@ Name = Annotated[str, AfterValidator(name)]
 Segment = Annotated[str, AfterValidator(segment)]
 BaseURL = Annotated[str, AfterValidator(base_url)]
 Pat = Annotated[SecretStr, AfterValidator(pat_value)]
+RepoPath = Annotated[str, AfterValidator(repo_path)]
 
 
 class StrictModel(BaseModel):

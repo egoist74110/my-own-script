@@ -124,7 +124,7 @@
           },
           "local_repos": {
             "items": {
-              "$ref": "#/components/schemas/LocalRepo"
+              "$ref": "#/components/schemas/LocalRepoView"
             },
             "title": "Local Repos",
             "type": "array"
@@ -204,6 +204,343 @@
           "changed_at"
         ],
         "title": "AlertState",
+        "type": "object"
+      },
+      "Attachment": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Origin"
+          },
+          "is_image": {
+            "title": "Is Image",
+            "type": "boolean"
+          },
+          "media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "required": [
+          "name",
+          "is_image",
+          "media_id",
+          "blocked_origin"
+        ],
+        "title": "Attachment",
+        "type": "object"
+      },
+      "ChildItem": {
+        "additionalProperties": false,
+        "properties": {
+          "area_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Path"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "board_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board Column"
+          },
+          "changed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed Date"
+          },
+          "created_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Date"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "iteration_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration Path"
+          },
+          "parent_id": {
+            "title": "Parent Id",
+            "type": "integer"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "parent_id",
+          "depth"
+        ],
+        "title": "ChildItem",
+        "type": "object"
+      },
+      "ChildrenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChildItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "title": "ChildrenResponse",
+        "type": "object"
+      },
+      "ColumnsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "default": {
+            "default": "开发中",
+            "title": "Default",
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns"
+        ],
+        "title": "ColumnsResponse",
+        "type": "object"
+      },
+      "Comment": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "created_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Date"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "modified_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Date"
+          },
+          "omitted": {
+            "anyOf": [
+              {
+                "const": "too_large",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omitted"
+          }
+        },
+        "required": [
+          "id",
+          "html"
+        ],
+        "title": "Comment",
+        "type": "object"
+      },
+      "CommentsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "comments",
+          "truncated"
+        ],
+        "title": "CommentsResponse",
         "type": "object"
       },
       "ConnectionResult": {
@@ -380,6 +717,76 @@
           "alert"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HtmlField": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html"
+          },
+          "omitted": {
+            "anyOf": [
+              {
+                "const": "too_large",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omitted"
+          }
+        },
+        "required": [
+          "html"
+        ],
+        "title": "HtmlField",
+        "type": "object"
+      },
+      "HtmlFields": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_criteria": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HtmlField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HtmlField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repro_steps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HtmlField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "HtmlFields",
         "type": "object"
       },
       "ImportPreview": {
@@ -738,9 +1145,75 @@
         "title": "LibraryView",
         "type": "object"
       },
-      "LocalRepo": {
+      "LocalRepoCreate": {
         "additionalProperties": false,
         "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "name",
+          "path"
+        ],
+        "title": "LocalRepoCreate",
+        "type": "object"
+      },
+      "LocalRepoPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "LocalRepoPatch",
+        "type": "object"
+      },
+      "LocalRepoView": {
+        "additionalProperties": false,
+        "properties": {
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -752,14 +1225,22 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
           "id",
           "name",
-          "path"
+          "path",
+          "exists"
         ],
-        "title": "LocalRepo",
+        "title": "LocalRepoView",
         "type": "object"
       },
       "MutationResponse": {
@@ -1054,6 +1535,117 @@
         "title": "TestRequest",
         "type": "object"
       },
+      "Update": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "relations_added": {
+            "title": "Relations Added",
+            "type": "integer"
+          },
+          "relations_removed": {
+            "title": "Relations Removed",
+            "type": "integer"
+          },
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          },
+          "revised_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised By"
+          },
+          "revised_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised Date"
+          }
+        },
+        "required": [
+          "id",
+          "fields",
+          "relations_added",
+          "relations_removed"
+        ],
+        "title": "Update",
+        "type": "object"
+      },
+      "UpdateField": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "new": {
+            "title": "New",
+            "type": "string"
+          },
+          "old": {
+            "title": "Old",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "old",
+          "new"
+        ],
+        "title": "UpdateField",
+        "type": "object"
+      },
+      "UpdatesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/Update"
+            },
+            "title": "Updates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "updates",
+          "truncated"
+        ],
+        "title": "UpdatesResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1125,6 +1717,460 @@
           "detail"
         ],
         "title": "ValidationErrorResponse",
+        "type": "object"
+      },
+      "WorkItemDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "area_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Path"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "board_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board Column"
+          },
+          "changed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed Date"
+          },
+          "child_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Child Ids",
+            "type": "array"
+          },
+          "created_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Date"
+          },
+          "html": {
+            "$ref": "#/components/schemas/HtmlFields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "iteration_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration Path"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/WorkItemLink"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "web_url": {
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "web_url",
+          "html",
+          "child_ids",
+          "attachments",
+          "links"
+        ],
+        "title": "WorkItemDetail",
+        "type": "object"
+      },
+      "WorkItemErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unauthorized",
+                  "forbidden",
+                  "redirect",
+                  "blocked_origin",
+                  "tls",
+                  "timeout",
+                  "network",
+                  "bad_response",
+                  "too_large"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "code": {
+            "enum": [
+              "validation_error",
+              "not_found",
+              "media_expired",
+              "unsupported_media",
+              "no_credential",
+              "ado_request_failed",
+              "busy",
+              "store_unavailable"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "WorkItemErrorDetail",
+        "type": "object"
+      },
+      "WorkItemErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/WorkItemErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "WorkItemErrorResponse",
+        "type": "object"
+      },
+      "WorkItemLink": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "pull_request",
+              "commit",
+              "hyperlink",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "kind",
+          "label"
+        ],
+        "title": "WorkItemLink",
+        "type": "object"
+      },
+      "WorkItemSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "area_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Path"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "board_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board Column"
+          },
+          "changed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed Date"
+          },
+          "created_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Date"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "iteration_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration Path"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "WorkItemSummary",
+        "type": "object"
+      },
+      "WorkItemsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkItemSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "omitted": {
+            "title": "Omitted",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "truncated",
+          "omitted"
+        ],
+        "title": "WorkItemsResponse",
         "type": "object"
       }
     }
@@ -1542,6 +2588,140 @@
         "summary": "Test Connection"
       }
     },
+    "/api/ado/local-repos": {
+      "post": {
+        "operationId": "create_local_repo_api_ado_local_repos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalRepoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Local Repo"
+      }
+    },
+    "/api/ado/local-repos/{id}": {
+      "delete": {
+        "operationId": "delete_local_repo_api_ado_local_repos__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Local Repo"
+      },
+      "patch": {
+        "operationId": "patch_local_repo_api_ado_local_repos__id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalRepoPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Local Repo"
+      }
+    },
     "/api/ado/projects": {
       "post": {
         "operationId": "create_project_api_ado_projects_post",
@@ -1875,6 +3055,675 @@
           }
         },
         "summary": "Set Alert"
+      }
+    },
+    "/api/work-items": {
+      "get": {
+        "operationId": "listing_api_work_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "column",
+            "required": false,
+            "schema": {
+              "default": "开发中",
+              "enum": [
+                "新建",
+                "待开发",
+                "开发中",
+                "测试",
+                "已关闭"
+              ],
+              "title": "Column",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Listing"
+      }
+    },
+    "/api/work-items/columns": {
+      "get": {
+        "operationId": "columns_api_work_items_columns_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Columns"
+      }
+    },
+    "/api/work-items/media/{media_id}": {
+      "get": {
+        "operationId": "media_api_work_items_media__media_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "title": "Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Media"
+      }
+    },
+    "/api/work-items/{id}": {
+      "get": {
+        "operationId": "detail_api_work_items__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Detail"
+      }
+    },
+    "/api/work-items/{id}/children": {
+      "get": {
+        "operationId": "children_api_work_items__id__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildrenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Children"
+      }
+    },
+    "/api/work-items/{id}/comments": {
+      "get": {
+        "operationId": "comments_api_work_items__id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Comments"
+      }
+    },
+    "/api/work-items/{id}/updates": {
+      "get": {
+        "operationId": "updates_api_work_items__id__updates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Updates"
       }
     },
     "/health": {

@@ -28,6 +28,9 @@ from toolbox_backend.api.settings_schemas import (
     ImportPreview,
     LibraryCreate,
     LibraryPatch,
+    LocalRepoCreate,
+    LocalRepoPatch,
+    LocalRepoView,
     MutationResponse,
     ProjectCreate,
     ProjectPatch,
@@ -41,8 +44,10 @@ from toolbox_backend.domain.settings import (
     CredentialMeta,
     ImportState,
     Library,
+    LocalRepo,
     Project,
     origin,
+    repo_path,
 )
 from toolbox_backend.logging_setup import contains_secret, register_secret
 
@@ -183,8 +188,57 @@ class SettingsService:
                 }
                 for lib in config.ado.libraries
             ],
-            **config.ado.model_dump(exclude={"libraries"}),
+            **config.ado.model_dump(exclude={"libraries", "local_repos"}),
+            local_repos=await asyncio.to_thread(self._repo_views, config),
         )
+
+    @staticmethod
+    def _repo_views(config):
+        views = []
+        for repo in config.ado.local_repos:
+            warnings = []
+            try:
+                repo_path(repo.path)
+            except ValueError:
+                warnings.append("存量仓库路径不符合新规则，请修改")
+            if sum(x.name == repo.name for x in config.ado.local_repos) > 1:
+                warnings.append("存量仓库名称重复，请修改")
+            try:
+                exists = os.path.isdir(repo.path)
+            except OSError, ValueError:
+                exists = False
+            views.append(LocalRepoView(**repo.model_dump(), exists=exists, warnings=warnings))
+        return views
+
+    async def local_repo(self, body: LocalRepoCreate | LocalRepoPatch, rid=None):
+        ident = rid or "repo:" + str(uuid.uuid4())
+
+        def mutate(c):
+            if rid:
+                repo = find(c.ado.local_repos, rid)
+                updates = body.model_dump(exclude={"revision"}, exclude_none=True)
+                candidate_name = updates.get("name", repo.name)
+            else:
+                updates = body.model_dump(exclude={"revision"})
+                candidate_name = body.name
+            if any(x.id != ident and x.name == candidate_name for x in c.ado.local_repos):
+                raise SettingsError("validation_error", "仓库名称已存在", 422)
+            if rid:
+                for key, value in updates.items():
+                    setattr(repo, key, value)
+            else:
+                c.ado.local_repos.append(LocalRepo(id=ident, **updates))
+
+        config = await self.store.update(body.revision, mutate)
+        return MutationResponse(revision=config.revision, id=ident)
+
+    async def delete_local_repo(self, rid, revision):
+        def mutate(c):
+            find(c.ado.local_repos, rid)
+            c.ado.local_repos = [x for x in c.ado.local_repos if x.id != rid]
+
+        config = await self.store.update(revision, mutate)
+        return MutationResponse(revision=config.revision)
 
     def _preview(self, config: Config, values: dict | None = None):
         allowed(config)
@@ -345,7 +399,9 @@ class SettingsService:
 
         def update(c):
             c.credentials[account(lid)] = CredentialMeta(
-                ref=lid, source="manual", updated_at=stamp(),
+                ref=lid,
+                source="manual",
+                updated_at=stamp(),
             )
 
         tx.commit(update)
@@ -365,9 +421,11 @@ class SettingsService:
                     self._put_pat(tx, lib.id, body.pat.get_secret_value())
                 except SettingsError as exc:
                     if exc.code == "credential_backend_error":
+
                         def rollback(c):
                             c.ado.libraries = [x for x in c.ado.libraries if x.id != lib.id]
                             c.credentials.pop(account(lib.id), None)
+
                         tx.commit(rollback)
                     raise
             return MutationResponse(revision=tx.config.revision, id=lib.id)
@@ -419,9 +477,7 @@ class SettingsService:
                     disk_lib = None
                     try:
                         tx.config = self.store._read()
-                        disk_lib = next(
-                            (x for x in tx.config.ado.libraries if x.id == lid), None
-                        )
+                        disk_lib = next((x for x in tx.config.ado.libraries if x.id == lid), None)
                     except Exception:
                         pass
                     if disk_lib and disk_lib.base_url == (body.base_url or lib.base_url):
@@ -429,7 +485,9 @@ class SettingsService:
 
                     def pending(c):
                         c.credentials[account(lid)] = CredentialMeta(
-                            ref=lid, source="manual", updated_at=stamp(),
+                            ref=lid,
+                            source="manual",
+                            updated_at=stamp(),
                             state="pending_delete",
                         )
 
@@ -488,6 +546,7 @@ class SettingsService:
             self._delete(key)
         except SettingsError:
             return ["凭据删除失败，保留 pending_delete，可在凭据页重试"]
+
         def removed(c):
             c.credentials.pop(key, None)
             c.import_.written_credentials = [
@@ -608,13 +667,22 @@ class SettingsService:
             return lib, value
 
         lib, value = await self.store.run(None, snapshot)
-        result, projects = await asyncio.to_thread(
-            self.http.projects, lib, body.collection, value, listing=listing,
+        from toolbox_backend.services.work_items import outbound
+
+        result, projects = await outbound(
+            self.http.projects,
+            lib,
+            body.collection,
+            value,
+            listing=listing,
         )
         if listing and not result.ok:
             if result.category == "no_credential":
                 raise SettingsError("no_credential", result.message, 409)
             raise SettingsError(
-                "ado_request_failed", result.message, 502, category=result.category,
+                "ado_request_failed",
+                result.message,
+                502,
+                category=result.category,
             )
         return projects if listing else result

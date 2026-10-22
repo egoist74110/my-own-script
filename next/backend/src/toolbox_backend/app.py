@@ -9,15 +9,17 @@ from starlette.middleware.cors import CORSMiddleware
 
 from toolbox_backend import __version__
 from toolbox_backend.adapters.ado_http import AdoHTTP
+from toolbox_backend.adapters.ado_read import AdoRead
 from toolbox_backend.adapters.config_store import ConfigStore, MigrationStep
 from toolbox_backend.adapters.credentials import CredentialStore, LegacyCredentialSource
-from toolbox_backend.api import routes, settings_routes, ws
+from toolbox_backend.api import routes, settings_routes, work_item_routes, ws
 from toolbox_backend.api.middleware import BearerAuth, BodyLimit, HostGuard
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.models import SettingsChangedData, SettingsChangedEvent
 from toolbox_backend.services.events import EventHub
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
+from toolbox_backend.services.work_items import WorkItemsService
 from toolbox_backend.settings import Settings
 
 
@@ -39,6 +41,7 @@ def create_app(
     legacy_credentials: LegacyCredentialSource | None = None,
     ado_http: AdoHTTP | None = None,
     migrations: dict[int, MigrationStep] | None = None,
+    ado_read: AdoRead | None = None,
 ) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -103,6 +106,10 @@ def create_app(
         settings.legacy_config_dir,
         ado_http or AdoHTTP(),
     )
+    app.state.work_items_service = WorkItemsService(
+        app.state.settings_service, ado_read or AdoRead()
+    )
+    app.include_router(work_item_routes.router)
     app.include_router(routes.router)
     app.include_router(ws.router)
     app.include_router(settings_routes.router)

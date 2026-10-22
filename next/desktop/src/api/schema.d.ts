@@ -125,6 +125,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ado/local-repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Local Repo */
+        post: operations["create_local_repo_api_ado_local_repos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/local-repos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Local Repo */
+        delete: operations["delete_local_repo_api_ado_local_repos__id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Local Repo */
+        patch: operations["patch_local_repo_api_ado_local_repos__id__patch"];
+        trace?: never;
+    };
     "/api/ado/projects": {
         parameters: {
             query?: never;
@@ -279,6 +314,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listing */
+        get: operations["listing_api_work_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Columns */
+        get: operations["columns_api_work_items_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/media/{media_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Media */
+        get: operations["media_api_work_items_media__media_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_work_items__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/{id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Children */
+        get: operations["children_api_work_items__id__children_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Comments */
+        get: operations["comments_api_work_items__id__comments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/{id}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Updates */
+        get: operations["updates_api_work_items__id__updates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -338,7 +492,7 @@ export interface components {
             /** Libraries */
             libraries: components["schemas"]["LibraryView"][];
             /** Local Repos */
-            local_repos: components["schemas"]["LocalRepo"][];
+            local_repos: components["schemas"]["LocalRepoView"][];
             /** Projects */
             projects: components["schemas"]["Project"][];
             /** Revision */
@@ -362,6 +516,91 @@ export interface components {
             changed_at: string;
             /** Reason */
             reason?: string | null;
+        };
+        /** Attachment */
+        Attachment: {
+            /** Blocked Origin */
+            blocked_origin: string | null;
+            /** Is Image */
+            is_image: boolean;
+            /** Media Id */
+            media_id: string | null;
+            /** Name */
+            name: string;
+            /** Size */
+            size?: number | null;
+        };
+        /** ChildItem */
+        ChildItem: {
+            /** Area Path */
+            area_path?: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+            /** Board Column */
+            board_column?: string | null;
+            /** Changed Date */
+            changed_date?: string | null;
+            /** Created Date */
+            created_date?: string | null;
+            /** Depth */
+            depth: number;
+            /** Id */
+            id: number;
+            /** Iteration Path */
+            iteration_path?: string | null;
+            /** Parent Id */
+            parent_id: number;
+            /** Priority */
+            priority?: number | null;
+            /** Severity */
+            severity?: string | null;
+            /** State */
+            state?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+            /** Type */
+            type?: string | null;
+        };
+        /** ChildrenResponse */
+        ChildrenResponse: {
+            /** Items */
+            items: components["schemas"]["ChildItem"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ColumnsResponse */
+        ColumnsResponse: {
+            /** Columns */
+            columns: string[];
+            /**
+             * Default
+             * @default 开发中
+             */
+            default: string;
+        };
+        /** Comment */
+        Comment: {
+            /** Author */
+            author?: string | null;
+            /** Created Date */
+            created_date?: string | null;
+            /** Html */
+            html: string | null;
+            /** Id */
+            id: number;
+            /** Modified Date */
+            modified_date?: string | null;
+            /** Omitted */
+            omitted?: "too_large" | null;
+        };
+        /** CommentsResponse */
+        CommentsResponse: {
+            /** Comments */
+            comments: components["schemas"]["Comment"][];
+            /** Truncated */
+            truncated: boolean;
         };
         /** ConnectionResult */
         ConnectionResult: {
@@ -429,6 +668,19 @@ export interface components {
             uptime_s: number;
             /** Version */
             version: string;
+        };
+        /** HtmlField */
+        HtmlField: {
+            /** Html */
+            html: string | null;
+            /** Omitted */
+            omitted?: "too_large" | null;
+        };
+        /** HtmlFields */
+        HtmlFields: {
+            acceptance_criteria?: components["schemas"]["HtmlField"] | null;
+            description?: components["schemas"]["HtmlField"] | null;
+            repro_steps?: components["schemas"]["HtmlField"] | null;
         };
         /** ImportPreview */
         ImportPreview: {
@@ -543,14 +795,36 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** LocalRepo */
-        LocalRepo: {
+        /** LocalRepoCreate */
+        LocalRepoCreate: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: number;
+        };
+        /** LocalRepoPatch */
+        LocalRepoPatch: {
+            /** Name */
+            name?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** LocalRepoView */
+        LocalRepoView: {
+            /** Exists */
+            exists: boolean;
             /** Id */
             id: string;
             /** Name */
             name: string;
             /** Path */
             path: string;
+            /** Warnings */
+            warnings?: string[];
         };
         /** MutationResponse */
         MutationResponse: {
@@ -655,6 +929,39 @@ export interface components {
             /** Pat */
             pat?: string | null;
         };
+        /** Update */
+        Update: {
+            /** Fields */
+            fields: components["schemas"]["UpdateField"][];
+            /** Id */
+            id: number;
+            /** Relations Added */
+            relations_added: number;
+            /** Relations Removed */
+            relations_removed: number;
+            /** Rev */
+            rev?: number | null;
+            /** Revised By */
+            revised_by?: string | null;
+            /** Revised Date */
+            revised_date?: string | null;
+        };
+        /** UpdateField */
+        UpdateField: {
+            /** Name */
+            name: string;
+            /** New */
+            new: string;
+            /** Old */
+            old: string;
+        };
+        /** UpdatesResponse */
+        UpdatesResponse: {
+            /** Truncated */
+            truncated: boolean;
+            /** Updates */
+            updates: components["schemas"]["Update"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -682,6 +989,114 @@ export interface components {
         /** ValidationErrorResponse */
         ValidationErrorResponse: {
             detail: components["schemas"]["ValidationErrorDetail"];
+        };
+        /** WorkItemDetail */
+        WorkItemDetail: {
+            /** Area Path */
+            area_path?: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+            /** Attachments */
+            attachments: components["schemas"]["Attachment"][];
+            /** Board Column */
+            board_column?: string | null;
+            /** Changed Date */
+            changed_date?: string | null;
+            /** Child Ids */
+            child_ids: number[];
+            /** Created Date */
+            created_date?: string | null;
+            html: components["schemas"]["HtmlFields"];
+            /** Id */
+            id: number;
+            /** Iteration Path */
+            iteration_path?: string | null;
+            /** Links */
+            links: components["schemas"]["WorkItemLink"][];
+            /** Parent Id */
+            parent_id?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /** Rev */
+            rev?: number | null;
+            /** Severity */
+            severity?: string | null;
+            /** State */
+            state?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+            /** Type */
+            type?: string | null;
+            /** Web Url */
+            web_url: string;
+        };
+        /** WorkItemErrorDetail */
+        WorkItemErrorDetail: {
+            /** Category */
+            category?: ("unauthorized" | "forbidden" | "redirect" | "blocked_origin" | "tls" | "timeout" | "network" | "bad_response" | "too_large") | null;
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "validation_error" | "not_found" | "media_expired" | "unsupported_media" | "no_credential" | "ado_request_failed" | "busy" | "store_unavailable";
+            /** Message */
+            message: string;
+        };
+        /** WorkItemErrorResponse */
+        WorkItemErrorResponse: {
+            detail: components["schemas"]["WorkItemErrorDetail"];
+        };
+        /** WorkItemLink */
+        WorkItemLink: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pull_request" | "commit" | "hyperlink" | "other";
+            /** Label */
+            label: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** WorkItemSummary */
+        WorkItemSummary: {
+            /** Area Path */
+            area_path?: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+            /** Board Column */
+            board_column?: string | null;
+            /** Changed Date */
+            changed_date?: string | null;
+            /** Created Date */
+            created_date?: string | null;
+            /** Id */
+            id: number;
+            /** Iteration Path */
+            iteration_path?: string | null;
+            /** Priority */
+            priority?: number | null;
+            /** Severity */
+            severity?: string | null;
+            /** State */
+            state?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+            /** Type */
+            type?: string | null;
+        };
+        /** WorkItemsResponse */
+        WorkItemsResponse: {
+            /** Items */
+            items: components["schemas"]["WorkItemSummary"][];
+            /** Omitted */
+            omitted: number;
+            /** Truncated */
+            truncated: boolean;
         };
     };
     responses: never;
@@ -1000,6 +1415,107 @@ export interface operations {
             };
         };
     };
+    create_local_repo_api_ado_local_repos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalRepoCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_local_repo_api_ado_local_repos__id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_local_repo_api_ado_local_repos__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalRepoPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_project_api_ado_projects_post: {
         parameters: {
             query?: never;
@@ -1276,6 +1792,545 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listing_api_work_items_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                column?: "新建" | "待开发" | "开发中" | "测试" | "已关闭";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemsResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    columns_api_work_items_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnsResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    media_api_work_items_media__media_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    detail_api_work_items__id__get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    children_api_work_items__id__children_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChildrenResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    comments_api_work_items__id__comments_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentsResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    updates_api_work_items__id__updates_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdatesResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
                 };
             };
         };
