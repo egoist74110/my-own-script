@@ -396,7 +396,7 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 | --- | --- | --- | --- |
 | CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | fixed（S1-F）；round2 确认 |
 | CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | fixed（S1-F）；round2 确认（跨条目延迟响应另列 005） |
-| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | partially_fixed（round2）：离线时以错误前的缓存 ok 解除禁写 → S1-G |
+| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | fixed（S1-F + S1-G）；round3 确认 |
 | CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | fixed（S1-F）；round2 确认 |
 
 ### S1-E / S1-F 派工
@@ -455,8 +455,8 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1B-005 | major | 保存进行中仍可切换选中条目；A 的延迟响应（`pat_origin_change` 回调、`applySaved`、冲突合并）写入当前组件状态，确认时用当前 `props.library.id` → 把 A 的地址修改 PATCH 到 B（审计内存复现）；成功路径污染 B 的基线导致 B 的合法草稿不发请求。ProjectPanel 同类 | fixed（S1-G `892a5c0`）；待 round3 复核 |
-| CR-S1B-003（剩余） | major | `overviewConfirmedOk()` 只看缓存状态；离线（查询 `enabled:false`）时 503 后不发刷新，却以错误前缓存的 `ok` 解除禁写 | fixed（S1-G `892a5c0`）；待 round3 复核 |
+| CR-S1B-005 | major | 保存进行中仍可切换选中条目；A 的延迟响应（`pat_origin_change` 回调、`applySaved`、冲突合并）写入当前组件状态，确认时用当前 `props.library.id` → 把 A 的地址修改 PATCH 到 B（审计内存复现）；成功路径污染 B 的基线导致 B 的合法草稿不发请求。ProjectPanel 同类 | fixed（S1-G `892a5c0`）；round3 确认 |
+| CR-S1B-003（剩余） | major | `overviewConfirmedOk()` 只看缓存状态；离线（查询 `enabled:false`）时 503 后不发刷新，却以错误前缓存的 `ok` 解除禁写 | fixed（S1-G `892a5c0`）；round3 确认 |
 
 ### S1-G 集成（主控）
 
@@ -468,3 +468,17 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 集成版本：前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **422 passed**。
 - 流程偏差：施工者用裸 `git stash`/`apply`/`drop` 撤回 src 做修前对比（stash 栈与其他 worktree 共享）；主控核对 stash 栈为空，无他人条目受影响，记录在案，后续派工单明确禁止裸 stash。
 - 留意（未改）：A→B→A 且 A 的旧保存已成功时，切回 A 显示的仍可能是旧草稿值（按“旧会话响应丢弃”合同），列入 UX 小项。
+
+### S1-B 交叉审计第三轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s1b-cross-21957f6 / round3 | `2e8e399..892a5c0` 的 `next/desktop`（S1-G） | codex exec resume，同一 session `01a16373-…`，gpt-6.1-sol / high；连续 | returned（exit 0） | **pass**：005、003 fixed，无新发现；复用第二轮内存复现并补测紧邻时序、取消/重试、PAT 8 分支；只读 vitest 404 passed / 1 skipped |
+
+## S1 阶段状态（2026-10-22）
+
+- 自动验收：完成。集成 HEAD 上后端 `pytest` 390 passed、前端 `pnpm test` 422 passed，lint/typecheck/build/guard:dist/契约检查全部通过；旧应用守卫 66 passed / 2 skipped 不变。
+- 交叉审计：S1-A（CR-S1A-001..008，Opus 三轮）与 S1-B（CR-S1B-001..005，GPT 6.1 Sol 三轮）全部闭环；S1-C 相关 CR-S05-001..005 于 s05-cross 第二轮闭环（003 收尾于 S1-B）。
+- 待用户真实环境验收（未测）：真实 Keychain 读取旧条目的系统授权弹窗/拒绝后导入 failed 体验、真实 ADO 测试连接与远端项目、Tauri 内渲染、多窗口并发编辑、Playwright e2e（未装浏览器）。
+- UX 待办（不阻塞）：A→B→A 后切回显示旧草稿；非 patch 写入推进 revision 后 library 详情保存会多一次 409 合并提示。
+- 施工 worktree `.local/worktrees/s1a..s1g` 待用户确认后移除。
