@@ -312,3 +312,9 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | review_id | 审计目标 | 模型/档位 | 状态 | 连续性/结果 |
 | --- | --- | --- | --- | --- |
 | s05-cross-3a5dac1 / round2 | `2e0e4c5..fd22770` 的 `next/desktop` | codex exec resume，gpt-6.1-sol / high（CLI 头部回执 model/effort），沙箱继承首轮 read-only | returned（exit 0） | 同一 session `01a16310-6d52-7d10-b3c3-e8d1302038c4`，连续；结论 pass after minor fixes：4 fixed、CR-S05-003 partially_fixed，无新编号；审计者只读跑 251 passed / 1 skipped（排除写临时目录的用例）；请求与输出在 `.local/reviews/s05-cross-3a5dac1/round2-*` |
+
+### S1-A 首轮交回（施工者 partial）
+
+- 施工者报告 partial：核心实现（store、导入、凭据、ADO 接口、出站 HTTP、请求体上限、WS Origin）已写，自测 `verified_by=executor, independent=false`；列出 4 项合同/测试冲突与 README 未更新。用量回执：input 3.65M（cached 3.57M）、output 45k。
+- 主控在沙箱外跑全量（worktree，未集成）：**268 passed / 6 failed**，失败仅为 S0 契约精确集合 2 条、`test_fault_http` 预检方法 3 条与超限 1 条，均属合同变更所致；施工者沙箱内无法 bind 端口导致其全量报错，非代码问题。
+- 主控裁决写入 WORK_PACKAGES「S1-A 主控裁决」（`8168d59`），续接同一 codex 会话 `01a16325-…` 进行第二轮施工（requested gpt-6.1-sol / medium，沙箱继承 workspace-write）。
