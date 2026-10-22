@@ -276,3 +276,18 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | CR-S05-005 | minor | `sent`、审批记录未按会话隔离，切换会话后残留上一会话记录 | open |
 
 - 用户 2026-10-22 决定：CR-S05-001..005 保持 open，并入下一个前端切片处理（派工时写进该切片合同；修复后续接同一 Codex 会话 `01a16310-…` 做第二轮复核）。
+
+## 2026-10-22：S1 设置与凭据
+
+- 主控：requested `role: lead`（由上一会话派出）；actual claude-opus-5-5（运行时系统信息），effort unknown；Claude Code 会话。
+- 合同：WORK_PACKAGES「# S1」，草案 `11fd8ca`；用户 2026-10-22 确认合同及两项待决（store-id=`toolbox-next`；本轮只导入 ADO PAT），记录于 `92ef9df`。同一提交由主控加入后端依赖 `pyyaml 6.0.3`、`keyring 25.7.0`（`uv add`，既有 195 测试仍全过），施工者无需联网。
+- 旧应用核实：只读 `main @ 885d186` 代码；真实配置目录只列文件名，未读内容；未访问 Keychain。
+- 主控裁决：S05-005 rejected（理由见 S1-C 合同）；S0B-008 待 S1-C 给出 grep 证据后记 obsolete。
+
+| 包 | 施工 | 测试 | 审计 | 状态 |
+| --- | --- | --- | --- | --- |
+| S1-A 后端 | codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；session `01a16325-b180-7292-8e40-cdfb5c46dee7` | 交付后主控另派 gpt-6-luna / high（偏差：codex 施工者不在沙箱内嵌套派发） | pending | dispatched |
+| S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df` | 施工者派 haiku / medium | pending | dispatched |
+| S1-B 设置页 | — | — | — | 等 S1-A、S1-C 集成 |
+
+请求原文与输出在 git 忽略的 `.local/dispatch/s1a/`。
