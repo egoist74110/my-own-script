@@ -574,7 +574,7 @@
 - 已定修法：
   1. **CR-S1B-001**：编辑开始（选中条目或新建）时记录**基线**（字段值 + 当时的 revision）。patch 只包含用户相对基线改动过的字段，请求携带**基线 revision**（不是缓存中的最新值）。收到 `revision_conflict`：刷新数据，保留用户改动过的字段、未改动字段更新为服务器新值，基线 revision 更新为新值，提示“设置已被其他窗口修改，已合并最新内容，请核对后再保存”；不自动重试。外部 `settings.changed` 只更新显示，不改基线（因此后续保存必然 409 → 走上述合并）。library 与 project 同样处理。
   2. **CR-S1B-002**：收到 `pat_origin_change` 时把**完整待提交请求体与目标 origin**冻结为待确认对象；确认（保留/替换）只提交该冻结请求体（再附 `keep_pat`/`pat`）；待确认期间地址与名称输入框禁用，或任何输入变化立即撤销待确认对象（二选一，须测试）；提示文案显示冻结的 origin。
-  3. **CR-S1B-003**：任何写请求返回 `store_unavailable` 或 `store_busy` 以外的 503 时，立即刷新 overview；在刷新确认 `store_state=ok` 之前 `writable=false`；`act()` 入口在不可写时直接拒绝并提示。
+  3. **CR-S1B-003**：任何写请求返回 `store_unavailable`（503）时立即刷新 overview（`store_busy` 只提示稍后重试，不改变可写状态）；在刷新确认 `store_state=ok` 之前 `writable=false`；`act()` 入口在不可写时直接拒绝并提示。
   4. **CR-S1B-004**：写响应含 `warnings` 时显示为警告提示（不显示成功文案），凭据页随即刷新以显示 `pending_delete`。
   5. UX：写操作进行中再次触发 → 提示“操作进行中，请稍候”，不静默；被拒的请求不清空 PAT 输入（只有请求真正发出后才在 `finally` 清空）；PAT 前端校验最小 8 字符（与后端一致），不满足时不发请求并提示。
 - 每项有回归测试（先失败后通过）；测试子 agent 只在 `tests/independent/` 下补用例。验收命令同 S1-B。
