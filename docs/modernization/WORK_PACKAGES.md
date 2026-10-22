@@ -817,3 +817,17 @@
 ### S2-D 主控裁决（2026-10-22，施工首轮交回 partial 后）
 
 - **CR-S2A-003 修法替换**：预置 nh3 0.3.7 的 `clean` 没有 `generic_attributes` 参数（主控核实签名）。改为在两遍共用的 `attribute_filter` 中按“标签 → 显式属性白名单”判定：属性不在该标签的白名单（首遍为 `ATTRS` + `img[src]`，末遍为 `ATTRS` + `img[data-media-id]`、`span[data-blocked-origin]`）中一律返回 `None`；白名单式，不是只拉黑 `lang`/`title`。依赖不变。回归 `test_sanitizer_drops_generic_attributes` 保持不改。
+
+## S2-E：S2-B/S2-C 交叉审计修复（CR-S2C-001、CR-S2B-001..003）
+
+- 依据：PROGRESS「S2-B/S2-C 异步交叉审计」（主控已对照代码核实四项）。依赖：S2 集成（`6264c6c`）。
+- 拆两半并行（文件不重叠），各自 worktree，均为 `next/desktop`：
+  - **S2-E1（设置页）** write_scope：`src/features/settings/**`、`tests/**`（只新增文件）。
+  - **S2-E2（工单页）** write_scope：`src/features/work-items/**`、`src/components/media.ts`、`src/components/SafeHtml.vue`、`tests/**`（只新增文件）。
+- 已定修法：
+  1. **CR-S2C-001**（major）：`editSession` 刷新落定（settling）路径中，若存在用户已修改的字段（草稿 ≠ 基线）且服务器该字段也与基线不同 → **不 adopt**，基线字段与 revision 保持不变，使下一次保存得到 409 并走 S1-F 冲突合并提示；只有用户修改过的字段在服务器上都未变时才 adopt（替换未改字段、前移基线）。`reconcile()` 的“逐字段相同才前移”规则不变。回归：审计探针（刷新期间开始编辑、改名称、刷新返回他人同字段修改 → `revisionOpt()` 仍为旧 revision，保存出现合并提示）；library、project、本地仓库各一例。
+  2. **CR-S2B-001**（major）：`settings.changed` 时先 `await qc.cancelQueries({queryKey: WI_KEY})` 再 `invalidateQueries`；所有工单查询函数把 vue-query 的 `signal` 传给 fetch（取消即中止请求）。回归：首次请求在途时项目来源变化 + `settings.changed` → 发出第二次请求，最终显示新来源数据。
+  3. **CR-S2B-002**（minor）：“刷新详情”先失效并等待当前详情（及已打开的评论）重取完成，再清除失败的媒体条目；“已过期”计数只统计当前 DOM/附件仍引用的失败 id。回归：旧 id 过期 → 刷新后换新 id 且成功 → 过期提示消失、旧 id 只请求一次刷新前的那次。
+  4. **CR-S2B-003**（minor）：凡有 `media_id` 的附件都显示“下载”按钮（图片附件额外显示缩略图）；回归：`is_image:true` 的附件有下载按钮且可下载。
+- 每项先写会失败的回归（报告附修前失败摘要）再修；验收命令同 S2-B（`pnpm install --frozen-lockfile`、typecheck、lint、`rm -rf dist && pnpm test`、build、guard:dist、contracts:check）。
+- 修复后续接 codex 审计会话 `01a163e0-93a8-7621-b72f-980852f7b7ec` 做第二轮复核（异步）。

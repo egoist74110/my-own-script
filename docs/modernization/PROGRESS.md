@@ -604,3 +604,18 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 资源所有权：S2 不切换任何单例资源。
 - 待用户真实环境验收（未测）：真实 ADO 列表/详情/评论/历史/子项、**CR-NEXT-004 附件是否跨源 CDN**（若是，追加方案 B 小包）、I-5/I-7 两项、真实 Keychain、Tauri 内 blob 图片与 opener、Playwright e2e。
 - 交叉审计：S2-A 两轮闭环；S2-B/S2-C 审计 s2bc-cross round1 已派（codex exec，gpt-6.1-sol / high，sandbox read-only，session `01a163e0-93a8-7621-b72f-980852f7b7ec`），pending。
+
+### S2-B/S2-C 异步交叉审计
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s2bc-cross-e96dd3b / round1 | `6ed7fd1..e96dd3b` 的 `next/desktop` | codex exec，gpt-6.1-sol / high（命令参数；CLI 无型号回执，审计自述 unknown），sandbox read-only，session `01a163e0-93a8-7621-b72f-980852f7b7ec`；跨厂商 | returned（exit 0） | rework required：2 major、2 minor；未发现 DOMPurify 绕过、token 外泄或 10+7 处断言放宽；只读跑 710 passed / 1 skipped（排除需写临时目录的守卫用例）；内存探针复现四项；请求与输出在 `.local/reviews/s2bc-cross/` |
+
+主控对照代码核实四项属实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S2C-001 | major | `editSession` 刷新落定路径 `adopt()` 保留用户草稿却把基线整体换成服务器值并接纳新 revision → 他人对同一字段的修改被下一次 PATCH 静默覆盖，不出现 409 合并提示（S2-C 引入） | open → S2-E1 |
+| CR-S2B-001 | major | 首次工单请求在途时 `settings.changed` 的 `invalidateQueries` 复用在途请求，旧来源响应清掉失效标记 → 显示旧项目数据 | open → S2-E2 |
+| CR-S2B-002 | minor | “刷新详情”先 `forgetFailed` 再失效，旧 id 先被重试；换新 id 成功后仍显示“部分图片已过期” | open → S2-E2 |
+| CR-S2B-003 | minor | 图片附件分支没有下载按钮（含 SVG、预览失败的图片） | open → S2-E2 |
