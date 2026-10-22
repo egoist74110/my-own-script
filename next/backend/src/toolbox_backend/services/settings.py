@@ -1,6 +1,7 @@
 """The only S1 mutation owner. All filesystem/keyring/network IO runs off-loop."""
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -413,6 +414,37 @@ class SettingsService:
                 try:
                     tx.commit(with_meta)
                 except Exception:
+                    # replace may have committed even though verification failed.
+                    # Reconcile under the existing store lock before touching the PAT.
+                    disk_lib = None
+                    try:
+                        tx.config = self.store._read()
+                        disk_lib = next(
+                            (x for x in tx.config.ado.libraries if x.id == lid), None
+                        )
+                    except Exception:
+                        pass
+                    if disk_lib and disk_lib.base_url == (body.base_url or lib.base_url):
+                        raise
+
+                    def pending(c):
+                        c.credentials[account(lid)] = CredentialMeta(
+                            ref=lid, source="manual", updated_at=stamp(),
+                            state="pending_delete",
+                        )
+
+                    def mark_pending():
+                        # Never write a stale snapshot over an uncertain commit.
+                        with contextlib.suppress(Exception):
+                            tx.config = self.store._read()
+                            tx.commit(pending)
+
+                    if disk_lib is None or disk_lib.base_url != lib.base_url:
+                        try:
+                            self._delete(account(lid))
+                        finally:
+                            mark_pending()
+                        raise
                     try:
                         if old_value is None:
                             self._delete(account(lid))
@@ -423,12 +455,7 @@ class SettingsService:
                         try:
                             self._delete(account(lid))
                         finally:
-                            def pending(c):
-                                c.credentials[account(lid)] = CredentialMeta(
-                                    ref=lid, source="manual", updated_at=stamp(),
-                                    state="pending_delete",
-                                )
-                            tx.commit(pending)
+                            mark_pending()
                     raise
             else:
                 tx.commit(mutate)

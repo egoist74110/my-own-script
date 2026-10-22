@@ -102,7 +102,7 @@ class AdoHTTP:
                             message="远端返回异常状态",
                         ), []
                     body = bytearray()
-                    for chunk in response.iter_bytes(chunk_size=65536):
+                    for chunk in response.iter_bytes():
                         if time.monotonic() >= deadline:
                             raise httpx.ReadTimeout("total deadline")
                         if len(body) + len(chunk) > LIMIT:
