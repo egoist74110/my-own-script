@@ -338,7 +338,7 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | partially_fixed（round2）：锁内 IO 已消除；总时长截止未生效 → CR-S1A-008 |
+| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | fixed：锁内 IO 由 S1-D 消除（round2），总时长截止经 CR-S1A-008 / S1-E 修复（round3 确认） |
 | CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | fixed（S1-D）；round2 确认 |
 | CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | fixed（S1-D）；round2 确认 |
 | CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | fixed（S1-D）；round2 确认 |
@@ -379,8 +379,8 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1A-007 | minor | `patch_library` 提交失败后无条件恢复旧 PAT；若 `os.replace` 已落盘而回读失败（提交结果不确定），磁盘已是新 base_url，旧 PAT 被绑到新 origin | fixed（S1-E）；待审计复核：失败后重读磁盘，新值保留新 PAT、旧值恢复旧 PAT、读不到则删除并 `pending_delete` |
-| CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | fixed（S1-E）；待审计复核：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
+| CR-S1A-007 | minor | `patch_library` 提交失败后无条件恢复旧 PAT；若 `os.replace` 已落盘而回读失败（提交结果不确定），磁盘已是新 base_url，旧 PAT 被绑到新 origin | fixed（S1-E）；round3 确认：失败后重读磁盘，新值保留新 PAT、旧值恢复旧 PAT、读不到则删除并 `pending_delete` |
+| CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | fixed（S1-E）；round3 确认：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
 
 info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（当前无记录路径）；恰为配置 JSON 固定子串的 ≥8 位 PAT 会触发写入闸门（真实 ADO PAT 52 位）；create 回滚时 Keychain `set` 抛错但实际已写入会留下未索引条目；新 service 的 Keychain 读取仍在锁内（其他请求 5s 后 `store_busy`）。
 
@@ -436,3 +436,11 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 
 - 资源所有权：S1 不切换任何单例资源（TG/MCP/Lark 刷新仍归旧应用）。
 - 待用户真实环境验收（未测）：真实 Keychain 读取旧条目时的系统授权弹窗与“始终允许”、拒绝授权时导入进入 failed 的体验、真实 ADO 测试连接与远端项目列表、Tauri 内渲染、多窗口并发编辑。
+
+### S1-A 交叉审计第三轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s1a-cross-814a921 / round3 | `597faed..13bc292` 的 `next/backend`（S1-E） | 同一原生子 agent 续接，requested opus / medium；actual unknown | returned | **pass**：007、008 fixed（复跑探针：滴流 10.1s timeout；三种提交故障场景旧 PAT 均不落到新 origin），无新发现；390 passed、ruff/contracts 通过；探针已自删。S1-A 审计发现 CR-S1A-001..008 全部闭环 |
+
+info（记录）：提交实际成功但返回 503 时不广播 `settings.changed`（前端 S1-F 收到 `store_unavailable` 会刷新）；持续读盘失败时索引可能残留 `active` 而 PAT 已删（凭据页显示 missing，无泄露）；单个压缩块解压后可能超 1 MiB（既有，需用户自配恶意服务器）。
