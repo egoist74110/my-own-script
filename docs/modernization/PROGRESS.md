@@ -499,3 +499,16 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 用户 2026-10-22 确认合同：1 不做新建工单；2 先按同源规则 A，CR-NEXT-004 由用户稍后在真实工单确认。
 - 依赖预置（主控，联网）：后端 `uv add httpx nh3`（nh3 0.3.7）+ `uv remove --dev httpx` → **CR-S2-PRE-001 fixed**；前端 `pnpm add dompurify@3.4.17 @tauri-apps/plugin-opener@2.7.2`；Rust `cargo add tauri-plugin-opener@2`（2.7.2）+ `cargo fetch`（插件尚未注册，由 S2-B 接入）。预置后：后端 `pytest` 390 passed、ruff/contracts 通过；前端 frozen install/typecheck/lint 通过，`pnpm test` 422 passed；`cargo check --offline` 通过。
 - S2-A 派工：codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s2a` @ `dc377b4`，session `01a163a6-e205-7a70-bd9f-99ef2c687e8c`；actual unknown。派工单要求测试子 agent（requested gpt-6-luna / high）新增独立用例于 `tests/independent/s2a/`。请求与输出在 `.local/dispatch/s2a/`。S2-B、S2-C 待 S2-A 集成后派。
+
+### S2-A 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S2-A 后端 | codex exec，requested gpt-6.1-sol / medium，session `01a163a6-e205-7a70-bd9f-99ef2c687e8c`；actual unknown（CLI 无型号回执）；用量 input 6.74M（cached 6.57M）/ output 50k | codex 内原生子 agent `/root/s2a_tests`，requested gpt-6-luna / high，actual unknown，independent=true，**新增** 44 例（`tests/independent/s2a/`，5 文件），未发现生产缺陷 | passed（自动验收），提交 `bd90107` |
+
+- 施工者沙箱内无端口子集 341 passed；主控沙箱外全量 worktree **530 passed**。施工者报告 7 处补测修复均有修前失败证据（BFS 批内超 500、PAT 回显、httpx 日志含完整路径、媒体 PAT 回显、超长表格属性、存量仓库路径误校验、`id:null` 时 `commentId` 回退）。S1 既有测试无改动（`git diff --exit-code -- next/backend/tests`）。
+- 主控审阅：出站客户端（同 origin + 路径前缀、JSON 不跟随 3xx、媒体逐跳校验且跨源前即终止、总时长逐块检查、4/10/25 MiB 双重限额）、nh3 两遍清洗（首遍保留 src 仅用于改写，末遍严格白名单）、媒体取用时重新校验 library、魔数判图、三项响应头、`TOOLBOX_DEV_FAKE_ADO` 启动守卫，均与合同一致。S1 测试连接改走同一信号量（排队超时 503 `busy` 为新增路径，合同允许）。httpx/httpcore 日志降到 WARNING（避免完整 URL 进日志）。
+- **CR-S2A-L01**（minor，主控发现并修复，verified_by=lead）：媒体登记表去重键只有 `(project_id, url)`。ADO 内联图通常就是附件，同一 URL 先由描述登记为 image，附件关系复用该 id → 附件为 SVG/非图片时下载返回 415。修复：键加入 kind；回归 `tests/test_s2_lead_regressions.py` 修前失败、修后通过。
+- 观察（info，不处置）：出站信号量是模块级对象（单事件循环生产环境无影响）；假 ADO 的 WIQL 对任何列返回全部条目（仅 dev 演示）。
+- 集成：限定 `next/backend`、`next/contracts` 的 binary patch（26 文件），`git apply --check` 后应用；`pnpm contracts:gen` 重新生成 `schema.d.ts`。集成版本：后端 `uv sync --frozen`、ruff、contracts 通过，`pytest` **531 passed**；前端 `contracts:check`、typecheck、lint 通过，`pnpm test` 422 passed；`git diff --check` 通过。补丁与输出在 `.local/dispatch/s2a/`。
+- 未测：真实 ADO（含 CR-NEXT-004）、真实 Keychain、前端联调。
