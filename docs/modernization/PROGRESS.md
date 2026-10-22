@@ -332,4 +332,18 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | review_id | 审计目标 | 模型/档位 | 状态 |
 | --- | --- | --- | --- |
-| s1a-cross-814a921 / round1 | `ec7887b..814a921` 的 `next/backend`、`next/contracts` | Claude Code 原生子 agent，requested opus（Opus 5.5）/ medium，只读；跨厂商（施工为 GPT） | pending |
+| s1a-cross-814a921 / round1 | `ec7887b..814a921` 的 `next/backend`、`next/contracts` | Claude Code 原生子 agent，requested opus（Opus 5.5）/ medium，只读；跨厂商（施工为 GPT）；actual unknown | returned：rework required（0 blocker、2 major、4 minor）；凭据值未发现泄露路径；审计者在 `git archive 814a921` 导出副本上跑 358 passed（首次误在 s1b worktree 跑 363 passed，已自行声明不作数），用探针复现 001–004 |
+
+主控逐条核对代码，6 项均属实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | open → S1-D |
+| CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | open → S1-D |
+| CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | open → S1-D |
+| CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | open → S1-D |
+| CR-S1A-005 | minor | PAT 元数据/Keychain/base_url 提交顺序导致状态漂移；极端情况下（磁盘写失败）新 PAT 留在旧 origin 下 | open → S1-D |
+| CR-S1A-006 | minor | “日志无 PAT”断言先经脱敏格式化再判断，近似恒真；缺进程级 stderr 检查 | open → S1-D |
+
+- S1-D 合同已写入 WORK_PACKAGES，排在 S1-B 集成之后（文件重叠）。
+- cleanup：审计者在会话 scratchpad 留下 `c814/`（`git archive` 导出副本，无密钥）与 `probe/`（探针脚本）；审计者与主控的删除命令均被权限拦截，未绕过，留待用户处理。

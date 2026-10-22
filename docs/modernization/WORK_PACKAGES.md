@@ -543,6 +543,21 @@
   3. 主控 `pnpm dev:web`（隔离环境）截图四个页签常态 + 只读错误态，写入 PROGRESS。
 - 回退：恢复 `next/desktop` 到 S1-B 输入 SHA。
 
+## S1-D：S1-A 交叉审计修复（CR-S1A-001..006）
+
+- 依据：PROGRESS「S1-A 异步交叉审计」中的发现（主控已逐条核实代码属实）。
+- 依赖：S1-B 集成之后（S1-B 也在改 `tests/test_s1_settings.py`、`server.py`、`adapters/credentials.py`，避免同一文件两写者）。
+- write_scope：`next/backend/**`、`next/contracts/**`（如契约因错误码变化而漂移，主控集成时重新生成前端 `schema.d.ts`）。
+- 已定修法：
+  1. **CR-S1A-001**：`connection` 在 store 锁内只从同一快照取 `(library, PAT)`，释放锁后再发出站请求；出站请求加总时长截止（10 秒，`iter_bytes` 循环内检查 deadline，超时归 `timeout`）。导入 `execute`：先在锁外读取旧凭据到内存，锁内重算指纹（不一致即拒）后只写内存中的值；预览同样在锁外读旧凭据。进程内 `asyncio.Lock` 等待加上限（与 flock 同为 5 秒，超时 `store_busy`）。
+  2. **CR-S1A-002**：`decline` 只要求 `import.state ∈ {none, failed}`，不要求 store 为空；另外 `_statuses` 把 `import.written_credentials` 中未进入索引的条目列为 `orphan`，可删除。
+  3. **CR-S1A-003**：PAT 最小长度 8（校验层，`pat_value`）；`register_secret` 忽略短于 8 的值；`config_store._write` 的 `contains_secret` 闸门保留，但只对已登记（≥8）的值生效。
+  4. **CR-S1A-004**：`segment` 拒绝 `.`、`..`；拼接后的 URL 路径必须以 base_url 路径为前缀，否则不发请求（`network`/“请求地址越界”）。
+  5. **CR-S1A-005**：新建 library 带 PAT 时 Keychain 写入失败 → 回滚该 library（同一操作内再提交一次删除），响应 502；`_put_pat` 在 Keychain 写入成功后再提交元数据；`patch_library` 在提交新 base_url 失败时恢复旧 PAT（写入前先在内存保存旧值），恢复失败则删除新条目并标 `pending_delete`。
+  6. **CR-S1A-006**：日志断言改为对原始 `record.getMessage()`/`caplog.text` 断言不含 PAT；新增 `--dev` + memory 子进程用例：写入 PAT、做一次测试连接（指向不可达 127.0.0.1 端口），断言 stderr 不含 PAT。
+- 每条附回归测试（修前失败、修后通过）。验收命令同 S1-A。
+- 修复后续接 S1-A 审计者做第二轮复核（异步）。
+
 ## S1 集成验收（主控）
 
 - 集成版本重跑 S1-A、S1-B/C 全部命令；`git diff --check`；`next/` 与本目录文档以外无改动；旧应用守卫测试不回退。
