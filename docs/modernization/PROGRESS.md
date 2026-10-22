@@ -286,7 +286,7 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | 包 | 施工 | 测试 | 审计 | 状态 |
 | --- | --- | --- | --- | --- |
-| S1-A 后端 | codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；session `01a16325-b180-7292-8e40-cdfb5c46dee7` | 交付后主控另派 gpt-6-luna / high（偏差：codex 施工者不在沙箱内嵌套派发） | pending | dispatched |
+| S1-A 后端 | codex exec，requested gpt-6.1-sol / medium（两轮，同一 session `01a16325-b180-7292-8e40-cdfb5c46dee7`），sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；actual unknown | codex exec gpt-6-luna / high，session `01a16343-2c78-73d1-b587-25a5d717be8b`，independent=true，两轮共 55 例（`tests/independent/s1/`），未发现产品缺陷 | s1a-cross round1 dispatched | passed（自动验收），集成提交 `814a921` |
 | S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df`；actual unknown（无提供方回执） | 施工者派 haiku / medium，independent=true，新增 37 例（`tests/independent/s1c-{ui,guard}.test.ts`），未发现缺陷 | s05-cross round2 dispatched | passed（自动验收），集成提交 `fd22770` |
 | S1-B 设置页 | — | — | — | 等 S1-A、S1-C 集成 |
 
@@ -318,3 +318,12 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 - 施工者报告 partial：核心实现（store、导入、凭据、ADO 接口、出站 HTTP、请求体上限、WS Origin）已写，自测 `verified_by=executor, independent=false`；列出 4 项合同/测试冲突与 README 未更新。用量回执：input 3.65M（cached 3.57M）、output 45k。
 - 主控在沙箱外跑全量（worktree，未集成）：**268 passed / 6 failed**，失败仅为 S0 契约精确集合 2 条、`test_fault_http` 预检方法 3 条与超限 1 条，均属合同变更所致；施工者沙箱内无法 bind 端口导致其全量报错，非代码问题。
 - 主控裁决写入 WORK_PACKAGES「S1-A 主控裁决」（`8168d59`），续接同一 codex 会话 `01a16325-…` 进行第二轮施工（requested gpt-6.1-sol / medium，沙箱继承 workspace-write）。
+
+### S1-A 集成（主控）
+
+- 施工第二轮 done：裁决 1–7 落实（WORK_PACKAGES「S1-A 主控裁决」）。
+- 独立测试：Luna 首轮仅 5 例（凭据泄漏 2、真实端口 3），主控判覆盖不足，续接同一会话补测导入/store/ADO/CORS，第二轮共 55 例；测试者一次失败经核为测试假设错误（预览允许读旧凭据 `get`），未发现产品缺陷。需要端口的 8 例由主控在沙箱外运行通过。
+- 主控修正（非逻辑）：测试者 `tests/independent/s1/conftest.py` import 排序（ruff --fix）、`test_s1_store_contracts.py` 一处 `# noqa: ASYNC240`（测试中同步 Path 取 worker 路径）。
+- 集成：限定 `next/backend`、`next/contracts` 的 binary patch，`git apply --check` 后应用；同时 `pnpm contracts:gen` 重新生成 `next/desktop/src/api/schema.d.ts`。集成版本：后端 `uv sync --frozen`、`ruff check`、`contracts --check` exit 0，`pytest` **358 passed**；前端 `contracts:check`、`typecheck`、`lint` exit 0，`test` 269 passed；`git diff --check` 通过。
+- 主控审阅结论：store 写入流程、导入步骤与残留、凭据入口（keyring 仅生产路径构造，`memory` 仅 `--dev`）、出站 HTTP 边界与合同一致。观察（接受，记录）：① 导入时旧 Keychain 读取若被用户在系统弹窗拒绝会抛错而非返回空，整次导入进入 `failed`（比合同“读不到就跳过”更保守），且导入期间持锁，弹窗未处理时其他写入 5 秒后 `store_busy`；② 内存模式下旧凭据源为空 → S1-B 合同补“dev 假凭据预置”。
+- 未测：真实 Keychain（含系统授权弹窗）、真实 ADO、Tauri 内运行。

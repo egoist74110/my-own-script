@@ -528,7 +528,8 @@
 ## S1-B：设置页（第一个接真实接口的页面）
 
 - 依赖：S1-A 与 S1-C 集成后（用正式 `openapi.json` 生成 `schema.d.ts`）。
-- write_scope：`next/desktop/**`（不含 `src-tauri/**`）；`scripts/dev-web.mjs` 的隔离环境变量（见通用合同）。
+- write_scope：`next/desktop/**`（不含 `src-tauri/**`）；`scripts/dev-web.mjs` 的隔离环境变量（见通用合同）；以及下述 dev 假凭据预置所需的最小后端改动（`next/backend/src/toolbox_backend/server.py`、`adapters/credentials.py`、对应测试与 README）。
+- **dev 假凭据预置**（2026-10-22 主控补充，S1-A 集成后发现内存模式下旧凭据源为空，dev:web 预览无法演示 PAT 状态）：后端新增环境变量 `TOOLBOX_DEV_FAKE_CREDENTIALS=<json 文件路径>`，**仅在 `--dev` 且 `TOOLBOX_CREDENTIALS=memory` 时接受**，否则启动失败；文件格式 `{"legacy": {account: value}, "current": {account: value}}`，分别预置旧/新内存凭据。fixture 放 `next/backend/tests/fixtures/dev-credentials.json`，值必须是明显的假值（如 `fake-pat-…`）。`dev-web.mjs` 设置 `TOOLBOX_DATA_DIR`（每次启动新建临时目录，退出删除）、`TOOLBOX_LEGACY_CONFIG_DIR=next/backend/tests/fixtures/legacy`、`TOOLBOX_CREDENTIALS=memory`、`TOOLBOX_DEV_FAKE_CREDENTIALS`。后端测试覆盖：非 dev 或非 memory 时设置该变量 → 启动失败。
 - 结构（方向 E，沿用 S0.5 组件）：导航“08 设置”启用 → `/settings`；工具栏页签 `导入 · ADO 连接 · 凭据 · 常规`；主区表格/列表；检查器显示所选 library/project 详情与 PAT 表单。
   - 导入：`none`/`failed` 时显示“预览导入”，预览结果分块列出（文件、libraries + PAT 状态、projects、任务规则与数量、保留段、警告、阻断错误）；无阻断错误时“确认导入”（二次确认文案说明一次性、不回写旧配置）；“跳过导入”；`import_source_changed` 提示重新预览。`completed`/`declined` 显示只读摘要。
   - ADO 连接：libraries 与 projects 列表、增/改/删（删除二次确认；`in_use` 列出引用任务）；PAT 输入为密码框、从不预填，保存后立即清空；`pat_origin_change` 时提示“PAT 将发往新地址”并提供保留/替换选择；测试连接显示分类结果；新增 project 时可“获取远端项目”。http 明文 base_url 显示警告标签。
