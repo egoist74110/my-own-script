@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 5（2026-10-22 追加 S0；同日追加 S0.5 方向 E 前端改造；同日追加 S1 合同草案；同日追加 S2 合同草案）
+- revision: 6（2026-10-23 追加 S3 合同草案；S3 待用户确认后派工）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
@@ -831,3 +831,244 @@
   4. **CR-S2B-003**（minor）：凡有 `media_id` 的附件都显示“下载”按钮（图片附件额外显示缩略图）；回归：`is_image:true` 的附件有下载按钮且可下载。
 - 每项先写会失败的回归（报告附修前失败摘要）再修；验收命令同 S2-B（`pnpm install --frozen-lockfile`、typecheck、lint、`rm -rf dist && pnpm test`、build、guard:dist、contracts:check）。
 - 修复后续接 codex 审计会话 `01a163e0-93a8-7621-b72f-980852f7b7ec` 做第二轮复核（异步）。
+
+# S3：任务执行（合同草案，2026-10-23）
+
+状态：**合同待用户确认，未派工、未施工**。本节列出的推荐范围不等于用户已决；用户答复后先更新「S3 已决」再派工。
+输入调查基线：新版 `rewrite/next @ 5c0d4c2`，旧版 `main @ 885d186`。旧应用目录只读；本轮未读真实配置/凭据、未连接真实 ADO、未执行 git 写操作调查。
+依据：ARCHITECTURE §4/§5、MIGRATION_PLAN S3/§4、D06/D07/D12（含原 WP-15）；S1 已导入的 `tasks.items` 和 S2 的公共 ADO 客户端。
+本合同覆盖任务查看、编辑与执行、运行历史及增量日志；不含 TG 通知/命令/ACL 编辑（S4）、AI 会话（S5）、ADO 定义编辑、通用调度器或插件框架。
+
+## S3 旧应用事实核实（主控亲自只读核对）
+
+以下位置相对旧目录 `/Users/wesker/my-own-script`；是静态代码事实，**不代表真实服务器已验证**。
+
+### Git、执行顺序与日志
+
+- `app_ado/ui/tasks_tab.py:1198` `_run`：每任务运行检查；方法注释声称全局 single-flight，但实际 `_is_task_running(task_id)` 只拦同任务，不能据注释推定仓库互斥。运行注册表/stop_event/日志消费者由页面持有。
+- `:1489–1624`：`subprocess.run(argv, cwd=local_path, capture_output=True, text=True, stdin=DEVNULL, timeout=300)`，环境为整个 `os.environ` 加 `GIT_TERMINAL_PROMPT=0`。先 `git rev-parse --is-inside-work-tree`、`git status --porcelain`（脏工作区拒绝），再：
+  1. 去重收集 update/push/merge 两端/build 分支，`git fetch --prune origin <branches...>`；
+  2. 每个 update：`git checkout <branch>` → `git pull --ff-only`（依赖该分支 upstream，并未显式指定 origin）；
+  3. 每个 merge：`git checkout <target>` → `git merge origin/<source>`；失败时取 `git diff --name-only --diff-filter=U`，尝试 `git merge --abort`，随后无条件尝试 `git reset --hard HEAD`；
+  4. 每个 push：`git push origin <branch>`；最后日志记录当前 `HEAD`，不保证它就是 build_branch 的提交。
+- `:1626–1674`：无本地路径时不执行 fetch/update；push 规则报错；有 merge 规则则走 ADO PR。`ado_git_ops.py:26–133`：POST `/_apis/git/repositories/{repo}/pullrequests` → GET `/{pr}` 取 `lastMergeSourceCommit.commitId` → PATCH `/{pr}`，均 `7.0`；PATCH 为 `status=completed`，deleteSourceBranch/squashMerge/transitionWorkItems 均 false；只固定等 0.5 秒，没有合并完成轮询。**这是一项 Code 写权限能力，S3 是否迁移见待决 4。**
+- `tasks_tab.py:1717` 起每个启用 target 串行构建/发布，失败即停；设置 agent_queue_id 时即使 build_kind=pipeline 也走 Build API。普通路径与只发布跳过禁用 target，旧回滚循环未检查 enabled。
+- 日志来源：本地 git stdout/stderr（命令完成后才追加）、应用步骤消息、构建状态与结果、Release 环境状态变化；没有拉取 ADO 原始构建控制台日志。`queue.Queue` → Qt 定时 flush → TaskCard 与共享 `_active_log_dialog`（`:120–126`、`:2035–2070`），存在跨任务共享窗口引用。`task_history.py:12–55` 只追加最终摘要到旧配置目录 `task_history.jsonl`，无运行检查点；S3 不读/导入这份真实历史。
+- `models.py:102–117,175–226`：DynamicTaskConfig 字段为 id/enabled/sort_order/tg_command/tg_desc/name/project_id/local_repo_path/repo_id/repo_name/git_flow/agent_queue_id/agent_queue_name/targets；GitFlow 为 build_branch/update_branches/merges/push_branches；目标含 build_kind/build_id/release_id/stage ids 与显示名。`task_migrate.py:63–155` 空 tasks 会从 flows 再生成；S1 已解决此问题，S3 **不得重新触发 legacy_flows 迁移**。
+
+### ADO 端点与行为（前缀均为 `{library.base_url}/{collection}/{project}`）
+
+| 能力 / 旧代码位置 | 方法、后缀与参数 | api-version / 旧行为 |
+| --- | --- | --- |
+| YAML 触发/详情/最近实例，`ado_build_http.py:72–146,301–333` | POST `/_apis/pipelines/{definition}/runs`，body `resources.repositories.self.refName=refs/heads/{branch}`；GET 同路径（`$top=5`）；GET `.../runs/{run}` | `7.0`；触发不固定 commit；列表不解析 branch，详情只取 refName、不取 version |
+| Classic/队列覆盖触发，`:193–227` | POST `/_apis/build/builds`，body `definition.id,sourceBranch`、可选 `queue.id` | `7.0`；不传 sourceVersion |
+| Build 详情/列表，`:230–255,336–375` | GET `/_apis/build/builds/{id}`；GET `/_apis/build/builds?definitions=&branchName=refs/heads/...&$top=5&queryOrder=queueTimeDescending` | `7.0`；返回模型不保留 commit |
+| 复用，`:258–298` | YAML 列表 → 运行中详情；Classic 按 definition+branch 查列表 | 只判断运行状态与分支，**不核对 commit**；YAML 详情失败且 branch 未知仍返回该实例（D06） |
+| 构建停止，`:400–445` | POST `/_apis/pipelines/{definition}/runs/{run}/cancel`；404 时 PATCH `/_apis/build/builds/{run}`，body `status=cancelling`；Classic 直接 PATCH Build | `7.0`；旧代码把复用也标 build_started，可能取消他人的构建；Pipeline run id 直接当 build id 回退 |
+| 只发布的构建选择，`ado_build_query.py:32–78` | GET `/_apis/build/builds?definitions=&branchName=&$top=1&queryOrder=finishTimeDescending&statusFilter=completed&resultFilter=succeeded` | `7.0`；选分支最新成功构建，不校验 commit |
+| Release 定义/创建，`ado_release_http.py:94–186` | GET `/_apis/release/definitions/{definition}`；POST `/_apis/release/releases`，body `definitionId,description,artifacts`（**只取第一个 artifact 模板**的 alias/type/definitionReference，instanceReference.id/name=build id） | 默认 `6.0`；调用方 catch 任意异常后重试 `7.0`（`tasks_tab.py:1900–1917` 等），写请求结果不明时有重复创建风险 |
+| Release 列表/详情，`ado_release_http.py:189–250` | GET `/_apis/release/releases?definitionId=&$top=6&queryOrder=descending`；GET `.../releases/{release}` | 默认 `6.0`，调用方异常后改 `7.0` 重读 |
+| 推进/重部署环境，`:274–300` | PATCH `/_apis/release/releases/{release}/environments/{env}`，body `status=inProgress,comment` | `6.0-preview.6`；状态迁移错误抛出；不是撤回或删除 Release |
+
+- 主路径构建轮询 `tasks_tab.py:1759–1886`：4 秒间隔（8×0.5s stop 检查），30 分钟截止；YAML 仅 succeeded/success 放行，Classic 还接受 partiallySucceeded。Release `:1923–2004`：10 秒间隔、60 分钟截止，先 definitionEnvironmentId 匹配，找不到才按名称；选中的 notStarted 环境 PATCH 一次。仅检查“已找到的环境均结束”，不会保证全部配置的 stage 都存在。
+- 只发布 `_deploy_only`（`:1034–1148`）：每启用 target 取最新成功构建，创建新 Release，4 秒轮询、60 分钟截止；不改 git、不触发构建。
+- 回滚 `_rollback_impl`（`:594–835`）：最近 6 个 Release 按列表下标选 offset 1..5（不限成功/失败，不是“上一个成功版本”），对历史 Release 所选环境重新 PATCH inProgress，4 秒轮询、60 分钟截止；不 git revert、不新建 Release。目标按 name 查找的旧方式可能重名串用。
+- 停止 `:434–463` 仅设置 stop_event；git 阻塞命令执行期间不响应，最多等 300 秒。等待构建时 best-effort 发取消即退出，不核实远端已停止；Release 开始后停止只终止本地监控，明确不回滚。S3 不沿用“停止监控就显示已取消”。
+
+## S3 数据模型与访问边界（主控技术裁决，业务待决见末节）
+
+已加载 `/Users/wesker/.ai-prompt/skills/` 下 backend-architecture-review、backend-security-review、data-consistency-review、backend-business-safety 四个 SKILL.md。本节为实现前五问、安全计划与一致性合同；实现完成还须按这些技能复核。
+
+### 架构五问
+
+1. **产生什么数据**：配置仍由 S1 `config.json` 保存 tasks.items 与 revision；新的 SQLite 保存 runs、steps/checkpoints、effects、run_events 与数据库版本（字段见下）。不存 PAT、认证头、完整环境或任意远端 JSON。运行快照只含显式白名单执行字段，未知字段继续保留在配置但不解释、不复制到执行快照。
+2. **数据流**：Vue → S0 Bearer 路由 → TasksService（配置协调）/RunService（唯一状态转换与取消所有者）→ ConfigStore / RunStore → GitAdapter 或 ADO task adapter → S2 `ado_read` 共用出站实现。ADO 输入来自同一已验证 task/project/library 快照，凭据调用前按快照的 library 来源重新取；不得把后来改变 origin 的 PAT 发往旧 origin。回传结构化 DTO/脱敏文本 → SQLite 提交 → WS 增量 → 页面。页面关闭不终止执行。
+3. **谁能访问**：S3 仍为持本次启动 token 的单一本机主体；所有新 HTTP/WS 经过 S0 Host/CORS/Bearer/首帧认证。没有另加低权限身份；未认证 401，已认证但引用不属于任务项目/definition/环境的资源拒绝，不能靠改 run_id 指向任意远端。S4 将在应用服务前加 ACL，S3 不接收客户端伪造的 requester/owner 权限。
+4. **并发冲突**：同任务至多一个 queued/running/cancelling/unknown run（SQLite 部分唯一索引）；双击用幂等键。按规范化仓库真实路径及 git common-dir 加进程锁+跨进程 flock（同仓库多个 worktree 也串行），锁放新数据目录而非仓库；不同路径/符号链接不能绕过。远端发布再按 `(library来源, collection, project, release_definition_id)` 加运行预约，防两个任务交错发往同一定义。一个数据目录只允许运行一个 RunService（后端生存期 flock）；HTTP 不等待长操作。
+5. **失败/清理**：先提交意图，再发每一个外部副作用，最后提交回执；SQLite 事务不跨 HTTP/git。半途失败保留已完成步骤与残留，停止后续 target，不自动撤回已 push/已部署内容；结果不明记 unknown 并只读核实。唯一生命周期 wrapper 在所有退出分支释放锁/预约、回收所属子进程、关闭管道/客户端/DB；unknown 的资源预约留在 DB 防重复，不能依赖页面回调清理。
+
+### 配置与任务编辑（推荐完整增删改，待决 2）
+
+- 保持 config schema v1；tasks.items 是唯一来源，legacy_flows 原样保留，清空任务后永不复活。新 id `task:<uuid4>`；既有 id 永不因改名/排序改变。编辑走 SettingsService 的单次 ConfigStore.update（revision 冲突 409），不得出现第二个配置写入器。
+- GET 展示全部已导入任务（包括不可执行的存量条目）并附 warnings/validation；严格校验仅作用于新增/改动字段及执行预检，不因一个旧条目无效使整页打不开。未知任务字段 round-trip 保留，不接受任意额外字段作为执行参数。targets 按数组序号绑定执行快照，不按 name 关联。
+- 表单覆盖旧 DynamicTaskConfig 的执行字段：显示名/说明/启用/排序/tg_command，项目、本地路径、repo id/name、build_branch、更新/合并/推送有序规则、agent queue、targets（启用、构建种类和 definition、Release definition、stage ids/names）。id 只读；显示名辅助，不作为身份。S3 提供文本/已存列表选择，远端 definition/repo/branch 下拉发现器暂不迁移（非执行必需，页面明示输入说明）。
+- tg_command 为空或匹配 `[a-z0-9_]{1,32}`，非空唯一；排序按 sort_order 再 id，提供上移/下移，后端原子提交有序 id 列表，拒绝缺失/重复 id。名称/说明≤200/2000；每任务 targets≤20，每类 git 规则≤50、stage≤50；body 沿用 64 KiB。存量超限只读警告，执行需先修正。
+- id 与路径段沿用 S1 校验；ADO definition/queue/stage id 为 1..2147483647；repo id 只接受 UUID 或 S1 安全路径段。branch≤255，用 `git check-ref-format --branch` 等效规则，并拒绝前导 `-`、控制字符、refspec/修订表达式；规范化为 refs/heads，禁止表达式进入 argv。
+- 新增/修改本地路径必须绝对、存在、是非 bare 工作树、不是旧/新应用源码目录及其子目录；运行时 resolve 并检查 repo root/common-dir，避免在本工具源码运行任务。执行只使用已保存路径，start body 不接受 cwd/URL/argv。临时测试仓库为显式注入的允许路径。
+- 存在活动/unknown run 时同任务编辑/删除返回 409 `task_active`；运行快照不随配置刷新改变。活动运行涉及的 project/library 变更或删除也返回 `resource_active`（含在途设置写与 start 的竞争；由共用服务协调锁串行化）。其他任务照常可编辑。
+- 删除若被 `imported.telegram.acl_groups[].task_ids` 引用：409 `task_referenced`，显示引用组名，不偷偷删除/扩大授权、不改旧 UUID。S3 可禁用任务；解除 ACL 引用留 S4。历史快照不级联删除。若用户选“只读+执行”，这些变更路由/UI 不开放，S3-A 保留读取/预检；其余执行合同不变。
+
+### SQLite WAL 与日志 schema（D12）
+
+- 位置 `<data-dir>/runs.sqlite3`（默认 `~/Library/Application Support/toolbox-next/runs.sqlite3`），同目录 WAL/SHM/运行器锁与 `locks/<sha256>.lock`。目录 0700，文件 0600，拒绝 DB/锁路径符号链接；创建 umask 077。`PRAGMA journal_mode=WAL`、foreign_keys=ON、synchronous=FULL、busy_timeout=5000；IO 在线程执行，不阻塞事件循环。短事务；SQL 参数化。RunStore 持有连接并在 shutdown 关闭。
+- DB schema 独立于 config schema：`PRAGMA user_version=1`，首次建表事务化；未知高版本/损坏/迁移失败进入运行库只读错误态，不重置、不删除 WAL。读历史可读则展示，start/cancel 写失败返回 503 `run_store_unavailable`，设置/工单仍可用。不提供 S3 自动历史清理/删除功能。
+
+| 表 | 字段与约束 |
+| --- | --- |
+| `runs` | `run_id TEXT PK`（UUID）、`task_id`（保留历史，不 FK 到 config）、`operation`（sync_build_release/deploy_only/rollback）、`status`（统一七态）、`phase`、`reason_code`、`created_at/started_at/updated_at/finished_at`（UTC）、`config_revision`、`task_snapshot_json`（白名单）、`request_id UNIQUE`（UUID）、`request_hash`、`cancel_requested_at`、`stop_reason`（user/timeout/shutdown）、`deadline_at`、`last_seq INTEGER DEFAULT 0`、`log_bytes INTEGER DEFAULT 0`、`state_version`（CAS）、`recovery_state`（none/pending/reconciled/manual_required）、`summary`（脱敏≤2000） |
+| `run_steps` | `(run_id, step_no) PK/FK`、`kind`、`target_index`、`status`（pending/running/succeeded/failed/skipped/unknown）、`started_at/finished_at`、`checkpoint_json`（类型化 schema，含 git 原始分支/refs、锁键、预期 commit、definition、所选 stage 集、阶段截止、远端 id/结果/部署尝试号） |
+| `run_effects` | `effect_id PK`、`run_id/step_no FK`、`kind`（git_push/build_create/build_cancel/release_create/env_deploy）、`intent_key UNIQUE`、`intent_json`（仅受限请求字段）、`state`（intent/confirmed/rejected/unknown）、`remote_id`、`owned`（创建归属证据，不由前端指定）、`intent_at/confirmed_at`、`error_category`；同一次远端尝试只对应一个 effect |
+| `run_events` | `(run_id, seq) PK/FK`、`ts`、`type`（state/log/checkpoint）、`level`、`data_json`；seq 从 1 严格递增、跨重启不重置；日志以纯文本存储，单条≤8 KiB |
+
+- 每次状态/检查点/effect 变更、事件追加与 runs.last_seq+state_version，在**同一 SQLite 事务**提交；提交后才广播。事务失败不发事件、不继续写远端。DB 出错后无法记录最新状态时，UI 显示运行库不可用并禁写；下次从最后持久化 intent 恢复，不谎称失败已落盘。
+- 活动唯一索引：`task_id WHERE status IN ('queued','running','cancelling','unknown')`；发布资源预约表 `run_reservations(resource_key PK, run_id FK)` 与 run 创建同事务提交（Git common-dir 预检解析后登记锁键）。最终确认结束时同事务删除预约；unknown 保留。运行库的预约与配置变更协调不能只靠 UI 禁用。
+- 日志追加不清空，按 run 隔离；保留至用户未来主动清理。每 run 原始日志预算 20 MiB，达到后仅追加一次截断事件、继续状态/检查点事件，始终排空子进程输出不造成背压死锁；恢复继续使用同一预算计数（写入 runs 的 `log_bytes`）。前端只保留可视分页，不在 DOM 累积全部历史。
+- 所有文本在入库前脱敏（已知凭据、Authorization、URL userinfo），移除危险终端控制序列；stdout/stderr 用有界跨块缓冲，覆盖“PAT 分成多块”和超长无换行输出。消息/历史/事件/进程 stderr 都不能出现假 PAT、Basic 编码认证串或本机 Bearer；不记录完整出站 URL/响应体/子进程 env。
+
+### 长操作接口、事件与幂等
+
+| HTTP / WS | 固定语义 |
+| --- | --- |
+| `GET /api/tasks`、`GET /api/tasks/{task_id}` | `{revision, items}` / `{revision,item}`；任务 DTO 附 warnings、validation、active_run_id；不回传 imported.telegram 或凭据 |
+| `POST /api/tasks`、`PATCH/DELETE /api/tasks/{task_id}`、`PUT /api/tasks/order` | 完整编辑分支才开放；请求带 revision，返回 S1 MutationResponse；PATCH 只应用显式字段，未知字段不能被表单覆盖 |
+| `POST /api/tasks/{task_id}/preflight` | `{operation, revision, rollback_offset?}` → `{plan_id,expires_at,revision,task_summary,steps,targets,warnings}`；只读外部查询与本地 git 检查，**不 fetch/push/创建远端资源**；计划内冻结 definition/stage，以及只发布的 build/回滚的 Release 选择，最多保留 128 项、TTL 5 分钟、仅内存。主路径最终 commit 在 git 阶段完成后计算并持久化，不虚构预检已知合并后的 commit |
+| `POST /api/tasks/{task_id}/runs`（start） | `{plan_id,request_id,ack_old_app_idle:true}` → 202 `{run_id}`；重用 request_id 且 hash 一致返回同一 run（先查持久化幂等记录，计划过期也可回读）；同 key 不同请求 409 `idempotency_conflict`。新 key 需计划有效、revision 未变且后端再次校验任务/来源；不能只靠前端确认 |
+| `GET /api/runs/{run_id}`（get）、`GET /api/runs?task_id=&status=&cursor=&limit=`（list） | 当前快照与 last_seq；列表默认 50、最多100，按 created_at/run_id 游标；status 为七态白名单；未知 id 404 |
+| `POST /api/runs/{run_id}/cancel`（cancel） | 202 当前快照，幂等落盘 cancel 意图；终态重复调用返回200原结果；unknown 可记录取消愿望但不能未经归属核实发远端取消 |
+| `GET /api/runs/{run_id}/events?after_seq=&limit=` | 严格 seq 升序，limit默认200/最多1000，`{items,next_seq,has_more}`；无新事件返回空列表 |
+| 既有 `/ws/events`（subscribe） | 新增认证后客户端消息 `{type:'subscribe',topic:'run',run_id,after_seq}` / `{type:'unsubscribe',topic:'run',run_id}`；不订阅不可接收该 run 日志。回放从持久化事件分页，完成后发 `run.subscribed {run_id,last_seq}`；注册实时队列先于读取回放水位，按 seq 去重，避免回放/实时交界丢事件。不得把全量日志塞进 hello |
+
+- WS 沿用全进程 envelope.seq（重启可重置），新 `run.event.data={run_id,run_seq,type,payload}` 的 run_seq 才是持久游标；不得混用。每连接最多订阅8个 run，回放最多1000事件/批，慢客户端沿用队列256/4408。重连先 GET 快照/HTTP 补齐，再从最后连续 run_seq 订阅；先注册再补齐，乱序缓存/去重，发现缺口再补，不靠“收到的最大 seq”跳过缺失事件。
+- 错误沿用 S1 detail 结构。422 `validation_error`；404 `not_found`；409 `revision_conflict/task_active/resource_active/task_referenced/idempotency_conflict/plan_expired/plan_changed/no_credential/unsafe_repository/unsupported_task`；503 `busy/run_store_unavailable/store_unavailable`；ADO 502 `ado_request_failed` 且沿用既有固定 category，不扩充公共 ADO 分类。已经受理的执行失败写入 run（如 `git_failed/build_failed/release_failed/interrupted/timeout/remote_unknown`），不改为迟到的 HTTP500。
+- start 排队后由后端执行；全局最多4个执行 worker，queued≤100，超限503 busy。等仓库锁/预约最多5分钟（可取消），到期 failed/busy 且无外部副作用。前端断线/路由切换只退订，不 cancel。
+- 状态转换仅由RunService以state_version比较更新：queued→running/cancelled/failed；running→cancelling/succeeded/failed/unknown；cancelling→cancelled/failed/unknown（若取消与整计划成功竞态，核实后可succeeded并保留取消请求）；unknown→unknown或核实后的succeeded/failed/cancelled。succeeded/failed/cancelled为不可变终态；unknown不是终态。恢复流程不从unknown自动转running执行剩余写步骤。
+
+### Git 子进程、互斥与副作用顺序（D07）
+
+- 只运行固定 git 可执行文件与 argv 数组，`shell=False`、stdin=DEVNULL、独立进程组。显式环境白名单（PATH、受控 HOME、语言、必要 SSH_AUTH_SOCK；不继承应用 token/PAT、代理、GIT_*、PYTHON*、LD_*/DYLD_*）。固定 GIT_TERMINAL_PROMPT=0、禁止 askpass，禁用 system/global Git 配置、hooks、外部 diff/编辑器/签名交互及递归 submodule；身份从仓库已有 user.name/email 获取，缺失给可操作错误，不替用户写全局配置。
+- S3 本地真实 git 推荐只支持已配置 origin 的 SSH + 现有 SSH agent/known_hosts；不读取 Keychain 给 git 注入 PAT、不在 argv/URL/env 传凭据、不保存密码。SSH 使用 BatchMode、严格 host key 校验、有限连接时间，受控配置不接受仓库任意 sshCommand/ProxyCommand。若用户 origin 使用 HTTPS 或 SSH 别名/自定义代理，首版返回 unsupported_task 并说明（待决4一并确认兼容边界）；不静默改 remote。实现前白名单支持用户的具体 SSH 地址形式，测试只用虚构形式。
+- 验证 origin 以及所有 pushurl（多 pushurl 拒绝）、url.insteadOf 重写和相关仓库配置；拒绝 userinfo 密码、ext/helper 协议及未受信命令型配置。执行前报告目标 host/仓库摘要，不打印含凭据原始 remote。file 本地远端只在测试依赖注入允许，生产禁用；测试不得用临时 HOME 冒充 Keychain/socket 隔离。
+- 在实际仓库 root/common-dir 上拿锁后**重新**检查干净工作区、无 merge/rebase/cherry-pick 状态、分支/remote。先记原分支/HEAD/各变更 ref。fetch → 显式更新 → merge → push；更新使用 `checkout <branch>` + `merge --ff-only refs/remotes/origin/<branch>`，不沿用隐含 upstream 的 pull。fetch 后核实每个远端 ref；合并保持旧语义，source 为已 fetch 的 origin/source。禁止 force push、reset --hard、clean、自动 stash；冲突仅对本 run 开始的 merge 执行 merge --abort，失败保留现场并写清残留。
+- 每次 git 命令最长300秒，git 阶段总长15分钟；取消/超时由唯一进程所有者 TERM 进程组→最多5秒→KILL→wait，持续排空stdout/stderr。只能回收自身记录的 pid/pgid，禁止按进程名 kill；重启后不按落盘旧 pid 直接 kill（防 pid 复用）。崩溃孤儿不得在释放仓库锁后继续写：工作子进程/监督器必须持有对应 flock 到退出，EOF/父进程丢失触发回收；S3-A 用假进程与临时仓库验证后端强杀场景。
+- 不自动反向改写成功的本地 commit/ref 或远端 push；结束时尽力恢复原 checkout（不 reset 分支），无法恢复则 failed 并给 repo_needs_attention。清理失败不能伪装成功。外部工具/旧应用/用户手工 git 不持本锁，预检提示旧应用空闲并在每个写边界重检，不能承诺跨应用互斥。
+- Git 完成后单独解析 **build_branch ref 的精确 commit**（不是当前 HEAD）；所有触发前核对 origin 对应分支 commit 与预期一致，未推送的本地提交不得冒充远端构建。分支已移动则 plan_changed/failed，要求重新确认；不重新选择最新提交。
+
+### ADO 写操作、构建身份与发布安全（D06）
+
+- 扩展 `adapters/ado_read.py` 的既有 HTTP 底座；task adapter 只负责端点/DTO/执行语义，不另建裸 httpx 客户端。S1/S2 继续走同一实现；必要时将 `services/work_items.py:OUTBOUND/outbound` 提取公共模块并随调用者切换，**全进程仍只有6个出站许可**。同 origin+解码及原始路径前缀、路径段编码、trust_env=False、不跟随重定向、连接5秒/JSON总15秒/4MiB/排队15秒/脱敏和固定错误分类全部继承。
+- Build/Pipeline API 固定7.0；Release 读取先6.0，**只在明确版本不支持的400/404时**允许探测7.0，并在 preflight 冻结可用版本。401/403/timeout/network 不当版本错误。所有写操作均只用已选定版本，不能 catch-all 换版本重发。
+- 复用必须读取可信详情，核对 `(library来源, collection, project, repo_id, definition_id, refs/heads/branch, commit)` 全部一致，状态为真实可等待的 queued/running（排除canceling/cancelling/completed）；任意字段缺失、详情失败、不匹配即不复用。queue override 还须 queue 一致。候选最多20个、详情串行有界；复用 `owned=false`，仅等待，绝不能取消。
+- 新触发固定 commit：Pipeline body `resources.repositories.self={refName,version:<commit>}`；Build body `definition.id,sourceBranch,sourceVersion` 和可选 queue.id。远端回执/后续 Build 详情须再核对身份。Pipeline run 与 Build id 不假定相同：通过明确的关联信息核实 Build 记录，不能以数值相同作为证据；无法证明时 unknown，不创建 Release、不 fallback 取消。
+- `owned=true` 只能来自本 run 已提交的创建 intent + 确认响应（或可唯一核实的关联标记）。Release description 使用非敏感标记 `toolbox-next run=<uuid> effect=<uuid>`；Build 支持的关联字段在适配器契约内验证，服务器若无可靠标记不能声称“恰好一次”。发生 timeout/断连/坏响应/落盘失败后只读对账，找不到或多个候选保持 unknown，**不得自动再次 POST**。
+- 构建仅 succeeded/success 进入发布（推荐收紧 Classic partiallySucceeded，待决5）。Release 创建前读取并验证 artifact 与 build definition/project 的绑定：首版只支持一个 Build artifact，alias/type/definitionReference 必须一致；多 artifact/未知类型阻断 unsupported_task，不能静默拿第一个。
+- 所有目标/定义/stage 在执行第一个写操作前预检；仅 enabled target 执行，按数组顺序串行、失败即停。stage 用 definitionEnvironmentId 精确匹配，必须**全部**存在且唯一；只有旧配置没有 id 时可用唯一名称解析并冻结为 id，名称重名/部分命中拒绝，不能悄悄只监控子集。
+- 创建 Release 可能依定义自动部署其他环境。推荐创建时把定义中**全部环境列为手动**（manualEnvironments，适配器须按冻结版本核实支持），然后只对所选环境 PATCH。不修改 Release definition/审批/门禁；不能保证未选环境不会自动部署时阻断 `unsupported_task`，不默认为成功。此兼容取舍见待决6。
+- 推进环境前持久化 effect 与当前 deployment attempt 基线；PATCH 后轮询新 attempt/部署记录，不能把旧 succeeded 状态当本次成功。请求结果不明先GET；未出现新 attempt 不等于允许重发。每个所选环境最多发一次部署写请求；等待审批/门禁保持 running，取消不绕过它们。
+- 只发布（若确认纳入）：preflight 按7.0最新成功构建查询，核实 definition/branch/commit/仓库；冻结每 target 的具体 build id+commit，确认页明确“发布此制品，不构建当前分支”。执行时再核实该 build（不换最新）。这里的显式制品选择与主路径“运行中构建复用”不同；不要求它等于此刻 branch HEAD。
+- 回滚（若确认纳入）：按每启用 target 最近6个Release预览 offset1..5，显示所选 id、制品 commit、创建时间、当前结果，冻结具体 release/env id（不同 target 不按 name 关联）。不假定历史条目成功；明确提示“重部署此历史 Release”，不 git revert、不创建新 Release；部署前再次核对 definition/stage 与部署基线。
+- 无本地路径但无 git 规则时，可经7.0 Git refs只读查询 `/_apis/git/repositories/{repo}/refs?filter=heads/<branch>` 得精确 commit 后构建；须精确 refName 匹配。无本地路径且有 update/merge/push 规则时按待决4推荐阻断，不能静默跳过 update。
+
+### 每个副作用的顺序、失败残留与恢复
+
+| 写边界（此前必须提交 effect intent） | 成功后下一步失败的残留 | 结果不明/恢复规则 |
+| --- | --- | --- |
+| 本地 fetch/更新/merge（run_steps先记refs） | 本地 refs/merge commit 可已改变，保留旧/新 commit与残留说明；只 abort 本run活动merge，禁止硬重置 | 重启只读 status/ref；不自动重做 merge/push；有未收尾本地状态时 failed/interrupted+人工处理，不把纯本地失败叫 unknown |
+| `git push origin <branch>`（逐分支记预期提交及原远端ref） | 前面分支可能已push，后面失败不逆向force push；构建/发布停止 | ls-remote核对每个ref；等于预期可确认写入结果（不能据此证明独占归属），被他人推进/不可查询则unknown；不得自动重push |
+| POST 创建构建 | push已存在/构建可继续运行；记录 remote id、身份、owned；后续失败不撤回push | 有id只GET；无id有限查候选与关联标记，唯一证明才能绑定；否则unknown；绝不自动再次触发 |
+| PATCH/POST 取消本run构建 | 已发送不等于已取消，只有确认completed才收尾 | 可重复读取；只有明确归属且远端仍运行时才允许有界取消流程；无归属/复用零取消写请求 |
+| POST 创建Release | 构建已成功、Release可能已创建甚至开始部署；不得删Release/重POST/换版本重试 | id或description关联唯一核实；未确认时unknown；后续环境启动必须等待可靠回执落盘 |
+| PATCH 启动所选环境（含只发布） | 先前环境可能已部署；后续失败保留结果、不自动回滚 | 查询新部署attempt；断连/崩溃不重PATCH，unknown直到全部相关远端状态已核实 |
+| 回滚 PATCH 历史环境 | 历史Release环境可能已重新部署；后续target失败不自动“回滚回滚” | 与新部署同规则，必须区分本次attempt和旧终态 |
+
+- ConfigStore 与 SQLite 不做伪跨库事务：编辑只改 config；start 在服务协调锁下取得已验证快照，然后SQLite单事务写run/steps/预约/首事件，成功后才排队，不更改config。config保存失败不创建run；DB失败不触发副作用。进程重启时快照可独立读，不靠任务仍在配置中存在。
+- 新后端启动：queued且没有写意图的记录转 cancelled/reason=backend_restart；running/cancelling及含不明effect者转 unknown，标 recovery pending、发持久事件。启动只读核实，不自动push/trigger/deploy，也不自动执行剩余target。
+- 有远端 id：按冻结来源和当前有效同来源凭据重新查询；凭据缺失/来源变更/404均保持unknown并提示人工核实（不能把404当已取消）。确认所有本次尝试终态且整个计划完成才能 succeeded；已确认失败则failed；确认停止且无残留运行才cancelled；仅当前build成功但尚未执行后续Release则failed/interrupted，允许新计划从制品“只发布”，不自动续写。最终状态必须覆盖所有已创建/观察的远端效果。
+- unknown每30秒只读对账，最多持续15分钟；仍无法核实标 manual_required，停止后台重试，预约保留。提供 `POST /api/runs/{id}/reconcile` 202 仅重新查询（不重发写操作、无body任意远端id）；重复调用合并。UI可打开经校验的ADO链接核实，但S3不提供“强制当成功/失败”解除预约按钮。
+- 取消：queued立即cancelled并释放预约；git阶段回收所属进程并清理后cancelled（push不明除外）；自建构建取消写+最多60秒轮询确认；复用构建只退出执行链且保留unknown/remote_running，后续只读对账，**不发取消**；Release/回滚已部署时停止后续写、保留unknown并只读观察，明示“远端部署可能继续，停止不会回滚”。若实际完成，保留cancel_requested/stop_reason并报告实际效果，不能无条件显示cancelled。
+- 默认构建截止30分钟，Release/回滚每target60分钟；轮询间隔构建4秒、Release5秒，使用可取消async等待和monotonic截止，绝不持有出站许可sleep。git总15分钟、worker/锁排队5分钟；全run截止为排队+git+目标预算之和，冻结入快照；重启按持久UTC截止换算剩余时间，不能重置预算。明确终态才能failed/timeout，否则unknown/timeout+继续只读对账；超时不意味着远端停止。
+- 明确退出沿用S0协调关闭：拒新start、落盘shutdown/取消意图、回收本地进程、关闭轮询，远端未确认保留unknown；不因退出无限等远端。页面刷新/隐藏窗口不触发shutdown。所有终止路径均执行同一个finally释放本地资源；DB预约仅在确认终态后释放。
+
+### 安全核对（每条新路由/操作验收）
+
+| 风险 | 合同与测试证据要求 |
+| --- | --- |
+| 未认证/越权 | 每条HTTP无token401、WS首帧规则；单主体权限说明；任务/项目/定义/stage归属校验，伪造remote id零写请求；S4 ACL不在S3伪实现 |
+| 注入/路径 | 参数化SQL；固定argv与branch校验；不接受客户端cwd/命令/URL；repo真实路径/common-dir锁、控制字符/前导选项/符号链接绕过测试 |
+| SSRF/凭据绑定 | 复用S2原始路径边界与并发6，不跟随3xx；来源变化拒绝；响应中URL不可信、仅校验同源网页链接可打开；PAT只进后端HTTP认证头 |
+| 泄密/XSS | DB/WAL、日志、WS、HTTP、stderr、DOM/storage/argv/env中均搜不到假PAT/Basic/Bearer；输出纯文本，不v-html、不执行ANSI；git remote凭据URL拒绝 |
+| 重复副作用 | 幂等键、任务唯一、发布预约、效果意图/回执、写超时不重POST；每个临界点故障注入并断言远端写次数 |
+| 资源/生命周期 | 有界worker/队列/HTTP/输出/日志、锁超时；取消二次到达、崩溃孤儿、DB失败、慢订阅者均不泄漏许可/管道/pid/连接；unknown不释放远端预约 |
+
+## S3 通用合同与模型分工
+
+- **派工门禁**：用户确认本合同及待决项；主控更新已决/分包，提交输入SHA、预置依赖并生成契约后才派工。当前仅文档提交，无施工/测试/审计派发；不因有计划而启动worker。
+- 主控 requested GPT 6.1 Sol/high，实际型号/档位无提供方元数据则unknown；后端施工 codex exec GPT 6.1 Sol/medium、sandbox workspace-write，不联网；测试子agent GPT 6 Luna/high（新增独立用例）；端口用例由主控沙箱外跑。
+- 前端施工 Gemini，Antigravity CLI `agy`：确认后先 `agy models` 核验，偏好实际列出的Gemini 3.x Pro/Flash高档，无指定型号记unavailable、不换厂商。每轮一个 `agy --print --dangerously-skip-permissions`，按隔离需要加 `--sandbox`，不使用JSON/流式；首轮按cwd从 `~/.gemini/antigravity-cli/cache/last_conversations.json` 取conversation_id，续用 `--conversation <id>`，禁用 `--continue`。lark MCP启动卡超时记blocked并告用户，不擅改全局配置。前端独立测试由Gemini新增独立用例或主控另派GPT 6 Luna/high。
+- 所有代码审计交Claude Code CLI Sonnet 5.5/medium，仅Read/Grep/Glob与限定只读git/测试命令，禁止Edit/Write；先核实CLI help与本机runtime已验证参数，不猜型号可用性。JSON回执记录session_id/modelUsage，修复后 `--resume <session_id>` 续接同会话、保留发现编号；429/额度不足记pending/unavailable，不换模型冒充审计。异步不阻塞其他包，不要求审到零问题。
+- 审计者只读、不再派发；探针仅放其临时目录并结束前删除，不 `git archive` 导出整仓；原始输出/会话/元数据由主控留git忽略的`.local/dispatch/`、`.local/reviews/`，账本列实际通道/会话/型号证据。
+- 每包worktree `.local/worktrees/<包>`，从明确输入SHA detached创建；主控集成限定write_scope的binary patch，先核对用户脏文件和新文件不存在，再 `git apply --check`、应用、重跑集成检查后本地commit，不push。施工者不commit；删除worktree前问用户。
+- 测试必须临时数据目录+假凭据+MockTransport+临时git仓库（`git init --bare`当远端），沿用后端conftest的keyring/socket守卫；Git子进程另以协议/remote/环境守卫断言只访问临时bare，不依赖Python socket守卫拦git。禁止读真实配置/Keychain、连接真实ADO/TG、push真实远端或触发真实构建/发布。
+- `pnpm dev:web`现有假ADO模式扩展任务fixture；开发任务只运行假ADO与由夹具创建的临时git目录，不能导入用户真实路径执行；非dev/非memory接受假开关必须启动失败。fixture seed/清理归启动器所有，只回收其pid与临时目录。
+- 派工明确禁止：按进程名kill、裸git stash、删除/放宽既有测试、仓库内留报告文件、改旧应用代码/配置/凭据；同类失败两次或需变更本合同接口/状态/写范围/权限/限额即停下交主控。
+- 每个修复先写会失败的回归，主控亲自复现修前失败（可临时反向应用限定补丁，禁止stash），恢复后再验收。独立测试必须新增需求/故障用例，不能只复跑施工者测试。
+- 后端优先标准库sqlite3/asyncio/subprocess/fcntl，不为本切片新装执行框架；确需依赖由主控预置锁文件后再派工。仓库pre-commit自动递增app_version.py是既有行为，单列记录。
+
+## S3-A：运行内核、SQLite、任务配置与 Git
+
+- 依赖：合同已确认、待决写入、依赖预置SHA。
+- write_scope：`next/backend/**`、`next/contracts/**`。API/模型由本包先落定；主控统一生成前端schema。测试子agent仅 `next/backend/tests/independent/s3a/`。
+- 结果：任务读取/条件CRUD/预检、RunStore/RunService七态、幂等/预约/恢复、持久增量事件、git适配器与生命周期；远端adapter以可注入假实现验收，**不开放不完整真实执行链**（在S3-B接入之前start返回unsupported_task）。不新建临时第二套前端手写类型。
+- 自动验收：后端`.venv/bin/python -m pytest -q`、`.venv/bin/ruff check .`、`.venv/bin/python -m toolbox_backend.contracts --check` exit0；沙箱不能bind的用例报告not_run，主控沙箱外跑完整集合。覆盖：
+  1. CRUD/revision/未知字段/ACL引用/活动编辑竞态；幂等双击/同key异body/任务唯一/预约竞争；坏DB/高版本/事务中断/权限/重启不重放写。
+  2. 临时bare+两个clone的fetch/ff/merge/push顺序、远端ref/构建分支commit、错误upstream、脏目录、冲突abort、部分push、非ff拒绝、别名/common-dir互斥、不改原应用路径。
+  3. queued/git执行中/写边界cancel与二次cancel、超时、假进程后代TERM/KILL/wait、强杀后锁仍持到子进程退出、关闭stderr/stdout与许可归还；不按旧pid误杀。
+  4. DB事务+事件原子性、跨重启run_seq、回放/实时交界、断线补齐、重复/乱序、队列4408、日志预算/跨块脱敏/无换行洪水。
+- 回退：代码恢复本包write_scope至输入SHA；不删除已存在DB/config，不降级未知DB版本。含真实写的运行数据不能当源码一起回滚。
+
+## S3-B：ADO 构建、发布、只发布/回滚与只读对账
+
+- 依赖：S3-A集成；按已决1/4/5/6裁定执行分支。与S3-C是否并行由主控在契约已冻结后决定。
+- write_scope：`next/backend/**`、`next/contracts/**`；测试子agent仅`next/backend/tests/independent/s3b/`。修改公共ADO底座须保持S1/S2既有测试不弱化。
+- 结果：接入完整执行链后才开放start；所有本合同写边界落盘、身份/归属核实、停止、超时/重启对账；只支持确认的能力，未支持分支给明确阻断，不静默忽略配置。
+- 验收命令同S3-A；MockTransport逐项断言上表端点/api-version/body/查询。独立测试覆盖全链与每个失败残留，重点：
+  1. definition/branch/commit/项目任一不同或缺失均不复用；详情失败不接管；queue不符不复用；新触发固定commit；自动构建owned=false且取消零写；取消fallback先核关联，禁止猜Build id。
+  2. 每次POST/PATCH送达后故意丢响应、DB回执提交失败、重启、重复start/cancel/reconcile；断言无重复构建/Release/部署；unknown保留预约；同名target/部分stage/旧succeeded与新attempt分离。
+  3. Release版本GET协商与写请求不重试；多artifact/绑定不符阻断；未选环境不自动部署的请求合同；所选环境全覆盖；禁用target在三操作中均不执行。
+  4. 只发布冻结build；回滚冻结历史Release、offset越界/不足、历史已变；不git写/不新触发build；全部终态/审批中/取消失败/网络失败及credential来源变化。
+  5. 共享出站总并发6（S1/S2/S3混合请求）、小块滴流限额截止、3xx与原始路径越界零跨界请求；任何公开/落盘输出不含假密钥。
+- 回退同S3-A，停止新start；已创建远端资源只读核实，不因回退重发/删除。
+
+## S3-C：任务页换真实接口（Gemini）
+
+- 依赖：S3-B正式契约与fake fixture集成；主控生成`schema.d.ts`后派。若并行只可按已冻结接口，不能靠mock假定新字段。
+- write_scope：`next/desktop/src/features/tasks/**`、`next/desktop/src/api/events.ts`与`src/app/backend-runtime.ts`（仅新增run消息/订阅回调和认证后send支持，保持旧调用兼容）、`next/desktop/src/components/SidebarNav.vue`（仅任务角标改真实状态）、`next/desktop/tests/**`（新增文件）、`next/desktop/scripts/dev-web.mjs`（仅任务假fixture生命周期）、`next/desktop/README.md`；schema由主控生成。共享路径变化先交主控，不批量改其他feature。
+- 结果：任务列表/搜索/启用筛选、详情与执行计划确认、条件CRUD与排序、运行历史/阶段/停止/unknown说明、日志分页与增量补齐；按设计E既有组件。选择态可localStorage仅存task_id；配置草稿/运行日志不持久到浏览器，token永不进URL/DOM/storage。
+- 每次start确认展示任务、仓库/分支、目标definition/stage、精确制品（只发布/回滚）、不可撤回的已执行副作用，以及“请确认旧应用没有在跑同一任务”必选框；后端要求ack。queued/running/cancelling/unknown由服务驱动，不凭按钮点击乐观写成功；unknown可只读核实与打开校验链接。
+- 切换任务/刷新/断线时取消在途查询且防旧响应覆盖；先订阅再补齐，按连续run_seq去重；选中运行改变先退订旧run；页面卸载清理监听/abort/订阅，不取消后端任务。无任务/配置无效/无凭据/只读库/冲突/繁忙/远端可能继续均有可操作中文提示。
+- 自动验收：`pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm guard:dist`、`pnpm contracts:check`全部exit0；独立测试位于`tests/independent/s3c-*`。覆盖CRUD/冲突与ACL阻断、preflight失效、二次确认/取消、双击幂等、后台继续、unknown/取消真实语义、重连缺口/乱序/重复/后端重启、并发run日志隔离、键盘焦点、无假执行数据/PAT。
+- 删除任务feature中已替换mock；侧栏未迁移的其他feature mock不扩范围。主控假环境联调留截图：任务、编辑、计划确认、运行日志、停止/unknown、历史。真实Tauri/ADO验收另列。
+- 回退：限定上述路径至输入SHA；不能把假页面状态当真实run结果。
+
+## S3 集成验收（主控）
+
+- 后端完整pytest/ruff/contracts；前端frozen install/typecheck/lint/test/build/guard:dist/contracts:check；Rust `cargo fmt --check`、`cargo clippy --offline -- -D warnings`、`cargo test --offline`；旧应用守卫测试（在重写目录隔离运行，禁止引用真实配置）不回退；`git diff --check`与限定改动路径检查。当前572/755是S2历史基线，不冒充S3结果。
+- 主控亲自核对每个副作用间隙的残留与检查点、未知结果恢复、取消归属、子进程/锁/连接关闭，并应用四技能完成复核；实现后补resource-lifecycle-audit，声明production-ready前补production-readiness-review。
+- 运行假fixture端到端：任务编辑→同步→构建→发布→历史；只发布/回滚（若纳入）；重启后unknown→只读对账；断网重连日志补齐；数据库写失败/远端请求结果丢失。全用临时bare+MockTransport，扫描假PAT/Basic/Bearer不外泄。
+- 对照本节旧事实与能力文档，在PROGRESS列迁移/改进/有意推迟清单；每包分别登记实际模型/档位/会话/命令/退出码/测试数/未测/清理；异步Claude审计登记为pending/unavailable/returned，不能冒充通过。
+
+### 真实验收清单（仅用户另行授权后执行；本合同提交不执行）
+
+1. 用户选择专用测试仓库/分支、ADO测试构建与测试环境，确认旧应用同任务空闲；核对SSH agent/host key、PAT最小权限与执行计划，不使用生产目标做首次验收。
+2. 真实SSH fetch/merge/push、构建精确commit与queue覆盖、分支自动触发构建复用；核实只取消本任务创建的构建，复用实例停止不会取消。
+3. 自建服务器Build/Pipeline/Release版本、Pipeline↔Build关联、单artifact绑定、manualEnvironments控制与审批/门禁、新部署attempt识别；不支持时检查阻断说明。
+4. 只发布具体制品、回滚具体历史Release（若纳入）；部分target失败时已部署内容的提示，不自动补偿。
+5. 用户可控地重启后端，检查unknown/只读重新核实/无重复写；真实Tauri重连与日志/历史、关窗后台执行、明确退出的本地进程回收。
+6. 真实Keychain授权/拒绝、无凭据/权限不足与来源变更；真实环境未测逐项记账，不阻塞已通过离线验收的后续工作。
+
+## S3 主控裁决与待用户拍板（批量确认）
+
+技术已定：SQLite位置/schema与事务意图、七态/只读恢复、不自动重放写、D06精确身份/创建归属、D07仓库锁、S2 HTTP底座复用、假环境测试和模型分工均按上文。下列业务/兼容选择**仍待确认**，不静默视为接受。
+
+| 编号 | 需要拍板 | 推荐 | 备选与影响 |
+| --- | --- | --- | --- |
+| 1 | 首版是否有只发布和回滚 | **都纳入S3**，保留旧三操作，统一复用运行内核与安全边界 | 首版仅同步→构建→发布；只发布/回滚登记S3后续包，相关端点/按钮不开放 |
+| 2 | 任务编辑范围 | **提供完整增删改/排序**，未知字段保留；ACL引用任务禁止删除，禁用可用 | 只读+执行；需用户继续在旧端编辑并人工迁移，不增加自动二次导入 |
+| 3 | 新旧同任务并行保护 | **每次执行计划确认必选“旧应用没有在跑同一任务”**，新端内部锁与预约照做，不做跨应用锁 | 跨应用强锁会要求改旧应用，与本轮旧端只读冲突；若需要应另立包 |
+| 4 | 无本地路径的远程PR合并与git认证范围 | **S3暂缓远程PR写，只支持本地SSH agent同步；无git规则时可只读查commit后构建**；HTTPS/SSH别名代理暂不自动适配，明确阻断 | 若这些是日常必需，扩S3-B前先补PR创建/完成的意图与恢复合同，或补独立HTTPS凭据通道；涉及Code写权限/认证边界须明确确认 |
+| 5 | Classic partiallySucceeded能否进入发布 | **首版仅完全成功放行**，避免带失败制品发布；历史配置不增加默认放行开关 | 沿用旧Classic允许部分成功；需在确认页显著标出，新增明确allow_partial_success字段与回归，不影响YAML规则 |
+| 6 | Release定义自动启动未选环境 | **只允许所选环境部署**：创建时全部转手动再显式推进所选项；服务器不能保证时阻断 | 保留旧“定义可能自动发其他环境”；确认页必须列出所有可能自动部署环境，扩大实际执行范围，不能声称只发所选stage |
+
+## S3 已决
+
+- 截至本次合同提交：**尚无用户确认；S3-A/B/C均not_dispatched，代码审计not_dispatched**。
+- 用户可按「1–6均按推荐」或逐项指定备选回复。收到确认后主控记录原答复、修订合同再派工；本地合同commit本身不授权真实push/构建/发布，也不代表真实验收通过。

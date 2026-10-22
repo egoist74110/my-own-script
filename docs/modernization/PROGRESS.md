@@ -635,3 +635,15 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 交叉审计：S2-A（Opus，两轮，CR-S2A-001..004 + I-2/I-4）与 S2-B/S2-C（GPT 6.1 Sol，两轮，CR-S2B-001..003、CR-S2C-001）全部闭环；主控自查发现 CR-S2A-L01、CR-S2D-L01 已修。
 - 待用户真实环境验收（未测）：真实 ADO 列表/详情/评论/历史/子项/附件；**CR-NEXT-004** 跨源 CDN（若属实追加方案 B）；I-5（base_url 与远端路径大小写/编码不一致时误拦）、I-7（batch 返回 null 元素）；真实 Keychain；Tauri 内 blob 图片、CSP 与 opener；Playwright e2e。
 - 施工 worktree `.local/worktrees/s2a..s2e2`（约 1.5 GB）：逐文件核对，s2d、s2e1、s2e2 与主仓库完全一致；s2a/s2b/s2c 中不一致的文件均为被后续包（S2-D、S2-E）或两包合并改动覆盖的旧版本。用户 2026-10-22 确认后移除：`git worktree remove --force` ×6 + `git worktree prune`，`git worktree list` 只剩 `main` 与 `rewrite/next`，`.local/worktrees/` 为空。补丁、派工单与施工/测试/审计输出保留在 git 忽略的 `.local/dispatch/`、`.local/reviews/`。
+
+## 2026-10-23：S3 任务执行（合同草案，待确认）
+
+- 主控：requested GPT 6.1 Sol/high；actual model/effort=unknown（当前Codex工具无提供方回执），runtime_identity=codex，session_id=unknown；本轮未委派任何施工/测试/审计会话。
+- 输入：`rewrite/next @ 5c0d4c2`，开始时工作区干净；旧目录 `main @ 885d186` 只读。主控亲自检查 `tasks_tab.py`、`models.py`、`task_migrate.py`、`task_history.py`、`ado_git_ops.py`、`ado_build_http.py`、`ado_build_query.py`、`ado_release_http.py` 与新版S1/S2入口。
+- 事实与合同追加在 WORK_PACKAGES「S3」：端点/api-version/git argv/轮询/停止/构建复用/日志来源；运行库schema与数据目录、外部副作用意图/回执、重启unknown只读对账、取消/超时/子进程隔离、S3-A/B/C分包与离线/真实验收清单。
+- 加载技能：AI prompt root下backend-architecture-review、backend-security-review、data-consistency-review、backend-business-safety；提交验证使用verification-before-completion，检查现有提交钩子使用script-engineering。只写合同，未实施后端功能。
+- 六项待确认：只发布/回滚是否首版纳入；完整任务增删改/排序；每次确认旧应用空闲且不做跨应用锁；远程PR与git认证兼容范围；Classic部分成功制品能否发布；未选Release环境是否强制不自动部署。推荐与影响见合同，尚无用户已决。
+- S3-A/B/C：not_dispatched；Claude Sonnet 5.5/medium代码审计：not_dispatched（尚无代码差异）。模型可用性核验/依赖预置在确认之后进行，不把目标配置记成实际执行结果。
+- 工具限制：Serena索引初始化失败（服务PATH找不到uv/uvx），改用只读文本核对；未安装工具、未修改全局配置。无额外worktree/子进程/临时仓库需清理。
+- 安全范围：未读真实配置/凭据、未连真实ADO/TG、未执行远端push或触发构建/发布；旧目录源码未改。当前仅文档及既有pre-commit自动递增版本；未重新执行功能全量测试，572/755仍是S2历史基线，不称为本轮验证结果。
+- 本轮提交前验证：`git diff --check` exit0；后端 `.venv/bin/python -m toolbox_backend.contracts --check` exit0（契约无漂移）；文档结构/六项待决/围栏与S3-C实际集成路径检查exit0。仅本合同和账本有人工改动；未运行S3功能验收，尚无实现。
