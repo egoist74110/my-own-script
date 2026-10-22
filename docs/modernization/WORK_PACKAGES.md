@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 4（2026-10-22 追加 S0；同日追加 S0.5 方向 E 前端改造；同日追加 S1 合同草案）
+- revision: 5（2026-10-22 追加 S0；同日追加 S0.5 方向 E 前端改造；同日追加 S1 合同草案；同日追加 S2 合同草案）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
@@ -600,3 +600,195 @@
 2. **本轮导入哪些密钥**：建议只导入 ADO PAT（本轮唯一用到的）；TG Bot Token、AI 专属机器人、VPN/TOTP、dsh、Figma、Lark app secret 由 S4/S5/S6/S7/S8 在启用对应能力时各做一次“该能力的一次性导入”（同样只读旧条目）。理由：最小权限，TOTP 种子与 VPN 密码不提前复制一份；每次只弹该能力的 Keychain 授权。备选：S1 一次性导入全部静态密钥（Lark 轮换凭据除外）。
 
 结论：1 → `toolbox-next`；2 → 本轮只导入 ADO PAT，其他静态密钥由对应切片在启用能力时各做一次只读导入。
+
+# S2：工单（只读浏览 + 媒体代理 + 本地仓库）
+
+依据：[MIGRATION_PLAN.md](MIGRATION_PLAN.md) S2 行与 §4 WP-11 处置；[ARCHITECTURE.md](ARCHITECTURE.md) §3（外部内容由后端代取、HTML 双重清洗）、§5；本文件 WP-11 决策；PROGRESS「下一步规划」与 S1 遗留。状态：**草案，待用户确认**（见末节「S2 待用户拍板」）；确认前不派工。
+
+范围：看板列 → 列表 → 详情（描述 / 评论 / 子项 / 历史 Updates / 附件）全部只读；附件与内联图片经后端代理（D01）；ADO HTML 后端白名单清洗 + 前端 DOMPurify；本地仓库（local_repos）增删改（S1 推迟项）；工单页由 mock 换真实接口；并入 S1 UX 小项。**不含**：TG `/wi`（S4）、MCP 分析按钮 / 复制提示词 / AI 会话（S5）、ADO MCP server（S6）、工单写操作（新建/改状态/评论，见待拍板 1）。
+
+## S2 旧应用事实核实（主控，只读代码，`main` @ `885d186`；未读真实配置/凭据，未连 ADO）
+
+所有调用：`Authorization: Basic base64(":"+PAT)`、`Accept: application/json`、`follow_redirects=False`、超时 15s/连接 5s（附件 30s）；URL = `{base_url}/{collection}/{project}/...`，collection/project 未编码直接拼接（新后端按段编码）。
+
+| 用途 | 端点 | api-version | 说明 |
+| --- | --- | --- | --- |
+| WIQL | `POST …/{project}/_apis/wit/wiql` body `{query}` | 7.0 | 返回 `workItems[{id,url}]`，旧代码无 `$top` |
+| 批量取字段 | `POST …/{project}/_apis/wit/workitemsbatch` body `{ids(≤200/批), errorPolicy:"omit", fields \| $expand:"relations"}` | 7.0 | `fields` 与 `$expand` 互斥（旧代码同） |
+| 详情 | `GET …/{project}/_apis/wit/workitems/{id}?$expand=relations` | 7.0 | UI 详情用 relations 版（返回全部字段） |
+| 评论 | `GET …/{project}/_apis/wit/workItems/{id}/comments?$top=50` | **7.0-preview.4** | 主键 `id`（兼容 `commentId`）；过滤 `isDeleted`；MCP 在该接口失败时降级到 updates |
+| 历史 | `GET …/{project}/_apis/wit/workItems/{id}/updates?$top=50` | 7.0 | 只有 MCP 在用，UI 未展示 |
+| 看板列 | `GET …/{project}/{team}/_apis/work/boards/{board}/columns` | 7.0 | 只有 MCP 在用（需 team+board 参数）；按 `stateMappings` 生成 WIQL |
+| 子项 | 逐层 `workitemsbatch $expand=relations`，取 `System.LinkTypes.Hierarchy-Forward`，BFS 最深 8 层，再批量取字段 | 7.0 | 无总量上限 |
+| 附件/内联图 | `GET <附件 URL>?download=true`，逐跳手动重定向（WP-11：同 origin 继续，跨 origin/降级/userinfo/超 5 跳终止） | — | 全量读入内存，无大小上限、无类型校验（UI 落盘 `~/.config/my-own-script/work_item_view/<id>/`；TG 用魔数判图并跳过 SVG） |
+| 新建 | `POST …/{project}/_apis/wit/workitems/${type}`（json-patch，可 `validateOnly`） | 7.0 | 只有 MCP `ado_create_work_item`，默认类型「用户情景」，可挂父项 `Hierarchy-Reverse` |
+
+- **UI 列表**：看板列是写死的 `["新建","待开发","开发中","测试","已关闭"]`（UI 与 TG 相同），按 `[System.BoardColumn] = '<列名>'` 做 WIQL（`list_work_items_by_board_column_value`），`ORDER BY Priority ASC, ChangedDate DESC`，带 relations 取全部字段（只为判断“有无子项”）；**不调用看板列 API**、不使用 team/board 配置。关键词（id/标题）与指派人筛选、分页（5/10/50/100/200）都在客户端。
+- 旧 `UiSettings.work_items_board` 实际保存的是**选中的列名**（默认“开发中”），`work_items_team` 在 UI 中未使用；`work_items_project_id` 保存选中项目。S1 已把它们原样导入 `imported.work_items`。
+- 列表字段 `DEFAULT_WORK_ITEM_FIELDS`：Id、Title、State、WorkItemType、AssignedTo、CreatedDate、ChangedDate、AreaPath、IterationPath、Tags、BoardColumn、BoardColumnDone、Priority、Severity。身份字段取 `displayName` → `uniqueName` → `name`。
+- **HTML 来源**：UI 详情只渲染 `System.Description` 与评论 `text`（QTextBrowser，`setOpenExternalLinks`，无清洗）；图片 URL 来自描述/评论中的 `<img src>`（仅 http/https 绝对地址）及 relations 中 `rel=AttachedFile` 且文件名为图片的项。`ReproSteps`、`AcceptanceCriteria`、`System.History` UI 未展示。详情“在浏览器打开”用的是 API `url`（非网页地址）。
+- **CR-NEXT-004 来源**：WP-11 之前的旧代码注释“ADO 常 302 到 CDN 签名 URL”（`c349243` 的 `_attachment_client`）。只是注释，无测试或日志证据；本仓库其他技能资料表明用户的 ADO 为自建 Azure DevOps Server（非 dev.azure.com），自建服务器附件通常由同主机直接返回——**推断，待用户确认**。
+- 新后端现状核实：`adapters/ado_http.py` 仅有 S1 的项目列表读取；**`httpx` 只在 dev 依赖组**，生产代码却直接 import（`uv sync --no-dev` 的运行时会缺依赖）——记 CR-S2-PRE-001，主控在合同确认后的输入 SHA 中把 `httpx` 移到运行时依赖。
+
+## S2 数据模型与访问边界（主控已定，施工者不得自行更改）
+
+### 架构五问
+
+1. **产生的数据**：持久化只有 `config.json` 中 `ado.local_repos` 的增删改（S1 store，同一写入规则）。工单数据**不落盘、后端不缓存**；后端只在内存维护“媒体登记表”（见下）。前端在 `localStorage` 只记非敏感的界面选择（项目 id、看板列），读写包 try/catch。
+2. **数据流**：页面 →（Bearer）→ `api/work_items` 路由 → `services/work_items`（只读服务）→ 在 store 锁内从同一快照取 `(project, library, PAT)` → 释放锁 → `adapters/ado_read`（通用 ADO 读取客户端）→ ADO；HTML 字段经 `adapters/html_sanitize` 清洗并改写图片后返回。媒体：页面 `fetch` 媒体接口（Bearer）→ 服务查登记表 → 重新取快照校验 origin → `adapters/ado_read.fetch_media` 逐跳请求 → 流式读入（有上限）→ 返回字节。local_repos：页面 → `api/settings` → `services/settings`（唯一写入所有者）→ `config_store`。
+3. **谁能访问**：单主体（持本次启动 token 的壳/页面）。资源边界：PAT 只发往**该 project 所属 library** 的 origin 且路径在 base_url 路径前缀下；页面不能提交任意 URL 让后端代取（只能引用后端自己登记的不透明媒体 id）。
+4. **并发**：读接口无共享可变状态，除媒体登记表（只在事件循环线程上读写，出站 IO 在 `to_thread`，不持有登记表引用）。出站并发由进程级信号量限制（6）。local_repos 写入沿用 S1 revision 乐观并发。
+5. **失败与清理**：只读接口失败不留状态；媒体登记表随进程消失（页面拿到 404 `media_expired` 后重取详情即可）；出站失败返回固定分类。local_repos 为单次 store 提交，无半写入。见「一致性」。
+
+### 缓存（明确不做的与要做的）
+
+- 后端：不缓存工单 JSON、不缓存媒体字节、不写磁盘（旧应用的 `work_item_view/` 落盘缓存不迁移）。媒体响应头 `Cache-Control: private, no-store`。
+- 前端：`@tanstack/vue-query`，列表/详情/评论/历史/子项 `staleTime` 30 秒，`refetchOnWindowFocus: false`，工具栏“刷新”按钮强制重取；切换项目时清掉旧项目的查询。媒体 blob 由媒体组件持有，组件卸载或 id 变化时 `URL.revokeObjectURL`；同一详情页内相同 media id 复用一个 blob（页面级 Map，离开详情即全部回收）。
+- 失效：`settings.changed` 使 `GET /api/ado` 与所有 `work-items` 查询失效（library/PAT/项目可能变了）。
+
+### 媒体登记表（D01 的落地形式）
+
+- 详情/评论接口在清洗 HTML 与整理 relations 时，对每个候选 URL 判定：
+  - 只接受 `http`/`https` 绝对 URL（相对 URL 以该 library `base_url` 解析）；`data:`、`blob:`、`file:`、`javascript:` 等一律丢弃；
+  - `origin(url) == origin(library.base_url)` 且请求路径以 base_url 路径为前缀（同 S1-D CR-S1A-004 规则），且 URL 不含 userinfo；
+  - 通过 → 登记并得到 `media_id`；不通过 → 不登记，返回 `blocked_origin`（只含 scheme://host:port，不含路径/查询）。
+- `media_id = secrets.token_urlsafe(16)`；条目 `{library_id, project_id, url, kind: image|attachment, name, created_at}`；同一 `(project_id, url)` 复用已有 id。TTL 30 分钟（自登记起，不滑动），总量上限 4096，超限按最早登记淘汰。只在内存，不进日志（日志只记 origin）。
+- 取媒体时：按条目重新从 store 快照取 library 与 PAT；library 已删除、base_url 的 origin 或路径前缀已变化 → 404 `media_expired`（不发请求）；无 PAT → 409 `no_credential`。
+- 页面永远拿不到原始附件 URL；`<img>` 的 `src` 只能是前端自己创建的 `blob:` URL；**token 不进任何 URL**（S0 规则）。
+
+### 出站读取客户端（`adapters/ado_read.py`，S1 `ado_http.py` 的泛化）
+
+- 统一入口：`request_json(library, pat, method, segments, params, json_body)`：路径由已校验的段（collection/project 复用 S1 `segment` 规则，按段 percent-encode；数字 id 由路由校验为 1..2147483647）拼接，拼接后断言同 origin + 路径前缀；`follow_redirects=False`（3xx → `redirect`，只报目标 origin）；`trust_env=False`；连接 5s、**总时长截止 15s**（逐原始块检查，同 S1-E）；响应体上限 **4 MiB**；JSON 解析失败 → `bad_response`；401/403/404 → `unauthorized/forbidden/not_found`；其他非 2xx → `bad_response`。PAT 进入前 `register_secret`。
+- `fetch_media(library, pat, url, kind)`：首跳校验同上；带 `?download=true`（与旧应用一致，已有查询参数时追加）；**逐跳手动重定向**：最多 5 跳，每跳 `urljoin` 后重新校验 origin+路径前缀；跨 origin（含 https→http 降级、userinfo）→ 立即终止，`blocked_origin`，**不对新 origin 发任何请求**（待拍板 2 若选 B 则在此处改为“只对明示受信 origin 发无认证请求”）；超 5 跳 → `redirect`。总时长截止 30s；上限：`image` 10 MiB、`attachment` 25 MiB，以 `Content-Length` 预判 + 流式累计双重限制，超限 → `too_large`。
+- 进程级 `asyncio.Semaphore(6)` 限制同时出站请求数；等待超过 15s → `busy`（503）。
+- S1 测试连接/远端项目改为调用同一客户端（行为与错误分类不变，S1 既有测试必须继续通过，不得改断言）。
+
+### 媒体响应（`GET /api/work-items/media/{media_id}`）
+
+- 图片（`kind=image`）：**以魔数判定**类型，只接受 PNG / JPEG / GIF / WebP / BMP，`Content-Type` 用判定结果（不信远端头）；SVG、无法识别 → 不作为图片返回，`415 unsupported_media`（页面显示“非图片附件，可下载”）。
+- 附件（`kind=attachment`）：`Content-Type: application/octet-stream`，`Content-Disposition: attachment; filename*=UTF-8''<编码后文件名>`（文件名取 relation `attributes.name`，去掉路径分隔与控制字符，≤255）。
+- 所有媒体响应附带 `X-Content-Type-Options: nosniff`、`Content-Security-Policy: default-src 'none'; sandbox`、`Cache-Control: private, no-store`。
+
+### HTML 清洗（后端白名单 + 前端 DOMPurify）
+
+- 后端依赖 `nh3`（主控预先加入）。清洗对象：`System.Description`、`Microsoft.VSTS.TCM.ReproSteps`、`Microsoft.VSTS.Common.AcceptanceCriteria`、评论 `text`。单字段原文 > 1 MiB → 不清洗，返回 `{"html": null, "omitted": "too_large"}`。
+- 标签白名单：`p br div span b strong i em u s strike sub sup ul ol li blockquote pre code h1 h2 h3 h4 h5 h6 hr table thead tbody tfoot tr th td a img`；其余标签去掉标签保留文本（`script style iframe object embed form input svg math` 连同内容删除）。
+- 属性白名单：`a[href]`（仅 `http`/`https`/`mailto`，其余删除 href）；`img[alt]`；`td/th[colspan,rowspan]`（整数 1..100）；以及后端生成的 `img[data-media-id]`、`span[data-blocked-origin]`。**删除全部 `style`、`class`、`id`、`on*`、`src`、`srcset`、`target`**。
+- 图片改写：每个 `<img>` 按「媒体登记表」判定：通过 → `<img data-media-id="…" alt="…">`（无 src）；不通过 → `<span data-blocked-origin="https://x:443">[已拦截外部图片]</span>`；`data:` 等 → `<span data-blocked-origin="">[内嵌图片未显示]</span>`。
+- 前端：后端输出再经 DOMPurify，配置与上面同一白名单（`ALLOWED_TAGS`/`ALLOWED_ATTR` 显式列出，`ALLOWED_URI_REGEXP` 只放 http/https/mailto，`FORBID_ATTR` 含 style/src/srcset）；渲染后由代码把带 `data-media-id` 的 img 交给媒体加载逻辑设置 `blob:` src；链接点击一律拦截：Tauri 内用 opener 插件在系统浏览器打开，dev:web 下 `window.open(url, '_blank', 'noopener')`，**WebView 本身永不导航**。
+- 历史（Updates）里的字段值一律转纯文本（标签剥离、实体解码、空白折叠），单值截断 2000 字符；前端以文本插值渲染，不用 `v-html`。
+
+### 看板列与列表（对齐旧 UI，不引入 team/board 配置）
+
+- 看板列：固定 `["新建","待开发","开发中","测试","已关闭"]`，默认“开发中”（与旧 UI/TG 一致）。`column` 参数必须在该列表中，否则 422（同时杜绝 WIQL 注入）；WIQL 中项目名与列名仍按 `'`→`''` 转义。
+- 列表 WIQL：`SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '<project>' AND [System.BoardColumn] = '<column>' ORDER BY [Microsoft.VSTS.Common.Priority] ASC, [System.ChangedDate] DESC`，`$top=500`；再按 200/批 `workitemsbatch` 取 `DEFAULT_WORK_ITEM_FIELDS`（**不带 relations**；“有无子项”在详情里判断）。返回 `truncated = (WIQL 返回 500 条)`；batch 中被 omit 的 id 静默跳过并计数 `omitted`。只请求当前列，不为其他列算数量。
+- 关键词/指派人筛选与分页在前端（≤500 条）；分页规格 10/50/100（默认 50）。
+
+### HTTP 接口（全部在 S0 Host/CORS/Bearer/BodyLimit 之后；`project_id` 必须是 store 中存在的 project）
+
+| 方法 路径 | 返回 |
+| --- | --- |
+| `GET /api/work-items/columns` | `{columns: [str], default: "开发中"}` |
+| `GET /api/work-items?project_id=&column=` | `{items: [WorkItemSummary], truncated: bool, omitted: int}` |
+| `GET /api/work-items/{id}?project_id=` | `WorkItemDetail` |
+| `GET /api/work-items/{id}/comments?project_id=` | `{comments: [{id, author, created_date, modified_date, html \| null, omitted?}], truncated}`（`$top=100`，api-version `7.0-preview.4`，过滤已删除） |
+| `GET /api/work-items/{id}/updates?project_id=` | `{updates: [{id, rev, revised_by, revised_date, fields: [{name, old, new}], relations_added: int, relations_removed: int}], truncated}`（`$top=100`；值为纯文本） |
+| `GET /api/work-items/{id}/children?project_id=` | `{items: [WorkItemSummary & {parent_id, depth}], truncated}`（BFS 最深 8 层、总数 ≤500、已访问去重） |
+| `GET /api/work-items/media/{media_id}` | 字节（见「媒体响应」） |
+| `POST /api/ado/local-repos`、`PATCH /api/ado/local-repos/{id}`、`DELETE /api/ado/local-repos/{id}` | S1 `MutationResponse`，请求带 `revision` |
+
+- `WorkItemSummary`：`id, title, type, state, assigned_to, board_column, priority, severity, tags: [str], area_path, iteration_path, created_date, changed_date`（`System.Tags` 按 `;` 拆分去空白）。
+- `WorkItemDetail`：Summary + `rev`、`web_url`（`{base_url}/{collection}/{project}/_workitems/edit/{id}`，按段编码）、`html: {description, repro_steps, acceptance_criteria}`（每项 `{html: str|null, omitted?: "too_large"}` 或 null）、`parent_id`、`child_ids: [int]`、`attachments: [{name, size: int|null, is_image, media_id: str|null, blocked_origin: str|null}]`（来自 `AttachedFile`，`size` 取 `attributes.resourceSize`）、`links: [{kind: "pull_request"|"commit"|"hyperlink"|"other", label, url: str|null}]`（`ArtifactLink` 的 `vstfs:///Git/PullRequestId/...` 解析为 PR 编号文本，不生成可点击地址；`Hyperlink` 仅 http/https 才给 url）。不返回原始 `fields`/`relations`。
+- 错误沿用 S1 形状 `{"detail": {"code", "message"}}`：`validation_error` 422；`not_found` 404（project 不存在，或 ADO 404）；`media_expired` 404；`unsupported_media` 415；`no_credential` 409；`ado_request_failed` 502（`detail.category ∈ {unauthorized, forbidden, redirect, blocked_origin, tls, timeout, network, bad_response, too_large}` + 固定脱敏文案，不回显远端原文/URL 路径）；`busy` 503；`store_unavailable` 503（store 只读错误态下读接口仍可用，只有 local_repos 写返回 503）。
+- 不新增事件。
+
+### local_repos（S1 推迟项）
+
+- 新建 id `repo:<uuid4>`；`name` 规则同 library（1–100、唯一）；`path`：绝对路径、≤1024、无控制字符、不含 `..` 段，存规范化字符串（不 `resolve` 符号链接）。校验只用于新建/修改请求模型；**存量（S1 导入的）条目不因新规则失效**（存储模型保持宽松，GET 对不合规的存量条目给 `warnings`）。
+- `GET /api/ado` 中每个 local_repo 增加 `exists: bool`（仅 `os.path.isdir`，不列目录、不读内容、不跟随到其他位置执行任何操作）。
+- 删除不检查引用（S2 内没有类型化引用；`imported.work_items.local_repo_id` 是未类型化的导入段，不改）。
+
+### 安全核对表
+
+| 风险 | 处置 |
+| --- | --- |
+| 未认证访问 | 全部新路由（含媒体）走 S0 中间件；测试逐个断言无 token 401 |
+| 越权/IDOR | 单主体；媒体 id 不可猜（128 bit）、只引用后端登记项；取媒体时重新校验 library origin |
+| 注入 | 无 SQL/shell；WIQL 只接受固定列名白名单 + 单引号转义；路径段编码 + 前缀断言 |
+| SSRF | 页面不能提交 URL；出站仅限所属 library origin + 路径前缀；重定向逐跳校验、跨源终止；scheme 白名单 |
+| XSS | 后端 nh3 白名单 + 前端 DOMPurify；无 style/src/on*；SVG 不作为图片；媒体响应 nosniff + sandbox CSP；链接不在 WebView 内导航 |
+| 日志泄密 | PAT 登记脱敏器；日志只记 origin、分类、耗时，不记 URL 路径/查询与响应原文 |
+| 资源耗尽 | JSON 4 MiB、图片 10 MiB、附件 25 MiB；总时长截止；并发信号量 6；登记表 4096 条 |
+| 路径穿越 | 后端不写文件；`local_repos.path` 只做 `isdir`；附件文件名只进 `Content-Disposition` 且已清理 |
+
+### 一致性
+
+- 工单接口只读，失败不留状态，重试安全。
+- 媒体：登记表丢失（重启/过期/淘汰）→ 404 `media_expired`，前端提示“图片已过期”并提供“刷新详情”，不自动无限重试。
+- local_repos：单次 `config_store.update`，与 S1 写入规则一致；无外部副作用。
+- 详情与评论分别请求：评论失败不影响详情显示（页面分块展示错误）。
+
+## S2 通用合同
+
+- 输入版本：合同确认后主控提交（含依赖预置）的 `rewrite/next` commit（派工时写明 SHA）。
+- 依赖由主控预先加入（施工者不联网）：后端 `nh3`，`httpx` 移入运行时依赖（CR-S2-PRE-001）；前端 `dompurify`、`@tauri-apps/plugin-opener`；Rust `tauri-plugin-opener`（`cargo fetch` 预取）。
+- 施工位置：`git worktree add --detach .local/worktrees/<包> <SHA>`；施工者不 commit，主控以限定路径 binary patch（`git apply --check` 后）集成并重跑全部检查后提交。删除 worktree 前问用户。
+- **测试隔离（硬性，沿用 S1）**：数据目录/旧配置目录 `tmp_path`；keyring 守卫与 socket 守卫沿用 `next/backend/tests/conftest.py`；ADO 一律 `httpx.MockTransport`（用例覆盖跨源重定向时断言跨源 host 收到零请求）；前端假 fetch 按 openapi 形状；不读真实密钥/配置，不连真实 ADO/TG。`pnpm dev:web` 联调需要一个**本地假 ADO**：后端 `--dev` 下新增 `TOOLBOX_DEV_FAKE_ADO=<fixture 目录>`（仅 `--dev` 且 `TOOLBOX_CREDENTIALS=memory` 时接受，否则启动失败），把出站 transport 换成读 fixture 的 MockTransport（含 1 张同源图片、1 个跨源图片、1 个附件、子项、评论、历史），不监听任何端口。
+- 禁止：改 `next/` 以外文件；在响应/日志/事件/快照中出现 PAT；按进程名 kill（只按 pid 回收自己启动的进程）；裸 `git stash`（stash 栈与其他 worktree 共享）；在仓库内留施工/测试报告文件（报告写在最终回复里，主控存到 git 忽略的 `.local/dispatch/`）；为通过检查删除或放宽既有测试。
+- 修复类改动一律“先写会失败的回归，再修”，报告附修前失败证据。
+- 升级条件：需要改本合同已定的接口、错误码、限额或安全边界；扩大写入范围；同类失败两次 → 停下交主控。
+- 模型：后端施工 GPT 6.1 Sol / medium（codex exec，sandbox workspace-write；沙箱不能 bind 端口，端口用例由主控沙箱外跑），测试子 agent GPT 6 Luna / high；前端施工 Sonnet 5.5 / medium（Claude 原生子 agent），测试子 agent Haiku 5.5 / medium。测试者必须**新增独立用例**（只复跑施工者测试不算独立测试）。型号不可用记 unavailable，不静默替换。交叉审计异步跨厂商（GPT 施工 → Opus 审；Claude 施工 → codex Sol high 只读审），修复后续接原审计会话复核。
+
+## S2-A：后端工单读取、媒体代理、HTML 清洗、local_repos
+
+- 依赖：本合同确认 + 主控依赖预置提交。
+- write_scope：`next/backend/**`、`next/contracts/**`。
+- 内容：上文「数据模型与访问边界」全部后端部分；S1 `ado_http` 迁到 `ado_read` 公共客户端（S1 测试不改断言）；`TOOLBOX_DEV_FAKE_ADO` 与 fixture（`next/backend/tests/fixtures/fake-ado/`，全为虚构数据）；README 更新。
+- 验收（自动化）：
+  1. `uv sync --frozen`、`pytest -q`、`ruff check .`、`contracts --check` exit 0（端口用例主控沙箱外跑）。
+  2. 出站边界：每个接口的 URL/方法/api-version/查询参数与本合同表格一致（MockTransport 断言）；路径段编码与前缀越界拒绝；3xx 不跟随（JSON）；总时长截止（小块滴流）；4 MiB 上限；并发 >6 时排队、超时 `busy`。
+  3. 媒体：同源图片 200 且 Content-Type 来自魔数；SVG/未知 → 415；同源重定向链 ≤5 跳成功、第 6 跳 `redirect`；跨源/降级/userinfo 重定向 → `blocked_origin` 且跨源 host 零请求、PAT 只出现在发往原 origin 的请求；超限 `too_large`（有/无 Content-Length 两种）；未登记/过期/淘汰 id → 404；library 删除或 base_url 改 origin 后旧 id → 404 且零请求；无 PAT → 409；响应头三项齐全；附件文件名清理。
+  4. 清洗：XSS 语料（`<script>`、`onerror`、`javascript:` href、`style` 注入、`<svg onload>`、`<iframe>`、嵌套/畸形标签、实体编码的 `javascript:`、`srcset`）全部被去除；白名单标签与属性保留；图片改写三种结果；>1 MiB 字段 `omitted`。
+  5. 数据整形：列表 truncated/omitted、标签拆分、身份字段回退；详情 relations → parent/child/attachments/links；评论过滤已删除与 `commentId` 兼容；历史纯文本与截断；子项 BFS 深度/上限/环去重。
+  6. local_repos：校验规则、revision 冲突 409、存量不合规条目不阻断读取、`exists` 字段、store 只读态 503。
+  7. 安全：每个新路由无 token 401；任何响应/日志/事件/config.json 中搜不到假 PAT；守卫无违规；`TOOLBOX_DEV_FAKE_ADO` 在非 dev / 非 memory 时启动失败。
+- 回退：恢复 `next/backend`、`next/contracts` 到输入 SHA。
+
+## S2-B：工单页接真实接口
+
+- 依赖：S2-A 集成（主控用正式 `openapi.json` 生成 `schema.d.ts` 后派工）。可与 S2-C 并行（文件不重叠）。
+- write_scope：`next/desktop/src/features/work-items/**`、`next/desktop/src/components/`（只新增工单需要的通用组件，如安全 HTML 渲染/媒体组件；不改既有组件行为）、`next/desktop/tests/**`（新增文件）、`next/desktop/src-tauri/`（**仅**为 opener 插件：`Cargo.toml` 依赖行、`src/lib.rs` 插件注册、`capabilities/*.json` 的 `opener:allow-open-url` 且 scope 仅 `http://*`、`https://*`，`tauri.conf.json` 的 `img-src` 增加 `blob:`），`next/desktop/README.md`。
+- 结构：工具栏（项目选择器——来自 `GET /api/ado` 的 projects，显示“库 / 项目”；看板列 AppTabs；关键词与指派人筛选；刷新）；列表（id、类型、标题、指派、状态、优先级、变更时间；行可聚焦、Enter 打开；分页 10/50/100；`truncated` 时提示“只显示前 500 条”）；详情（页签：描述 / 评论 / 子项 / 历史 / 附件；元信息与标签；“在浏览器打开”`web_url`）；检查器保留 AI 分析面板位置但整体禁用并标 `S5`，不再含 mock 动作。
+- 空/错误态：无项目 → 引导到设置；`no_credential` → “该代码库未配置 PAT”+ 跳设置；502 各分类固定文案；评论接口 `not_found` → “该服务器不支持评论接口，可查看「历史」”；`media_expired` → 占位 +“刷新详情”；`blocked_origin` → 占位显示被拦截的 origin；`unsupported_media` → “非图片，可下载”。
+- 删除 `features/work-items/mock/` 中被真实接口替代的数据；`localStorage` 只存 `{project_id, column}`。
+- 验收：
+  1. `pnpm install --frozen-lockfile`、`typecheck`、`lint`、`rm -rf dist && pnpm test`、`build`、`guard:dist`、`contracts:check` exit 0；`src-tauri` 下 `cargo fmt --check`、`clippy -D warnings`、`cargo test` exit 0。
+  2. 组件/页面测试（假 fetch）：项目/列切换带正确参数；筛选与分页；详情五个页签；各错误态；`settings.changed` 使查询失效；页签与行键盘可达。
+  3. 安全：XSS 语料经后端形状输入 → DOM 中无 script/on*/style/javascript:；img 只有 `blob:` src；媒体请求带 Bearer、token 不在任何 URL/DOM/存储；blob 在卸载/切换时 revoke（断言 `revokeObjectURL` 调用）；点击链接不改变 `location`、调用 opener（Tauri）或 `window.open`（dev）。
+  4. 主控 `pnpm dev:web`（假 ADO fixture）截图列表 / 详情（含同源图与被拦截占位）/ 子项 / 历史，写入 PROGRESS。
+- 未测（允许）：Tauri 内 opener 与 blob 图片的实际渲染、真实 ADO。
+- 回退：恢复上述路径到输入 SHA。
+
+## S2-C：设置页「本地仓库」+ S1 UX 小项
+
+- 依赖：S2-A 集成。可与 S2-B 并行。
+- write_scope：`next/desktop/src/features/settings/**`、`next/desktop/tests/**`（新增文件；改既有断言须在报告中逐条说明理由）。
+- 内容：
+  1. 设置页新增页签「本地仓库」：列表（名称、路径、存在与否、存量不合规警告）、新增/修改/删除（删除二次确认）；沿用 S1-F/S1-G 的编辑会话 + 基线 revision 规则；路径为文本输入（不引入文件选择对话框）。
+  2. **UX：A→B→A 显示旧草稿**——每次开始编辑会话都从当前服务器数据初始化草稿，不跨会话保留草稿。
+  3. **UX：非 patch 写入后多一次 409 合并提示**——数据刷新（本窗口写入成功或 `settings.changed`）时，若正在编辑的条目在服务器上的字段值与基线完全相同，静默把基线 revision 前移到新 revision；字段不同时才走 S1-F 的冲突合并提示。须测试：本窗口切换“当前项目”后保存 library 不再出现合并提示；其他窗口改了同一条目时仍出现。
+- 验收：S1-B 的 pnpm 命令全部 exit 0；上述每项有回归（UX 两项先失败后通过）。
+- 回退：恢复上述路径到输入 SHA。
+
+## S2 集成验收（主控）
+
+- 集成版本重跑 S2-A/B/C 全部命令；`git diff --check`；`next/` 与本目录文档以外无改动；旧应用守卫测试不回退。
+- 对照旧能力文档 `docs/capabilities/work-items.md` 列功能清单（迁移/改进/有意放弃/推迟），写入 PROGRESS。
+- 资源所有权：S2 不切换任何单例资源（旧应用 MCP/TG 继续使用自己的配置与 PAT）。
+- 未测（允许，列入账本）：真实 ADO（含 CR-NEXT-004 跨源重定向实况）、真实 Keychain、Tauri 内渲染与 opener、Playwright e2e。
+- 交叉审计：S2-A（Opus）、S2-B/C（codex Sol high）各一轮，异步。
+
+## S2 待用户拍板
+
+1. **UI 是否提供“新建工单”**。建议：**S2 不做**，S2 保持纯只读（便于真实验收、无远端副作用）；建单能力随 S6 的 ADO MCP 工具迁移，届时再评估是否加 UI 表单。备选：S2 加简单表单（类型默认「用户情景」、标题、描述纯文本、可选父项），提交前先 `validateOnly` 预检，再确认提交；会引入第一个 ADO 写操作，需补写操作的幂等与失败处理。
+2. **CR-NEXT-004：附件/内联图片是否 302 到跨源 CDN**。需要你在旧应用或浏览器里确认一次：打开一个带截图的工单，看图片是否能正常显示（旧应用 WP-11 后跨源会被拦截）；或在浏览器开发者工具里看附件请求是否被重定向到另一个域名。建议：**A 同源规则（默认）**——跨源一律拦截并显示占位，先上线；若确认存在跨源 CDN，再追加小包：B 每个 library 可配置“媒体受信 origin”列表（仅 https、精确 origin），重定向到列表内 origin 时**去掉 Authorization 头**发起无认证请求，其他跨源仍拦截。

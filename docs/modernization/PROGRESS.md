@@ -489,3 +489,10 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - S2 范围草案：看板列/列表/详情/评论/子项/Updates（只读）；附件与内联图片后端代理（D01：按 library origin 逐跳校验、跨源终止，旧应用 `trusted_base_url` 规则）；ADO HTML 后端白名单清洗 + 前端 DOMPurify；本地仓库（local_repos）增删改（S1 推迟项）；工单页由 mock 换真实接口。**不含**：TG `/wi`（S4）、MCP 分析按钮与 AI 会话（S5/S6）、ADO MCP server（S6）。
 - 需在 S2 派工前请用户拍板：① UI 是否提供“新建工单”（旧应用只在 MCP 工具里建单）；② CR-NEXT-004——真实工单附件是否 302 到跨源 CDN（需用户在旧应用或浏览器里确认一次），决定是否要“明示受信 origin”配置。
 - 遗留待办并入 S2：S1 UX 小项（A→B→A 旧草稿、非 patch 写入后的额外 409 合并提示）、S05-004（导航角标 aria、审批条 window 监听，原定 S5，可顺带看但不强求）。
+
+## 2026-10-22：S2 工单（合同草案）
+
+- 主控：requested `role: lead`（用户粘贴的交接单）；actual claude-opus-5-5（运行时系统信息），effort unknown；Claude Code 会话。本轮无子 agent、无施工。
+- 合同：WORK_PACKAGES「# S2」草案，**待用户确认**两项（新建工单；CR-NEXT-004 跨源 CDN）后派工。
+- 旧应用核实：只读 `main @ 885d186` 的 `app_ado/ado_work_item_http.py`、`work_item_view.py`、`ui/work_items_tab.py`、`mcp_ado_work_items_server.py`、`tg_work_items_*` 的调用点；未读真实配置/凭据，未连 ADO。CR-NEXT-004 的唯一来源是 WP-11 前的代码注释（`c349243` `_attachment_client`），无证据。
+- 新发现：CR-S2-PRE-001（minor）`httpx` 只在后端 dev 依赖组，生产代码 `adapters/ado_http.py` 直接 import → 非 dev 安装缺依赖。open：合同确认后主控在依赖预置提交中修正。
