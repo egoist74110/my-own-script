@@ -30,17 +30,21 @@ import './panes.css'
 const { api, online, qc, store } = useWiApi()
 
 // settings.changed：library/PAT/项目可能变了，使项目列表与全部工单查询失效
+// 先取消在途请求再失效：否则 invalidate 会复用在途请求，旧来源的响应回来后清掉失效标记（CR-S2B-001）
 watch(
   () => store.settingsRevision,
-  () => void qc.invalidateQueries({ queryKey: WI_KEY }),
+  async () => {
+    await qc.cancelQueries({ queryKey: WI_KEY })
+    await qc.invalidateQueries({ queryKey: WI_KEY })
+  },
 )
 
 const ado = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: [...WI_KEY, 'ado'],
   enabled: online,
-  queryFn: async (): Promise<AdoResponse> => {
-    const d = await unwrap(api().GET('/api/ado'))
+  queryFn: async ({ signal }): Promise<AdoResponse> => {
+    const d = await unwrap(api().GET('/api/ado', { signal }))
     if (!Array.isArray(d?.projects) || !Array.isArray(d.libraries)) throw badShape()
     return d
   },
@@ -94,9 +98,10 @@ const list = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: computed(() => [...projectKey(projectId.value ?? ''), 'list', column.value]),
   enabled: computed(() => online.value && projectId.value !== null),
-  queryFn: async () => {
+  queryFn: async ({ signal }) => {
     const d = await unwrap(
       api().GET('/api/work-items', {
+        signal,
         params: { query: { project_id: projectId.value!, column: column.value as never } },
       }),
     )

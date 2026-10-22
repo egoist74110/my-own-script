@@ -13,9 +13,10 @@ const q = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: [...projectKey(props.projectId), 'updates', props.id],
   enabled: online,
-  queryFn: async (): Promise<{ updates: Update[]; truncated: boolean }> => {
+  queryFn: async ({ signal }): Promise<{ updates: Update[]; truncated: boolean }> => {
     const d = await unwrap(
       api().GET('/api/work-items/{id}/updates', {
+        signal,
         params: { path: { id: props.id }, query: { project_id: props.projectId } },
       }),
     )

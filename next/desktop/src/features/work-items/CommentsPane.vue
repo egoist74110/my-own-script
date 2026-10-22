@@ -18,9 +18,10 @@ const q = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: [...projectKey(props.projectId), 'comments', props.id],
   enabled: online,
-  queryFn: async (): Promise<{ comments: Comment[]; truncated: boolean }> => {
+  queryFn: async ({ signal }): Promise<{ comments: Comment[]; truncated: boolean }> => {
     const d = await unwrap(
       api().GET('/api/work-items/{id}/comments', {
+        signal,
         params: { path: { id: props.id }, query: { project_id: props.projectId } },
       }),
     )

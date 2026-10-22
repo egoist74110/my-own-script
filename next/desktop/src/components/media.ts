@@ -21,8 +21,13 @@ export interface MediaFailure {
 }
 
 export interface MediaCache {
-  /** 取（必要时发起加载）一个 media id 的条目；返回响应式对象。 */
-  get(id: string): MediaEntry
+  /**
+   * 取（必要时发起加载）一个 media id 的条目；返回响应式对象。
+   * 传 `owner` 表示该使用方当前引用这个 id：「已过期」计数只统计仍被引用的失败 id。
+   */
+  get(id: string, owner?: object): MediaEntry
+  /** 使用方不再引用其全部 id（重新渲染前、卸载时调用）。 */
+  release(owner: object): void
   /** 取附件字节并触发浏览器下载；失败返回错误。 */
   download(id: string, name: string): Promise<MediaFailure | null>
   /** 丢弃失败条目（刷新详情后让它们能重新加载）。 */
@@ -75,6 +80,8 @@ export function createMediaCache(getApi: Getter): MediaCache {
   const timers = new Set<ReturnType<typeof setTimeout>>()
   const queue: (() => void)[] = []
   const expired = ref(0)
+  const owners = new Map<object, Set<string>>()
+  const unowned = new Set<string>() // 未声明使用方的 get()：视为一直被引用
   const generation = ref(0)
   let running = 0
   let disposed = false
@@ -106,7 +113,7 @@ export function createMediaCache(getApi: Getter): MediaCache {
           entry.status = 'error'
           entry.code = r.code
           entry.category = r.category
-          if (r.code === 'media_expired') expired.value++
+          recount()
         }
         pump()
       }
@@ -116,7 +123,32 @@ export function createMediaCache(getApi: Getter): MediaCache {
     pump()
   }
 
-  function get(id: string): MediaEntry {
+  /** 只统计当前仍被某个使用方引用、且已失败为 media_expired 的 id。 */
+  function recount() {
+    const live = new Set<string>(unowned)
+    for (const set of owners.values()) for (const id of set) live.add(id)
+    let n = 0
+    for (const id of live) {
+      const e = entries.get(id)
+      if (e && e.status === 'error' && e.code === 'media_expired') n++
+    }
+    expired.value = n
+  }
+
+  function release(owner: object) {
+    if (owners.delete(owner)) recount()
+  }
+
+  function get(id: string, owner?: object): MediaEntry {
+    if (owner && !disposed) {
+      let set = owners.get(owner)
+      if (!set) owners.set(owner, (set = new Set()))
+      if (!set.has(id)) {
+        set.add(id)
+        queueMicrotask(recount) // 渲染期间不直接写响应式计数
+      }
+    }
+    if (!owner) unowned.add(id)
     const hit = entries.get(id)
     if (hit) return hit
     const entry = reactive<MediaEntry>({ status: 'loading', url: null, code: null, category: null })
@@ -152,7 +184,7 @@ export function createMediaCache(getApi: Getter): MediaCache {
 
   function forgetFailed() {
     for (const [id, e] of entries) if (e.status === 'error') entries.delete(id)
-    expired.value = 0
+    recount()
     generation.value++
   }
 
@@ -165,9 +197,11 @@ export function createMediaCache(getApi: Getter): MediaCache {
     timers.clear()
     for (const u of [...urls]) revoke(u)
     entries.clear()
+    owners.clear()
+    unowned.clear()
   }
 
-  return { get, download, forgetFailed, expired, generation, clear }
+  return { get, release, download, forgetFailed, expired, generation, clear }
 }
 
 /** 媒体失败占位文案（固定文案，不含任何远端内容）。 */

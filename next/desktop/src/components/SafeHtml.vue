@@ -24,6 +24,7 @@ const root = ref<HTMLElement | null>(null)
 const clean = ref('')
 let scope: EffectScope | null = null
 let created: HTMLElement[] = []
+const owner = {} // 向媒体缓存声明本组件当前引用的 id
 
 watch(
   () => props.html,
@@ -45,6 +46,7 @@ function hydrate() {
   scope = effectScope()
   for (const n of created) n.remove()
   created = []
+  props.media?.release(owner)
   const el = root.value
   if (!el) return
   // 被拦截的外部图片：只显示 origin（后端只给 scheme://host:port）
@@ -67,7 +69,7 @@ function hydrate() {
         ph.textContent = '图片未显示'
         continue
       }
-      const entry = media.get(id)
+      const entry = media.get(id, owner)
       ph.setAttribute('aria-label', img.getAttribute('alt') || '图片')
       watch(
         () => [entry.status, entry.url, entry.code, entry.category] as const,
@@ -99,7 +101,10 @@ watch(
 )
 watch(() => props.media?.generation.value, hydrate, { flush: 'post' })
 onMounted(hydrate)
-onBeforeUnmount(() => scope?.stop())
+onBeforeUnmount(() => {
+  scope?.stop()
+  props.media?.release(owner)
+})
 
 function onLink(ev: MouseEvent) {
   const a = (ev.target as Element | null)?.closest?.('a')

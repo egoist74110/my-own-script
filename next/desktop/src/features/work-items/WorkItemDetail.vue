@@ -34,9 +34,10 @@ const q = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: [...projectKey(props.projectId), 'detail', props.id],
   enabled: online,
-  queryFn: async (): Promise<WorkItemDetail> => {
+  queryFn: async ({ signal }): Promise<WorkItemDetail> => {
     const d = await unwrap(
       api().GET('/api/work-items/{id}', {
+        signal,
         params: { path: { id: props.id }, query: { project_id: props.projectId } },
       }),
     )
@@ -81,9 +82,11 @@ const props2 = computed(() => {
   ].filter(([, v]) => v !== '—') as [string, string][]
 })
 
-function refreshDetail() {
+// 先失效并等当前详情（及已打开的评论）重取完成，再清失败条目：
+// 否则旧 id 会先被重试一遍，而新 id 成功后过期提示仍在（CR-S2B-002）
+async function refreshDetail() {
+  await qc.invalidateQueries({ queryKey: projectKey(props.projectId) })
   media.forgetFailed()
-  void qc.invalidateQueries({ queryKey: projectKey(props.projectId) })
 }
 </script>
 

@@ -13,9 +13,10 @@ const q = useQuery({
   ...QUERY_DEFAULTS,
   queryKey: [...projectKey(props.projectId), 'children', props.id],
   enabled: online,
-  queryFn: async (): Promise<{ items: ChildItem[]; truncated: boolean }> => {
+  queryFn: async ({ signal }): Promise<{ items: ChildItem[]; truncated: boolean }> => {
     const d = await unwrap(
       api().GET('/api/work-items/{id}/children', {
+        signal,
         params: { path: { id: props.id }, query: { project_id: props.projectId } },
       }),
     )

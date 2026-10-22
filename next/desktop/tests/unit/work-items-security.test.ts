@@ -243,7 +243,7 @@ describe('媒体：blob、Bearer、复用、占位', () => {
     expect(body(b).querySelector('img')!.getAttribute('src')).toMatch(/^blob:/)
     // 下载：带 Bearer 取字节，用 blob: URL 触发下载
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    const btn = b.wrapper.findAll('button').find((x) => x.text().startsWith('下载'))!
+    const btn = b.wrapper.findAll('button').find((x) => x.text() === '下载 doc.txt')!
     await btn.trigger('click')
     await settle()
     expect(fake.to('/api/work-items/media/a3')[0]!.auth).toBe('Bearer fake-token')

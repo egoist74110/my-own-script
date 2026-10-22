@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue'
+import { inject, onBeforeUnmount, ref, watch } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 import { mediaCacheKey, mediaFailureText } from '@/components/media'
 import type { Attachment } from './api'
 import { formatBytes } from './format'
 import './panes.css'
 
-defineProps<{ attachments: Attachment[] }>()
+const props = defineProps<{ attachments: Attachment[] }>()
 const media = inject(mediaCacheKey, undefined)
+const owner = {} // 向媒体缓存声明本面板当前引用的 id
+watch(
+  () => props.attachments,
+  () => media?.release(owner),
+)
+onBeforeUnmount(() => media?.release(owner))
 const dlError = ref<Record<string, string>>({})
 
 async function download(a: Attachment) {
@@ -36,27 +42,29 @@ async function download(a: Attachment) {
         <span v-if="a.blocked_origin !== null" class="media-ph" data-testid="attachment-blocked"
           >已拦截外部附件 · {{ a.blocked_origin || '未知来源' }}</span
         >
-        <template v-else-if="a.media_id && media">
-          <template v-if="a.is_image">
-            <span v-if="media.get(a.media_id).status === 'loading'" class="media-ph"
+        <template v-if="a.media_id && media">
+          <template v-if="a.is_image && a.blocked_origin === null">
+            <span v-if="media.get(a.media_id, owner).status === 'loading'" class="media-ph"
               >图片加载中…</span
             >
             <img
-              v-else-if="media.get(a.media_id).status === 'ready'"
-              :src="media.get(a.media_id).url ?? undefined"
+              v-else-if="media.get(a.media_id, owner).status === 'ready'"
+              :src="media.get(a.media_id, owner).url ?? undefined"
               :alt="a.name"
               class="thumb"
             />
             <span v-else class="media-ph">{{
-              mediaFailureText(media.get(a.media_id).code, media.get(a.media_id).category)
+              mediaFailureText(
+                media.get(a.media_id, owner).code,
+                media.get(a.media_id, owner).category,
+              )
             }}</span>
           </template>
-          <template v-else>
-            <AppButton variant="ghost" @click="download(a)">下载 {{ a.name }}</AppButton>
-            <span v-if="dlError[a.media_id]" class="media-ph" role="alert">{{
-              dlError[a.media_id]
-            }}</span>
-          </template>
+          <!-- 凡有 media_id 都可下载（图片附件另有缩略图；SVG/预览失败的也能下） -->
+          <AppButton variant="ghost" @click="download(a)">下载 {{ a.name }}</AppButton>
+          <span v-if="dlError[a.media_id]" class="media-ph" role="alert">{{
+            dlError[a.media_id]
+          }}</span>
         </template>
       </li>
     </ul>
