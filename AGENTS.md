@@ -3,6 +3,13 @@
 本仓库 = **代码工具箱**（macOS PySide6 桌面应用，入口 `app_main.py`）+ **ok-script**（图像识别自动化框架，`ok/`）。
 Python 3.14，`.venv` 隔离，敏感信息走 macOS Keychain（keyring），配置走 YAML。
 
+## 现代化重构协作入口
+
+参与本次重构前，必须阅读 [协作规范](docs/modernization/AGENT_WORKFLOW.md)、[工作包](docs/modernization/WORK_PACKAGES.md) 和 [进度账本](docs/modernization/PROGRESS.md)。
+按工作包分工；施工模型可委派一层测试子 agent；Claude 全部 medium，GPT 6 Luna 固定 high，GPT 6.1 Sol 主控 high、施工 medium。实际型号/档位不可验证时记录 unknown，不得虚构署名或静默替换。
+交叉审计异步开展、登记发现，不阻塞下一工作包，不强制审到零问题。具体职责、验收和升级条件以协作规范为准。
+`config/model_collaboration_templates/` 是历史可复制模板，不得覆盖本仓库当前协作规范；不自动修改用户全局 agent 配置。
+
 > 本文件只做导航，不堆细节。**任何 AI 接手任务前，先看能力索引：**
 
 ## 📇 能力索引（从这里开始）

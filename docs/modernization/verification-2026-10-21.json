@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-21",
+  "head": "c349243286d27ae82943a4381951f9f3b041b7d1",
+  "scope": "preparation_and_safe_stage0_only",
+  "production_behavior_changed": false,
+  "source_sha256": {
+    "scripts/modernization_baseline.py": "210b348bae2c931f8aeff6bac5f289639f7efe5ce2fa68707e56de2cac32c091",
+    "tests/test_modernization_baseline.py": "75ee41a4b56751bdfcd9ac3f072daad4b6ad04146e1ee0bcead6c1ee73bb01a1",
+    "tests/test_modernization_characterization.py": "df8763369fc1a41aac606c2bcaf280ee4a45b9d3d06cd3654427acf4ab8d518b"
+  },
+  "protected_user_files": {
+    "app_ado/ui/deploy_target_dialog.py": {
+      "sha256": "ad36f8f36e5d8230f23f5b093e535b7817e85c939dc3572aab98584278355ce7",
+      "unchanged": true
+    },
+    "config/ai_change_policy.yaml": {
+      "sha256": "cd1db2fd597a4bc2fb654d0f38439decfdaab54e4f5ca5b2120cc72c21784adc",
+      "unchanged": true
+    }
+  },
+  "integrated_pytest": {
+    "scope": "integrated_all_tests",
+    "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m pytest -p no:cacheprovider --basetemp <TemporaryDirectory>/pytest",
+    "exit_code": 0,
+    "stdout": ".ss.................................................................     [100%]\n=========================== short test summary info ============================\nSKIPPED [1] tests/test_app.py:16: ok-script symbols not available in this build\nSKIPPED [1] tests/test_box.py:16: ok-script symbols not available in this build\n66 passed, 2 skipped in 0.94s\n",
+    "stderr_present": false,
+    "temporary_directory_removed_on_exit": true
+  },
+  "cli_help": {
+    "exit_code": 0,
+    "contains_import_probe_option": true
+  },
+  "baseline": {
+    "report": "baseline-2026-10-21.json",
+    "inventory_generated": true,
+    "import_probe_status": "error",
+    "blocked_events": [
+      "os.putenv"
+    ],
+    "cleanup": "ok",
+    "valid_import_performance_metrics": false
+  },
+  "not_measured": [
+    "gui_startup_time",
+    "gui_idle_memory",
+    "working_memory",
+    "release_package_size",
+    "real_external_services",
+    "cross_platform_behavior"
+  ],
+  "model_provenance": {
+    "native_builders": {
+      "requested_model": "gpt-6.1-sol",
+      "requested_effort": "medium",
+      "actual_model": "unknown",
+      "actual_effort": "unknown",
+      "evidence_source": "accepted_native_subagent_invocation"
+    },
+    "native_independent_testers": {
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "high",
+      "actual_model": "unknown",
+      "actual_effort": "unknown",
+      "evidence_source": "accepted_native_subagent_invocation"
+    },
+    "cross_review": {
+      "requested_model": "claude-sonnet-5-5",
+      "requested_effort": "medium",
+      "round1_actual_model": "claude-sonnet-5-5",
+      "actual_effort": "unknown",
+      "evidence_source": "round1_CLI_modelUsage_and_explicit_effort_argument",
+      "round1": "returned_7_findings_fixed_by_main_not_closure_verified",
+      "round2": "timeout_no_verdict",
+      "review_id": "prep-cross-8910f853"
+    }
+  }
+}

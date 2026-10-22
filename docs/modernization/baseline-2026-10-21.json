@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "status": "ok",
+    "head": "c349243286d27ae82943a4381951f9f3b041b7d1",
+    "dirty_paths": [
+      ".gitignore",
+      "AGENTS.md",
+      "app_ado/ui/deploy_target_dialog.py",
+      "config/ai_change_policy.yaml",
+      "config/model_collaboration_templates/claude/CLAUDE.md",
+      "config/model_collaboration_templates/codex/AGENTS.md",
+      "config/model_collaboration_templates/codex/WORKFLOW.md",
+      "config/model_collaboration_templates/gemini/ORCHESTRATION.md",
+      "docs/CAPABILITIES.md",
+      "docs/capabilities/ai-collab-rules.md",
+      "docs/capabilities/modernization.md",
+      "docs/modernization/AGENT_WORKFLOW.md",
+      "docs/modernization/PROGRESS.md",
+      "docs/modernization/README.md",
+      "docs/modernization/WORK_PACKAGES.md",
+      "scripts/modernization_baseline.py",
+      "tests/test_modernization_baseline.py"
+    ]
+  },
+  "runtime": {
+    "target_python": "3.14",
+    "observed_python": "3.14.7",
+    "platform": "darwin",
+    "machine": "arm64"
+  },
+  "directories": [
+    {
+      "path": ".venv",
+      "measurement": "logical_file_bytes_not_release_size",
+      "bytes": 1422842559,
+      "files": 10008,
+      "skipped": 5,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "path": "ok",
+      "measurement": "logical_file_bytes_not_release_size",
+      "bytes": 1502486,
+      "files": 213,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "path": "dist",
+      "measurement": "logical_file_bytes_not_release_size",
+      "bytes": 32996314,
+      "files": 22,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    }
+  ],
+  "distributions": [
+    {
+      "name": "PySide6-Essentials",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "6.10.2",
+      "bytes": 325936945,
+      "files": 2709,
+      "skipped": 24,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "name": "shiboken6",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "6.10.2",
+      "bytes": 1314091,
+      "files": 61,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "PySide6-Fluent-Widgets",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "1.11.0",
+      "bytes": 7678690,
+      "files": 213,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "pydantic",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "2.12.5",
+      "bytes": 4064652,
+      "files": 218,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "PySide6-Addons",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "6.10.2",
+      "bytes": 864477322,
+      "files": 1635,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "PySide6",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "6.10.2",
+      "bytes": 4825327,
+      "files": 71,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "keyring",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "25.7.0",
+      "bytes": 239803,
+      "files": 67,
+      "skipped": 1,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "name": "httpx",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "0.28.1",
+      "bytes": 704360,
+      "files": 54,
+      "skipped": 1,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "name": "PyYAML",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "6.0.3",
+      "bytes": 869146,
+      "files": 44,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "pyte",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "0.8.2",
+      "bytes": 217106,
+      "files": 27,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "segno",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "1.6.6",
+      "bytes": 573974,
+      "files": 24,
+      "skipped": 2,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "name": "playwright",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "1.60.0",
+      "bytes": 140876756,
+      "files": 248,
+      "skipped": 1,
+      "errors": 0,
+      "status": "partial"
+    },
+    {
+      "name": "Pillow",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "12.1.0",
+      "bytes": 14726239,
+      "files": 237,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "pyotp",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "2.10.0",
+      "bytes": 60341,
+      "files": 23,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "pyobjc-framework-Vision",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "12.1",
+      "bytes": 203116,
+      "files": 11,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    },
+    {
+      "name": "pyobjc-framework-Quartz",
+      "measurement": "declared_distribution_files_logical_bytes",
+      "scope": "current_interpreter",
+      "additive": false,
+      "version": "12.1",
+      "bytes": 1980951,
+      "files": 58,
+      "skipped": 0,
+      "errors": 0,
+      "status": "ok"
+    }
+  ],
+  "size_notes": "Independent scopes; do not add directories or distributions. Logical regular-file bytes only, not allocated disk or release-package size. Inodes deduplicated per scope. Symlinks, outside-boundary manifest entries and non-regular files are skipped; errors/skips make counts partial.",
+  "import_probe": {
+    "kind": "import_only",
+    "gui": false,
+    "meaning": "guarded_variant_import_not_startup_time_or_idle_memory",
+    "guard": "read_only_no_network_no_subprocess_keychain_stub",
+    "stubs": [
+      "keyring_credentials_denied"
+    ],
+    "timeout_seconds": 10.0,
+    "status": "error",
+    "error": "probe_process_failed",
+    "error_type": "ProcessExit",
+    "return_code": 255,
+    "blocked_events": [
+      "os.putenv"
+    ],
+    "cleanup": {
+      "status": "ok"
+    }
+  },
+  "not_measured": [
+    "gui_startup_time",
+    "gui_idle_memory",
+    "release_package_size",
+    "functional_tests",
+    "network_services"
+  ]
+}

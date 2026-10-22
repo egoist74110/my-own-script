@@ -1,3 +1,5 @@
+> 模板维护提示：本仓库重构以 [当前协作规范](../../../docs/modernization/AGENT_WORKFLOW.md) 为准，包括施工测试委派、模型档位和异步交叉审计。下文是复制到其他项目时需要重新适配的历史模板，不能覆盖本仓库规则。
+
 ## Meta
 - Language: Chinese
 - Style: Concise

@@ -1,5 +1,7 @@
 # ORCHESTRATION
 
+> 模板维护提示：本仓库重构以 [当前协作规范](../../../docs/modernization/AGENT_WORKFLOW.md) 为准；下文历史模型路由与“自检即可交付”不是本项目现行工作流。不要因此额外启用 Gemini/Flash。
+
 ## Meta
 - Language: Chinese
 - Style: Concise

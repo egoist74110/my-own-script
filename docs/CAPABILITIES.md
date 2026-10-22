@@ -4,6 +4,13 @@
 
 ## 能力清单
 
+### 现代化重构 / Agent 协作
+
+| 能力 | 一句话说明 | 入口/关键文件 | 详细文档 |
+| --- | --- | --- | --- |
+| 分阶段重构与模型协作 | 工作包、模型档位/署名、独立测试、异步不阻塞交叉审计 | `docs/modernization/` | [modernization](capabilities/modernization.md) |
+| 新版重写（前后端分离） | Vue 3 + Tauri 2 + Python/FastAPI；按能力切片从旧应用搬迁 | `next/`、`docs/modernization/ARCHITECTURE.md` | [modernization](capabilities/modernization.md) |
+
 ### 应用核心（运行 / 打包 / 发布 / 更新）
 
 | 能力 | 一句话说明 | 入口/关键文件 | 详细文档 |

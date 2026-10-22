@@ -1,5 +1,7 @@
 # 用户级别 Claude Code 配置
 
+> 模板维护提示：本仓库重构以 [当前协作规范](../../../docs/modernization/AGENT_WORKFLOW.md) 为准。所有 Claude 模型使用 medium，允许施工者委派一层测试子 agent，交叉审计异步不阻塞。下文是复制到其他项目时需要重新适配的历史模板。
+
 ## Meta
 - Language: Chinese
 - Style: Concise

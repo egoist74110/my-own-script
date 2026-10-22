@@ -1,5 +1,7 @@
 # AI 协作规则（改动准入策略 + 多模型协作模板）
 
+> 本仓库当前重构的执行规则以 [Agent 协作规范](../modernization/AGENT_WORKFLOW.md) 为准；工作包和证据见 [重构入口](../modernization/README.md)。下述可复制模板包含历史工作流，不覆盖当前的模型档位、测试委派和非阻塞交叉审计约定。
+
 ## 这个能力做什么
 让本地 AI 通过 MCP 读工单并尝试改代码**之前**先过一轮策略评估（allow / review / deny）；另有一套可复制到别的项目的多模型协作规范模板（Claude/Codex/Gemini）。
 
