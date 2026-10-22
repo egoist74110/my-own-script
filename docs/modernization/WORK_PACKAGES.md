@@ -1,11 +1,11 @@
-# 阶段 0 / 1 工作包
+# 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 1
+- revision: 2（2026-10-22 追加 S0）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
-- delivery: 本地文件与验证报告；不 commit/push/merge/publish/deploy
+- delivery: 阶段 0/1 为本地文件与验证报告；S0 起用户授权在 `rewrite/next` 本地提交，不 push/merge/publish/deploy
 - workflow: [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md)
 - 状态、真实署名和检查结果只写 [PROGRESS.md](PROGRESS.md)，不能在本文件预填通过。
 - 2026-10-22：方向改为前后端分离重写。WP-03、WP-11..16 的处置建议见 [MIGRATION_PLAN.md §4](MIGRATION_PLAN.md)，待用户确认；确认前不对旧应用施工。新产品切片 S0..S9 的合同派工前追加到本文件。
@@ -129,3 +129,120 @@
 集成回归：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider`，预期 exit 0；跳过数与原因单列。检查 `git diff --check` 和允许范围，核对用户修改摘要。
 
 需求映射：协作/署名→WP-00；真实口径/可重复→WP-01/03；关键行为证据→WP-02；风险修复→WP-11..15；未定外部接口→WP-16。所有新增分包/顺序调整记账，不静默改计划。
+
+---
+
+# 新产品切片
+
+切片顺序与“搬完”标准见 [MIGRATION_PLAN.md](MIGRATION_PLAN.md)。新代码只在 `next/` 下；`next/` 以外的旧代码只读，不 import。
+
+## S0 通用合同
+
+- 输入版本：`rewrite/next` 上主控提交 S0 合同后的 commit（派工时写明 SHA）。
+- 授权（用户 2026-10-22）：可在 `/Users/wesker/my-own-script-next` 内联网安装 S0 所需的 npm(pnpm)、cargo、uv 依赖；包管理器的用户级缓存（pnpm store、`~/.cargo/registry`、uv cache）允许使用。**不装全局工具**（不 `npm -g`、不 `cargo install`、不 `uv tool install`、不 `brew`）；Tauri CLI 以 `@tauri-apps/cli` 开发依赖方式调用。uv 不自动下载解释器（`UV_PYTHON_DOWNLOADS=never`），打包 spike 例外，且解释器装在 `next/.local/` 下。
+- 施工位置：每个施工者一个独立 worktree：`git worktree add --detach .local/worktrees/<包> <SHA>`（`.local/` 已被 git 忽略）。施工者不 commit；主控以限定路径 patch 集成并提交。
+- Rust 构建目录共享：`CARGO_TARGET_DIR=/Users/wesker/my-own-script-next/.local/cargo-target`（磁盘仅剩约 23 GiB，避免每个 worktree 各编一份）。
+- 禁止：读取真实 Keychain / `~/.config/my-own-script` / 旧 `.venv` 外的用户数据；连接真实 ADO、TG、Lark；启动 `dev_run.sh`；改动 `next/` 以外文件（`.gitignore` 由主控改）；按进程名批量 kill。测试一律假 token。
+- 参考材料（只读，git 忽略）：设计稿 `.local/design/hud/Hud-Main.dc.html`（总览常态，`denied` 属性=告警）、`Hud-WorkItem.dc.html`、`Hud-AiSession.dc.html`；rhine-lock 源码 `.local/ref/rhine-lock`（commit a4df68c，AGPL-3.0）。
+- rhine-lock 复用规则：复制或改写的文件头部写 `Portions derived from rhine-lock (https://github.com/tmc5csxr9m-cpu/rhine-lock), Copyright (C) its authors, AGPL-3.0-or-later`，并在 `next/THIRD_PARTY.md` 登记文件与来源 commit；不得出现 RHINE LAB / Rhine Lab / Arknights / 莱茵 字样，不得复制原作 ∞ 标志的 SVG/生成脚本/纹理（`gen_logo.py`、`card.png`、`hex.png`），不得引入 `bgm-loop.opus`。Kenney 音效为 CC0，可用但 S0 不需要。
+- 交付物：代码 + 本包测试 + `next/<子目录>/README.md`（如何运行、如何测试）+ 施工报告（改动路径、命令与输出摘要、未测、偏差、发现、清理）。
+- 升级条件：需要改本合同已定接口、扩大写入范围、安装全局工具、同类失败两次 → 停下交主控。
+
+### S0 已定接口（施工者不得自行更改）
+
+**后端进程**（`next/backend`，包名 `toolbox_backend`，`src/` 布局，下设 `api/ services/ domain/ adapters/` 分层；Python `>=3.14`，FastAPI + uvicorn，uv 锁定）
+
+- 启动：`python -m toolbox_backend [--dev]`。只绑 `127.0.0.1`，端口由后端自行 `bind(("127.0.0.1", 0))` 取得后交给 uvicorn（不先探测再释放端口，避免竞争）。不提供监听其他地址的选项。
+- token：每次启动 `secrets.token_urlsafe(32)`；不写文件、不进日志、不进环境变量。
+- 握手：服务**已开始接受连接后**，向 stdout 写且只写一行并 flush：`TOOLBOX_READY {"v":1,"port":<int>,"token":"<str>","pid":<int>}`。之后 stdout 不再输出任何内容；日志一律走 stderr，且经脱敏（不得含 token）。
+- 生命周期：stdin 收到 EOF 即协调退出（壳崩溃时不留孤儿）；SIGTERM/SIGINT 协调退出，退出码 0；启动失败非 0 退出且不打印 READY 行。
+- 安全中间件顺序：Host 校验 → CORS → 鉴权。
+  - Host 必须等于 `127.0.0.1:<port>`，否则 400（防 DNS rebinding）；`localhost:<port>` 也拒绝。
+  - CORS 允许 origin：`tauri://localhost`、`http://tauri.localhost`；`--dev` 时追加 `http://localhost:1420`、`http://127.0.0.1:1420`。允许头 `Authorization, Content-Type`，不允许 credentials。预检请求不需要 token。
+  - 鉴权：所有 HTTP 路由（含 `/health`）要求 `Authorization: Bearer <token>`，用 `secrets.compare_digest`；缺失/错误 401。运行时关闭 `/docs`、`/redoc`、`/openapi.json`。
+- HTTP：
+  - `GET /health` → `HealthResponse {status: "ok", version: str, pid: int, uptime_s: float, alert: bool}`。
+  - `POST /api/system/alert` body `AlertRequest {active: bool, reason: str | null}` → `AlertState {active, reason, changed_at}`；并广播事件 `system.alert`。用于 S0 演示告警态，后续切片的真实告警走同一事件。
+- WebSocket `GET /ws/events`：Host 与 Origin 同上校验（Origin 不在允许列表 → 拒绝握手）。连接后首帧必须是 `{"type":"auth","token":"..."}`，5 秒内未收到或 token 错误 → 以 code 4401 关闭。认证成功后服务器发送事件，统一信封：`{"seq": int, "topic": str, "type": str, "ts": "<RFC3339>", "data": {...}}`，`seq` 进程内单调递增：
+  - `system.hello`：`data {pid, version, alert: AlertState}`（seq 为当时最新值，客户端以此对齐）；
+  - `system.heartbeat`：每 5 秒，`data {uptime_s}`；
+  - `system.alert`：`data AlertState`。
+  - 慢客户端：每连接有界队列（256），满则断开该连接（code 4408），不阻塞其他连接。
+- 契约生成：`uv run python -m toolbox_backend.contracts` 写 `next/contracts/openapi.json` 与 `next/contracts/events.schema.json`（由 Pydantic 事件模型生成），输出确定性（排序键、末尾换行）。后端测试比对仓库内文件与当前生成结果，漂移即失败。
+
+**前端**（`next/desktop`，pnpm）
+
+- Vue 3 `<script setup>` + TS strict + Vite（dev 端口 1420，`strictPort`）；Tailwind v4（`@tailwindcss/vite`）；Reka UI + shadcn-vue（`components.json`，组件拷入 `src/components/ui/`，S0 只拷实际用到的）；lucide-vue-next；Vue Router；Pinia；@tanstack/vue-query；openapi-typescript + openapi-fetch；字体 `@fontsource/montserrat`、`@fontsource/jetbrains-mono`（离线打包，不连 Google Fonts）；Vitest + Vue Test Utils；ESLint flat + Prettier；vue-tsc。目录按 FRONTEND_STACK §4。
+- 类型生成：`pnpm contracts:gen` 由 `../contracts/openapi.json` 生成 `src/api/schema.d.ts`（提交入库）；`pnpm contracts:check` 生成后与入库文件比对。
+- 连接获取 `src/api/connection.ts`：Tauri 环境调用 command `backend_connection` → `{port, token}`；浏览器开发模式读 `import.meta.env.VITE_TOOLBOX_PORT / VITE_TOOLBOX_TOKEN`（只用于 `pnpm dev:web`，由脚本拉起后端、解析 READY 行后注入，不写文件、不进 URL）。token 不进 localStorage、URL、日志。
+- 设计令牌 `src/design/tokens.css`：照搬设计稿 `.hud` 令牌（`--paper/--ink/--inv/--mute/--faint/--card/--tab/--accent-fill`，常量 `--orange #ff7b00`、`--lime #b9e432`），以 `--denied`（0..1，`@property` 注册为 `<number>` 以便过渡）color-mix 混色；文字灰用 `#5f5c57`；微型字号 ≥10px；遵守 `prefers-reduced-motion`。
+- HUD 壳（单页 `/` 总览）：左栏（TOOLBOX 品牌字标、能力索引：总览/工单/任务/AI 会话/MCP/VPN/服务/设置，S0 只有总览可用，其余禁用并标 `S2..S8`）、右上时钟（`HH:MM` + `THU · 22 OCT 2026` 格式，每秒更新，组件卸载清定时器）、后端连接状态（connecting / online / reconnecting / offline，显示 pid、心跳延迟；断线指数退避重连 0.5s→最大 10s；收到新连接信息后重新认证）、告警演示开关（调用 `POST /api/system/alert`，告警态由收到的 `system.alert` 事件驱动，不在前端本地直接切换）、告警态 WARNING 框（照设计稿）、∞ 主视觉占位（自绘简单双环/线框占位并标 `PLACEHOLDER`，不得使用原作标志）。
+- 关于信息：`next/THIRD_PARTY.md` 与页面底部微型文字注明视觉语言来源 rhine-lock（AGPL-3.0）与字体 OFL。
+
+**桌面壳**（`next/desktop/src-tauri`，Tauri 2）
+
+- `src/backend.rs`（或同等模块）为可在无 GUI 下单测的监督器：拉起命令、读握手（超时 20 秒）、子进程独立进程组（`process_group(0)`）、持有 stdin 管道、stderr 转发到壳日志（不含 token）、意外退出按退避重启（1,2,4…最大 30 秒，稳定 60 秒后重置），状态变化通过 Tauri 事件 `backend://status` 发给页面（只含 `state`、`pid`、`restarts`，不含 token）。
+- 后端命令：开发模式默认 `<repo>/next/backend/.venv/bin/python -m toolbox_backend --dev`（cwd=`next/backend`），可用环境变量 `TOOLBOX_BACKEND_CMD` 覆盖；打包形态由 spike 结论决定，S0 不固化。
+- Command：`backend_connection` → `{port, token}`；后端未就绪时等待（最长 20 秒）后报错。
+- 关窗 = 隐藏；Dock 图标点击 / 托盘“显示窗口”恢复；托盘菜单：后端状态（禁用项，随状态更新）、显示窗口、退出。
+- 退出（托盘退出、⌘Q、系统注销）只执行一次协调关闭：关 stdin → 进程组 SIGTERM → 最多等 5 秒 → SIGKILL → wait；退出后该进程组内无残留。
+- 单实例：`tauri-plugin-single-instance`，第二次启动聚焦已有窗口后退出。
+- 窗口：`titleBarStyle: Overlay`、隐藏标题，左栏顶部留拖拽区。capabilities 最小化（不启用 shell/fs/http 插件给页面）；CSP `connect-src` 只允许 `http://127.0.0.1:*`、`ws://127.0.0.1:*`。
+- identifier 暂用 `dev.toolbox.next`，productName `TOOLBOX`（ARCHITECTURE §8 名称未决，S9 前替换）。
+
+## S0-A：后端骨架与契约
+
+- 依赖：S0 合同提交。可与 S0-B/C/D 并行（接口已在上文固定）。
+- write_scope：`next/backend/**`、`next/contracts/**`。
+- 验收（自动化，假 token）：
+  1. 子进程启动 → 20 秒内读到唯一 READY 行，端口非固定、两次启动 token 不同；stdout 之后无输出；stderr 全程不含 token。
+  2. 错误 Host（`evil.com`、`localhost:<port>`、`127.0.0.1:<别的端口>`）→ 400；缺 token / 错 token → 401；正确 → `/health` 200 且字段齐全；`/docs`、`/openapi.json` 不可用。
+  3. CORS：`tauri://localhost` 预检通过且不需要 token；`https://evil.example` 预检不放行；非 dev 模式下 `http://localhost:1420` 不放行。
+  4. WS：非法 Origin 拒绝；不发 auth 帧 5 秒内 4401；错 token 4401；正确 → `system.hello`，`POST /api/system/alert` 后收到 `system.alert`，`seq` 单调；心跳可通过注入更短间隔测试。
+  5. stdin 关闭 → 进程 5 秒内退出码 0；SIGTERM → 退出码 0；无残留子进程。
+  6. 契约漂移测试通过；`openapi.json` 含 `HealthResponse`、`AlertRequest`、`AlertState`，`events.schema.json` 含三种事件。
+- run（在 `next/backend`）：`UV_PYTHON_DOWNLOADS=never uv sync --frozen && UV_PYTHON_DOWNLOADS=never uv run pytest -q`，预期 exit 0；`uv run ruff check .`（若引入 ruff）。
+- 回退：删除 `next/backend`、`next/contracts`。
+
+## S0-B：前端 HUD 壳
+
+- 依赖：S0 合同。契约文件以 S0-A 产物为准；并行施工期间先按上文接口编写，`src/api/schema.d.ts` 在主控集成时用正式 `openapi.json` 重新生成（施工者可以按上文接口手写一个临时 `openapi.json` 放在**自己 worktree** 的 `next/contracts/` 供本地生成，集成时不带入）。
+- write_scope：`next/desktop/**`（不含 `src-tauri/**`）、`next/THIRD_PARTY.md`。
+- 验收：
+  1. `pnpm install --frozen-lockfile`、`pnpm typecheck`（vue-tsc）、`pnpm lint`、`pnpm test`（Vitest）、`pnpm build` 全部 exit 0。
+  2. Vitest 覆盖：告警事件把根节点 `--denied` 由 0 变 1 并显示 WARNING 框，解除后恢复；时钟格式与卸载清定时器（假定时器）；连接状态机 connecting→online→reconnecting→online（假 WebSocket），重连后重新发送 auth 帧；API 客户端带 Bearer 且 token 不出现在 URL；Tauri / dev env 两种连接来源。
+  3. 令牌与设计稿一致（`--paper` 等常态值逐一断言）；文字对比度：`--ink`/`--mute` 在 `--paper` 上 ≥4.5:1（测试里计算）。
+  4. 源码与构建产物中不含 `Rhine`、`RHINE`、`Arknights`、`fonts.googleapis.com`。
+- run（在 `next/desktop`）：上述 pnpm 命令，预期 exit 0。
+- 未测（允许）：真实 Tauri 内渲染、1280×800/1728×1117 视觉走查（主控后续截图或用户验收）。
+- 回退：删除 `next/desktop` 中本包文件。
+
+## S0-C：Tauri 薄壳与后端监督
+
+- 依赖：S0 合同。可用测试替身后端（`src-tauri/tests/fixtures/` 下的小脚本，打印同格式 READY 行）完成监督器单测；与真实后端联调在主控集成后进行。
+- write_scope：`next/desktop/src-tauri/**`；需要在 `next/desktop/package.json` 增加 `@tauri-apps/cli`、`@tauri-apps/api` 与 `tauri` 脚本时，**只交 diff 给主控合并**（该文件归 S0-B）。
+- 验收：
+  1. `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test` 在 `src-tauri` exit 0（`CARGO_TARGET_DIR` 见通用合同）。
+  2. 监督器测试：解析合法/非法/超时 READY 行；替身后端崩溃后按退避重启且 `restarts` 递增；协调关闭对忽略 SIGTERM 的替身在 5 秒后 SIGKILL，结束后进程组内无存活进程（用 `kill(-pgid, 0)` 判定）；关闭 stdin 后正常替身自行退出；token 不出现在日志与 `backend://status` 负载。
+  3. `pnpm tauri build --debug --no-bundle` 能编出可执行文件（不签名、不安装）。
+- 未测（允许）：托盘交互、关窗常驻、单实例的真实 GUI 行为——列入主控集成后的手动/脚本验证。
+- 回退：删除 `src-tauri`，撤销 package.json 增量。
+
+## S0-D：内置 Python 运行时打包 spike
+
+- 依赖：S0 合同；需要 S0-A 的后端可运行（主控在 S0-A 集成后派工）。
+- write_scope：`next/spikes/packaging/**`（脚本、说明、结果 JSON）；构建产物放 `next/.local/spike/`（忽略）。不改 `src-tauri` 正式配置，如需 Tauri 包装，用 `--config` 叠加文件放在本目录。
+- 内容：对比两种方案把 `toolbox_backend` 及其依赖做成随 `.app` 分发的运行时：
+  - A. python-build-standalone（用 `UV_PYTHON_INSTALL_DIR=next/.local/spike/python uv python install 3.14` 获取 aarch64 构建）+ 依赖安装到其 site-packages，裁剪测试/`__pycache__`/idle/tkinter；
+  - B. PyInstaller onedir（作为 uv 开发依赖安装在 spike 自己的环境中）。
+- 每种方案实测：未压缩目录大小、`tar.zst`/DMG 级压缩后大小（用 `hdiutil create -format ULFO` 或 `ditto -c -k` 二选一并注明）、冷/热启动到 READY 行耗时（各 5 次取中位数）、首个 `/health` 成功耗时、空闲 RSS；记录 macOS/芯片/版本。不签名、不公证、不复制到 `/Applications`。
+- 交付：`next/spikes/packaging/README.md`（步骤与结论建议）+ `results-<日期>.json`；主控把数字写进 PROGRESS。
+- 回退：删除 spike 目录与 `next/.local/spike/`。
+
+## S0 集成验收（主控）
+
+- 在 `rewrite/next` 集成版本上重跑 S0-A/B/C 的 run 命令；`pnpm contracts:check` 与后端漂移测试同时通过。
+- 联调：用真实后端跑 `cargo test` 中的集成用例（或主控脚本）：启动壳的监督器 → 握手 → `/health` → 协调关闭 → 进程组无残留。
+- 能运行时用 `pnpm tauri dev` 截图常态/告警两态（主控自查，不替代用户验收）。
+- 旧应用测试：`PYTHONDONTWRITEBYTECODE=1 ../my-own-script/.venv/bin/python -m pytest -p no:cacheprovider tests` 不回退（本分支 `next/` 外无改动，作为未误改旧代码的守卫）。
+- `git diff --check`；`next/` 外仅 `.gitignore`、本目录文档有改动。

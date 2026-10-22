@@ -55,3 +55,10 @@ pip-delete-this-directory.txt
 
 # macOS
 .DS_Store
+
+# next/ (rewrite)
+next/**/node_modules/
+next/**/dist/
+next/**/target/
+next/**/.venv/
+next/**/gen/schemas/
