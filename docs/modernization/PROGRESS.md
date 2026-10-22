@@ -274,3 +274,5 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | CR-S05-003 | minor | `AppTabs` 只有 `TabsTrigger`，无 tabpanel / `aria-controls` | open |
 | CR-S05-004 | minor | AI 会话对话内容写死在 `AiSessionsPage.vue` 模板，未放 `features/ai/mock/` | open |
 | CR-S05-005 | minor | `sent`、审批记录未按会话隔离，切换会话后残留上一会话记录 | open |
+
+- 用户 2026-10-22 决定：CR-S05-001..005 保持 open，并入下一个前端切片处理（派工时写进该切片合同；修复后续接同一 Codex 会话 `01a16310-…` 做第二轮复核）。
