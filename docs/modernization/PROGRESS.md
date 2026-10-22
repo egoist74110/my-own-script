@@ -653,3 +653,4 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 用户原答复“均按你推荐的来”，六项均按推荐确认；WORK_PACKAGES「S3 已决」已更新。主控可继续派工、离线测试、异步只读审计及本地提交；真实远端写/凭据/旧应用仍不在本轮测试授权范围。
 - 运行时预检：codex exec/resume与Claude Code help可用；`agy models` exit0，仅列出的Gemini高档为 `gemini-3.8-flash-high`（Gemini 3.8 Flash High），前端选此型号，无Gemini Pro，不替换厂商。Claude尚未执行审计请求，型号可用性与modelUsage在实际审计回执核实。
 - 后端无新增依赖；先从本确认提交创建S3-A worktree并离线同步uv.lock。S3-A先实现运行内核/配置/Git；S3-B接入ADO后才开放完整真实执行链；S3-C随后替换任务mock。派工结果另追加，不把准备状态记成已开工。
+- S3-A已派：codex exec，requested `gpt-6.1-sol / medium`，sandbox workspace-write，输入`bcfeba5`，worktree `.local/worktrees/s3a`；session `01a16444-9e5a-7da0-8286-67f40c7827f8`，actual model/effort未知（JSON尚无型号回执）。主控 `uv sync --offline --frozen` exit0（33个锁定包，Python3.14.7，无新增依赖），派工单要求GPT6 Luna/high新增独立测试。请求/输出 `.local/dispatch/s3a/`，状态running。
