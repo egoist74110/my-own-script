@@ -379,8 +379,8 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1A-007 | minor | `patch_library` 提交失败后无条件恢复旧 PAT；若 `os.replace` 已落盘而回读失败（提交结果不确定），磁盘已是新 base_url，旧 PAT 被绑到新 origin | open → S1-E：失败后重读磁盘，新值保留新 PAT、旧值恢复旧 PAT、读不到则删除并 `pending_delete` |
-| CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | open → S1-E：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
+| CR-S1A-007 | minor | `patch_library` 提交失败后无条件恢复旧 PAT；若 `os.replace` 已落盘而回读失败（提交结果不确定），磁盘已是新 base_url，旧 PAT 被绑到新 origin | fixed（S1-E）；待审计复核：失败后重读磁盘，新值保留新 PAT、旧值恢复旧 PAT、读不到则删除并 `pending_delete` |
+| CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | fixed（S1-E）；待审计复核：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
 
 info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（当前无记录路径）；恰为配置 JSON 固定子串的 ≥8 位 PAT 会触发写入闸门（真实 ADO PAT 52 位）；create 回滚时 Keychain `set` 抛错但实际已写入会留下未索引条目；新 service 的 Keychain 读取仍在锁内（其他请求 5s 后 `store_busy`）。
 
@@ -394,13 +394,27 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | open → S1-F |
-| CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | open → S1-F |
-| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | open → S1-F |
-| CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | open → S1-F |
+| CR-S1B-001 | major | 编辑草稿只在条目 id 变化时重置；`changed()` 与刷新后的 props 比较、提交用缓存中最新 revision → 外部修改后保存会携带新 revision 把用户未改的旧字段写回，静默覆盖他人修改（library、project 同） | fixed（S1-F）；待审计复核 |
+| CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | fixed（S1-F）；待审计复核 |
+| CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | fixed（S1-F）；待审计复核 |
+| CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | fixed（S1-F）；待审计复核 |
 
 ### S1-E / S1-F 派工
 
 - 合同：WORK_PACKAGES「S1-E」「S1-F」（`0a0e130`，措辞修正 `597faed`）。两包文件不重叠，并行。
 - S1-E 后端（CR-S1A-007、008）：codex exec，requested gpt-6.1-sol / medium，worktree `.local/worktrees/s1e` @ `597faed`；派工单要求其测试子 agent 必须新增独立用例（吸取 S1-D 测试者只复跑的教训）。
 - S1-F 前端（CR-S1B-001..004 + UX 小项）：Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1f` @ `597faed`；测试子 agent haiku / medium。
+
+### S1-E / S1-F 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S1-E 后端 | codex exec，requested gpt-6.1-sol / medium，session `01a16379-bdb3-7162-92e8-64d251ae92b8`；actual unknown | codex 内原生子 agent `/root/s1e_tests`，requested gpt-6-luna / high，actual unknown，independent=true，**新增** 6 例（`tests/independent/s1e/`） | passed，提交 `13bc292` |
+| S1-F 前端 | Claude Code 原生子 agent，requested sonnet / medium；actual unknown | haiku / medium，independent=true，新增 27 例（`tests/independent/s1f-independent.test.ts`），发现 2 个缺陷（`storeFault` 仅在同一次 503 刷新中解除）由施工者修复 | passed，提交见下 |
+
+- 修前失败证据：S1-E 两项回归修前 2 failed（CR-S1A-008 用每 0.5 秒 1 字节滴流，修前 21.3 秒才 timeout）；S1-F 回退 src 后自测 16 例中 14 例失败（另 2 例为对照例）。
+- 主控审阅：S1-E 重读磁盘后按实际 base_url 决定保留新 PAT/恢复旧 PAT/删除；`iter_bytes()` 不指定块大小逐块检查。S1-F 编辑基线 + 基线 revision、冲突时合并、origin 待确认期间输入禁用并冻结请求体、`store_unavailable` 后刷新且确认 ok 前不可写、warnings 以警告展示、PAT 仅在请求真正发出后清空、前端 PAT ≥8。施工者称“后端未见 PAT 最小 8 校验”有误：`domain/settings.py:73` 已强制（S1-D），前后端一致。
+- 既有断言改写（S1-F）：两处冲突提示文案 `已刷新` → `已合并最新内容`（patch 冲突按合同改为合并文案；非 patch 冲突仍为旧文案）。
+- 集成版本：后端 `pytest` **390 passed**、ruff/contracts 通过；前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **392 passed**；`git diff --check` 通过。
+- 未测：真实浏览器/Tauri 渲染、真实后端联调下的多窗口冲突、setActive 带 warnings（无入口）。
+- 复核：CR-S1A-007/008 续接 Opus 审计者第三轮、CR-S1B-001..004 续接 codex 审计会话 `01a16373-…` 第二轮，均异步。
