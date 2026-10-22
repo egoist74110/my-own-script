@@ -263,4 +263,14 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | review_id | 审计目标 | 模型/档位 | 状态 | 连续性/结果 |
 | --- | --- | --- | --- | --- |
-| s05-cross-3a5dac1 / round1 | `3da8820..3a5dac1` 的 `next/desktop`、`next/THIRD_PARTY.md` | codex exec，gpt-6.1-sol / high，sandbox read-only（CLI 头部回执了 model/effort/sandbox） | pending | session `01a16310-6d52-7d10-b3c3-e8d1302038c4`；请求与输出在 `.local/reviews/s05-cross-3a5dac1/`；不阻塞后续施工 |
+| s05-cross-3a5dac1 / round1 | `3da8820..3a5dac1` 的 `next/desktop`、`next/THIRD_PARTY.md` | codex exec，gpt-6.1-sol / high，sandbox read-only（CLI 头部回执了 model/effort/sandbox） | returned（exit 0） | session `01a16310-6d52-7d10-b3c3-e8d1302038c4`；结论 pass after minor fixes，5 minor、无 blocker/major；审计者离线跑 vitest 217 passed；请求与输出在 `.local/reviews/s05-cross-3a5dac1/` |
+
+主控逐条核实代码，5 项均属实：
+
+| finding_id | 级别 | 问题与核实 | 处置 |
+| --- | --- | --- | --- |
+| CR-S05-001 | minor | 删除 `hud.fault` 后“未取得连接时点告警开关 → 零请求 + 显示‘后端未连接’”无等价测试（`tests/unit/boot.ts` 固定 `runtime.start()`；`AlertToggle.vue:16` 逻辑仍在） | open：补回测试 |
+| CR-S05-002 | minor | 状态栏告警开关根按钮 `h-5`（20px）< 32px，尺寸测试漏查 Switch | open |
+| CR-S05-003 | minor | `AppTabs` 只有 `TabsTrigger`，无 tabpanel / `aria-controls` | open |
+| CR-S05-004 | minor | AI 会话对话内容写死在 `AiSessionsPage.vue` 模板，未放 `features/ai/mock/` | open |
+| CR-S05-005 | minor | `sent`、审批记录未按会话隔离，切换会话后残留上一会话记录 | open |
