@@ -496,3 +496,5 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 合同：WORK_PACKAGES「# S2」草案，**待用户确认**两项（新建工单；CR-NEXT-004 跨源 CDN）后派工。
 - 旧应用核实：只读 `main @ 885d186` 的 `app_ado/ado_work_item_http.py`、`work_item_view.py`、`ui/work_items_tab.py`、`mcp_ado_work_items_server.py`、`tg_work_items_*` 的调用点；未读真实配置/凭据，未连 ADO。CR-NEXT-004 的唯一来源是 WP-11 前的代码注释（`c349243` `_attachment_client`），无证据。
 - 新发现：CR-S2-PRE-001（minor）`httpx` 只在后端 dev 依赖组，生产代码 `adapters/ado_http.py` 直接 import → 非 dev 安装缺依赖。open：合同确认后主控在依赖预置提交中修正。
+- 用户 2026-10-22 确认合同：1 不做新建工单；2 先按同源规则 A，CR-NEXT-004 由用户稍后在真实工单确认。
+- 依赖预置（主控，联网）：后端 `uv add httpx nh3`（nh3 0.3.7）+ `uv remove --dev httpx` → **CR-S2-PRE-001 fixed**；前端 `pnpm add dompurify@3.4.17 @tauri-apps/plugin-opener@2.7.2`；Rust `cargo add tauri-plugin-opener@2`（2.7.2）+ `cargo fetch`（插件尚未注册，由 S2-B 接入）。预置后：后端 `pytest` 390 passed、ruff/contracts 通过；前端 frozen install/typecheck/lint 通过，`pnpm test` 422 passed；`cargo check --offline` 通过。
