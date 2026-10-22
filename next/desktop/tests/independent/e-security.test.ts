@@ -144,7 +144,7 @@ describe('连接安全：token 只在内存与 HTTP/WS 头中', () => {
   })
 })
 
-// ---------- 禁词扫描（源码 + dist，跳过二进制文件；woff2 等字体不扫） ----------
+// ---------- 禁词扫描（源码；dist 由 pnpm guard:dist，跳过二进制文件；woff2 等字体不扫） ----------
 const FORBIDDEN = /rhine|arknights|莱茵|fonts\.googleapis/i
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -176,26 +176,9 @@ describe('禁词与残留令牌', () => {
     expect(hits).toEqual([])
   })
 
-  it('dist 下文本文件不含禁词（需已构建）', () => {
-    const dist = join(ROOT, 'dist')
-    expect(statSync(dist).isDirectory(), 'dist 不存在').toBe(true)
+  it('已删除的 --denied 令牌不再被定义或引用（src；dist 侧由 pnpm guard:dist 检查）', () => {
     const hits: string[] = []
-    for (const f of textFiles(dist)) {
-      const buf = readFileSync(f)
-      if (buf.includes(0)) continue
-      buf
-        .toString('utf8')
-        .split('\n')
-        .forEach((line, i) => {
-          if (FORBIDDEN.test(line)) hits.push(`${f}:${i + 1}`)
-        })
-    }
-    expect(hits).toEqual([])
-  })
-
-  it('已删除的 --denied 令牌不再被定义或引用（src 与 dist）', () => {
-    const hits: string[] = []
-    for (const dir of [join(ROOT, 'src'), join(ROOT, 'dist')]) {
+    for (const dir of [join(ROOT, 'src')]) {
       for (const f of textFiles(dir)) {
         const buf = readFileSync(f)
         if (buf.includes(0)) continue

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 
 export interface TabItem {
   value: string
@@ -7,7 +7,12 @@ export interface TabItem {
   count?: number | string
 }
 
-/** 斜切 Tabs（Reka Tabs：方向键切换、roving focus）。内容区由页面按 modelValue 自行渲染。 */
+/**
+ * 斜切 Tabs（Reka Tabs：方向键切换、roving focus）。
+ * 每个页签都有对应的 tabpanel（aria-controls / aria-labelledby 互相关联）：
+ * - 传默认插槽（`#default="{ item }"`）时，当前页签的面板显示插槽内容，其余面板 hidden；
+ * - 不传插槽时面板为空且始终 hidden（内容由页面按 modelValue 自行渲染），关联 id 依然有效。
+ */
 defineProps<{ items: TabItem[]; label: string }>()
 const model = defineModel<string>({ required: true })
 </script>
@@ -20,6 +25,18 @@ const model = defineModel<string>({ required: true })
         <span v-if="t.count !== undefined" class="ox count">{{ t.count }}</span>
       </TabsTrigger>
     </TabsList>
+    <TabsContent
+      v-for="t in items"
+      :key="t.value"
+      :value="t.value"
+      force-mount
+      :hidden="!$slots.default || model !== t.value"
+      :tabindex="$slots.default ? 0 : -1"
+      class="tab-panel"
+      data-testid="tab-panel"
+    >
+      <slot v-if="model === t.value" :item="t" />
+    </TabsContent>
   </TabsRoot>
 </template>
 
@@ -41,6 +58,9 @@ const model = defineModel<string>({ required: true })
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+}
+.tab-panel[hidden] {
+  display: none;
 }
 .tab:hover {
   background: var(--soft);

@@ -11,6 +11,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "guard:dist": "node scripts/guard-dist.mjs",
     "contracts:gen": "openapi-typescript ../contracts/openapi.json -o src/api/schema.d.ts",
     "contracts:check": "node scripts/contracts-check.mjs",
     "tauri": "tauri"

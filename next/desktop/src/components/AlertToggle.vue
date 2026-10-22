@@ -40,6 +40,7 @@ async function request(next: boolean) {
       id="alert-demo"
       aria-label="告警演示开关"
       :model-value="store.alert.active"
+      class="hit"
       :disabled="pending"
       @update:model-value="(v: boolean) => request(v)"
     />
@@ -52,6 +53,20 @@ async function request(next: boolean) {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* 视觉尺寸不变（20px），用伪元素把点击目标扩到 --target-min（32px） */
+.hit {
+  position: relative;
+}
+.hit::after {
+  content: '';
+  position: absolute;
+  inset: calc((var(--target-min) - 100%) / -2) 0;
+}
+.lbl {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
 }
 .err {
   font-size: 10.5px;

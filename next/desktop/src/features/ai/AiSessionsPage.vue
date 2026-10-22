@@ -14,13 +14,13 @@ import SearchBox from '@/components/SearchBox.vue'
 import TextInput from '@/components/TextInput.vue'
 import { useAiSessions, type SessionState } from './mock/sessions'
 
-const { sessions, filters, tools, context, approvals, pending, decide } = useAiSessions()
+const { sessions, filters, messages, approvals, pending, context, tools, send, decide } =
+  useAiSessions()
 
 const filter = ref('all')
 const selectedId = ref('s1')
 const query = ref('')
 const draft = ref('')
-const sent = ref<string[]>([])
 
 const list = computed(() =>
   sessions.value.filter((s) => {
@@ -30,14 +30,17 @@ const list = computed(() =>
   }),
 )
 const selected = computed(() => sessions.value.find((s) => s.id === selectedId.value))
-const isApprovalSession = computed(() => selectedId.value === 's1')
+const msgs = computed(() => messages(selectedId.value))
+const decided = computed(() => approvals(selectedId.value))
+const pendingCmd = computed(() => pending(selectedId.value))
+const ctxInfo = computed(() => context(selectedId.value))
+const toolStats = computed(() => tools(selectedId.value))
 const dot = (s: SessionState) => (s === 'approve' ? 'warn' : s === 'run' ? 'run' : 'idle')
 const DECISION = { once: '已允许一次', always: '本会话总是允许', deny: '已拒绝' } as const
 
-function send() {
-  const t = draft.value.trim()
-  if (!t) return
-  sent.value.push(t)
+function submit() {
+  if (!draft.value.trim()) return
+  send(selectedId.value, draft.value)
   draft.value = ''
 }
 </script>
@@ -88,15 +91,11 @@ function send() {
       </header>
 
       <div class="flow">
-        <div class="msg">
-          <span class="lbl who">You</span>
-          <p>分析工单 #48213：切项目后菜单丢失。先定位权限缓存在哪里失效，再给最小修复。</p>
-        </div>
-        <div class="msg">
-          <span class="lbl who strong">Claude</span>
-          <div class="reply">
-            <div class="tools cut-xs">
-              <div v-for="t in tools" :key="t.k + t.a" class="tool">
+        <div v-for="(m, i) in msgs" :key="`${selectedId}-${i}`" class="msg" data-testid="message">
+          <span class="lbl who" :class="{ strong: m.role === 'ai' }">{{ m.who }}</span>
+          <div v-if="m.role === 'ai'" class="reply">
+            <div v-if="m.tools?.length" class="tools cut-xs">
+              <div v-for="t in m.tools" :key="t.k + t.a" class="tool">
                 <span class="tick" aria-hidden="true">✓</span>
                 <b class="ox tk">{{ t.k }}</b>
                 <span class="mono ta">{{ t.a }}</span>
@@ -104,17 +103,20 @@ function send() {
               </div>
             </div>
             <p>
-              问题在 <code class="mono">usePermissions</code>：缓存键只含用户
-              ID，切换项目不会让它失效。修复是把 projectId 加进 queryKey，并在切换项目时让旧键失效。
+              <template v-for="(part, j) in m.body" :key="j"
+                ><code v-if="typeof part !== 'string'" class="mono">{{ part.code }}</code
+                ><template v-else>{{ part }}</template></template
+              >
             </p>
           </div>
-        </div>
-        <div v-for="(m, i) in sent" :key="i" class="msg">
-          <span class="lbl who">You</span>
-          <p>{{ m }}</p>
+          <p v-else>
+            <template v-for="(part, j) in m.body" :key="j">{{
+              typeof part === 'string' ? part : part.code
+            }}</template>
+          </p>
         </div>
         <p
-          v-for="(a, i) in approvals"
+          v-for="(a, i) in decided"
           :key="i"
           class="decided mono"
           :data-decision="a.decision"
@@ -122,10 +124,14 @@ function send() {
         >
           {{ DECISION[a.decision] }}：{{ a.command }}
         </p>
-        <ApprovalBar v-if="isApprovalSession && pending" :command="pending" @decide="decide" />
+        <ApprovalBar
+          v-if="pendingCmd"
+          :command="pendingCmd"
+          @decide="(d) => decide(selectedId, d)"
+        />
       </div>
 
-      <form class="composer" @submit.prevent="send">
+      <form class="composer" @submit.prevent="submit">
         <TextInput
           v-model="draft"
           class="grow"
@@ -138,19 +144,19 @@ function send() {
     </GlassPanel>
   </div>
 
-  <InspectorPanel v-if="selected" label="会话检查器">
+  <InspectorPanel v-if="selected && ctxInfo" label="会话检查器">
     <div class="ctx" data-testid="ai-inspector">
       <div class="ctx-block">
         <div class="ctx-head">
-          <span class="lbl">Context</span><span class="ox pct">{{ context.pct }}%</span>
+          <span class="lbl">Context</span><span class="ox pct">{{ ctxInfo.pct }}%</span>
         </div>
         <EnergyBar
-          :value="Math.round((context.pct / 100) * context.segments)"
-          :segments="context.segments"
+          :value="Math.round((ctxInfo.pct / 100) * ctxInfo.segments)"
+          :segments="ctxInfo.segments"
           label="上下文占用"
         />
         <dl>
-          <template v-for="r in context.rows" :key="r.k">
+          <template v-for="r in ctxInfo.rows" :key="r.k">
             <dt class="lbl">{{ r.k }}</dt>
             <dd class="mono">{{ r.v }}</dd>
           </template>
@@ -159,7 +165,7 @@ function send() {
       <div class="ctx-block">
         <span class="lbl">工具调用统计</span>
         <dl>
-          <template v-for="t in tools" :key="t.k">
+          <template v-for="t in toolStats" :key="t.k + t.a">
             <dt class="lbl">{{ t.k }}</dt>
             <dd class="mono">{{ t.r }}</dd>
           </template>

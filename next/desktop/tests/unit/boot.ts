@@ -14,8 +14,28 @@ export const json = (body: unknown) =>
     headers: { 'content-type': 'application/json' },
   })
 
+interface BootOpts {
+  fetchImpl?: typeof fetch
+  path?: string
+}
+
 /** 挂载整个 App（假 fetch、假 WebSocket），默认路由 `/`（重定向到 /tasks）。 */
-export async function boot(opts: { fetchImpl?: typeof fetch; path?: string } = {}) {
+export async function boot(opts: BootOpts = {}) {
+  const m = await mountApp(opts)
+  m.runtime.start()
+  await flushPromises()
+  const sock = FakeSocket.last()
+  sock.open()
+  await flushPromises()
+  return { ...m, sock }
+}
+
+/** 挂载 App 但不调用 `runtime.start()`：尚未取得连接信息（`runtime.api()` 为 null）。 */
+export async function bootUnconnected(opts: BootOpts = {}) {
+  return mountApp(opts)
+}
+
+async function mountApp(opts: BootOpts) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const fetchMock =
@@ -49,15 +69,9 @@ export async function boot(opts: { fetchImpl?: typeof fetch; path?: string } = {
       provide: { [backendRuntimeKey as symbol]: runtime },
     },
   })
-  runtime.start()
-  await flushPromises()
-  const sock = FakeSocket.last()
-  sock.open()
-  await flushPromises()
   return {
     wrapper,
     runtime,
-    sock,
     router,
     fetchMock: fetchMock as ReturnType<typeof vi.fn>,
     store: useBackendStore(),
