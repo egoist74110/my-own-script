@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 import ssl
 import time
 from collections.abc import Callable
@@ -56,7 +57,14 @@ def within(library: Library, url: str) -> bool:
         if "\\" in decoded or any(p in {".", ".."} for p in decoded.split("/")):
             return False
         prefix = httpx.URL(library.base_url).path.rstrip("/") + "/"
-        return path.startswith(prefix)
+        # raw_path includes the query string; the encoded-separator check is for the path only.
+        raw_path = httpx.URL(url).raw_path.split(b"?", 1)[0]
+        raw_prefix = httpx.URL(library.base_url).raw_path.rstrip(b"/") + b"/"
+        return (
+            path.startswith(prefix)
+            and raw_path.startswith(raw_prefix)
+            and not re.search(rb"%(?:2f|5c|2e)", raw_path, re.IGNORECASE)
+        )
     except ValueError, httpx.InvalidURL:
         return False
 
@@ -200,11 +208,11 @@ class AdoRead:
             # Remote data can echo a PAT. Redact before any public shaping/registration.
             def redact(value):
                 if isinstance(value, str):
-                    return redact_exception(value)
+                    return re.sub(r"[\ud800-\udfff]", "\ufffd", redact_exception(value))
                 if isinstance(value, list):
                     return [redact(x) for x in value]
                 if isinstance(value, dict):
-                    return {redact_exception(k): redact(v) for k, v in value.items()}
+                    return {redact(k): redact(v) for k, v in value.items()}
                 return value
 
             return redact(payload), status

@@ -2,6 +2,7 @@
 
 import html
 import re
+from functools import partial
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -17,9 +18,13 @@ TAGS = set(
 )
 DROP = set("script style iframe object embed form input svg math".split())
 ATTRS = {"a": {"href"}, "img": {"alt"}, "td": {"colspan", "rowspan"}, "th": {"colspan", "rowspan"}}
+FIRST_ATTRS = {**ATTRS, "img": {"src", "alt"}}
+FINAL_ATTRS = {**ATTRS, "img": {"alt", "data-media-id"}, "span": {"data-blocked-origin"}}
 
 
-def attribute(tag, attr, value):
+def attribute(tag, attr, value, *, allowed):
+    if attr not in allowed.get(tag, set()):
+        return None
     if attr in {"colspan", "rowspan"}:
         digits = value.lstrip("0")
         return (
@@ -87,10 +92,10 @@ def sanitize_html(value: str, register) -> HtmlField:
         value,
         tags=TAGS,
         clean_content_tags=DROP,
-        attributes={**ATTRS, "img": {"src", "alt"}},
+        attributes=FIRST_ATTRS,
         url_schemes={"http", "https", "mailto", "data", "blob", "file", "javascript"},
         link_rel=None,
-        attribute_filter=attribute,
+        attribute_filter=partial(attribute, allowed=FIRST_ATTRS),
     )
     parser = Images(register)
     parser.feed(first)
@@ -99,10 +104,10 @@ def sanitize_html(value: str, register) -> HtmlField:
             "".join(parser.parts),
             tags=TAGS,
             clean_content_tags=DROP,
-            attributes={**ATTRS, "img": {"alt", "data-media-id"}, "span": {"data-blocked-origin"}},
+            attributes=FINAL_ATTRS,
             url_schemes={"http", "https", "mailto"},
             link_rel=None,
-            attribute_filter=attribute,
+            attribute_filter=partial(attribute, allowed=FINAL_ATTRS),
         )
     )
 

@@ -1,6 +1,8 @@
 """Read-only work items and event-loop-owned opaque media registration."""
 
 import asyncio
+import html
+import re
 import secrets
 import time
 import unicodedata
@@ -62,10 +64,17 @@ async def outbound(fn, *args, **kwargs):
             return await asyncio.shield(task)
         except asyncio.CancelledError:
             # Cancellation cannot stop a worker thread: retain the permit until it closes.
-            try:
-                await task
-            finally:
-                raise
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            # Retrieve any worker failure while preserving the caller's cancellation.
+            if not task.cancelled():
+                task.exception()
+            raise
     finally:
         OUTBOUND.release()
 
@@ -76,6 +85,20 @@ def failure(exc):
     if exc.category == "no_credential":
         return SettingsError("no_credential", "未配置 PAT", 409)
     return SettingsError("ado_request_failed", exc.message, 502, category=exc.category)
+
+
+def prepare_html(value):
+    """Worker-only cleaning: collect immutable URLs, never touch the registry."""
+    candidates = []
+
+    def collect(url):
+        candidates.append(url)
+        return "candidate-" + str(len(candidates) - 1), None
+
+    return sanitize_html(value, collect), tuple(candidates)
+
+
+MEDIA_PLACEHOLDER = re.compile(r'<img\b[^>]*\bdata-media-id="candidate-(\d+)"[^>]*>')
 
 
 def integer(value, default=None):
@@ -103,7 +126,7 @@ def identity(value):
 
 
 def summary(item):
-    fields = item.get("fields") or {}
+    fields = item.get("fields", {})
     if not isinstance(fields, dict) or integer(item.get("id")) is None:
         raise AdoFailure("bad_response", "远端响应格式无效")
     return WorkItemSummary(
@@ -311,15 +334,48 @@ class WorkItemsService:
             )
         return item
 
-    def register(self, ctx, kind="image", name=""):
+    def register(self, ctx, kind="image", name="", *, budget=None):
         project, library, _ = ctx
-        return lambda url: self.media.register(project.id, library, url, kind, name)
+
+        def register(url):
+            if budget is not None and budget[0] >= 200:
+                return None, None
+            result = self.media.register(project.id, library, url, kind, name)
+            if budget is not None and result[0]:
+                budget[0] += 1
+            return result
+
+        return register
+
+    async def clean_html(self, value, ctx, budget):
+        cleaned, candidates = await asyncio.to_thread(prepare_html, value)
+        if cleaned.html is None:
+            return cleaned
+        register = self.register(ctx, budget=budget)
+
+        def replace(match):
+            if budget[0] >= 200:
+                return '<span data-blocked-origin="">[图片过多未显示]</span>'
+            mid, blocked = register(candidates[int(match[1])])
+            if mid:
+                return match[0].replace(
+                    'data-media-id="candidate-' + match[1] + '"',
+                    'data-media-id="' + html.escape(mid, quote=True) + '"',
+                    1,
+                )
+            return (
+                '<span data-blocked-origin="' + html.escape(blocked or "", quote=True) + '">'
+                + ("[已拦截外部图片]" if blocked else "[内嵌图片未显示]") + '</span>'
+            )
+
+        return cleaned.model_copy(update={"html": MEDIA_PLACEHOLDER.sub(replace, cleaned.html)})
 
     async def detail(self, project_id, ident):
         ctx = await self.snapshot(project_id)
         item = await self.raw_detail(ctx, ident)
         fields = item["fields"]
         html_fields = {}
+        budget = [0]
         for key, field in [
             ("description", "System.Description"),
             ("repro_steps", "Microsoft.VSTS.TCM.ReproSteps"),
@@ -327,7 +383,7 @@ class WorkItemsService:
         ]:
             value = fields.get(field)
             html_fields[key] = (
-                sanitize_html(str(value), self.register(ctx)) if value is not None else None
+                await self.clean_html(str(value), ctx, budget) if value is not None else None
             )
         parent, children, attachments, links = None, [], [], []
         for rel in self.relations(item):
@@ -345,7 +401,7 @@ class WorkItemsService:
                     (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg")
                 )
                 # All relations remain downloadable even when they are images.
-                mid, blocked = self.register(ctx, "attachment", name)(url)
+                mid, blocked = self.register(ctx, "attachment", name, budget=budget)(url)
                 size = attrs.get("resourceSize")
                 attachments.append(
                     Attachment(
@@ -399,11 +455,12 @@ class WorkItemsService:
             {"api-version": "7.0-preview.4", "$top": 100},
         )
         values, comments = self.values(payload, "comments"), []
+        budget = [0]
         for value in values[:100]:
             cid = integer(value.get("id")) or integer(value.get("commentId"))
             if not cid or value.get("isDeleted"):
                 continue
-            cleaned = sanitize_html(str(value.get("text") or ""), self.register(ctx))
+            cleaned = await self.clean_html(str(value.get("text") or ""), ctx, budget)
             comments.append(
                 Comment(
                     id=cid,
@@ -429,7 +486,11 @@ class WorkItemsService:
             if not uid:
                 continue
             fields, rels = value.get("fields") or {}, value.get("relations") or {}
-            if not isinstance(fields, dict) or not isinstance(rels, dict):
+            if (
+                not isinstance(fields, dict)
+                or not isinstance(rels, dict)
+                or any(not isinstance(rels.get(key, []), list) for key in ("added", "removed"))
+            ):
                 raise SettingsError(
                     "ado_request_failed", "远端响应格式无效", 502, category="bad_response"
                 )
@@ -489,9 +550,12 @@ class WorkItemsService:
                 if cid not in by_id:
                     continue
                 item = by_id[cid]
-                result.append(
-                    ChildItem(**summary(item).model_dump(), parent_id=parent, depth=child_depth)
-                )
+                try:
+                    result.append(
+                        ChildItem(**summary(item).model_dump(), parent_id=parent, depth=child_depth)
+                    )
+                except AdoFailure as exc:
+                    raise failure(exc) from None
                 enqueue(item, cid, child_depth + 1)
         return ChildrenResponse(items=result, truncated=truncated)
 

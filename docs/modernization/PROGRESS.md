@@ -545,3 +545,15 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 既有断言改写 10 处（`settings-s1f`、`settings`、`settings-independent`、`s1g-independent`），全部对应合同的两项语义变化（基线前移后 revision 期望值 +1/+2、A→B→A 未改字段跟随服务器、页签数 4→5）；“旧会话回调不执行、无合并提示”的核心保护保留。无删除/跳过。
 - 集成：限定 `next/desktop/src/features/settings`、`next/desktop/tests` 的 binary patch，`git apply --check` 后应用。集成版本前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **507 passed**；`git diff --check` 通过。
 - 未测：真实浏览器渲染与 Tab 顺序、真实后端下 `exists`/warnings、本地仓库 DELETE 的 409 路径。
+
+### S2-D 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S2-D 审计修复 | codex exec，requested gpt-6.1-sol / medium，session `01a163cc-a28c-7eb3-ab0d-b28e2abb9e8f`（两轮，`exec resume` 续接）；actual unknown | codex 内原生子 agent `/root/s2d_tests`，requested gpt-6-luna / high，actual unknown，independent=true，**新增** 36 例（`tests/independent/s2d/`） | passed，提交见下 |
+
+- 首轮交回 partial：001/002/004/I-2/I-4 完成，003 因 nh3 0.3.7 无 `generic_attributes` 参数停下升级（正当）；主控裁决改为 attribute_filter 按标签白名单（WORK_PACKAGES「S2-D 主控裁决」，`0bb61af`），第二轮完成。修前失败证据：两组新回归在还原副本上 29 failed / 11 passed；003 修前 1 failed。
+- **CR-S2D-L01**（minor，主控审阅发现并修复，verified_by=lead）：`httpx.URL.raw_path` 含查询串，`%2F/%5C/%2E` 检查误作用到 `?fileName=…`，可能拦截合法附件；改为只检查 `?` 之前的原始路径。回归追加到 `tests/test_s2_lead_regressions.py`，修前失败、修后通过。
+- 主控审阅：004 的线程清洗只收集候选 URL 并输出 `candidate-N` 占位，回事件循环后按单响应 200 预算登记替换；攻击者内容无法伪造 `data-media-id`（首遍 img 只放行 src/alt，alt 值引号已转义），既有 `test_html_cannot_forge_generated_media_attributes` 仍通过。I-2 取消路径循环 shield 直到线程结束。
+- 集成：限定 `next/backend` 的 binary patch；集成版本后端 `pytest` **572 passed**、ruff/contracts 通过；契约无漂移（前端 `contracts:check` 通过）。
+- CR-S2A-001..004、I-2、I-4（第一项）→ fixed（待审计第二轮确认）。

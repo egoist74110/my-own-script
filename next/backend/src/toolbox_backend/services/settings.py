@@ -221,7 +221,9 @@ class SettingsService:
             else:
                 updates = body.model_dump(exclude={"revision"})
                 candidate_name = body.name
-            if any(x.id != ident and x.name == candidate_name for x in c.ado.local_repos):
+            if (not rid or "name" in updates) and any(
+                x.id != ident and x.name == candidate_name for x in c.ado.local_repos
+            ):
                 raise SettingsError("validation_error", "仓库名称已存在", 422)
             if rid:
                 for key, value in updates.items():

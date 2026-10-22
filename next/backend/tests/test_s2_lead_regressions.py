@@ -16,3 +16,13 @@ def test_same_url_inline_image_and_attachment_get_distinct_kinds():
     assert registry.get(attachment_id).kind == "attachment"
     # Same (url, kind) still deduplicates.
     assert registry.register("proj:1", LIB, URL, "attachment", "x.svg")[0] == attachment_id
+
+
+def test_encoded_separator_check_applies_to_path_not_query():
+    """CR-S2D-L01: %2F/%5C/%2E are rejected in the raw path only, not in the query."""
+    from toolbox_backend.adapters.ado_read import within
+
+    ok = "https://ado.example.test/tfs/C/_apis/wit/attachments/abc?fileName=a%2Epng%2Fb"
+    assert within(LIB, ok)
+    assert not within(LIB, "https://ado.example.test/tfs/C/_apis/wit/attachments/a%2Fb")
+    assert not within(LIB, "https://ado.example.test/tf%73/C/x.png")
