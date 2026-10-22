@@ -287,7 +287,21 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | 包 | 施工 | 测试 | 审计 | 状态 |
 | --- | --- | --- | --- | --- |
 | S1-A 后端 | codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；session `01a16325-b180-7292-8e40-cdfb5c46dee7` | 交付后主控另派 gpt-6-luna / high（偏差：codex 施工者不在沙箱内嵌套派发） | pending | dispatched |
-| S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df` | 施工者派 haiku / medium | pending | dispatched |
+| S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df`；actual unknown（无提供方回执） | 施工者派 haiku / medium，independent=true，新增 37 例（`tests/independent/s1c-{ui,guard}.test.ts`），未发现缺陷 | s05-cross round2 dispatched | passed（自动验收），集成提交 `fd22770` |
 | S1-B 设置页 | — | — | — | 等 S1-A、S1-C 集成 |
 
 请求原文与输出在 git 忽略的 `.local/dispatch/s1a/`。
+
+### S1-C 集成（主控）
+
+- 主控在施工 worktree 与集成后主 worktree 各重跑：`pnpm install --frozen-lockfile`、`typecheck`、`lint`、`rm -rf dist && pnpm test`（19 文件 **269 passed**）、`build`、`guard:dist`（无 dist 时 exit 1，构建后 exit 0）、`contracts:check` 全部符合预期；`git diff --check` 通过。集成方式：限定 `next/desktop` 的 binary patch，`git apply --check` 后应用（主 worktree 该路径无既有改动）。
+- 主控审阅 diff 的结论：AppTabs 无插槽用法下 tabpanel 恒 hidden，`aria-controls` 指向空面板——可用但语义偏弱，S1-B 设置页起改用插槽面板；AlertToggle 命中区仅上下扩展（`inset: … 0`），不横向覆盖相邻控件；32px 只做了 CSS 约定检查，无真实布局测量（列入未测）。
+- 偏差（已接受）：既有 independent 用例 `repo-guard`、`e-security` 中依赖 dist 的部分移入 `guard:dist`（禁词集合不变，另含 `--denied` 残留检查），src 侧断言保留。
+- 测试者观察（记录，不处置）：会话被过滤出列表时对话区仍绑定该会话；`draft` 输入草稿不按会话隔离；UTF-16 产物禁词会漏检（与 grep -I 一致）。
+
+| finding_id | 处置 |
+| --- | --- |
+| CR-S05-001..005 | fixed（主控核实，`fd22770`）；第二轮复核：续接 Codex 会话 `01a16310-…`，gpt-6.1-sol / high，pending |
+| S0B-007 | fixed（`fd22770`） |
+| S0B-008 | obsolete：`grep -rniE "uptime|运行时长" src` 仅命中 `src/api/schema.d.ts` 契约字段；界面不显示运行时长；加了守卫测试 |
+| S05-005 | rejected（主控裁决，见 S1-C 合同） |
