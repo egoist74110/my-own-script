@@ -620,3 +620,4 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 | CR-S2B-002 | minor | “刷新详情”先 `forgetFailed` 再失效，旧 id 先被重试；换新 id 成功后仍显示“部分图片已过期” | open → S2-E2 |
 | CR-S2B-003 | minor | 图片附件分支没有下载按钮（含 SVG、预览失败的图片） | open → S2-E2 |
 - S2-E 派工（基线 `5d591e2`）：S2-E1（CR-S2C-001）续接 S2-C 施工 agent，worktree `.local/worktrees/s2e1`；S2-E2（CR-S2B-001..003）续接 S2-B 施工 agent，worktree `.local/worktrees/s2e2`；均 requested sonnet / medium，actual unknown；并行，文件不重叠。
+- S2-E1 集成（主控）：施工者（续接 S2-C agent，requested sonnet / medium，actual unknown）新增 `tests/unit/settings-s2e1.test.ts` 4 例，未派测试子 agent（合同允许，`verified_by=executor` + 主控复核）。主控在 worktree 临时反向应用 src 补丁复跑：3 failed / 1 passed（护栏），恢复后全过——修前失败证据属实。修法：settling 时若用户改过的字段服务器也变了即不 adopt，基线与 revision 不动，保存走 409 合并提示。集成版本前端 **732 passed**，typecheck/lint/build/guard:dist/contracts:check 通过，提交 `3d0fdd3`。CR-S2C-001 → fixed（待审计第二轮）。
