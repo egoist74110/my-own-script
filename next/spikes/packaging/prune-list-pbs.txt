@@ -1,0 +1,30 @@
+# prune list (relative to runtime/)
+removed lib/python3.14/idlelib
+removed lib/python3.14/tkinter
+removed lib/python3.14/turtledemo
+removed lib/python3.14/ensurepip
+removed lib/python3.14/pydoc_data
+removed lib/python3.14/turtle.py
+removed lib/python3.14/config-3.14-darwin
+removed lib/python3.14/site-packages/pip
+removed lib/python3.14/lib-dynload/_tkinter.cpython-314-darwin.so
+removed lib/tcl9.0
+removed lib/tk9.0
+removed lib/tcl9
+removed lib/libtcl9.0.dylib
+removed lib/libtcl9tk9.0.dylib
+removed lib/libpython3.14.dylib
+removed lib/itcl4.3.8
+removed lib/thread3.0.6
+removed lib/pkgconfig
+removed include
+removed share
+removed bin/idle3
+removed bin/idle3.14
+removed bin/pydoc3
+removed bin/pydoc3.14
+removed bin/pip
+removed bin/pip3
+removed bin/pip3.14
+removed bin/python3.14-config
+removed (dir) lib/python3.14/encodings/__pycache__

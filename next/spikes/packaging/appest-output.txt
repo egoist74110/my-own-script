@@ -1,0 +1,7 @@
+shell_app_kib 9532
+shell_binary_kib 9460
+shell_app_zip_kib 3529
+app_pbs_kib 71224
+app_pbs_zip_kib 26551
+app_pyi_kib 40744
+app_pyi_zip_kib 20531

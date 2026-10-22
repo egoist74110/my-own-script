@@ -1,6 +1,6 @@
 # next：新版代码工具箱
 
-前后端分离重写：Vue 3 + Vite 界面、Tauri 2 薄壳、Python 3.14 + FastAPI 后端。尚未搭建骨架（S0）。
+前后端分离重写：Vue 3 + Vite 界面、Tauri 2 薄壳、Python 3.14 + FastAPI 后端。S0 骨架已完成：各子目录 README 说明运行与测试；打包 spike 见 `spikes/packaging/`。
 
 - 架构决策：[ARCHITECTURE.md](../docs/modernization/ARCHITECTURE.md)
 - 前端选型：[FRONTEND_STACK.md](../docs/modernization/FRONTEND_STACK.md)

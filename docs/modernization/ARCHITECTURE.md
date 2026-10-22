@@ -87,7 +87,7 @@ next/
 
 ## 8. 未决事项（不阻塞骨架）
 
-- 内置 Python 方案与包体积（S0 spike 实测，不预估）。
+- 内置 Python 方案与包体积：S0 spike 已实测（PROGRESS 2026-10-22 S0 节、`next/spikes/packaging/`），倾向 python-build-standalone，S9 结合签名/公证定案。
 - 是否需要 launchd 无界面常驻。
 - 新应用名称与 bundle id。
 - 视觉方向（见 FRONTEND_STACK §5，需用户在方向稿中选择）。

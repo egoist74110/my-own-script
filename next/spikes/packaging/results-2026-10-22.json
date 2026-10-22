@@ -1,0 +1,521 @@
+{
+  "machine": {
+    "date": "2026-10-22",
+    "macos": "27.0.1",
+    "macos_build": "26A434",
+    "chip": "Apple M4",
+    "arch": "arm64",
+    "uv": "uv 0.13.4 (Homebrew 2026-10-20 aarch64-apple-darwin)",
+    "pbs_python": "Python 3.14.8",
+    "pyinstaller": "6.22.3",
+    "pyinstaller_build_interpreter": "Python 3.14.8",
+    "harness_python": "3.9.6",
+    "date_note": "date is a literal in measure.py (run day)"
+  },
+  "runs_per_metric": 5,
+  "variants": {
+    "A_pbs": {
+      "dir": "<repo>/next/.local/spike/pbs/runtime",
+      "launch_cmd": [
+        "bin/python3.14",
+        "-m",
+        "toolbox_backend"
+      ],
+      "size_uncompressed_kib": 61692,
+      "size_uncompressed_method": "du -sk <dir>",
+      "size_compressed_kib": 22706,
+      "size_compressed_method": "ditto -c -k --sequesterRsrc --keepParent <dir> x.zip ; stat size (deflate, NOT ULFO)",
+      "warm": {
+        "samples": [
+          {
+            "ok": true,
+            "ready_s": 0.2548037919999997,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.25708804200000035,
+            "health_after_ready_s": 0.002284250000000654,
+            "rss_group_kib": 19568,
+            "rss_ready_pid_kib": 19568,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.22979041600000016
+          },
+          {
+            "ok": true,
+            "ready_s": 0.3368340000000014,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.3390151670000012,
+            "health_after_ready_s": 0.0021811669999998173,
+            "rss_group_kib": 47328,
+            "rss_ready_pid_kib": 47328,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.23241774999999976
+          },
+          {
+            "ok": true,
+            "ready_s": 0.26466704199999924,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.2670242920000021,
+            "health_after_ready_s": 0.002357250000002864,
+            "rss_group_kib": 41264,
+            "rss_ready_pid_kib": 41264,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2847562919999973
+          },
+          {
+            "ok": true,
+            "ready_s": 0.34255912499999397,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.34566870799999805,
+            "health_after_ready_s": 0.003109583000004079,
+            "rss_group_kib": 40384,
+            "rss_ready_pid_kib": 40384,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.23164729200000522
+          },
+          {
+            "ok": true,
+            "ready_s": 0.26401824999999945,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.2676195419999985,
+            "health_after_ready_s": 0.0036012919999990345,
+            "rss_group_kib": 40576,
+            "rss_ready_pid_kib": 40576,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.22824800000000067
+          }
+        ],
+        "ready_s_median": 0.26466704199999924,
+        "ready_s_min": 0.2548037919999997,
+        "ready_s_max": 0.34255912499999397,
+        "health_from_spawn_s_median": 0.2676195419999985,
+        "health_from_spawn_s_min": 0.25708804200000035,
+        "health_from_spawn_s_max": 0.34566870799999805,
+        "health_after_ready_s_median": 0.002357250000002864,
+        "health_after_ready_s_min": 0.0021811669999998173,
+        "health_after_ready_s_max": 0.0036012919999990345,
+        "rss_group_kib_median": 40576,
+        "rss_group_kib_min": 19568,
+        "rss_group_kib_max": 47328,
+        "rss_ready_pid_kib_median": 40576,
+        "rss_ready_pid_kib_min": 19568,
+        "rss_ready_pid_kib_max": 47328,
+        "all_ok": true,
+        "all_graceful_exit_0": true,
+        "leftover_any": false,
+        "definition": "after one discarded warm-up run; same dir; page cache hot; env -i; idle 10s before RSS sample"
+      },
+      "cold": {
+        "samples": [
+          {
+            "ok": true,
+            "ready_s": 0.8250597919999976,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.8275362500000014,
+            "health_after_ready_s": 0.002476458000003845,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2880517080000047
+          },
+          {
+            "ok": true,
+            "ready_s": 0.7947393330000025,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.7979611660000003,
+            "health_after_ready_s": 0.003221832999997787,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2869926669999998
+          },
+          {
+            "ok": true,
+            "ready_s": 0.8357432919999965,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.8386520000000033,
+            "health_after_ready_s": 0.0029087080000067544,
+            "exit_code": 0,
+            "graceful_exit_s": 0.28184120899999954
+          },
+          {
+            "ok": true,
+            "ready_s": 0.8546402500000028,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.8568018339999952,
+            "health_after_ready_s": 0.0021615839999924447,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2938023749999985
+          },
+          {
+            "ok": true,
+            "ready_s": 0.781164167,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.7839657500000072,
+            "health_after_ready_s": 0.002801583000007213,
+            "exit_code": 0,
+            "graceful_exit_s": 0.23424558300000342
+          }
+        ],
+        "ready_s_median": 0.8250597919999976,
+        "ready_s_min": 0.781164167,
+        "ready_s_max": 0.8546402500000028,
+        "health_from_spawn_s_median": 0.8275362500000014,
+        "health_from_spawn_s_min": 0.7839657500000072,
+        "health_from_spawn_s_max": 0.8568018339999952,
+        "health_after_ready_s_median": 0.002801583000007213,
+        "health_after_ready_s_min": 0.0021615839999924447,
+        "health_after_ready_s_max": 0.003221832999997787,
+        "all_ok": true,
+        "all_graceful_exit_0": true,
+        "leftover_any": false,
+        "definition": "each run on a freshly `cp -R` copy (first execution of new files); page cache NOT purged (`sudo purge` unavailable), so this is 'first run of a new copy', not true cold-disk"
+      },
+      "relocatable": {
+        "ok": true,
+        "run": {
+          "ok": true,
+          "ready_s": 0.3527132090000009,
+          "ready_pid_matches_child": true,
+          "health_status": 200,
+          "health_from_spawn_s": 0.35566033400000663,
+          "health_after_ready_s": 0.0029471250000057125,
+          "exit_code": 0,
+          "graceful_exit_s": 0.23651891700001215
+        },
+        "method": "mv dir to another path (original path absent), env -i, cwd=/, run once, expect READY+/health 200"
+      },
+      "linkage": {
+        "macho_files_scanned": 4,
+        "system_libs": {
+          "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation": 1,
+          "/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration": 1,
+          "/usr/lib/libSystem.B.dylib": 4,
+          "/usr/lib/libedit.3.dylib": 1,
+          "/usr/lib/libiconv.2.dylib": 1,
+          "/usr/lib/libncurses.5.4.dylib": 1,
+          "/usr/lib/libpanel.5.4.dylib": 1,
+          "/usr/lib/libz.1.dylib": 1
+        },
+        "relative_libs": {
+          "@rpath/pydantic_core._pydantic_core.cpython-314-darwin.so": 1
+        },
+        "non_system_absolute_libs": {},
+        "method": "walk dir, magic-number detect Mach-O, `otool -L` each, classify by prefix"
+      },
+      "build": {
+        "source": "build_pbs.sh; sizes from its prune.log (du -sk)",
+        "size_kib_raw_copy_of_uv_pbs_plus_deps": 82352,
+        "size_kib_after_prune_no_pyc": 41824,
+        "size_kib_after_compileall_unchecked_hash": 61692,
+        "prune_list_file": "prune-list-pbs.txt",
+        "python": "3.14.8 (uv python install 3.14)"
+      }
+    },
+    "B_pyinstaller": {
+      "dir": "<repo>/next/.local/spike/pyinstaller/toolbox-backend",
+      "launch_cmd": [
+        "toolbox-backend"
+      ],
+      "size_uncompressed_kib": 31212,
+      "size_uncompressed_method": "du -sk <dir>",
+      "size_compressed_kib": 16997,
+      "size_compressed_method": "ditto -c -k --sequesterRsrc --keepParent <dir> x.zip ; stat size (deflate, NOT ULFO)",
+      "warm": {
+        "samples": [
+          {
+            "ok": true,
+            "ready_s": 0.5483841249999983,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.552073790999998,
+            "health_after_ready_s": 0.0036896659999996473,
+            "rss_group_kib": 61984,
+            "rss_ready_pid_kib": 61984,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2824542080000043
+          },
+          {
+            "ok": true,
+            "ready_s": 0.328494292000002,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.3306209170000045,
+            "health_after_ready_s": 0.002126625000002491,
+            "rss_group_kib": 35600,
+            "rss_ready_pid_kib": 35600,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.23819408299999623
+          },
+          {
+            "ok": true,
+            "ready_s": 0.3459574590000045,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.348405709000005,
+            "health_after_ready_s": 0.0024482500000004848,
+            "rss_group_kib": 49312,
+            "rss_ready_pid_kib": 49312,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2363560409999934
+          },
+          {
+            "ok": true,
+            "ready_s": 0.27731366599999774,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.27987229100000377,
+            "health_after_ready_s": 0.0025586250000060318,
+            "rss_group_kib": 23312,
+            "rss_ready_pid_kib": 23312,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.23744450000000938
+          },
+          {
+            "ok": true,
+            "ready_s": 0.2186448749999954,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.2206531669999947,
+            "health_after_ready_s": 0.002008291999999301,
+            "rss_group_kib": 23264,
+            "rss_ready_pid_kib": 23264,
+            "group_proc_count": 1,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2856772920000026
+          }
+        ],
+        "ready_s_median": 0.328494292000002,
+        "ready_s_min": 0.2186448749999954,
+        "ready_s_max": 0.5483841249999983,
+        "health_from_spawn_s_median": 0.3306209170000045,
+        "health_from_spawn_s_min": 0.2206531669999947,
+        "health_from_spawn_s_max": 0.552073790999998,
+        "health_after_ready_s_median": 0.0024482500000004848,
+        "health_after_ready_s_min": 0.002008291999999301,
+        "health_after_ready_s_max": 0.0036896659999996473,
+        "rss_group_kib_median": 35600,
+        "rss_group_kib_min": 23264,
+        "rss_group_kib_max": 61984,
+        "rss_ready_pid_kib_median": 35600,
+        "rss_ready_pid_kib_min": 23264,
+        "rss_ready_pid_kib_max": 61984,
+        "all_ok": true,
+        "all_graceful_exit_0": true,
+        "leftover_any": false,
+        "definition": "after one discarded warm-up run; same dir; page cache hot; env -i; idle 10s before RSS sample"
+      },
+      "cold": {
+        "samples": [
+          {
+            "ok": true,
+            "ready_s": 1.0232037920000039,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.025298417000002,
+            "health_after_ready_s": 0.002094624999998018,
+            "exit_code": 0,
+            "graceful_exit_s": 0.29436558300000115
+          },
+          {
+            "ok": true,
+            "ready_s": 1.149700334000002,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.1519744999999801,
+            "health_after_ready_s": 0.002274165999978095,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2936142920000009
+          },
+          {
+            "ok": true,
+            "ready_s": 1.0617403329999888,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.0643081669999788,
+            "health_after_ready_s": 0.0025678339999899435,
+            "exit_code": 0,
+            "graceful_exit_s": 0.3334313340000108
+          },
+          {
+            "ok": true,
+            "ready_s": 1.0518560840000077,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.0544512090000069,
+            "health_after_ready_s": 0.0025951249999991433,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2891170000000045
+          },
+          {
+            "ok": true,
+            "ready_s": 0.9901255830000082,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 0.9922360000000197,
+            "health_after_ready_s": 0.0021104170000114664,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2854106669999794
+          }
+        ],
+        "ready_s_median": 1.0518560840000077,
+        "ready_s_min": 0.9901255830000082,
+        "ready_s_max": 1.149700334000002,
+        "health_from_spawn_s_median": 1.0544512090000069,
+        "health_from_spawn_s_min": 0.9922360000000197,
+        "health_from_spawn_s_max": 1.1519744999999801,
+        "health_after_ready_s_median": 0.002274165999978095,
+        "health_after_ready_s_min": 0.002094624999998018,
+        "health_after_ready_s_max": 0.0025951249999991433,
+        "all_ok": true,
+        "all_graceful_exit_0": true,
+        "leftover_any": false,
+        "definition": "each run on a freshly `cp -R` copy (first execution of new files); page cache NOT purged (`sudo purge` unavailable), so this is 'first run of a new copy', not true cold-disk"
+      },
+      "relocatable": {
+        "ok": true,
+        "run": {
+          "ok": true,
+          "ready_s": 0.2183300000000088,
+          "ready_pid_matches_child": true,
+          "health_status": 200,
+          "health_from_spawn_s": 0.21992883400000096,
+          "health_after_ready_s": 0.0015988339999921664,
+          "exit_code": 0,
+          "graceful_exit_s": 0.290852000000001
+        },
+        "method": "mv dir to another path (original path absent), env -i, cwd=/, run once, expect READY+/health 200"
+      },
+      "linkage": {
+        "macho_files_scanned": 4,
+        "system_libs": {
+          "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation": 1,
+          "/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration": 1,
+          "/usr/lib/libSystem.B.dylib": 4,
+          "/usr/lib/libedit.3.dylib": 1,
+          "/usr/lib/libiconv.2.dylib": 1,
+          "/usr/lib/libncurses.5.4.dylib": 1,
+          "/usr/lib/libpanel.5.4.dylib": 1,
+          "/usr/lib/libz.1.dylib": 2
+        },
+        "relative_libs": {
+          "@rpath/libpython3.14.dylib": 1,
+          "@rpath/pydantic_core._pydantic_core.cpython-314-darwin.so": 1
+        },
+        "non_system_absolute_libs": {},
+        "method": "walk dir, magic-number detect Mach-O, `otool -L` each, classify by prefix"
+      },
+      "build": {
+        "source": "build_pyinstaller.sh",
+        "pyinstaller": "6.22.3",
+        "build_interpreter": "3.14.8 (same PBS), --onedir, --collect-submodules toolbox_backend/uvicorn/websockets + hidden-imports"
+      }
+    },
+    "A_pbs_without_pyc": {
+      "dir": "<repo>/next/.local/spike/measure-scratch/pbs-nopyc",
+      "launch_cmd": [
+        "bin/python3.14",
+        "-m",
+        "toolbox_backend"
+      ],
+      "size_uncompressed_kib": 41824,
+      "size_uncompressed_method": "cp -R then delete all __pycache__, du -sk",
+      "size_compressed_kib": 14686,
+      "size_compressed_method": "ditto -c -k --sequesterRsrc --keepParent",
+      "first_run_no_pyc": {
+        "samples": [
+          {
+            "ok": true,
+            "ready_s": 1.5464315000000113,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.5492514580000147,
+            "health_after_ready_s": 0.002819958000003453,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2882790419999992
+          },
+          {
+            "ok": true,
+            "ready_s": 1.9084492080000075,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.911634915999997,
+            "health_after_ready_s": 0.0031857079999895177,
+            "exit_code": 0,
+            "graceful_exit_s": 0.29009991699999205
+          },
+          {
+            "ok": true,
+            "ready_s": 1.9255036669999868,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.9283874579999747,
+            "health_after_ready_s": 0.002883790999987923,
+            "exit_code": 0,
+            "graceful_exit_s": 0.28864720900000407
+          },
+          {
+            "ok": true,
+            "ready_s": 1.512356667000006,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.5155563749999885,
+            "health_after_ready_s": 0.003199707999982593,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2814950000000067
+          },
+          {
+            "ok": true,
+            "ready_s": 1.452897374999992,
+            "ready_pid_matches_child": true,
+            "health_status": 200,
+            "health_from_spawn_s": 1.4552112499999907,
+            "health_after_ready_s": 0.0023138749999986885,
+            "exit_code": 0,
+            "graceful_exit_s": 0.2862144590000071
+          }
+        ],
+        "ready_s_median": 1.5464315000000113,
+        "ready_s_min": 1.452897374999992,
+        "ready_s_max": 1.9255036669999868,
+        "health_from_spawn_s_median": 1.5492514580000147,
+        "health_from_spawn_s_min": 1.4552112499999907,
+        "health_from_spawn_s_max": 1.9283874579999747,
+        "all_ok": true,
+        "all_graceful_exit_0": true,
+        "leftover_any": false,
+        "definition": "fresh pyc-less copy per run; interpreter compiles imports on the fly (and writes pyc)"
+      }
+    }
+  },
+  "notes": [
+    "No Tauri shell included in these numbers: see tauri_shell block if present.",
+    "Timings: t0 = immediately before subprocess.Popen; READY = line read from child stdout; health = first HTTP 200 on GET /health.",
+    "RSS = sum of `ps -axo rss` over the process group (PyInstaller onedir on macOS execs: group_proc_count was 1 in all samples), also ready-pid-only."
+  ],
+  "tauri_shell_and_full_app": {
+    "method": "build_tauri_shell.sh (pnpm tauri build --bundles app --config tauri-empty.overlay.json, unsigned release, CARGO_TARGET_DIR shared) then size_app_estimate.sh (copy runtime into Contents/Resources/backend; du -sk; ditto -c -k --sequesterRsrc --keepParent). Estimate: runtime not wired into tauri bundle config; no signing/notarization.",
+    "shell_release_binary_kib": 9460,
+    "shell_empty_app_kib": 9532,
+    "shell_empty_app_zip_kib": 3529,
+    "app_with_A_pbs_kib": 71224,
+    "app_with_A_pbs_zip_kib": 26551,
+    "app_with_B_pyinstaller_kib": 40744,
+    "app_with_B_pyinstaller_zip_kib": 20531,
+    "build_time_s_cargo_release": "74 (incremental, deps partly cached; see tauri-build.log, not retained in repo)",
+    "raw_output_file": "appest-output.txt (stdout of size_app_estimate.sh, captured via tee)"
+  }
+}
