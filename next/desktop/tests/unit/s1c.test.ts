@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import AppTabs from '@/components/AppTabs.vue'
+import { tabTriggerId } from '@/components/tabs'
 import { scan } from '../../scripts/forbidden-scan.mjs'
 import { FakeSocket, resetSeq } from './helpers'
 import { boot, bootUnconnected } from './boot'
@@ -95,17 +96,29 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
     w.unmount()
   })
 
-  it('无插槽：仍可用，关联 id 有效，面板为空且隐藏（不新增 Tab 停靠点）', async () => {
-    const { w } = mountTabs(false)
+  it('panelId（筛选型）：不渲染内部空面板；aria-controls 指向页面容器，容器是可见的 tabpanel 且含当前内容', async () => {
+    const model = ref('a')
+    const w = mount(
+      {
+        components: { AppTabs },
+        setup: () => ({ model, items, tabTriggerId }),
+        template: `<div><AppTabs v-model="model" label="视图" :items="items" panel-id="pp" />
+          <div id="pp" role="tabpanel" :aria-labelledby="tabTriggerId('pp', model)"><p>列表-{{ model }}</p></div></div>`,
+      },
+      { attachTo: document.body },
+    )
     await flushPromises()
-    for (const t of w.findAll('[role=tab]')) {
-      const panel = document.getElementById(t.attributes('aria-controls')!)
-      expect(panel).not.toBeNull()
-      expect(panel!.getAttribute('role')).toBe('tabpanel')
-      expect(panel!.getAttribute('aria-labelledby')).toBe(t.attributes('id'))
-      expect(panel!.hasAttribute('hidden')).toBe(true)
-      expect(panel!.textContent).toBe('')
-      expect(panel!.getAttribute('tabindex')).toBe('-1')
+    expect(w.findAll('[data-testid=tab-panel]')).toHaveLength(0)
+    expect(w.findAll('[role=tabpanel]')).toHaveLength(1)
+    for (const t of w.findAll('[role=tab]')) expect(t.attributes('aria-controls')).toBe('pp')
+    for (const v of ['a', 'b']) {
+      model.value = v
+      await flushPromises()
+      const current = w.get('[role=tab][aria-selected=true]')
+      const panel = document.getElementById(current.attributes('aria-controls')!)!
+      expect(panel.hasAttribute('hidden')).toBe(false)
+      expect(panel.textContent).toContain(`列表-${v}`)
+      expect(panel.getAttribute('aria-labelledby')).toBe(current.attributes('id'))
     }
     w.unmount()
   })
@@ -122,6 +135,57 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
       await b.done()
     })
   }
+
+  // 页面级：当前页签 aria-controls 解析到的元素可见，包含当前真实内容，并由当前页签标注
+  const pageCases: [string, string, string, string][] = [
+    ['/tasks', '视图', 'task-row-t1', '运行中'],
+    ['/work-items', '看板列', 'wi-row-48213', '测试中'],
+    ['/ai', '按 AI 筛选', 'session-s1', 'Claude'],
+  ]
+  for (const [path, label, testid, other] of pageCases) {
+    it(`${path}：「${label}」当前页签的 aria-controls 指向可见、含真实内容的 tabpanel（切换后仍成立）`, async () => {
+      const b = await boot({ path })
+      await flushPromises()
+      const list = b.wrapper.get(`[role=tablist][aria-label="${label}"]`)
+      const check = () => {
+        const current = list.get('[role=tab][aria-selected=true]')
+        const panel = document.getElementById(current.attributes('aria-controls')!)
+        expect(panel, 'aria-controls 目标存在').not.toBeNull()
+        expect(panel!.getAttribute('role')).toBe('tabpanel')
+        expect(panel!.hasAttribute('hidden')).toBe(false)
+        expect(panel!.getAttribute('aria-labelledby')).toBe(current.attributes('id'))
+        return panel!
+      }
+      const first = check()
+      expect(first.querySelector(`[data-testid="${testid}"]`)).not.toBeNull()
+      const next = list.findAll('[role=tab]').find((t) => t.text().includes(other))
+      expect(next, `存在页签 ${other}`).toBeTruthy()
+      await next!.trigger('mousedown')
+      await flushPromises()
+      const panel = check()
+      expect(panel.textContent!.length).toBeGreaterThan(0)
+      await b.done()
+    })
+  }
+
+  it('/work-items 详情页签：面板是真实 tabpanel，显示当前页签的真实内容', async () => {
+    const b = await boot({ path: '/work-items' })
+    await flushPromises()
+    const list = b.wrapper.get('[role=tablist][aria-label="工单内容"]')
+    const current = list.get('[role=tab][aria-selected=true]')
+    const panel = document.getElementById(current.attributes('aria-controls')!)!
+    expect(panel.getAttribute('role')).toBe('tabpanel')
+    expect(panel.hasAttribute('hidden')).toBe(false)
+    expect(panel.querySelector('[data-testid=wi-body]')).not.toBeNull()
+    const comments = list.findAll('[role=tab]').find((t) => t.text().includes('评论'))!
+    await comments.trigger('mousedown')
+    await flushPromises()
+    const cur = list.get('[role=tab][aria-selected=true]')
+    const p2 = document.getElementById(cur.attributes('aria-controls')!)!
+    expect(p2.hasAttribute('hidden')).toBe(false)
+    expect(p2.textContent).toContain('只读成员')
+    await b.done()
+  })
 })
 
 describe('CR-S05-004：AI 会话对话内容在 mock 层', () => {

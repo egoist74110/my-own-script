@@ -729,3 +729,53 @@ async def test_memory_credentials_require_dev_and_data_dir_override(monkeypatch,
     assert args.data_dir == tmp_path / "cli-data" and args.dev
     with pytest.raises(ValueError, match="require --dev"):
         await serve(settings, None)
+
+
+DEV_FAKE = Path(__file__).parent / "fixtures/dev-credentials.json"
+
+
+@pytest.mark.parametrize(
+    ("dev", "mode"), [(False, "memory"), (True, "keyring"), (False, "keyring")]
+)
+async def test_dev_fake_credentials_rejected_outside_dev_memory(monkeypatch, dev, mode):
+    from toolbox_backend.server import serve
+
+    monkeypatch.setenv("TOOLBOX_CREDENTIALS", mode)
+    monkeypatch.setenv("TOOLBOX_DEV_FAKE_CREDENTIALS", str(DEV_FAKE))
+    with pytest.raises(ValueError, match="requires --dev and TOOLBOX_CREDENTIALS=memory|require --dev"):
+        await serve(Settings(token="local", port=0, dev=dev), None)
+
+
+def test_dev_fake_credentials_file_validation(tmp_path):
+    from toolbox_backend.adapters.credentials import seed_fake_credentials
+
+    bad = tmp_path / "bad.json"
+    for content in ("not json", "[]", '{"other": {}}', '{"legacy": {"a": 1}}'):
+        bad.write_text(content)
+        with pytest.raises(ValueError) as info:
+            seed_fake_credentials(bad, legacy=MemoryCredentials(), current=MemoryCredentials())
+        assert "fake-pat" not in str(info.value)
+
+
+async def test_dev_fake_credentials_seed_legacy_pat_state(tmp_path):
+    from toolbox_backend.adapters.credentials import seed_fake_credentials
+
+    legacy_dir = tmp_path / "legacy"
+    shutil.copytree(FIXTURES, legacy_dir)
+    new, old = MemoryCredentials(), MemoryCredentials()
+    seed_fake_credentials(DEV_FAKE, legacy=old, current=new)
+    assert new.values == {}
+    assert old.values["azuredevops_pat:lib:sample"].startswith("fake-pat-")
+    app = create_app(
+        Settings(token="t", port=1, data_dir=tmp_path / "data", legacy_config_dir=legacy_dir),
+        credentials=new,
+        legacy_credentials=old,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://127.0.0.1:1",
+        headers={"Authorization": "Bearer t"},
+    ) as client:
+        plan = (await client.post("/api/settings/import/preview")).json()
+        assert [lib["pat_status"] for lib in plan["libraries"] if lib["id"] == "lib:sample"] == ["found"]
+        assert "fake-pat-" not in json.dumps(plan)

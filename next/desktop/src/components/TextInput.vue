@@ -1,6 +1,16 @@
 <script setup lang="ts">
 /** 输入框；label 作为不可见标签供读屏。 */
-defineProps<{ label: string; placeholder?: string; multiline?: boolean }>()
+withDefaults(
+  defineProps<{
+    label: string
+    placeholder?: string
+    multiline?: boolean
+    type?: 'text' | 'password'
+    autocomplete?: string
+    disabled?: boolean
+  }>(),
+  { placeholder: undefined, type: 'text', autocomplete: undefined },
+)
 const model = defineModel<string>({ default: '' })
 </script>
 
@@ -8,7 +18,15 @@ const model = defineModel<string>({ default: '' })
   <label class="text-input cut-xs">
     <span class="sr-only">{{ label }}</span>
     <textarea v-if="multiline" v-model="model" rows="2" :placeholder="placeholder"></textarea>
-    <input v-else v-model="model" type="text" :placeholder="placeholder" />
+    <input
+      v-else
+      v-model="model"
+      :type="type"
+      :placeholder="placeholder"
+      :autocomplete="autocomplete"
+      :disabled="disabled"
+      :spellcheck="type === 'password' ? false : undefined"
+    />
   </label>
 </template>
 

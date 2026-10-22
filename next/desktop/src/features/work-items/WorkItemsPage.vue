@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Copy, RefreshCw } from 'lucide-vue-next'
 import AppButton from '@/components/AppButton.vue'
 import AppTabs from '@/components/AppTabs.vue'
+import { tabTriggerId } from '@/components/tabs'
 import BlockTag from '@/components/BlockTag.vue'
 import GlassPanel from '@/components/GlassPanel.vue'
 import IconButton from '@/components/IconButton.vue'
@@ -66,7 +67,7 @@ function copyPrompt() {
       <BlockTag>03</BlockTag>
       <h1>工单</h1>
     </div>
-    <AppTabs v-model="column" :items="colTabs" label="看板列" />
+    <AppTabs v-model="column" :items="colTabs" label="看板列" panel-id="wi-list-panel" />
     <span class="grow"></span>
     <SearchBox v-model="query" label="搜索工单" placeholder="标题、#编号、负责人" />
     <IconButton label="刷新"><RefreshCw :size="14" aria-hidden="true" /></IconButton>
@@ -74,7 +75,13 @@ function copyPrompt() {
   </GlassPanel>
 
   <div class="cols">
-    <GlassPanel as="section" aria-label="工单列表" class="list">
+    <GlassPanel
+      id="wi-list-panel"
+      as="section"
+      role="tabpanel"
+      :aria-labelledby="tabTriggerId('wi-list-panel', column)"
+      class="list"
+    >
       <ul>
         <li v-for="w in rows" :key="w.id">
           <button
@@ -118,36 +125,42 @@ function copyPrompt() {
           </template>
         </dl>
       </header>
-      <div class="d-tabs"><AppTabs v-model="tab" :items="detailTabs" label="工单内容" /></div>
-      <div class="d-body" data-testid="wi-body">
-        <template v-if="tab === 'desc'">
-          <p v-for="(p, i) in selected.body" :key="i">{{ p }}</p>
-        </template>
-        <template v-else-if="tab === 'comments'">
-          <div v-for="(c, i) in selected.comments" :key="i" class="comment">
-            <span class="cw"
-              >{{ c.who }} <span class="mono muted">· {{ c.when }}</span></span
+      <AppTabs v-model="tab" :items="detailTabs" label="工单内容" class="d-tabs">
+        <div class="d-body" data-testid="wi-body">
+          <template v-if="tab === 'desc'">
+            <p v-for="(p, i) in selected.body" :key="i">{{ p }}</p>
+          </template>
+          <template v-else-if="tab === 'comments'">
+            <div v-for="(c, i) in selected.comments" :key="i" class="comment">
+              <span class="cw"
+                >{{ c.who }} <span class="mono muted">· {{ c.when }}</span></span
+              >
+              <span>{{ c.text }}</span>
+            </div>
+            <p v-if="!selected.comments.length" class="muted">暂无评论</p>
+          </template>
+          <template v-else-if="tab === 'children'">
+            <p v-for="c in selected.children" :key="c" class="mono">{{ c }}</p>
+            <p v-if="!selected.children.length" class="muted">暂无子项</p>
+          </template>
+          <template v-else-if="tab === 'files'">
+            <p
+              v-for="a in selected.attachments"
+              :key="a.name"
+              class="mono"
+              :data-blocked="a.blocked"
             >
-            <span>{{ c.text }}</span>
-          </div>
-          <p v-if="!selected.comments.length" class="muted">暂无评论</p>
-        </template>
-        <template v-else-if="tab === 'children'">
-          <p v-for="c in selected.children" :key="c" class="mono">{{ c }}</p>
-          <p v-if="!selected.children.length" class="muted">暂无子项</p>
-        </template>
-        <template v-else-if="tab === 'files'">
-          <p v-for="a in selected.attachments" :key="a.name" class="mono" :data-blocked="a.blocked">
-            <template v-if="a.blocked">外部图片已拦截 · {{ a.host }}</template>
-            <template v-else>{{ a.name }} · {{ a.size }}</template>
-          </p>
-          <p v-if="!selected.attachments.length" class="muted">暂无附件</p>
-        </template>
-        <template v-else>
-          <p v-for="p in selected.prs" :key="p" class="mono">{{ p }}</p>
-          <p v-if="!selected.prs.length" class="muted">暂无关联 PR</p>
-        </template>
-      </div>
+              <template v-if="a.blocked">外部图片已拦截 · {{ a.host }}</template>
+              <template v-else>{{ a.name }} · {{ a.size }}</template>
+            </p>
+            <p v-if="!selected.attachments.length" class="muted">暂无附件</p>
+          </template>
+          <template v-else>
+            <p v-for="p in selected.prs" :key="p" class="mono">{{ p }}</p>
+            <p v-if="!selected.prs.length" class="muted">暂无关联 PR</p>
+          </template>
+        </div>
+      </AppTabs>
     </GlassPanel>
   </div>
 
@@ -379,6 +392,9 @@ h2 {
 }
 .d-tabs {
   padding: 8px 14px 0;
+}
+.d-tabs :deep(.tab-panel) {
+  margin: 0 -14px;
 }
 .d-body {
   padding: 12px 18px 16px;

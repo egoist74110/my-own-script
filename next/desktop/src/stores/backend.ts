@@ -22,6 +22,8 @@ export const useBackendStore = defineStore('backend', () => {
   const latencyMs = ref<number | null>(null)
   const alert = ref<AlertState>({ ...QUIET })
   const lastSeq = ref(-1)
+  /** 最近一次 `settings.changed` 事件带的 revision；设置页据此让查询失效（不存放任何设置内容）。 */
+  const settingsRevision = ref<number | null>(null)
 
   const denied = computed(() => (alert.value.active ? 1 : 0))
 
@@ -49,6 +51,9 @@ export const useBackendStore = defineStore('backend', () => {
     if (ev.type === 'system.alert' && isAlertState(ev.data)) {
       alert.value = ev.data
     }
+    if (ev.type === 'settings.changed' && typeof ev.data.revision === 'number') {
+      settingsRevision.value = ev.data.revision
+    }
   }
 
   return {
@@ -58,6 +63,7 @@ export const useBackendStore = defineStore('backend', () => {
     latencyMs,
     alert,
     lastSeq,
+    settingsRevision,
     denied,
     setConnection,
     setLatency,

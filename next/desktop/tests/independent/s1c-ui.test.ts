@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import AppTabs from '@/components/AppTabs.vue'
+import { tabTriggerId } from '@/components/tabs'
 import { FakeSocket, resetSeq } from '../unit/helpers'
 import { boot, bootUnconnected, json } from '../unit/boot'
 
@@ -71,18 +72,28 @@ describe('AppTabs 键盘与关联（独立）', () => {
     w.unmount()
   })
 
-  it('无插槽时方向键仍更新 modelValue，且所有面板保持 hidden 与空文本', async () => {
-    const { w, model } = mountTabs({ withSlot: false })
+  it('panelId 用法：方向键更新 modelValue；当前页签 aria-controls 指向可见 tabpanel 且含当前内容', async () => {
+    const model = ref('a')
+    const w = mount(
+      {
+        components: { AppTabs },
+        setup: () => ({ model, items, tabTriggerId }),
+        template: `<div><AppTabs v-model="model" label="视图" :items="items" panel-id="pp" />
+          <div id="pp" role="tabpanel" :aria-labelledby="tabTriggerId('pp', model)">内容-{{ model }}</div></div>`,
+      },
+      { attachTo: document.body },
+    )
     await flushPromises()
     ;(w.findAll('[role=tab]')[0]!.element as HTMLElement).focus()
     await w.findAll('[role=tab]')[0]!.trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
     expect(model.value).toBe('b')
-    expectPairing(w)
-    for (const p of w.findAll('[role=tabpanel]')) {
-      expect(p.attributes('hidden')).toBeDefined()
-      expect(p.text()).toBe('')
-    }
+    expect(w.findAll('[role=tabpanel]')).toHaveLength(1)
+    const current = w.get('[role=tab][aria-selected=true]')
+    const panel = document.getElementById(current.attributes('aria-controls')!)!
+    expect(panel.hasAttribute('hidden')).toBe(false)
+    expect(panel.textContent).toBe('内容-b')
+    expect(panel.getAttribute('aria-labelledby')).toBe(current.attributes('id'))
     w.unmount()
   })
 

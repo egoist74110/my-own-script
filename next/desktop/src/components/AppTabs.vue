@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { tabTriggerId } from './tabs'
 
 export interface TabItem {
   value: string
@@ -9,34 +10,43 @@ export interface TabItem {
 
 /**
  * 斜切 Tabs（Reka Tabs：方向键切换、roving focus）。
- * 每个页签都有对应的 tabpanel（aria-controls / aria-labelledby 互相关联）：
- * - 传默认插槽（`#default="{ item }"`）时，当前页签的面板显示插槽内容，其余面板 hidden；
- * - 不传插槽时面板为空且始终 hidden（内容由页面按 modelValue 自行渲染），关联 id 依然有效。
+ * 页签与真实内容的可访问关联有三种用法：
+ * - 传默认插槽（`#default="{ item }"`）：当前页签的面板（tabpanel）显示插槽内容，其余面板 hidden；
+ * - 传 `panelId`（筛选型）：不渲染内部面板，各 trigger 的 `aria-controls` 指向页面上承载列表的
+ *   容器；该容器须设 `role="tabpanel"`、`id=panelId`、`aria-labelledby=tabTriggerId(panelId, 当前值)`；
+ * - 都不传：沿用旧行为，面板为空且 hidden（仅保证关联 id 有效；页面不应再这样用）。
  */
-defineProps<{ items: TabItem[]; label: string }>()
+const props = defineProps<{ items: TabItem[]; label: string; panelId?: string }>()
+// 子元素自带的 id / aria-controls 优先于 Reka 生成的值（panelId 用法需要指向页面容器）
+const triggerAttrs = (value: string) =>
+  props.panelId ? { id: tabTriggerId(props.panelId, value), 'aria-controls': props.panelId } : {}
 const model = defineModel<string>({ required: true })
 </script>
 
 <template>
   <TabsRoot v-model="model" class="tabs-root">
     <TabsList :aria-label="label" class="tabs">
-      <TabsTrigger v-for="t in items" :key="t.value" :value="t.value" class="tab skew">
-        {{ t.label }}
-        <span v-if="t.count !== undefined" class="ox count">{{ t.count }}</span>
+      <TabsTrigger v-for="t in items" :key="t.value" :value="t.value" as-child>
+        <button type="button" class="tab skew" v-bind="triggerAttrs(t.value)">
+          {{ t.label }}
+          <span v-if="t.count !== undefined" class="ox count">{{ t.count }}</span>
+        </button>
       </TabsTrigger>
     </TabsList>
-    <TabsContent
-      v-for="t in items"
-      :key="t.value"
-      :value="t.value"
-      force-mount
-      :hidden="!$slots.default || model !== t.value"
-      :tabindex="$slots.default ? 0 : -1"
-      class="tab-panel"
-      data-testid="tab-panel"
-    >
-      <slot v-if="model === t.value" :item="t" />
-    </TabsContent>
+    <template v-if="!panelId">
+      <TabsContent
+        v-for="t in items"
+        :key="t.value"
+        :value="t.value"
+        force-mount
+        :hidden="!$slots.default || model !== t.value"
+        :tabindex="$slots.default ? 0 : -1"
+        class="tab-panel"
+        data-testid="tab-panel"
+      >
+        <slot v-if="model === t.value" :item="t" />
+      </TabsContent>
+    </template>
   </TabsRoot>
 </template>
 

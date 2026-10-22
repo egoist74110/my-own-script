@@ -1,12 +1,26 @@
 // `pnpm dev:web`：拉起 ../backend 后端 → 解析 READY 行 → 以环境变量启动 vite → 退出时回收后端。
 // token 只经子进程环境变量传给 vite，不写文件、不进 URL、不打印。
 import { spawn } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { parseReadyLine } from './ready-line.mjs'
 
 const desktopDir = fileURLToPath(new URL('..', import.meta.url))
 const backendDir = fileURLToPath(new URL('../../backend', import.meta.url))
+// 隔离环境（S1 合同）：临时数据目录、仓库内假旧配置、内存凭据 + 假 PAT；绝不落到真实目录与 Keychain。
+const dataDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-web-'))
+const legacyDir = join(backendDir, 'tests', 'fixtures', 'legacy')
+const fakeCredentials = join(backendDir, 'tests', 'fixtures', 'dev-credentials.json')
+function removeDataDir() {
+  try {
+    rmSync(dataDir, { recursive: true, force: true })
+  } catch {
+    // 临时目录清理失败不影响退出
+  }
+}
 const READY_TIMEOUT_MS = 20_000
 const STOP_GRACE_MS = 5_000
 
@@ -46,6 +60,7 @@ async function shutdown(code) {
   shuttingDown = true
   await stopChild(vite)
   await stopChild(backend, { closeStdin: true })
+  removeDataDir()
   process.exit(code)
 }
 
@@ -54,13 +69,21 @@ process.on('SIGTERM', () => void shutdown(143))
 process.on('exit', () => {
   // 兜底：同步路径下尽量不留子进程
   for (const c of [vite, backend]) if (c && !exited(c)) c.kill('SIGKILL')
+  removeDataDir()
 })
 
 function startBackend() {
   return new Promise((resolve, reject) => {
     backend = spawn('uv', ['run', 'python', '-m', 'toolbox_backend', '--dev'], {
       cwd: backendDir,
-      env: { ...process.env, UV_PYTHON_DOWNLOADS: 'never' },
+      env: {
+        ...process.env,
+        UV_PYTHON_DOWNLOADS: 'never',
+        TOOLBOX_DATA_DIR: dataDir,
+        TOOLBOX_LEGACY_CONFIG_DIR: legacyDir,
+        TOOLBOX_CREDENTIALS: 'memory',
+        TOOLBOX_DEV_FAKE_CREDENTIALS: fakeCredentials,
+      },
       stdio: ['pipe', 'pipe', 'inherit'],
     })
     const timer = setTimeout(

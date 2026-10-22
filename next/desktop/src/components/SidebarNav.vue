@@ -22,7 +22,7 @@ const items: NavItem[] = [
   { code: '05', label: 'MCP', to: null, slice: 'S6' },
   { code: '06', label: '服务', to: null, slice: 'S7' },
   { code: '07', label: 'VPN', to: null, slice: 'S8' },
-  { code: '08', label: '设置', to: null, slice: 'S1' },
+  { code: '08', label: '设置', to: '/settings', slice: null },
 ]
 const taskBadge = computed(() => (store.alert.active ? '!' : null))
 </script>

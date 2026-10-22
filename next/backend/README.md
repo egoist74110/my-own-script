@@ -30,6 +30,7 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
 | `--data-dir` / `TOOLBOX_DATA_DIR` | CLI 优先于环境变量；默认 `~/Library/Application Support/toolbox-next/` |
 | `TOOLBOX_LEGACY_CONFIG_DIR` | 默认 `~/.config/my-own-script/`；开发/测试指定假旧配置目录 |
 | `TOOLBOX_CREDENTIALS` | 默认 `keyring`；`memory` 仅在 `--dev` 下允许，否则启动失败；内存值不持久化 |
+| `TOOLBOX_DEV_FAKE_CREDENTIALS` | 指向 `{"legacy": {account: 值}, "current": {account: 值}}` 的 JSON 文件，分别预置旧/新内存凭据；**仅 `--dev` 且 `TOOLBOX_CREDENTIALS=memory` 时接受**，否则启动失败；仓库样例 `tests/fixtures/dev-credentials.json`（全为明显假值），`pnpm dev:web` 使用 |
 | `--dev` | 允许 Vite 的两个本机 Origin；不会自动替换生产凭据后端或目录 |
 | `TOOLBOX_HEARTBEAT_INTERVAL_S` | 默认 5 秒，用于测试缩短心跳间隔 |
 

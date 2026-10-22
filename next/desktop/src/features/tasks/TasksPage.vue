@@ -5,6 +5,7 @@ import { useBackendStore } from '@/stores/backend'
 import { useUiStore } from '@/stores/ui'
 import AppButton from '@/components/AppButton.vue'
 import AppTabs from '@/components/AppTabs.vue'
+import { tabTriggerId } from '@/components/tabs'
 import BlockTag from '@/components/BlockTag.vue'
 import EnergyBar from '@/components/EnergyBar.vue'
 import GlassPanel from '@/components/GlassPanel.vue'
@@ -73,13 +74,19 @@ const progress = (t: Task) => (isError(t) ? 15 : t.progress)
       <h1>任务</h1>
       <span class="lbl" data-testid="task-summary">{{ summary }}</span>
     </div>
-    <AppTabs v-model="view" :items="tabs" label="视图" />
+    <AppTabs v-model="view" :items="tabs" label="视图" panel-id="tasks-panel" />
     <span class="grow"></span>
     <SearchBox v-model="query" label="搜索任务" placeholder="搜索任务、目标、分支" />
     <AppButton data-testid="add-task" @click="addTask">＋ 新建任务</AppButton>
   </GlassPanel>
 
-  <GlassPanel as="section" aria-label="任务列表" class="table-wrap">
+  <GlassPanel
+    id="tasks-panel"
+    as="section"
+    role="tabpanel"
+    :aria-labelledby="tabTriggerId('tasks-panel', view)"
+    class="table-wrap"
+  >
     <table class="tasks">
       <thead class="lbl">
         <tr>

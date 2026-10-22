@@ -1,5 +1,7 @@
 """Narrow credential ports; keyring is constructed only by the process entry point."""
 
+import json
+from pathlib import Path
 from typing import Protocol
 
 from toolbox_backend.logging_setup import register_secret
@@ -29,6 +31,31 @@ class MemoryCredentials:
 
     def delete(self, account: str) -> None:
         self.values.pop(account, None)
+
+
+def seed_fake_credentials(
+    path: Path, *, legacy: MemoryCredentials, current: MemoryCredentials
+) -> None:
+    """Preload dev-only in-memory credentials from ``{"legacy": {...}, "current": {...}}``.
+
+    Only the process entry point calls this, and only for ``--dev`` + memory credentials.
+    Error messages never include file contents or values.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("TOOLBOX_DEV_FAKE_CREDENTIALS is not a readable JSON file") from None
+    if not isinstance(data, dict) or not set(data) <= {"legacy", "current"}:
+        raise ValueError("TOOLBOX_DEV_FAKE_CREDENTIALS must be an object with legacy/current")
+    for key, target in (("legacy", legacy), ("current", current)):
+        section = data.get(key, {})
+        if not isinstance(section, dict) or not all(
+            isinstance(account, str) and isinstance(value, str) and value
+            for account, value in section.items()
+        ):
+            raise ValueError(f"TOOLBOX_DEV_FAKE_CREDENTIALS.{key} must map account to string")
+        for account, value in section.items():
+            target.set(account, value)
 
 
 class KeyringLegacySource:

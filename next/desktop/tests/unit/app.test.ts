@@ -31,14 +31,14 @@ describe('E 方向壳：骨架与连接', () => {
     await b.done()
   })
 
-  it('导航：01..08 编号；任务/工单/AI 会话可用，其余禁用并标切片号', async () => {
+  it('导航：01..08 编号；任务/工单/AI 会话/设置可用，其余禁用并标切片号', async () => {
     const b = await boot()
     const codes = b.wrapper.findAll('nav .item .code').map((c) => c.text())
     expect(codes).toEqual(['01', '02', '03', '04', '05', '06', '07', '08'])
     const links = b.wrapper.findAll('nav a').map((a) => a.attributes('href'))
-    expect(links).toEqual(['/tasks', '/work-items', '/ai'])
+    expect(links).toEqual(['/tasks', '/work-items', '/ai', '/settings'])
     const disabled = b.wrapper.findAll('[aria-disabled=true]')
-    expect(disabled.map((d) => d.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8', 'S1'])
+    expect(disabled.map((d) => d.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8'])
     expect(b.wrapper.get('nav a[aria-current=page]').text()).toContain('任务')
     await b.done()
   })

@@ -401,7 +401,7 @@ describe('导航与路由', () => {
   it('禁用导航项：aria-disabled、带切片号、不在 Tab 顺序中、无链接', async () => {
     const b = await boot()
     const off = b.wrapper.findAll('[aria-disabled=true]')
-    expect(off.map((o) => o.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8', 'S1'])
+    expect(off.map((o) => o.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8'])
     for (const o of off) {
       expect(o.element.tagName).not.toBe('A')
       expect(o.attributes('href')).toBeUndefined()

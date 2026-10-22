@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Square, Terminal } from 'lucide-vue-next'
 import AppButton from '@/components/AppButton.vue'
 import AppTabs from '@/components/AppTabs.vue'
+import { tabTriggerId } from '@/components/tabs'
 import ApprovalBar from '@/components/ApprovalBar.vue'
 import BlockTag from '@/components/BlockTag.vue'
 import EnergyBar from '@/components/EnergyBar.vue'
@@ -55,28 +56,39 @@ function submit() {
         <AppButton>＋ 新会话</AppButton>
       </header>
       <div class="s-filters">
-        <AppTabs v-model="filter" :items="filters" label="按 AI 筛选" />
+        <AppTabs
+          v-model="filter"
+          :items="filters"
+          label="按 AI 筛选"
+          panel-id="ai-sessions-panel"
+        />
         <SearchBox v-model="query" label="搜索会话" placeholder="搜索会话" />
       </div>
-      <ul>
-        <li v-for="s in list" :key="s.id">
-          <button
-            type="button"
-            class="sess"
-            :aria-current="s.id === selectedId ? 'true' : undefined"
-            :data-selected="s.id === selectedId"
-            :data-testid="`session-${s.id}`"
-            @click="selectedId = s.id"
-          >
-            <span class="ox abbr cut-xs" aria-hidden="true">{{ s.abbr }}</span>
-            <span class="st"
-              ><span class="tt">{{ s.title }}</span
-              ><span class="mono sub">{{ s.repo }} · {{ s.note }}</span></span
+      <div
+        id="ai-sessions-panel"
+        role="tabpanel"
+        :aria-labelledby="tabTriggerId('ai-sessions-panel', filter)"
+      >
+        <ul>
+          <li v-for="s in list" :key="s.id">
+            <button
+              type="button"
+              class="sess"
+              :aria-current="s.id === selectedId ? 'true' : undefined"
+              :data-selected="s.id === selectedId"
+              :data-testid="`session-${s.id}`"
+              @click="selectedId = s.id"
             >
-            <StatusDot :state="dot(s.state)" />
-          </button>
-        </li>
-      </ul>
+              <span class="ox abbr cut-xs" aria-hidden="true">{{ s.abbr }}</span>
+              <span class="st"
+                ><span class="tt">{{ s.title }}</span
+                ><span class="mono sub">{{ s.repo }} · {{ s.note }}</span></span
+              >
+              <StatusDot :state="dot(s.state)" />
+            </button>
+          </li>
+        </ul>
+      </div>
     </GlassPanel>
 
     <GlassPanel v-if="selected" as="section" aria-label="对话" class="chat">

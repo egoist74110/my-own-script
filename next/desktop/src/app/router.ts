@@ -20,6 +20,11 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
         name: 'ai',
         component: () => import('@/features/ai/AiSessionsPage.vue'),
       },
+      {
+        path: '/settings',
+        name: 'settings',
+        component: () => import('@/features/settings/SettingsPage.vue'),
+      },
       { path: '/:pathMatch(.*)*', redirect: '/tasks' },
     ],
   })

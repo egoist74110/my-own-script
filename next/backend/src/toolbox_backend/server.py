@@ -19,6 +19,7 @@ from toolbox_backend.adapters.credentials import (
     KeyringCredentials,
     KeyringLegacySource,
     MemoryCredentials,
+    seed_fake_credentials,
 )
 from toolbox_backend.adapters.stdin import watch_stdin_eof
 from toolbox_backend.app import create_app
@@ -27,6 +28,7 @@ from toolbox_backend.settings import Settings
 
 log = logging.getLogger("toolbox_backend")
 
+FAKE_CREDENTIALS_ENV = "TOOLBOX_DEV_FAKE_CREDENTIALS"  # dev-only, memory credentials only
 HEARTBEAT_ENV = "TOOLBOX_HEARTBEAT_INTERVAL_S"  # test hook; default 5 s
 
 
@@ -60,8 +62,14 @@ async def serve(settings: Settings, sock: socket.socket) -> int:
         raise ValueError("memory credentials require --dev")
     if mode not in {"keyring", "memory"}:
         raise ValueError("unsupported credential backend")
+    fake_file = os.environ.get(FAKE_CREDENTIALS_ENV)
+    if fake_file and not (settings.dev and mode == "memory"):
+        raise ValueError(f"{FAKE_CREDENTIALS_ENV} requires --dev and TOOLBOX_CREDENTIALS=memory")
     credentials = MemoryCredentials() if mode == "memory" else KeyringCredentials()
     legacy = MemoryCredentials() if mode == "memory" else KeyringLegacySource()
+    if fake_file:
+        assert isinstance(credentials, MemoryCredentials) and isinstance(legacy, MemoryCredentials)
+        seed_fake_credentials(Path(fake_file), legacy=legacy, current=credentials)
     config = uvicorn.Config(
         create_app(settings, credentials=credentials, legacy_credentials=legacy),
         log_config=None,

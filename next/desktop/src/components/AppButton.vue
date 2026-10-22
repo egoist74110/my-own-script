@@ -39,7 +39,12 @@ withDefaults(
   background: var(--soft);
   color: var(--ink);
 }
-.app-btn:hover {
+.app-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+.app-btn:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 .app-btn[data-variant='ghost']:hover {
