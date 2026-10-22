@@ -11,9 +11,15 @@ import signal
 import socket
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import uvicorn
 
+from toolbox_backend.adapters.credentials import (
+    KeyringCredentials,
+    KeyringLegacySource,
+    MemoryCredentials,
+)
 from toolbox_backend.adapters.stdin import watch_stdin_eof
 from toolbox_backend.app import create_app
 from toolbox_backend.logging_setup import setup_logging
@@ -49,8 +55,15 @@ def ready_line(port: int, token: str) -> str:
 
 async def serve(settings: Settings, sock: socket.socket) -> int:
     loop = asyncio.get_running_loop()
+    mode = os.environ.get("TOOLBOX_CREDENTIALS", "keyring")
+    if mode == "memory" and not settings.dev:
+        raise ValueError("memory credentials require --dev")
+    if mode not in {"keyring", "memory"}:
+        raise ValueError("unsupported credential backend")
+    credentials = MemoryCredentials() if mode == "memory" else KeyringCredentials()
+    legacy = MemoryCredentials() if mode == "memory" else KeyringLegacySource()
     config = uvicorn.Config(
-        create_app(settings),
+        create_app(settings, credentials=credentials, legacy_credentials=legacy),
         log_config=None,
         ws="websockets-sansio",
         timeout_graceful_shutdown=3,
@@ -84,6 +97,7 @@ async def serve(settings: Settings, sock: socket.socket) -> int:
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="toolbox_backend")
     parser.add_argument("--dev", action="store_true", help="allow the Vite dev origins in CORS/WS")
+    parser.add_argument("--data-dir", type=Path, help="override the independent data directory")
     return parser.parse_args(argv)
 
 
@@ -91,12 +105,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     token = secrets.token_urlsafe(32)
     setup_logging([token])
+    sock = None
     try:
         sock = bind_socket()
         port = sock.getsockname()[1]
         heartbeat = float(os.environ.get(HEARTBEAT_ENV, "5"))
-        settings = Settings(token=token, port=port, dev=args.dev, heartbeat_interval_s=heartbeat)
+        overrides = {"data_dir": args.data_dir} if args.data_dir else {}
+        settings = Settings(
+            token=token,
+            port=port,
+            dev=args.dev,
+            heartbeat_interval_s=heartbeat,
+            **overrides,
+        )
         return asyncio.run(serve(settings, sock))
     except Exception:
         log.exception("fatal startup/runtime error")
         return 1
+    finally:
+        if sock is not None:
+            sock.close()

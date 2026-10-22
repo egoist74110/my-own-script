@@ -1,21 +1,37 @@
-# toolbox-backend (S0-A)
+# toolbox-backend (S0 / S1-A)
 
 TOOLBOX next 的本地后端进程：FastAPI + uvicorn，Python >= 3.14，uv 管理依赖（`uv.lock` 入库）。
-接口合同见 `docs/modernization/WORK_PACKAGES.md` 的「S0 已定接口」。
+接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1 及「S1-A 主控裁决」。
 
 ## 分层
 
 `src/toolbox_backend/`：`api/`（路由、WS、安全中间件）、`services/`（事件总线、系统服务）、
-`domain/`（Pydantic 数据/事件模型）、`adapters/`（外部适配器；S0 仅 stdin EOF 监视）。
+`domain/`（Pydantic 数据/事件模型）、`adapters/`（store、只读旧配置、凭据、ADO HTTP、stdin）。
+`services/settings.py` 是设置变更的唯一写入所有者。
 `server.py` 为进程入口，`contracts.py` 为契约生成器。
 
 ## 运行
 
 ```sh
 cd next/backend
-UV_PYTHON_DOWNLOADS=never uv sync --frozen
-UV_PYTHON_DOWNLOADS=never uv run python -m toolbox_backend [--dev]
+.venv/bin/python -m toolbox_backend --help
 ```
+
+使用已同步的 `.venv`，运行无需联网或写 uv 缓存。生产启动命令为
+`.venv/bin/python -m toolbox_backend`。开发时必须隔离目录和凭据，例如在 `next/backend` 内：
+
+```sh
+TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memory \
+  .venv/bin/python -m toolbox_backend --dev --data-dir /tmp/toolbox-next-demo
+```
+
+| 配置 | 默认值 / 规则 |
+| --- | --- |
+| `--data-dir` / `TOOLBOX_DATA_DIR` | CLI 优先于环境变量；默认 `~/Library/Application Support/toolbox-next/` |
+| `TOOLBOX_LEGACY_CONFIG_DIR` | 默认 `~/.config/my-own-script/`；开发/测试指定假旧配置目录 |
+| `TOOLBOX_CREDENTIALS` | 默认 `keyring`；`memory` 仅在 `--dev` 下允许，否则启动失败；内存值不持久化 |
+| `--dev` | 允许 Vite 的两个本机 Origin；不会自动替换生产凭据后端或目录 |
+| `TOOLBOX_HEARTBEAT_INTERVAL_S` | 默认 5 秒，用于测试缩短心跳间隔 |
 
 - 只绑 `127.0.0.1`，端口自行 `bind(("127.0.0.1", 0))`，无监听地址选项。
 - 服务开始接受连接后 stdout 只打印一行 `TOOLBOX_READY {"v":1,"port":..,"token":"..","pid":..}`；
@@ -26,25 +42,86 @@ UV_PYTHON_DOWNLOADS=never uv run python -m toolbox_backend [--dev]
 - 手动试用（token 在 READY 行里）：
   `curl -H "Authorization: Bearer <token>" http://127.0.0.1:<port>/health`
 
+## store 与凭据
+
+- 新 store 为 `<data-dir>/config.json`，schema v1；目录 0700，文件、锁及导入快照 0600。
+  新 Keychain service 为 `toolbox-next`，account 为 `ado_pat:<library_id>`。
+  旧 service `my-own-script` 只有只读适配器，S1 只读取 ADO PAT。
+- 普通读取不创建文件、不迁移。文件不存在时返回内存中的空配置（revision 0）。
+  写入在线程中执行：进程内锁 → flock（最多等待 5 秒）→ 重读 → 比较 revision → 副本变更与完整校验
+  → 同目录临时文件 flush/fsync → `os.replace` → fsync 目录 → 释放锁 → `settings.changed {revision}`。
+  每次成功提交 revision +1；旧 revision 返回 409 `revision_conflict`。replace 是提交点，替换后的异常会核验已提交内容。
+- 启动时显式调用 `ConfigStore.initialize()`。v1 是首个生产版本，生产迁移注册表为空。
+  测试或后续版本可注入 `{from_version: step_fn}`；每个纯函数接收独立字典，返回 schema_version +1 的字典。
+  迁移持有同一进程锁和 flock，重读后校验完整迁移结果，先把原文字节写为
+  `config.json.bak-v<旧版本>-<时间戳>...` 并 fsync，再原子替换；迁移提交 revision +1。
+  替换前失败保留原件及已经完成的备份；未完成的备份和临时文件会清理。
+- 未注册的低版本、高版本、JSON/模型损坏、迁移失败均暴露只读错误态；不自动重置原件。
+  设置接口显示错误及数据目录，写接口返回 503 `store_unavailable`。
+- PAT 只写不读回，存储索引只有来源、引用、状态、更新时间。Keychain 失败不会伪装为“不存在”。
+  删除 library 先提交配置删除和 pending_delete，再删除新凭据；删除失败保留索引供凭据页重试。
+  被任务引用的 library/project 不允许删除。
+
+## 一次性导入
+
+只读取旧目录中的 `ui_settings.yaml`、`tasks.yaml`、`lark_settings.yaml`、`figma_settings.yaml`；
+每个文件最多 1 MiB，使用 `yaml.safe_load`，拒绝目录外符号链接。运行状态和缓存不导入。
+
+1. `POST /api/settings/import/preview` 不写任何文件或凭据；返回源指纹、摘要、警告和阻断错误。
+   原始 `tasks` 键存在（包括 `[]`）即保留其意图；缺失时才从非空 flows 生成任务并映射 ACL 引用。
+   `flows` 原样保留，非 S1 配置及未知顶层键保留到 imported 段。
+2. 执行请求携带 fingerprint；在锁内重新核对。源变化时不写 config.json、导入快照或新凭据；
+   允许提前创建基础设施目录和 config.lock。仅在配置为空且状态 none/failed 时允许执行。
+3. 先提交 in_progress 和计划 account，再逐项从旧 service 读取 PAT 并写新 service，记录已写 account。
+   最后复制四个文件的原文快照，并一次提交 ado/tasks/imported/凭据索引及 completed。
+4. 凭据、快照或最终提交失败时保留已写的新凭据，配置保持空，记录 failed，支持重试。
+   快照复制失败会清理不完整目录；最终提交失败会删除本次快照。进程中断遗留 in_progress 时，启动将其转为 failed，
+   保留写入意图供重试或清理。若故障同时令错误状态写入失败，则保留磁盘上的状态，不能保证即时落盘 failed。
+5. none 可跳过为 declined；failed 放弃时先删除已记录的新凭据再提交 declined。
+   completed/declined 为终态，不提供再次导入。任何路径均不回写旧目录或修改旧 Keychain 条目。
+
+## HTTP 与安全边界
+
+全部 HTTP 路由经过 Host → CORS → Bearer → BodyLimit；默认请求体上限 64 KiB，含分块累计限制。
+WS 必须带允许的 Origin，随后通过首帧 token 认证。CORS 方法恰好为 GET、POST、PUT、PATCH、DELETE、OPTIONS。
+
+ADO 请求只发送到已保存 library 的 origin，collection 按路径段编码；不跟随重定向，超时 10 秒/连接 5 秒，
+响应最多读取 1 MiB。修改 origin 且已有 PAT 时必须替换 PAT 或显式 keep_pat。
+候选 PAT 测试不保存；响应、错误、事件和日志不返回 PAT 或远端响应原文。
+远端项目列表成功返回最多 500 个 `{name}`；非法参数返回 422 `validation_error`，无 PAT 返回
+409 `no_credential`，出站失败返回 502 `ado_request_failed`，detail 包含测试连接同一分类集合的 category 和脱敏 message。
+
 ## 测试
 
 ```sh
-UV_PYTHON_DOWNLOADS=never uv sync --frozen && UV_PYTHON_DOWNLOADS=never uv run pytest -q
-UV_PYTHON_DOWNLOADS=never uv run ruff check .
+.venv/bin/python -m pytest -q
+.venv/bin/ruff check .
 ```
 
 `tests/` 为主测试（子进程测试均有超时并在 finally 回收进程）；`tests/independent/` 为独立测试者的用例。
 部分测试会真实等待约 5 秒（WS 未认证 4401）。
 
+自动夹具使用 tmp_path 数据/旧配置目录，将 keyring 替换为任何调用都记录并抛错的守卫；
+子进程通过 `PYTHON_KEYRING_BACKEND=tests.guards.GuardKeyring` 使用同等守卫。
+socket 守卫拦截非 127.0.0.1 连接，子进程通过测试专用 sitecustomize 安装同等守卫；会话结束断言无违规。
+S1 出站请求只使用 MockTransport，测试扫描响应、日志、事件、config.json 和导入快照确保没有假 PAT。
+仅修改 HOME 不能隔离 macOS Keychain。
+
+禁止监听端口的沙箱内使用以下子集；真实 HTTP/WS/进程启动回归由主控在沙箱外执行：
+
+```sh
+.venv/bin/python -m pytest -q tests/test_s1_store.py tests/test_s1_settings.py tests/test_s1_ado.py tests/test_hub.py tests/test_contracts.py tests/independent/test_fault_contracts.py tests/test_slow_client.py::test_stalled_connection_closed_with_4408_via_handler
+```
+
 ## 契约生成
 
 ```sh
-UV_PYTHON_DOWNLOADS=never uv run python -m toolbox_backend.contracts          # 写 ../contracts/
-UV_PYTHON_DOWNLOADS=never uv run python -m toolbox_backend.contracts --check  # 漂移时 exit 1
+.venv/bin/python -m toolbox_backend.contracts          # 写 ../contracts/
+.venv/bin/python -m toolbox_backend.contracts --check  # 漂移时 exit 1
 ```
 
 输出 `next/contracts/openapi.json` 与 `events.schema.json`（排序键、末尾换行，确定性）。
-`tests/test_contracts.py` 比对仓库内文件与当前生成结果，改了模型/路由后必须重新生成并提交。
+`tests/test_contracts.py` 比对仓库内文件与当前生成结果，改了模型/路由后必须重新生成；是否提交由主控授权决定。
 
 ## 实现要点
 
@@ -54,4 +131,4 @@ UV_PYTHON_DOWNLOADS=never uv run python -m toolbox_backend.contracts --check  # 
 - 事件：`EventHub` 进程内 `seq` 单调；hello 与订阅注册同步完成（无 await），故后续事件 seq 必大于 hello 的 seq。
   每连接队列 256，满则标记溢出，处理器以 4408 关闭；对完全不读的对端，uvicorn 的发送背压会使关闭帧
   无法送达，处理器等待 2 秒后连接被拆除（不影响其他连接）。
-- WS 无 Origin 头（非浏览器客户端）视为允许；有 Origin 则必须在允许列表。
+- WS 缺少 Origin 或不在允许列表时，握手拒绝。

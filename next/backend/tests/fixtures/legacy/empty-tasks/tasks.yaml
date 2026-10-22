@@ -1,0 +1,3 @@
+tasks: []
+flows:
+  - {id: sync_build_release, target_branch: main}

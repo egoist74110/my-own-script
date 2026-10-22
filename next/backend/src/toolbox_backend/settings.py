@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
 
 DEV_ORIGINS = ("http://localhost:1420", "http://127.0.0.1:1420")
 TAURI_ORIGINS = ("tauri://localhost", "http://tauri.localhost")
@@ -14,6 +16,23 @@ class Settings:
     heartbeat_interval_s: float = 5.0
     ws_auth_timeout_s: float = 5.0
     ws_queue_size: int = 256
+    max_body_bytes: int = 65536
+    data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get(
+                "TOOLBOX_DATA_DIR",
+                str(Path.home() / "Library/Application Support/toolbox-next"),
+            )
+        )
+    )
+    legacy_config_dir: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get(
+                "TOOLBOX_LEGACY_CONFIG_DIR",
+                str(Path.home() / ".config/my-own-script"),
+            )
+        )
+    )
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:

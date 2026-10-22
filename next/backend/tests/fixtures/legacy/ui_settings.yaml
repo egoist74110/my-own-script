@@ -1,0 +1,13 @@
+libraries:
+  - {id: 'lib:sample', name: 示例 ADO, base_url: 'http://ado.example.test/tfs/'}
+projects:
+  - {project_id: 'proj:sample', repo_id: 'lib:sample', collection_name: 'Default Collection', project_name: 示例项目}
+local_repos:
+  - {id: 'repo:sample', name: 示例仓库, path: /tmp/example-never-accessed}
+active_library_id: 'lib:sample'
+active_project_id: 'proj:sample'
+telegram_acl_groups:
+  - {id: demo, task_ids: [sync_merge_build_release]}
+work_items_team: 示例团队
+ai: {enabled: false, unknown_setting: preserved}
+unknown_ui_key: {nested: preserved}

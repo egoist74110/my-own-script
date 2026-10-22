@@ -17,7 +17,7 @@ def uri(b):
 
 
 async def authed(b, **kw):
-    ws = await websockets.connect(uri(b), **kw)
+    ws = await websockets.connect(uri(b), **({"origin": "tauri://localhost"} | kw))
     await ws.send(json.dumps({"type": "auth", "token": b.token}))
     return ws
 
@@ -132,7 +132,7 @@ async def test_bad_host_rejected(backend):
     ],
 )
 async def test_bad_first_frame_closes_4401(backend, frame):
-    ws = await websockets.connect(uri(backend))
+    ws = await websockets.connect(uri(backend), origin="tauri://localhost")
     await ws.send(frame)
     with pytest.raises(ConnectionClosed):
         await asyncio.wait_for(ws.recv(), 5)
@@ -141,7 +141,7 @@ async def test_bad_first_frame_closes_4401(backend, frame):
 
 async def test_no_auth_frame_closes_4401_within_5s(backend):
     started = time.monotonic()
-    ws = await websockets.connect(uri(backend))
+    ws = await websockets.connect(uri(backend), origin="tauri://localhost")
     with pytest.raises(ConnectionClosed):
         await asyncio.wait_for(ws.recv(), 8)
     elapsed = time.monotonic() - started
@@ -153,7 +153,7 @@ async def test_auth_failure_does_not_break_other_clients(backend):
     good = await authed(backend)
     try:
         await recv(good)
-        bad = await websockets.connect(uri(backend))
+        bad = await websockets.connect(uri(backend), origin="tauri://localhost")
         await bad.send('{"type":"auth","token":"x"}')
         with pytest.raises(ConnectionClosed):
             await asyncio.wait_for(bad.recv(), 5)

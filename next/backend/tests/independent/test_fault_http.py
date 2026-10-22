@@ -207,7 +207,7 @@ def test_deeply_nested_alert_body_is_client_error_not_500(ind_backend):
         content=body,
         timeout=10,
     )
-    assert r.status_code in (400, 422), (r.status_code, r.text[:200])
+    assert r.status_code == 413, (r.status_code, r.text[:200])
     assert health_ok_status(b) == 200
 
 
@@ -258,9 +258,21 @@ def test_preflight_lowercase_and_spaced_request_headers_allowed(ind_backend):
 
 
 @pytest.mark.parametrize("method", ["DELETE", "PUT", "PATCH"])
-def test_preflight_disallowed_method_rejected(ind_backend, method):
-    # Starlette echoes Allow-Origin on the 400 for an allowed origin; browsers still fail a
-    # non-2xx preflight, so the contract is: 400, and the method is not in the allow list.
+def test_preflight_s1_methods_allowed_with_exact_allow_list(ind_backend, method):
+    r = preflight(ind_backend, TAURI, method=method)
+    assert r.status_code == 200, r.text
+    assert {m.strip() for m in r.headers["access-control-allow-methods"].split(",")} == {
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    }
+
+
+@pytest.mark.parametrize("method", ["TRACE", "CONNECT"])
+def test_preflight_other_methods_remain_rejected(ind_backend, method):
     r = preflight(ind_backend, TAURI, method=method)
     assert r.status_code == 400, r.text
     assert method not in r.headers.get("access-control-allow-methods", "")

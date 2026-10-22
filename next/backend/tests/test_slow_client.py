@@ -57,7 +57,7 @@ async def test_stalled_client_does_not_affect_fast_client_end_to_end():
         raw.sendall(
             (
                 f"GET /ws/events HTTP/1.1\r\nHost: 127.0.0.1:{b.port}\r\nUpgrade: websocket\r\n"
-                f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+                f"Origin: tauri://localhost\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
             ).encode()
         )
         head = raw.recv(4096)
@@ -65,7 +65,7 @@ async def test_stalled_client_does_not_affect_fast_client_end_to_end():
         raw.sendall(_masked_text_frame(json.dumps({"type": "auth", "token": b.token})))
         # from now on the raw client never reads
 
-        fast = await websockets.connect(f"ws://127.0.0.1:{b.port}/ws/events")
+        fast = await websockets.connect(f"ws://127.0.0.1:{b.port}/ws/events", origin="tauri://localhost")
         await fast.send(json.dumps({"type": "auth", "token": b.token}))
         received_alerts = 0
 
@@ -122,7 +122,7 @@ class FakeWebSocket:
 
     def __init__(self, app, token):
         self.app = app
-        self.headers = {}
+        self.headers = {"origin": "tauri://localhost"}
         self._token = token
         self.closed_with: int | None = None
         self._auth_sent = False

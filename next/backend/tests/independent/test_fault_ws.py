@@ -17,13 +17,13 @@ def uri(b: Proc) -> str:
     return f"ws://127.0.0.1:{b.port}/ws/events"
 
 
-async def connect(b: Proc, origin: str | None = None, headers: dict[str, str] | None = None):
+async def connect(b: Proc, origin: str | None = "tauri://localhost", headers: dict[str, str] | None = None):
     return await websockets.connect(
         uri(b), origin=origin, additional_headers=headers, open_timeout=5, close_timeout=5
     )
 
 
-async def authed(b: Proc, token: str | None = None, origin: str | None = None):
+async def authed(b: Proc, token: str | None = None, origin: str | None = "tauri://localhost"):
     ws = await connect(b, origin=origin)
     await ws.send(json.dumps({"type": "auth", "token": b.token if token is None else token}))
     return ws
@@ -267,20 +267,10 @@ async def test_tauri_origins_accepted(ind_backend, origin):
         await ws.close()
 
 
-async def test_missing_origin_accepted_by_design_still_needs_token(ind_backend):
-    """Design choice from the implementer: no Origin is allowed; the token is still required."""
-    b = ind_backend
-    ws = await connect(b)
-    try:
-        await ws.send(json.dumps({"type": "auth", "token": "wrong"}))
-        assert await close_code(ws) == 4401
-    finally:
-        await ws.close()
-    ws = await authed(b)
-    try:
-        assert (await next_event(ws))["type"] == "system.hello"
-    finally:
-        await ws.close()
+async def test_missing_origin_rejected_at_handshake(ind_backend):
+    with pytest.raises(InvalidStatus) as exc:
+        await connect(ind_backend, origin=None)
+    assert exc.value.response.status_code == 403
 
 
 async def test_dev_origins_only_in_dev_mode_on_websocket(ind_dev, ind_backend):

@@ -1,0 +1,7 @@
+flows:
+  - id: sync_merge_build_release
+    project_id: 'proj:sample'
+    source_branch: develop
+    target_branch: main
+    build_id: '42'
+unknown_tasks_key: preserved

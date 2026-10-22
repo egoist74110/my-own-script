@@ -47,7 +47,17 @@ class SystemAlertEvent(_Envelope):
     data: AlertState
 
 
+class SettingsChangedData(BaseModel):
+    revision: int = Field(ge=1)
+
+
+class SettingsChangedEvent(_Envelope):
+    topic: Literal["settings"] = "settings"
+    type: Literal["settings.changed"] = "settings.changed"
+    data: SettingsChangedData
+
+
 Event = Annotated[
-    SystemHelloEvent | SystemHeartbeatEvent | SystemAlertEvent,
+    SystemHelloEvent | SystemHeartbeatEvent | SystemAlertEvent | SettingsChangedEvent,
     Field(discriminator="type"),
 ]

@@ -16,7 +16,7 @@ from .harness import Proc, h, raw_http
 
 
 async def _authed_ws(p: Proc):
-    ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", open_timeout=5)
+    ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", origin="tauri://localhost", open_timeout=5)
     await ws.send(json.dumps({"type": "auth", "token": p.token}))
     msg = json.loads(await asyncio.wait_for(ws.recv(), 5))
     assert msg["type"] == "system.hello"
@@ -65,7 +65,7 @@ async def test_stdin_eof_with_open_websockets_exits_zero_and_disconnects_clients
 async def test_sigterm_during_pending_auth_exits_zero_within_5s():
     p = Proc().start()
     try:
-        ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", open_timeout=5)
+        ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", origin="tauri://localhost", open_timeout=5)
         try:
             p.popen.send_signal(signal.SIGTERM)
             code = await asyncio.to_thread(p.wait_exit, 5)
@@ -174,7 +174,7 @@ def test_token_never_reaches_stderr_under_error_inputs():
         )
 
         async def ws_errors() -> None:
-            ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", open_timeout=5)
+            ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", origin="tauri://localhost", open_timeout=5)
             try:
                 await ws.send(json.dumps({"type": "auth", "token": token, "junk": 1}) + "x")
                 with pytest.raises(ConnectionClosed):
@@ -184,7 +184,7 @@ def test_token_never_reaches_stderr_under_error_inputs():
             finally:
                 await ws.close()
 
-            ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", open_timeout=5)
+            ws = await websockets.connect(f"ws://127.0.0.1:{p.port}/ws/events", origin="tauri://localhost", open_timeout=5)
             try:
                 await ws.send(token.encode())
                 with pytest.raises(ConnectionClosed):

@@ -30,7 +30,7 @@ class Proc:
         env_extra: dict[str, str] | None = None,
         stdin: int = subprocess.PIPE,
     ) -> None:
-        self.home = tempfile.mkdtemp(prefix="indep-home-")
+        self.home = tempfile.mkdtemp(prefix="indep-home-", dir=os.environ["TOOLBOX_TEST_ROOT"])
         env = {k: v for k, v in os.environ.items() if not k.startswith("TOOLBOX_")}
         env.update(
             {
@@ -38,6 +38,9 @@ class Proc:
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "HOME": self.home,
                 "XDG_CONFIG_HOME": os.path.join(self.home, ".config"),
+                "TOOLBOX_DATA_DIR": os.path.join(self.home, "data"),
+                "TOOLBOX_LEGACY_CONFIG_DIR": os.path.join(self.home, "legacy"),
+                "TOOLBOX_TEST_GUARD_LOG": os.environ["TOOLBOX_TEST_GUARD_LOG"],
             }
         )
         env.update(env_extra or {})

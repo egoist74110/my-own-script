@@ -5,20 +5,68 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import keyring
 import pytest
+
+from tests.guards import GuardKeyring, install_socket_guard
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 READY_TIMEOUT_S = 20
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolation(tmp_path_factory):
+    root = tmp_path_factory.mktemp("s1-isolation")
+    patch = pytest.MonkeyPatch()
+    old_backend = keyring.core._keyring_backend
+    keyring.set_keyring(GuardKeyring())
+    patch.setenv("TOOLBOX_TEST_GUARD_LOG", str(root / "violations.log"))
+    patch.setenv("PYTHON_KEYRING_BACKEND", "tests.guards.GuardKeyring")
+    patch.setenv("TOOLBOX_DATA_DIR", str(root / "data"))
+    patch.setenv("TOOLBOX_LEGACY_CONFIG_DIR", str(root / "legacy"))
+    patch.setenv("TOOLBOX_TEST_ROOT", str(root))
+    patch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(
+            [
+                str(BACKEND_DIR / "tests/guard_bootstrap"),
+                str(BACKEND_DIR),
+                os.environ.get("PYTHONPATH", ""),
+            ]
+        ),
+    )
+    restore = install_socket_guard()
+    try:
+        yield
+    finally:
+        restore()
+        keyring.core._keyring_backend = old_backend
+        patch.undo()
+        assert not (root / "violations.log").exists(), "isolation guard violation recorded"
+
+
+@pytest.fixture(autouse=True)
+def isolated_directories(monkeypatch, tmp_path):
+    monkeypatch.setenv("TOOLBOX_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("TOOLBOX_LEGACY_CONFIG_DIR", str(tmp_path / "legacy"))
+
+
 class Backend:
     def __init__(self, *args: str, env_extra: dict[str, str] | None = None) -> None:
+        self._directory = tempfile.TemporaryDirectory(dir=os.environ["TOOLBOX_TEST_ROOT"])
         env = {**os.environ, "PYTHONUNBUFFERED": "1", **(env_extra or {})}
+        env.update(
+            {
+                "TOOLBOX_DATA_DIR": self._directory.name + "/data",
+                "TOOLBOX_LEGACY_CONFIG_DIR": self._directory.name + "/legacy",
+            }
+        )
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "toolbox_backend", *args],
             cwd=BACKEND_DIR,
@@ -100,6 +148,7 @@ class Backend:
                     stream.close()
                 except OSError:
                     pass
+        self._directory.cleanup()
 
     def stop_gracefully(self) -> None:
         """Close stdin and wait (used by fixtures); always reap in the end."""

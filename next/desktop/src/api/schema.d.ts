@@ -4,6 +4,264 @@
  */
 
 export interface paths {
+    "/api/ado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ado */
+        get: operations["ado_api_ado_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Active */
+        put: operations["active_api_ado_active_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Library */
+        post: operations["create_library_api_ado_libraries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/libraries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Library */
+        delete: operations["delete_library_api_ado_libraries__id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Library */
+        patch: operations["patch_library_api_ado_libraries__id__patch"];
+        trace?: never;
+    };
+    "/api/ado/libraries/{id}/pat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Pat */
+        put: operations["put_pat_api_ado_libraries__id__pat_put"];
+        post?: never;
+        /** Delete Pat */
+        delete: operations["delete_pat_api_ado_libraries__id__pat_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/libraries/{id}/remote-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Remote Projects */
+        get: operations["remote_projects_api_ado_libraries__id__remote_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/libraries/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Connection */
+        post: operations["test_connection_api_ado_libraries__id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_api_ado_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ado/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Project */
+        delete: operations["delete_project_api_ado_projects__id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Project */
+        patch: operations["patch_project_api_ado_projects__id__patch"];
+        trace?: never;
+    };
+    "/api/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Credentials */
+        get: operations["credentials_api_credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/credentials/{account}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_api_credentials__account__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Settings */
+        get: operations["settings_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/import/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline */
+        post: operations["decline_api_settings_import_decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/import/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute */
+        post: operations["execute_api_settings_import_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_settings_import_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/alert": {
         parameters: {
             query?: never;
@@ -42,6 +300,50 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveRequest */
+        ActiveRequest: {
+            /** Library Id */
+            library_id: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** AdoRequestErrorDetail */
+        AdoRequestErrorDetail: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "ok" | "unauthorized" | "forbidden" | "not_found" | "redirect" | "tls" | "timeout" | "network" | "bad_response" | "no_credential";
+            /**
+             * Code
+             * @default ado_request_failed
+             * @constant
+             */
+            code: "ado_request_failed";
+            /** Message */
+            message: string;
+        };
+        /** AdoRequestErrorResponse */
+        AdoRequestErrorResponse: {
+            detail: components["schemas"]["AdoRequestErrorDetail"];
+        };
+        /** AdoResponse */
+        AdoResponse: {
+            /** Active Library Id */
+            active_library_id: string | null;
+            /** Active Project Id */
+            active_project_id: string | null;
+            /** Libraries */
+            libraries: components["schemas"]["LibraryView"][];
+            /** Local Repos */
+            local_repos: components["schemas"]["LocalRepo"][];
+            /** Projects */
+            projects: components["schemas"]["Project"][];
+            /** Revision */
+            revision: number;
+        };
         /** AlertRequest */
         AlertRequest: {
             /** Active */
@@ -60,6 +362,52 @@ export interface components {
             changed_at: string;
             /** Reason */
             reason?: string | null;
+        };
+        /** ConnectionResult */
+        ConnectionResult: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "ok" | "unauthorized" | "forbidden" | "not_found" | "redirect" | "tls" | "timeout" | "network" | "bad_response" | "no_credential";
+            /** Http Status */
+            http_status?: number | null;
+            /** Message */
+            message: string;
+            /**
+             * Ok
+             * @default false
+             */
+            ok: boolean;
+        };
+        /** CredentialStatus */
+        CredentialStatus: {
+            /** Account */
+            account: string;
+            /**
+             * Kind
+             * @default ado_pat
+             * @constant
+             */
+            kind: "ado_pat";
+            /** Present */
+            present: boolean | null;
+            /** Ref */
+            ref: string;
+            /** Ref Name */
+            ref_name: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "imported" | "manual" | "unknown";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "present" | "missing" | "unreadable" | "orphan" | "pending_delete";
+            /** Updated At */
+            updated_at: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -82,6 +430,231 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** ImportPreview */
+        ImportPreview: {
+            /** Errors */
+            errors: string[];
+            /** Files */
+            files: {
+                [key: string]: components["schemas"]["JsonValue"];
+            }[];
+            /** Fingerprint */
+            fingerprint: string;
+            /** Libraries */
+            libraries: {
+                [key: string]: components["schemas"]["JsonValue"];
+            }[];
+            /** Preserved Sections */
+            preserved_sections: string[];
+            /** Projects */
+            projects: components["schemas"]["Project"][];
+            /** Source Dir */
+            source_dir: string;
+            /** Task Count */
+            task_count: number;
+            /**
+             * Tasks Rule
+             * @enum {string}
+             */
+            tasks_rule: "empty" | "kept_tasks" | "migrated_from_flows";
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /** Fingerprint */
+            fingerprint: string;
+        };
+        /** ImportState */
+        ImportState: {
+            /** Error */
+            error?: string | null;
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Source Dir */
+            source_dir?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @default none
+             * @enum {string}
+             */
+            state: "none" | "in_progress" | "completed" | "declined" | "failed";
+            /** Summary */
+            summary?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Written Credentials */
+            written_credentials?: string[];
+        };
+        JsonValue: unknown;
+        /** LibraryCreate */
+        LibraryCreate: {
+            /** Base Url */
+            base_url: string;
+            /** Name */
+            name: string;
+            /** Pat */
+            pat?: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** LibraryCredential */
+        LibraryCredential: {
+            /** Present */
+            present: boolean | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "imported" | "manual" | "unknown";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "present" | "missing" | "unreadable" | "orphan" | "pending_delete";
+        };
+        /** LibraryPatch */
+        LibraryPatch: {
+            /** Base Url */
+            base_url?: string | null;
+            /**
+             * Keep Pat
+             * @default false
+             */
+            keep_pat: boolean;
+            /** Name */
+            name?: string | null;
+            /** Pat */
+            pat?: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** LibraryView */
+        LibraryView: {
+            /** Base Url */
+            base_url: string;
+            credential: components["schemas"]["LibraryCredential"];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** LocalRepo */
+        LocalRepo: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** MutationResponse */
+        MutationResponse: {
+            /** Id */
+            id?: string | null;
+            /** Revision */
+            revision: number;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** NoCredentialErrorDetail */
+        NoCredentialErrorDetail: {
+            /**
+             * Code
+             * @default no_credential
+             * @constant
+             */
+            code: "no_credential";
+            /** Message */
+            message: string;
+        };
+        /** NoCredentialErrorResponse */
+        NoCredentialErrorResponse: {
+            detail: components["schemas"]["NoCredentialErrorDetail"];
+        };
+        /** PatRequest */
+        PatRequest: {
+            /**
+             * Pat
+             * Format: password
+             */
+            pat: string;
+            /** Revision */
+            revision: number;
+        };
+        /** Project */
+        Project: {
+            /** Collection */
+            collection: string;
+            /** Id */
+            id: string;
+            /** Library Id */
+            library_id: string;
+            /** Project */
+            project: string;
+        };
+        /** ProjectCreate */
+        ProjectCreate: {
+            /** Collection */
+            collection: string;
+            /** Library Id */
+            library_id: string;
+            /** Project */
+            project: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectPatch */
+        ProjectPatch: {
+            /** Collection */
+            collection?: string | null;
+            /** Library Id */
+            library_id?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** RemoteProject */
+        RemoteProject: {
+            /** Name */
+            name: string;
+        };
+        /** SettingsResponse */
+        SettingsResponse: {
+            /** App Version */
+            app_version: string;
+            /** Data Dir */
+            data_dir: string;
+            import: components["schemas"]["ImportState"];
+            /** Legacy Config Dir */
+            legacy_config_dir: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /** Store Error */
+            store_error?: string | null;
+            /**
+             * Store State
+             * @enum {string}
+             */
+            store_state: "ok" | "readonly_error";
+        };
+        /** TestRequest */
+        TestRequest: {
+            /** Collection */
+            collection: string;
+            /** Pat */
+            pat?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -95,6 +668,21 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** ValidationErrorDetail */
+        ValidationErrorDetail: {
+            /**
+             * Code
+             * @default validation_error
+             * @constant
+             */
+            code: "validation_error";
+            /** Message */
+            message: string;
+        };
+        /** ValidationErrorResponse */
+        ValidationErrorResponse: {
+            detail: components["schemas"]["ValidationErrorDetail"];
+        };
     };
     responses: never;
     parameters: never;
@@ -104,6 +692,561 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ado_api_ado_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdoResponse"];
+                };
+            };
+        };
+    };
+    active_api_ado_active_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_library_api_ado_libraries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_library_api_ado_libraries__id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_library_api_ado_libraries__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_pat_api_ado_libraries__id__pat_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pat_api_ado_libraries__id__pat_delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remote_projects_api_ado_libraries__id__remote_projects_get: {
+        parameters: {
+            query: {
+                collection: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteProject"][];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoCredentialErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdoRequestErrorResponse"];
+                };
+            };
+        };
+    };
+    test_connection_api_ado_libraries__id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_api_ado_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_ado_projects__id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_api_ado_projects__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    credentials_api_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialStatus"][];
+                };
+            };
+        };
+    };
+    delete_credential_api_credentials__account__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                account: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    decline_api_settings_import_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+        };
+    };
+    execute_api_settings_import_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_settings_import_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+        };
+    };
     set_alert_api_system_alert_post: {
         parameters: {
             query?: never;

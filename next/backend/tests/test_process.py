@@ -91,7 +91,7 @@ def test_signal_exits_zero_with_open_websocket():
         b = start_backend()
         try:
             uri = f"ws://127.0.0.1:{b.port}/ws/events"
-            async with websockets.connect(uri) as ws:
+            async with websockets.connect(uri, origin="tauri://localhost") as ws:
                 await ws.send('{"type":"auth","token":"%s"}' % b.token)
                 await asyncio.wait_for(ws.recv(), 5)
                 b.proc.send_signal(signal.SIGTERM)

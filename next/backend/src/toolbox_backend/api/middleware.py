@@ -61,3 +61,46 @@ class BearerAuth:
                 await _json_response(send, 401, "unauthorized", [(b"www-authenticate", b"Bearer")])
                 return
         await self.app(scope, receive, send)
+
+
+class BodyLimit:
+    """Buffer at most max_body_bytes, rejecting a stream before route processing."""
+
+    def __init__(self, app: ASGIApp, max_body_bytes: int):
+        self.app, self.limit = app, max_body_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        length = _header(scope, b"content-length")
+        if length is not None:
+            try:
+                if int(length) > self.limit:
+                    await _json_response(send, 413, "request body too large")
+                    return
+            except ValueError:
+                await _json_response(send, 400, "invalid content length")
+                return
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            if len(body) + len(chunk) > self.limit:
+                await _json_response(send, 413, "request body too large")
+                return
+            body.extend(chunk)
+            if not message.get("more_body", False):
+                break
+        delivered = False
+
+        async def replay():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)

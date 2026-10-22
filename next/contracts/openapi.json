@@ -1,6 +1,157 @@
 {
   "components": {
     "schemas": {
+      "ActiveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "library_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "library_id",
+          "project_id"
+        ],
+        "title": "ActiveRequest",
+        "type": "object"
+      },
+      "AdoRequestErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "ok",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "redirect",
+              "tls",
+              "timeout",
+              "network",
+              "bad_response",
+              "no_credential"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "code": {
+            "const": "ado_request_failed",
+            "default": "ado_request_failed",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "message"
+        ],
+        "title": "AdoRequestErrorDetail",
+        "type": "object"
+      },
+      "AdoRequestErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/AdoRequestErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "AdoRequestErrorResponse",
+        "type": "object"
+      },
+      "AdoResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_library_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Library Id"
+          },
+          "active_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Project Id"
+          },
+          "libraries": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryView"
+            },
+            "title": "Libraries",
+            "type": "array"
+          },
+          "local_repos": {
+            "items": {
+              "$ref": "#/components/schemas/LocalRepo"
+            },
+            "title": "Local Repos",
+            "type": "array"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "libraries",
+          "projects",
+          "local_repos",
+          "active_library_id",
+          "active_project_id"
+        ],
+        "title": "AdoResponse",
+        "type": "object"
+      },
       "AlertRequest": {
         "properties": {
           "active": {
@@ -55,6 +206,135 @@
         "title": "AlertState",
         "type": "object"
       },
+      "ConnectionResult": {
+        "properties": {
+          "category": {
+            "enum": [
+              "ok",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "redirect",
+              "tls",
+              "timeout",
+              "network",
+              "bad_response",
+              "no_credential"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "default": false,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category",
+          "message"
+        ],
+        "title": "ConnectionResult",
+        "type": "object"
+      },
+      "CredentialStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "kind": {
+            "const": "ado_pat",
+            "default": "ado_pat",
+            "title": "Kind",
+            "type": "string"
+          },
+          "present": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Present"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "ref_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Name"
+          },
+          "source": {
+            "enum": [
+              "imported",
+              "manual",
+              "unknown"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "present",
+              "missing",
+              "unreadable",
+              "orphan",
+              "pending_delete"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "account",
+          "ref",
+          "ref_name",
+          "present",
+          "source",
+          "state",
+          "updated_at"
+        ],
+        "title": "CredentialStatus",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -102,6 +382,678 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "ImportPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "libraries": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "title": "Libraries",
+            "type": "array"
+          },
+          "preserved_sections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Preserved Sections",
+            "type": "array"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "source_dir": {
+            "title": "Source Dir",
+            "type": "string"
+          },
+          "task_count": {
+            "title": "Task Count",
+            "type": "integer"
+          },
+          "tasks_rule": {
+            "enum": [
+              "empty",
+              "kept_tasks",
+              "migrated_from_flows"
+            ],
+            "title": "Tasks Rule",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "source_dir",
+          "files",
+          "libraries",
+          "projects",
+          "tasks_rule",
+          "task_count",
+          "preserved_sections",
+          "warnings",
+          "errors"
+        ],
+        "title": "ImportPreview",
+        "type": "object"
+      },
+      "ImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "title": "ImportRequest",
+        "type": "object"
+      },
+      "ImportState": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "source_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Dir"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "default": "none",
+            "enum": [
+              "none",
+              "in_progress",
+              "completed",
+              "declined",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Summary",
+            "type": "object"
+          },
+          "written_credentials": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Written Credentials",
+            "type": "array"
+          }
+        },
+        "title": "ImportState",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "LibraryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pat": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "name",
+          "base_url"
+        ],
+        "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "present": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Present"
+          },
+          "source": {
+            "enum": [
+              "imported",
+              "manual",
+              "unknown"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "present",
+              "missing",
+              "unreadable",
+              "orphan",
+              "pending_delete"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "present",
+          "source",
+          "state"
+        ],
+        "title": "LibraryCredential",
+        "type": "object"
+      },
+      "LibraryPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "keep_pat": {
+            "default": false,
+            "title": "Keep Pat",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pat": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "LibraryPatch",
+        "type": "object"
+      },
+      "LibraryView": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/LibraryCredential"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "base_url",
+          "credential"
+        ],
+        "title": "LibraryView",
+        "type": "object"
+      },
+      "LocalRepo": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path"
+        ],
+        "title": "LocalRepo",
+        "type": "object"
+      },
+      "MutationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "MutationResponse",
+        "type": "object"
+      },
+      "NoCredentialErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "no_credential",
+            "default": "no_credential",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "NoCredentialErrorDetail",
+        "type": "object"
+      },
+      "NoCredentialErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/NoCredentialErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "NoCredentialErrorResponse",
+        "type": "object"
+      },
+      "PatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pat": {
+            "format": "password",
+            "title": "Pat",
+            "type": "string",
+            "writeOnly": true
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "pat"
+        ],
+        "title": "PatRequest",
+        "type": "object"
+      },
+      "Project": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "library_id",
+          "collection",
+          "project"
+        ],
+        "title": "Project",
+        "type": "object"
+      },
+      "ProjectCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "library_id",
+          "collection",
+          "project"
+        ],
+        "title": "ProjectCreate",
+        "type": "object"
+      },
+      "ProjectPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "ProjectPatch",
+        "type": "object"
+      },
+      "RemoteProject": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RemoteProject",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "title": "App Version",
+            "type": "string"
+          },
+          "data_dir": {
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "import": {
+            "$ref": "#/components/schemas/ImportState"
+          },
+          "legacy_config_dir": {
+            "title": "Legacy Config Dir",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "store_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Error"
+          },
+          "store_state": {
+            "enum": [
+              "ok",
+              "readonly_error"
+            ],
+            "title": "Store State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "store_state",
+          "data_dir",
+          "legacy_config_dir",
+          "app_version",
+          "import"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "TestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "pat": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat"
+          }
+        },
+        "required": [
+          "collection"
+        ],
+        "title": "TestRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -141,6 +1093,39 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "ValidationErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "validation_error",
+            "default": "validation_error",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ValidationErrorDetail",
+        "type": "object"
+      },
+      "ValidationErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ValidationErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ValidationErrorResponse",
+        "type": "object"
       }
     }
   },
@@ -150,6 +1135,710 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/ado": {
+      "get": {
+        "operationId": "ado_api_ado_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ado"
+      }
+    },
+    "/api/ado/active": {
+      "put": {
+        "operationId": "active_api_ado_active_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Active"
+      }
+    },
+    "/api/ado/libraries": {
+      "post": {
+        "operationId": "create_library_api_ado_libraries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Library"
+      }
+    },
+    "/api/ado/libraries/{id}": {
+      "delete": {
+        "operationId": "delete_library_api_ado_libraries__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Library"
+      },
+      "patch": {
+        "operationId": "patch_library_api_ado_libraries__id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Library"
+      }
+    },
+    "/api/ado/libraries/{id}/pat": {
+      "delete": {
+        "operationId": "delete_pat_api_ado_libraries__id__pat_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Pat"
+      },
+      "put": {
+        "operationId": "put_pat_api_ado_libraries__id__pat_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Pat"
+      }
+    },
+    "/api/ado/libraries/{id}/remote-projects": {
+      "get": {
+        "operationId": "remote_projects_api_ado_libraries__id__remote_projects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "title": "Collection",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RemoteProject"
+                  },
+                  "title": "Response Remote Projects Api Ado Libraries  Id  Remote Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoCredentialErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoRequestErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Remote Projects"
+      }
+    },
+    "/api/ado/libraries/{id}/test": {
+      "post": {
+        "operationId": "test_connection_api_ado_libraries__id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Connection"
+      }
+    },
+    "/api/ado/projects": {
+      "post": {
+        "operationId": "create_project_api_ado_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project"
+      }
+    },
+    "/api/ado/projects/{id}": {
+      "delete": {
+        "operationId": "delete_project_api_ado_projects__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project"
+      },
+      "patch": {
+        "operationId": "patch_project_api_ado_projects__id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Project"
+      }
+    },
+    "/api/credentials": {
+      "get": {
+        "operationId": "credentials_api_credentials_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialStatus"
+                  },
+                  "title": "Response Credentials Api Credentials Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Credentials"
+      }
+    },
+    "/api/credentials/{account}": {
+      "delete": {
+        "operationId": "delete_credential_api_credentials__account__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "title": "Account",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/settings/import/decline": {
+      "post": {
+        "operationId": "decline_api_settings_import_decline_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Decline"
+      }
+    },
+    "/api/settings/import/execute": {
+      "post": {
+        "operationId": "execute_api_settings_import_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute"
+      }
+    },
+    "/api/settings/import/preview": {
+      "post": {
+        "operationId": "preview_api_settings_import_preview_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Preview"
+      }
+    },
     "/api/system/alert": {
       "post": {
         "operationId": "set_alert_api_system_alert_post",

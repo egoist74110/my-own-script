@@ -66,6 +66,56 @@
       "title": "HelloData",
       "type": "object"
     },
+    "SettingsChangedData": {
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "title": "SettingsChangedData",
+      "type": "object"
+    },
+    "SettingsChangedEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/SettingsChangedData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "settings",
+          "default": "settings",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "settings.changed",
+          "default": "settings.changed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "SettingsChangedEvent",
+      "type": "object"
+    },
     "SystemAlertEvent": {
       "properties": {
         "data": {
@@ -177,6 +227,7 @@
   },
   "discriminator": {
     "mapping": {
+      "settings.changed": "#/$defs/SettingsChangedEvent",
       "system.alert": "#/$defs/SystemAlertEvent",
       "system.heartbeat": "#/$defs/SystemHeartbeatEvent",
       "system.hello": "#/$defs/SystemHelloEvent"
@@ -192,6 +243,9 @@
     },
     {
       "$ref": "#/$defs/SystemAlertEvent"
+    },
+    {
+      "$ref": "#/$defs/SettingsChangedEvent"
     }
   ],
   "title": "ToolboxEvent"

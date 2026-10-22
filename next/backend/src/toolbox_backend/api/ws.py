@@ -58,8 +58,7 @@ async def events(ws: WebSocket) -> None:
     app = ws.app
     settings = app.state.settings
     origin = ws.headers.get("origin")
-    # Browsers always send Origin; non-browser clients may omit it.
-    if origin is not None and origin not in settings.allowed_origins:
+    if origin not in settings.allowed_origins:
         await ws.close(code=1008)
         return
     await ws.accept()

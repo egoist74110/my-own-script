@@ -28,7 +28,11 @@ def _copy_tree(tmp_path: Path) -> Path:
 def _env(root: Path, hashseed: str = "0") -> dict[str, str]:
     return {
         "PATH": os.environ.get("PATH", ""),
-        "PYTHONPATH": str(root / "backend" / "src"),
+        "PYTHONPATH": os.pathsep.join([str(root / "backend" / "src"), os.environ["PYTHONPATH"]]),
+        "PYTHON_KEYRING_BACKEND": os.environ["PYTHON_KEYRING_BACKEND"],
+        "TOOLBOX_TEST_GUARD_LOG": os.environ["TOOLBOX_TEST_GUARD_LOG"],
+        "TOOLBOX_DATA_DIR": str(root / "data"),
+        "TOOLBOX_LEGACY_CONFIG_DIR": str(root / "legacy"),
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONHASHSEED": hashseed,
         "HOME": str(root / "home"),
