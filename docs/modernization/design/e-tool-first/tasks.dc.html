@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>代码工具箱 · 任务控制台</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef0f4}
+a{color:#14161a}a:hover{color:#c24e00}
+.lab{--ink:#14161a;--mute:#545a68;--line:rgba(20,22,26,.09);--orange:#ff6a00;font-family:'Inter','PingFang SC','Hiragino Sans GB',system-ui,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;color:var(--ink)}
+.ox{font-family:'Oxanium','PingFang SC',sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.glass{position:relative;background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.52));backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);box-shadow:0 18px 44px -30px rgba(38,48,80,.4),inset 0 1px 0 #ffffff,inset 0 0 0 1px rgba(255,255,255,.75)}
+.cut{clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.cut-xs{clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px))}
+.skew{clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%)}
+.hatch{background-image:repeating-linear-gradient(-45deg,rgba(20,22,26,.1) 0 1.5px,transparent 1.5px 6px)}
+.chev{background-color:var(--acc);background-image:repeating-linear-gradient(-60deg,rgba(20,22,26,.18) 0 4px,transparent 4px 10px);background-size:20px 100%}
+.lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;letter-spacing:1px;color:var(--mute);text-transform:uppercase}
+.blk{display:inline-flex;align-items:center;background:var(--ink);color:#ffffff;font-family:'Oxanium',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:1.2px;padding:2px 7px}
+.nav{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;text-decoration:none;font-size:13px;font-weight:500;color:#2a2e36}
+.nav:hover{background:rgba(20,22,26,.06)}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:0 12px;box-sizing:border-box;font-size:12.5px;font-weight:600}
+.btn:focus-visible,.ib:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+.ib{all:unset;cursor:pointer;width:32px;height:32px;display:grid;place-items:center;color:#545a68}
+.ib:hover{background:rgba(20,22,26,.07);color:#14161a}
+.tr:hover{background:rgba(255,255,255,.7)}
+.seg{display:inline-flex;align-items:center;justify-content:center;height:18px;font-family:'Oxanium',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.6px}
+@keyframes flow{to{background-position:20px 0}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(198,244,50,.9)}100%{box-shadow:0 0 0 7px rgba(198,244,50,0)}}
+@keyframes caret{0%,50%{opacity:1}58%,100%{opacity:0}}
+@keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.anim .chev{animation:flow .9s linear infinite}
+.anim .pulse{animation:pulse 1.6s ease-out infinite}
+.anim .caret{animation:caret 1.02s steps(1) infinite}
+.anim .slidein{animation:slidein .35s ease-out both}
+@media (prefers-reduced-motion: reduce){.anim *{animation:none !important}}
+</style>
+</helmet>
+<div class="lab {{motionClass}}" style="--acc: {{accent}}; position: relative; min-height: 960px; overflow: hidden; background: linear-gradient(160deg, #f4f5f8 0%, #eceef3 60%, #f2efea 100%); display: flex; flex-direction: column;">
+  <div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden; pointer-events: none;">
+    <div style="position: absolute; width: 560px; height: 560px; left: -180px; top: -240px; border-radius: 50%; filter: blur(100px); background: {{accent}}; opacity: .28;"></div>
+    <div style="position: absolute; width: 520px; height: 520px; right: -160px; bottom: -220px; border-radius: 50%; filter: blur(110px); background: #b9d2ff; opacity: .5;"></div>
+  </div>
+
+  <div style="position: relative; flex: 1; display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 14px 0; box-sizing: border-box;">
+    <nav class="glass cut" aria-label="主导航" style="flex: 0 0 208px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;">
+      <div aria-hidden="true" style="display: flex; gap: 7px; padding: 2px 8px 14px;"><span style="width: 11px; height: 11px; border-radius: 50%; background: #ff5f57;"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #febc2e;"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #28c840;"></span></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 14px;">
+        <div class="cut-xs" style="width: 28px; height: 28px; background: var(--ink); display: grid; place-items: center;"><svg aria-hidden="true" width="18" height="10" viewBox="0 0 24 14"><path d="M12 7C9.6 3.6 7.8 2 5.4 2 2.9 2 1 4.2 1 7s1.9 5 4.4 5c2.4 0 4.2-1.6 6.6-5Zm0 0c2.4 3.4 4.2 5 6.6 5 2.5 0 4.4-2.2 4.4-5s-1.9-5-4.4-5C16.2 2 14.4 3.6 12 7Z" fill="none" stroke="{{accent}}" stroke-width="2.4"></path></svg></div>
+        <span class="ox" style="font-size: 15px; font-weight: 800; letter-spacing: .8px;">TOOLBOX</span>
+      </div>
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+        <a href="#" class="nav skew" style="background: {{n.bg}}; color: {{n.fg}};">
+          <span class="ox" style="width: 18px; font-size: 10.5px; font-weight: 700; color: {{n.ic}};">{{n.no}}</span>
+          <span style="flex: 1;">{{n.label}}</span>
+          <sc-if value="{{n.badge}}" hint-placeholder-val="{{false}}"><span class="ox" style="font-size: 10.5px; font-weight: 700; padding: 0 6px; background: {{n.badgeBg}}; color: var(--ink);">{{n.badge}}</span></sc-if>
+        </a>
+      </sc-for>
+      <div style="flex: 1;"></div>
+      <div style="padding: 10px 8px 2px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px;">
+        <span class="lbl">Pinned</span>
+        <a href="#" class="nav" style="min-height: 30px; font-size: 12.5px;">web-portal 发布</a>
+        <a href="#" class="nav" style="min-height: 30px; font-size: 12.5px;">admin-console 仅发布</a>
+      </div>
+    </nav>
+
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+      <div class="glass cut" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 10px 8px 14px;">
+        <div style="display: flex; align-items: center; gap: 8px;"><span class="blk">02</span><h1 style="margin: 0; font-size: 15px; font-weight: 700;">任务</h1><span class="lbl" style="margin-left: 4px;">12 个任务 · 1 运行 · 2 排队</span></div>
+        <div role="tablist" aria-label="视图" style="display: flex; gap: 2px; margin-left: 12px;">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+            <button type="button" role="tab" aria-selected="{{t.on}}" class="btn skew" style="min-height: 28px; background: {{t.bg}}; color: {{t.fg}};">{{t.label}}</button>
+          </sc-for>
+        </div>
+        <span style="flex: 1;"></span>
+        <label class="cut-xs" style="display: flex; align-items: center; gap: 8px; min-height: 32px; width: 240px; padding: 0 10px; background: rgba(255,255,255,.75); box-shadow: inset 0 0 0 1px var(--line); color: var(--mute);">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">搜索任务</span>
+          <input type="text" placeholder="搜索任务、目标、分支" style="flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font: inherit; color: var(--ink);">
+          <span class="mono" style="font-size: 10px; padding: 1px 5px; box-shadow: inset 0 0 0 1px var(--line);">⌘K</span>
+        </label>
+        <button type="button" class="btn cut-xs" style="background: var(--ink); color: #ffffff;">＋ 新建任务</button>
+      </div>
+
+      <sc-if value="{{isAlert}}" hint-placeholder-val="{{false}}">
+        <div role="alert" class="cut slidein" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 14px; background: #14161a; color: #f2f0eb; position: relative; overflow: hidden;">
+          <span aria-hidden="true" style="position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background-image: repeating-linear-gradient(-45deg, #ff6a00 0 6px, #14161a 6px 12px);"></span>
+          <span class="ox" style="margin-left: 8px; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ff6a00;">WARNING</span>
+          <span style="font-size: 13px; font-weight: 600;">web-portal → staging：发布 staging-a 被环境拒绝，staging-b 已跳过（失败即停）</span>
+          <span class="mono" style="font-size: 11px; color: #a8adb8;">21:48:31 · #4127</span>
+          <span style="flex: 1;"></span>
+          <button type="button" class="btn cut-xs" style="background: #ff6a00; color: #14161a;">查看失败日志</button>
+          <button type="button" class="btn cut-xs" style="background: rgba(255,255,255,.1); color: #f2f0eb;">重试</button>
+          <button type="button" class="btn cut-xs" style="background: rgba(255,255,255,.1); color: #f2f0eb;">回滚</button>
+        </div>
+      </sc-if>
+
+      <section class="glass cut" aria-label="任务列表" style="padding: 4px 0 6px;">
+        <div class="lbl" style="display: grid; grid-template-columns: 26px minmax(200px, 2.2fr) minmax(150px, 1.4fr) minmax(200px, 1.6fr) 74px 90px 104px; gap: 12px; padding: 10px 14px 8px; border-bottom: 1px solid var(--line);">
+          <span></span><span>任务</span><span>目标</span><span>阶段</span><span>耗时</span><span>触发</span><span style="text-align: right;">操作</span>
+        </div>
+        <sc-for list="{{tasks}}" as="t" hint-placeholder-count="7">
+          <div class="tr" style="display: grid; grid-template-columns: 26px minmax(200px, 2.2fr) minmax(150px, 1.4fr) minmax(200px, 1.6fr) 74px 90px 104px; gap: 12px; align-items: center; min-height: 46px; padding: 0 14px; border-bottom: 1px solid var(--line); background: {{t.rowBg}}; box-shadow: {{t.rowRing}};">
+            <span class="{{t.dotCls}}" style="width: 8px; height: 8px; background: {{t.dot}};"></span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{t.name}}</span><span class="mono" style="font-size: 10.5px; color: var(--mute);">{{t.branch}}</span></span>
+            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2a2e36;">{{t.target}}</span>
+            <span style="display: flex; gap: 2px;">
+              <sc-for list="{{t.stages}}" as="s" hint-placeholder-count="4">
+                <span class="seg skew {{s.cls}}" style="flex: 1; background-color: {{s.bg}}; color: {{s.fg}};">{{s.code}}</span>
+              </sc-for>
+            </span>
+            <span class="mono" style="font-size: 12px;">{{t.dur}}</span>
+            <span style="font-size: 12px; color: var(--mute);">{{t.trigger}}</span>
+            <span style="display: flex; justify-content: flex-end; gap: 2px;">
+              <button type="button" class="ib" aria-label="运行"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4v16l14-8z"></path></svg></button>
+              <button type="button" class="ib" aria-label="仅发布"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></button>
+              <button type="button" class="ib" aria-label="更多"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
+            </span>
+          </div>
+        </sc-for>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+        <section class="glass cut" aria-label="最近运行" style="flex: 3 1 380px; min-width: 0; padding: 4px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 6px;"><span style="display: flex; align-items: center; gap: 8px; font-weight: 700;"><span class="blk">LOG</span>最近运行</span><a href="#" class="lbl" style="text-decoration: none;">全部 ›</a></div>
+          <sc-for list="{{runs}}" as="r" hint-placeholder-count="4">
+            <div class="tr" style="display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 0 14px; border-top: 1px solid var(--line);">
+              <span class="ox skew" style="flex: none; width: 64px; text-align: center; font-size: 9.5px; font-weight: 800; letter-spacing: 1px; padding: 2px 0; background: {{r.bg}}; color: {{r.fg}};">{{r.stamp}}</span>
+              <span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.name}}</span>
+              <span class="mono" style="font-size: 11px; color: var(--mute);">{{r.meta}}</span>
+            </div>
+          </sc-for>
+        </section>
+        <section class="glass cut" aria-label="本周" style="flex: 2 1 260px; min-width: 0; padding: 12px 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-content: start;">
+          <sc-for list="{{kpis}}" as="k" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span class="lbl">{{k.label}}</span>
+              <span class="ox" style="font-size: 22px; font-weight: 700;">{{k.value}}</span>
+              <span style="font-size: 11.5px; color: {{k.tc}}; font-weight: 600;">{{k.delta}}</span>
+            </div>
+          </sc-for>
+          <div aria-hidden="true" style="grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 3px; height: 40px; margin-top: 4px;">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span class="skew" style="flex: 1; height: {{b.h}}; background: {{b.bg}};"></span></sc-for>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="glass cut" aria-label="任务详情" style="flex: 1 1 320px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line);">
+        <div style="display: flex; align-items: center; gap: 8px;"><span class="blk" style="background: {{stateBg}}; color: {{stateFg}};">{{stateText}}</span><span class="mono" style="font-size: 11px; color: var(--mute);">#4127 · 04:12</span><span style="flex: 1;"></span><button type="button" class="ib" aria-label="关闭详情">✕</button></div>
+        <h2 style="margin: 0; font-size: 17px; font-weight: 700;">web-portal → staging</h2>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="flex: 1; display: flex; gap: 2px;" aria-hidden="true">
+            <sc-for list="{{progress}}" as="p" hint-placeholder-count="20"><span style="flex: 1; height: 8px; background: {{p.bg}};"></span></sc-for>
+          </div>
+          <span class="ox" style="font-size: 15px; font-weight: 700;">{{pctText}}</span>
+        </div>
+      </div>
+      <dl style="margin: 0; padding: 12px 16px; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; border-bottom: 1px solid var(--line);">
+        <sc-for list="{{detail}}" as="d" hint-placeholder-count="5">
+          <dt class="lbl" style="align-self: center;">{{d.k}}</dt>
+          <dd class="mono" style="margin: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{d.v}}</dd>
+        </sc-for>
+      </dl>
+      <div style="display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line);">
+        <button type="button" class="btn cut-xs" style="flex: 1; background: rgba(20,22,26,.06);">完整日志</button>
+        <button type="button" class="btn cut-xs" style="flex: 1; background: transparent; color: #a34100; box-shadow: inset 0 0 0 1.5px #ff6a00;">停止</button>
+      </div>
+      <div style="padding: 10px 16px 6px; display: flex; justify-content: space-between;"><span class="lbl">Live log</span><span class="lbl" style="color: var(--ink);">FOLLOW ●</span></div>
+      <div class="mono" style="flex: 1; min-height: 220px; margin: 0 10px 10px; padding: 10px 12px; background: rgba(20,22,26,.9); color: #d9dce3; font-size: 11.5px; line-height: 1.8; overflow: hidden;">
+        <sc-for list="{{logs}}" as="l" hint-placeholder-count="9">
+          <div style="white-space: nowrap;"><span style="color: #7d8290;">{{l.t}}</span> <span style="color: {{l.c}};">{{l.msg}}</span></div>
+        </sc-for>
+        <sc-if value="{{notAlert}}" hint-placeholder-val="{{true}}"><span class="caret" style="display: inline-block; width: 7px; height: 13px; background: var(--acc);"></span></sc-if>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="mono" style="position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 12px 14px 10px; padding: 6px 12px; font-size: 11px; color: var(--mute); background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.8);">
+    <sc-for list="{{status}}" as="s" hint-placeholder-count="5">
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span class="{{s.cls}}" style="width: 7px; height: 7px; background: {{s.c}};"></span>{{s.t}}</span>
+    </sc-for>
+    <span style="flex: 1;"></span>
+    <span>21:48 · 10.22 THU</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#c6f432","options":["#c6f432","#5ee0ff","#ffb02e","#b18cff"]},"alert":{"editor":"boolean","default":false},"motion":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? '#c6f432';
+    const alert = !!(this.props.alert ?? false);
+    const motion = this.props.motion ?? true;
+    const ink = '#14161a', orange = '#ff6a00';
+    const ni = (no, label, badge, on) => ({ no, label, badge, bg: on ? ink : 'transparent', fg: on ? '#ffffff' : '#2a2e36', ic: on ? accent : '#7a8090', badgeBg: on ? accent : 'rgba(20,22,26,.1)' });
+    const nav = [ni('01', '总览', '', false), ni('02', '任务', alert ? '!' : '1', true), ni('03', '工单', '12', false), ni('04', 'AI 会话', '1', false), ni('05', 'MCP', '', false), ni('06', '服务', '', false), ni('07', 'VPN', '', false), ni('08', '设置', '', false)];
+    const tabs = [{ label: '全部', on: 'true', bg: ink, fg: '#ffffff' }, { label: '运行中', on: 'false', bg: 'transparent', fg: '#2a2e36' }, { label: '收藏', on: 'false', bg: 'transparent', fg: '#2a2e36' }];
+    const D = { code: '', bg: ink, fg: accent, cls: '' };
+    const st = (code, kind) => kind === 'done' ? { code, bg: ink, fg: accent, cls: '' }
+      : kind === 'run' ? { code, bg: accent, fg: ink, cls: 'chev' }
+      : kind === 'fail' ? { code, bg: orange, fg: ink, cls: '' }
+      : kind === 'skip' ? { code, bg: 'rgba(20,22,26,.05)', fg: '#7a8090', cls: 'hatch' }
+      : { code, bg: 'rgba(20,22,26,.07)', fg: '#7a8090', cls: '' };
+    const S4 = (a, b, c, d) => [st('SYNC', a), st('BUILD', b), st('REL', c), st('REL', d)];
+    const T = (name, branch, target, stages, dur, trigger, dot, dotCls, sel) => ({ name, branch, target, stages, dur, trigger, dot, dotCls, rowBg: sel ? 'rgba(255,255,255,.8)' : 'transparent', rowRing: sel ? 'inset 3px 0 0 ' + (alert ? orange : accent) : 'none' });
+    const tasks = [
+      alert
+        ? T('web-portal 发布', 'main @ 8d04e7b', 'staging-a → staging-b', S4('done', 'done', 'fail', 'skip'), '4:12', '手动', orange, '', true)
+        : T('web-portal 发布', 'main @ 8d04e7b', 'staging-a → staging-b', S4('done', 'run', 'idle', 'idle'), '4:12', '手动', accent, 'pulse', true),
+      T('api-gateway 发布', 'release/2.8', 'prod', S4('idle', 'idle', 'idle', 'idle'), '排队', 'TG @owner', '#7a8090', '', false),
+      T('mobile-bff 发布', 'dev @ 1c9e', 'staging', S4('idle', 'idle', 'idle', 'idle'), '排队', '定时 22:00', '#7a8090', '', false),
+      T('admin-console 仅发布', 'main', 'prod', S4('done', 'done', 'done', 'done'), '2:08', 'TG @owner', ink, '', false),
+      T('docs-site 发布', 'main', 'prod', S4('done', 'done', 'done', 'done'), '1:46', '手动', ink, '', false),
+      T('mobile-bff 发布', 'dev @ 77ab', 'staging', S4('done', 'fail', 'skip', 'skip'), '3:51', '手动', orange, '', false),
+      T('data-sync 回滚', 'main', 'prod · offset 1', S4('done', 'done', 'done', 'done'), '1:12', 'TG @owner', ink, '', false)
+    ];
+    const ST = { clear: { stamp: 'CLEAR', bg: accent, fg: ink }, failed: { stamp: 'FAILED', bg: orange, fg: ink }, rb: { stamp: 'ROLLBACK', bg: ink, fg: '#ffffff' } };
+    const runs = [
+      Object.assign({ name: 'admin-console → prod 仅发布', meta: '20:31 · 2:08' }, ST.clear),
+      Object.assign({ name: 'web-portal → staging 发布', meta: '19:02 · 7:44' }, ST.clear),
+      Object.assign({ name: 'api-gateway → prod 回滚 1 版', meta: '17:15 · 1:12' }, ST.rb),
+      Object.assign({ name: 'mobile-bff → staging 发布', meta: '15:40 · 3:51' }, ST.failed)
+    ];
+    const kpis = [
+      { label: 'Runs/wk', value: '86', delta: '+12', tc: '#3d5600' },
+      { label: 'Success', value: '97.6%', delta: '评级 S', tc: '#3d5600' },
+      { label: 'Avg', value: '6:14', delta: '−42s', tc: '#3d5600' }
+    ];
+    const hs = [30, 45, 38, 60, 52, 70, 48, 66, 58, 80, 62, 74, 69, 92];
+    const bars = hs.map((h, i) => ({ h: h + '%', bg: i === hs.length - 1 ? accent : 'rgba(20,22,26,.16)' }));
+    const progress = Array.from({ length: 20 }, (_, i) => ({ bg: alert ? (i < 12 ? ink : i < 15 ? orange : 'rgba(20,22,26,.1)') : (i < 14 ? ink : 'rgba(20,22,26,.1)') }));
+    const detail = [
+      { k: 'Branch', v: 'main @ 8d04e7b' },
+      { k: 'Build', v: '#4127 · web-portal-ci' },
+      { k: 'Agent', v: 'mac-pool-02' },
+      { k: 'Targets', v: 'staging-a → staging-b' },
+      { k: 'Policy', v: '失败即停 · 串行' }
+    ];
+    const g = '#c8f56a';
+    const logs = [
+      { t: '21:44:02', c: g, msg: 'git merge dev → main ✓' },
+      { t: '21:44:20', c: '#d9dce3', msg: 'queue build #4127' },
+      { t: '21:45:10', c: '#d9dce3', msg: 'npm ci ✓ 41s' },
+      { t: '21:46:55', c: '#d9dce3', msg: 'vite build ✓ 2,184 modules' },
+      { t: '21:47:58', c: g, msg: 'tests 412 passed' },
+      { t: '21:48:09', c: '#d9dce3', msg: 'upload drop.zip 18.2 MB' },
+      alert ? { t: '21:48:20', c: '#d9dce3', msg: 'release R-912 → staging-a' } : { t: '21:48:12', c: '#d9dce3', msg: 'publish artifact …' },
+      alert ? { t: '21:48:31', c: '#ffb27a', msg: '✕ environment rejected' } : { t: '', c: '#d9dce3', msg: '' },
+      alert ? { t: '21:48:31', c: '#ffb27a', msg: '— staging-b skipped (stop on failure)' } : { t: '', c: '#d9dce3', msg: '' }
+    ];
+    const status = [
+      { t: '后端 127.0.0.1', c: accent, cls: '' },
+      { t: 'VPN 已连接', c: accent, cls: '' },
+      { t: 'TG 在线 · 3 机器人', c: accent, cls: '' },
+      { t: 'MCP 2/3', c: accent, cls: '' },
+      { t: 'Lark token 6 天', c: orange, cls: '' }
+    ];
+    return { accent, motionClass: motion ? 'anim' : '', isAlert: alert, notAlert: !alert, nav, tabs, tasks, runs, kpis, bars, progress, detail, logs, status,
+      stateText: alert ? 'FAILED' : 'RUNNING', stateBg: alert ? orange : accent, stateFg: ink, pctText: alert ? 'HALT' : '68%' };
+  }
+}
+</script>
+</body>
+</html>

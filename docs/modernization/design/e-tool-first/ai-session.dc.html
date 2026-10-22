@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>代码工具箱 · AI 会话</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef0f4}
+a{color:#14161a}a:hover{color:#c24e00}
+.lab{--ink:#14161a;--mute:#545a68;--line:rgba(20,22,26,.09);--orange:#ff6a00;font-family:'Inter','PingFang SC','Hiragino Sans GB',system-ui,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;color:var(--ink)}
+.ox{font-family:'Oxanium','PingFang SC',sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.glass{position:relative;background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.52));backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);box-shadow:0 18px 44px -30px rgba(38,48,80,.4),inset 0 1px 0 #ffffff,inset 0 0 0 1px rgba(255,255,255,.75)}
+.cut{clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.cut-xs{clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px))}
+.skew{clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%)}
+.lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;letter-spacing:1px;color:var(--mute);text-transform:uppercase}
+.blk{display:inline-flex;align-items:center;background:var(--ink);color:#ffffff;font-family:'Oxanium',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:1.2px;padding:2px 7px}
+.nav{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;text-decoration:none;font-size:13px;font-weight:500;color:#2a2e36}
+.nav:hover{background:rgba(20,22,26,.06)}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:32px;padding:0 12px;box-sizing:border-box;font-size:12.5px;font-weight:600}
+.btn:focus-visible,.ib:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+.ib{all:unset;cursor:pointer;width:32px;height:32px;display:grid;place-items:center;color:#545a68}
+.ib:hover{background:rgba(20,22,26,.07);color:#14161a}
+.sess{display:flex;gap:10px;align-items:center;min-height:50px;padding:0 12px;text-decoration:none;color:var(--ink);border-bottom:1px solid var(--line)}
+.sess:hover{background:rgba(255,255,255,.7)}
+.tool{display:flex;align-items:center;gap:10px;min-height:30px;padding:0 10px;font-size:12px}
+.tool:hover{background:rgba(20,22,26,.05)}
+.kbd{font-family:'JetBrains Mono',monospace;font-size:10px;padding:0 5px;box-shadow:inset 0 0 0 1px currentColor;opacity:.75}
+@keyframes stripe{to{background-position:0 24px}}
+@keyframes caret{0%,50%{opacity:1}58%,100%{opacity:0}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,106,0,.8)}100%{box-shadow:0 0 0 7px rgba(255,106,0,0)}}
+.anim .stripe{animation:stripe 1s linear infinite}
+.anim .caret{animation:caret 1.02s steps(1) infinite}
+.anim .pulse{animation:pulse 1.6s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.anim *{animation:none !important}}
+</style>
+</helmet>
+<div class="lab {{motionClass}}" style="--acc: {{accent}}; position: relative; min-height: 960px; overflow: hidden; background: linear-gradient(160deg, #f4f5f8 0%, #eceef3 60%, #f2efea 100%); display: flex; flex-direction: column;">
+  <div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden; pointer-events: none;">
+    <div style="position: absolute; width: 520px; height: 520px; left: 30%; top: -280px; border-radius: 50%; filter: blur(100px); background: {{accent}}; opacity: .24;"></div>
+    <div style="position: absolute; width: 520px; height: 520px; right: -160px; bottom: -220px; border-radius: 50%; filter: blur(110px); background: #b9d2ff; opacity: .5;"></div>
+  </div>
+
+  <div style="position: relative; flex: 1; display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 14px 0; box-sizing: border-box;">
+    <nav class="glass cut" aria-label="主导航" style="flex: 0 0 208px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;">
+      <div aria-hidden="true" style="display: flex; gap: 7px; padding: 2px 8px 14px;"><span style="width: 11px; height: 11px; border-radius: 50%; background: #ff5f57;"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #febc2e;"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #28c840;"></span></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 14px;">
+        <div class="cut-xs" style="width: 28px; height: 28px; background: var(--ink); display: grid; place-items: center;"><svg aria-hidden="true" width="18" height="10" viewBox="0 0 24 14"><path d="M12 7C9.6 3.6 7.8 2 5.4 2 2.9 2 1 4.2 1 7s1.9 5 4.4 5c2.4 0 4.2-1.6 6.6-5Zm0 0c2.4 3.4 4.2 5 6.6 5 2.5 0 4.4-2.2 4.4-5s-1.9-5-4.4-5C16.2 2 14.4 3.6 12 7Z" fill="none" stroke="{{accent}}" stroke-width="2.4"></path></svg></div>
+        <span class="ox" style="font-size: 15px; font-weight: 800; letter-spacing: .8px;">TOOLBOX</span>
+      </div>
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+        <a href="#" class="nav skew" style="background: {{n.bg}}; color: {{n.fg}};">
+          <span class="ox" style="width: 18px; font-size: 10.5px; font-weight: 700; color: {{n.ic}};">{{n.no}}</span>
+          <span style="flex: 1;">{{n.label}}</span>
+          <sc-if value="{{n.badge}}" hint-placeholder-val="{{false}}"><span class="ox" style="font-size: 10.5px; font-weight: 700; padding: 0 6px; background: {{n.badgeBg}}; color: var(--ink);">{{n.badge}}</span></sc-if>
+        </a>
+      </sc-for>
+    </nav>
+
+    <section class="glass cut" aria-label="会话列表" style="flex: 0 1 270px; min-width: 230px; display: flex; flex-direction: column;">
+      <div style="padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line);"><span class="blk">04</span><h1 style="margin: 0; font-size: 15px; font-weight: 700;">AI 会话</h1><span style="flex: 1;"></span><button type="button" class="btn cut-xs" style="background: var(--ink); color: #ffffff; min-height: 30px;">＋ 新会话</button></div>
+      <div role="tablist" aria-label="按 AI 筛选" style="display: flex; gap: 2px; padding: 8px 10px; border-bottom: 1px solid var(--line);">
+        <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+          <button type="button" role="tab" aria-selected="{{f.on}}" class="btn skew" style="min-height: 26px; padding: 0 10px; font-size: 12px; background: {{f.bg}}; color: {{f.fg}};">{{f.label}}</button>
+        </sc-for>
+      </div>
+      <sc-for list="{{sessions}}" as="s" hint-placeholder-count="7">
+        <a href="#" class="sess" style="background: {{s.bg}}; box-shadow: {{s.ring}};">
+          <span class="ox cut-xs" style="flex: none; width: 28px; height: 28px; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: {{s.chipBg}}; color: {{s.chipFg}};">{{s.abbr}}</span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{s.title}}</span><span class="mono" style="font-size: 10.5px; color: var(--mute);">{{s.meta}}</span></span>
+          <span class="{{s.cls}}" style="width: 8px; height: 8px; background: {{s.dot}};"></span>
+        </a>
+      </sc-for>
+    </section>
+
+    <main class="glass cut" style="flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column;">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--line);">
+        <span class="ox cut-xs" style="width: 28px; height: 28px; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--ink); color: var(--acc);">CL</span>
+        <span style="font-weight: 700;">#48213 权限缓存未刷新</span>
+        <span class="mono" style="font-size: 11px; color: var(--mute);">web-portal · fix/48213-menu-cache</span>
+        <span style="flex: 1;"></span>
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="3">
+          <span class="skew mono" style="font-size: 10.5px; padding: 3px 10px; background: {{c.bg}}; color: {{c.fg}};">{{c.t}}</span>
+        </sc-for>
+        <button type="button" class="ib" aria-label="中断"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg></button>
+        <button type="button" class="ib" aria-label="在终端打开"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-5-6-5M12 19h8"></path></svg></button>
+      </div>
+
+      <div style="flex: 1; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; gap: 10px;">
+          <span class="lbl" style="width: 52px; flex: none; padding-top: 3px;">You</span>
+          <div style="flex: 1; font-size: 13.5px; line-height: 1.7;">分析工单 #48213：切项目后菜单丢失。先定位权限缓存在哪里失效，再给最小修复。</div>
+          <span class="mono" style="font-size: 10.5px; color: var(--mute);">21:41</span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <span class="lbl" style="width: 52px; flex: none; padding-top: 3px; color: var(--ink);">Claude</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+            <div class="cut-xs" style="display: flex; flex-direction: column; background: rgba(20,22,26,.04);">
+              <sc-for list="{{tools}}" as="t" hint-placeholder-count="3">
+                <div class="tool"><span style="color: {{t.c}};">{{t.icon}}</span><b class="ox" style="width: 44px; font-size: 11px;">{{t.k}}</b><span class="mono" style="flex: 1; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{t.a}}</span><span class="mono" style="font-size: 10.5px; color: var(--mute);">{{t.r}}</span><span style="color: var(--mute);">›</span></div>
+              </sc-for>
+            </div>
+            <p style="margin: 0; font-size: 13.5px; line-height: 1.75;">问题在 <span class="mono" style="font-size: 12px; padding: 0 5px; background: rgba(20,22,26,.07);">usePermissions</span>：缓存键只含用户 ID，切换项目不会让它失效。修复是把 projectId 加进 queryKey，并在切换项目时让旧键失效。</p>
+            <div class="cut-xs mono" style="overflow: hidden; background: rgba(20,22,26,.92); color: #e8e9ec; font-size: 12px; line-height: 1.8;">
+              <div style="display: flex; justify-content: space-between; padding: 5px 12px; background: rgba(255,255,255,.06); font-size: 10.5px; color: #b8bcc6;"><span>src/auth/usePermissions.ts</span><span><span style="color: var(--acc);">+2</span> <span style="color: #ffb27a;">−1</span></span></div>
+              <div style="padding: 8px 0; overflow-x: auto;">
+                <div style="padding: 0 12px; white-space: pre; color: #8f94a0;">14   const { user } = useSession()</div>
+                <div style="padding: 0 12px; white-space: pre; color: #ffb27a; background: rgba(255,106,0,.14);">15 - const key = ['perm', user.id]</div>
+                <div style="padding: 0 12px; white-space: pre; color: #e3ff9a; background: rgba(198,244,50,.12);">15 + const { projectId } = useProject()</div>
+                <div style="padding: 0 12px; white-space: pre; color: #e3ff9a; background: rgba(198,244,50,.12);">16 + const key = ['perm', user.id, projectId]</div>
+              </div>
+            </div>
+          </div>
+          <span class="mono" style="font-size: 10.5px; color: var(--mute);">21:42</span>
+        </div>
+
+        <div role="group" aria-label="工具审批" class="cut-xs" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px 10px 20px; background: var(--ink); color: #ffffff; position: relative; overflow: hidden;">
+          <span class="stripe" aria-hidden="true" style="position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background-image: repeating-linear-gradient(-45deg, #ff6a00 0 6px, #14161a 6px 12px); background-size: 8px 24px;"></span>
+          <span class="ox" style="font-size: 11px; font-weight: 800; letter-spacing: 1.6px; color: #ff9a4d;">APPROVE?</span>
+          <span class="mono" style="flex: 1 1 260px; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span style="color: var(--acc);">$</span> pnpm vitest run src/auth --reporter=dot</span>
+          <button type="button" class="btn cut-xs" style="background: var(--acc); color: var(--ink);">允许 <span class="kbd">Y</span></button>
+          <button type="button" class="btn cut-xs" style="background: rgba(255,255,255,.12); color: #ffffff;">本会话总是 <span class="kbd">A</span></button>
+          <button type="button" class="btn cut-xs" style="background: transparent; color: #ffb27a; box-shadow: inset 0 0 0 1px #ff6a00;">拒绝 <span class="kbd">N</span></button>
+        </div>
+      </div>
+
+      <form style="margin: 0 12px 12px; display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,.75); box-shadow: inset 0 0 0 1px var(--line);" class="cut-xs">
+        <label for="composer6" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">给 AI 的消息</label>
+        <textarea id="composer6" rows="2" placeholder="继续追问 · / 命令 · @ 引用文件" style="flex: 1; resize: none; background: transparent; border: 0; outline: none; font: inherit; font-size: 13.5px; line-height: 1.6; color: var(--ink);"></textarea>
+        <span class="lbl">⌘↵</span>
+        <button type="submit" class="btn cut-xs" style="background: var(--ink); color: #ffffff;">发送</button>
+      </form>
+    </main>
+
+    <aside class="glass cut" aria-label="会话检查器" style="flex: 1 1 300px; max-width: 330px; min-width: 0; display: flex; flex-direction: column;">
+      <div role="tablist" aria-label="检查器" style="display: flex; gap: 2px; padding: 8px 10px; border-bottom: 1px solid var(--line);">
+        <button type="button" role="tab" aria-selected="true" class="btn skew" style="min-height: 26px; background: var(--ink); color: #ffffff;">上下文</button>
+        <button type="button" role="tab" aria-selected="false" class="btn skew" style="min-height: 26px;">改动 1</button>
+        <button type="button" role="tab" aria-selected="false" class="btn skew" style="min-height: 26px;">终端</button>
+      </div>
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line);">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><span class="lbl">Context</span><span class="ox" style="font-size: 16px; font-weight: 700;">41%</span></div>
+        <div aria-hidden="true" style="display: flex; gap: 2px;"><sc-for list="{{energy}}" as="e" hint-placeholder-count="24"><span style="flex: 1; height: 8px; background: {{e.bg}};"></span></sc-for></div>
+        <dl style="margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 12px;">
+          <sc-for list="{{ctx}}" as="c" hint-placeholder-count="5">
+            <dt class="lbl" style="align-self: center;">{{c.k}}</dt>
+            <dd class="mono" style="margin: 0; font-size: 11.5px; text-align: right;">{{c.v}}</dd>
+          </sc-for>
+        </dl>
+      </div>
+      <div style="padding: 10px 14px 6px;"><span class="lbl">改动文件</span></div>
+      <a href="#" style="display: flex; align-items: center; gap: 8px; margin: 0 10px; padding: 6px 8px; text-decoration: none; background: rgba(20,22,26,.04);" class="cut-xs mono"><span style="font-size: 11.5px; flex: 1;">src/auth/usePermissions.ts</span><span style="font-size: 11px; color: #3d5600;">+2</span><span style="font-size: 11px; color: #a34100;">−1</span></a>
+      <div style="padding: 12px 14px 6px; display: flex; justify-content: space-between;"><span class="lbl">终端 · zsh</span><span class="lbl">web-portal</span></div>
+      <div class="mono cut-xs" style="flex: 1; min-height: 240px; margin: 0 10px 10px; padding: 10px 12px; background: rgba(20,22,26,.92); color: #d9dce3; font-size: 11.5px; line-height: 1.8; overflow: hidden;">
+        <sc-for list="{{term}}" as="l" hint-placeholder-count="8">
+          <div style="white-space: pre; color: {{l.c}};">{{l.t}}</div>
+        </sc-for>
+        <div style="white-space: pre;"><span style="color: var(--acc);">›</span> <span class="caret" style="display: inline-block; width: 7px; height: 13px; background: var(--acc); vertical-align: middle;"></span></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="mono" style="position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 12px 14px 10px; padding: 6px 12px; font-size: 11px; color: var(--mute); background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.8);">
+    <sc-for list="{{status}}" as="s" hint-placeholder-count="5">
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; background: {{s.c}};"></span>{{s.t}}</span>
+    </sc-for>
+    <span style="flex: 1;"></span>
+    <span>21:48 · 10.22 THU</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#c6f432","options":["#c6f432","#5ee0ff","#ffb02e","#b18cff"]},"motion":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? '#c6f432';
+    const motion = this.props.motion ?? true;
+    const ink = '#14161a', orange = '#ff6a00';
+    const ni = (no, label, badge, on) => ({ no, label, badge, bg: on ? ink : 'transparent', fg: on ? '#ffffff' : '#2a2e36', ic: on ? accent : '#7a8090', badgeBg: on ? accent : 'rgba(20,22,26,.1)' });
+    const nav = [ni('01', '总览', '', false), ni('02', '任务', '1', false), ni('03', '工单', '12', false), ni('04', 'AI 会话', '1', true), ni('05', 'MCP', '', false), ni('06', '服务', '', false), ni('07', 'VPN', '', false), ni('08', '设置', '', false)];
+    const f = (label, on) => ({ label, on: on ? 'true' : 'false', bg: on ? ink : 'transparent', fg: on ? '#ffffff' : '#2a2e36' });
+    const filters = [f('全部', true), f('Claude', false), f('Codex', false), f('agy', false)];
+    const ss = (abbr, title, meta, dot, cls, on) => ({ abbr, title, meta, dot, cls, chipBg: on ? ink : 'rgba(20,22,26,.08)', chipFg: on ? accent : ink, bg: on ? 'rgba(255,255,255,.85)' : 'transparent', ring: on ? 'inset 3px 0 0 ' + accent : 'none' });
+    const sessions = [
+      ss('CL', '#48213 权限缓存未刷新', 'web-portal · 待审批', orange, 'pulse', true),
+      ss('CX', '网关超时配置梳理', 'api-gateway · 运行中', accent, '', false),
+      ss('AG', '报表导出列宽', 'admin-console · 完成', '#c3c7cf', '', false),
+      ss('CL', '弱网重复提交排查', 'mobile-bff · 昨天', '#c3c7cf', '', false),
+      ss('CX', '依赖升级影响面', 'api-gateway · 周一', '#c3c7cf', '', false),
+      ss('CL', 'CSV 中文文件名乱码', 'admin-console · 上周', '#c3c7cf', '', false),
+      ss('AG', '首页最近访问', 'web-portal · 上周', '#c3c7cf', '', false)
+    ];
+    const chips = [
+      { t: 'opus', bg: 'rgba(20,22,26,.07)', fg: ink },
+      { t: '逐条审批', bg: 'rgba(20,22,26,.07)', fg: ink },
+      { t: 'TG 同步', bg: accent, fg: ink }
+    ];
+    const tools = [
+      { icon: '✓', c: '#3d5600', k: 'READ', a: 'src/auth/usePermissions.ts', r: '84 行' },
+      { icon: '✓', c: '#3d5600', k: 'GREP', a: "queryKey: ['perm'", r: '3 处' },
+      { icon: '✓', c: '#3d5600', k: 'EDIT', a: 'src/auth/usePermissions.ts', r: '+2 −1' }
+    ];
+    const energy = Array.from({ length: 24 }, (_, i) => ({ bg: i < 10 ? ink : 'rgba(20,22,26,.1)' }));
+    const ctx = [{ k: 'Tokens', v: '82k / 200k' }, { k: 'Tools', v: '12 次' }, { k: 'Elapsed', v: '6m 02s' }, { k: 'Model', v: 'opus · high' }, { k: 'Session', v: 'a1f3…9c' }];
+    const term = [
+      { t: '$ git status -sb', c: '#ffffff' },
+      { t: '## fix/48213-menu-cache', c: '#8f94a0' },
+      { t: ' M src/auth/usePermissions.ts', c: '#ffb27a' },
+      { t: '$ pnpm vitest run src/auth', c: '#ffffff' },
+      { t: ' ✓ usePermissions  (6) 41ms', c: '#e3ff9a' },
+      { t: ' ✓ menuBuilder     (9) 63ms', c: '#e3ff9a' },
+      { t: ' Tests  15 passed (15)', c: '#e3ff9a' },
+      { t: ' waiting for approval …', c: '#8f94a0' }
+    ];
+    const status = [{ t: '后端 127.0.0.1', c: accent }, { t: 'Claude CLI 2.x', c: accent }, { t: 'TG @claude_bot 在线', c: accent }, { t: '1 个待审批', c: orange }, { t: 'MCP 2/3', c: accent }];
+    return { accent, motionClass: motion ? 'anim' : '', nav, filters, sessions, chips, tools, energy, ctx, term, status };
+  }
+}
+</script>
+</body>
+</html>
