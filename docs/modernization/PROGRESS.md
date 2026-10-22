@@ -512,3 +512,4 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 观察（info，不处置）：出站信号量是模块级对象（单事件循环生产环境无影响）；假 ADO 的 WIQL 对任何列返回全部条目（仅 dev 演示）。
 - 集成：限定 `next/backend`、`next/contracts` 的 binary patch（26 文件），`git apply --check` 后应用；`pnpm contracts:gen` 重新生成 `schema.d.ts`。集成版本：后端 `uv sync --frozen`、ruff、contracts 通过，`pytest` **531 passed**；前端 `contracts:check`、typecheck、lint 通过，`pnpm test` 422 passed；`git diff --check` 通过。补丁与输出在 `.local/dispatch/s2a/`。
 - 未测：真实 ADO（含 CR-NEXT-004）、真实 Keychain、前端联调。
+- S2 并行派工（主控，基线 `6ed7fd1`）：S2-B 工单页（Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s2b`；write_scope 另加 `scripts/dev-web.mjs` 的 `TOOLBOX_DEV_FAKE_ADO`）；S2-C 设置页本地仓库 + UX 两项（同上，worktree `.local/worktrees/s2c`）；两者测试子 agent requested haiku / medium，须新增独立用例。S2-A 交叉审计 s2a-cross-bd90107 round1：原生子 agent requested opus / medium，只读，跨厂商。actual 均 unknown（无提供方回执）。
