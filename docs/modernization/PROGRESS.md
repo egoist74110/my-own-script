@@ -288,7 +288,7 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 | --- | --- | --- | --- | --- |
 | S1-A 后端 | codex exec，requested gpt-6.1-sol / medium（两轮，同一 session `01a16325-b180-7292-8e40-cdfb5c46dee7`），sandbox workspace-write，worktree `.local/worktrees/s1a` @ `92ef9df`；actual unknown | codex exec gpt-6-luna / high，session `01a16343-2c78-73d1-b587-25a5d717be8b`，independent=true，两轮共 55 例（`tests/independent/s1/`），未发现产品缺陷 | s1a-cross round1 dispatched | passed（自动验收），集成提交 `814a921` |
 | S1-C 前端遗留 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1c` @ `92ef9df`；actual unknown（无提供方回执） | 施工者派 haiku / medium，independent=true，新增 37 例（`tests/independent/s1c-{ui,guard}.test.ts`），未发现缺陷 | s05-cross round2 dispatched | passed（自动验收），集成提交 `fd22770` |
-| S1-B 设置页 | — | — | — | 等 S1-A、S1-C 集成 |
+| S1-B 设置页 | Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1b` @ `c954533` | 施工者派 haiku / medium | pending | dispatched |
 
 请求原文与输出在 git 忽略的 `.local/dispatch/s1a/`。
 
@@ -327,3 +327,9 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 - 集成：限定 `next/backend`、`next/contracts` 的 binary patch，`git apply --check` 后应用；同时 `pnpm contracts:gen` 重新生成 `next/desktop/src/api/schema.d.ts`。集成版本：后端 `uv sync --frozen`、`ruff check`、`contracts --check` exit 0，`pytest` **358 passed**；前端 `contracts:check`、`typecheck`、`lint` exit 0，`test` 269 passed；`git diff --check` 通过。
 - 主控审阅结论：store 写入流程、导入步骤与残留、凭据入口（keyring 仅生产路径构造，`memory` 仅 `--dev`）、出站 HTTP 边界与合同一致。观察（接受，记录）：① 导入时旧 Keychain 读取若被用户在系统弹窗拒绝会抛错而非返回空，整次导入进入 `failed`（比合同“读不到就跳过”更保守），且导入期间持锁，弹窗未处理时其他写入 5 秒后 `store_busy`；② 内存模式下旧凭据源为空 → S1-B 合同补“dev 假凭据预置”。
 - 未测：真实 Keychain（含系统授权弹窗）、真实 ADO、Tauri 内运行。
+
+### S1-A 异步交叉审计
+
+| review_id | 审计目标 | 模型/档位 | 状态 |
+| --- | --- | --- | --- |
+| s1a-cross-814a921 / round1 | `ec7887b..814a921` 的 `next/backend`、`next/contracts` | Claude Code 原生子 agent，requested opus（Opus 5.5）/ medium，只读；跨厂商（施工为 GPT） | pending |
