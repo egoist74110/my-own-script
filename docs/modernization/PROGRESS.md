@@ -398,3 +398,9 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 | CR-S1B-002 | major | `pat_origin_change` 确认时重新计算 `changed()` 且地址框仍可编辑 → 确认提示显示 A、实际提交 B，PAT 可被保留到未经确认的 origin | open → S1-F |
 | CR-S1B-003 | major | `writable` 只看缓存的 overview；运行中写请求返回 503 `store_unavailable` 后写入口仍可用 | open → S1-F |
 | CR-S1B-004 | minor | 写响应中的 `warnings`（如 Keychain 删除失败保留 `pending_delete`）被忽略，界面显示“已删除” | open → S1-F |
+
+### S1-E / S1-F 派工
+
+- 合同：WORK_PACKAGES「S1-E」「S1-F」（`0a0e130`，措辞修正 `597faed`）。两包文件不重叠，并行。
+- S1-E 后端（CR-S1A-007、008）：codex exec，requested gpt-6.1-sol / medium，worktree `.local/worktrees/s1e` @ `597faed`；派工单要求其测试子 agent 必须新增独立用例（吸取 S1-D 测试者只复跑的教训）。
+- S1-F 前端（CR-S1B-001..004 + UX 小项）：Claude Code 原生子 agent，requested sonnet / medium，worktree `.local/worktrees/s1f` @ `597faed`；测试子 agent haiku / medium。
