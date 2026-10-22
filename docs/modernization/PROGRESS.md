@@ -619,3 +619,4 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 | CR-S2B-001 | major | 首次工单请求在途时 `settings.changed` 的 `invalidateQueries` 复用在途请求，旧来源响应清掉失效标记 → 显示旧项目数据 | open → S2-E2 |
 | CR-S2B-002 | minor | “刷新详情”先 `forgetFailed` 再失效，旧 id 先被重试；换新 id 成功后仍显示“部分图片已过期” | open → S2-E2 |
 | CR-S2B-003 | minor | 图片附件分支没有下载按钮（含 SVG、预览失败的图片） | open → S2-E2 |
+- S2-E 派工（基线 `5d591e2`）：S2-E1（CR-S2C-001）续接 S2-C 施工 agent，worktree `.local/worktrees/s2e1`；S2-E2（CR-S2B-001..003）续接 S2-B 施工 agent，worktree `.local/worktrees/s2e2`；均 requested sonnet / medium，actual unknown；并行，文件不重叠。
