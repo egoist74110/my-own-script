@@ -66,6 +66,132 @@
       "title": "HelloData",
       "type": "object"
     },
+    "RunEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/RunEventData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "run",
+          "default": "run",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "run.event",
+          "default": "run.event",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "RunEvent",
+      "type": "object"
+    },
+    "RunEventData": {
+      "properties": {
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "run_seq": {
+          "minimum": 1,
+          "title": "Run Seq",
+          "type": "integer"
+        },
+        "type": {
+          "enum": [
+            "state",
+            "log",
+            "checkpoint"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_seq",
+        "type",
+        "payload"
+      ],
+      "title": "RunEventData",
+      "type": "object"
+    },
+    "RunSubscribedData": {
+      "properties": {
+        "last_seq": {
+          "minimum": 0,
+          "title": "Last Seq",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "last_seq"
+      ],
+      "title": "RunSubscribedData",
+      "type": "object"
+    },
+    "RunSubscribedEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/RunSubscribedData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "run",
+          "default": "run",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "run.subscribed",
+          "default": "run.subscribed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "RunSubscribedEvent",
+      "type": "object"
+    },
     "SettingsChangedData": {
       "properties": {
         "revision": {
@@ -227,6 +353,8 @@
   },
   "discriminator": {
     "mapping": {
+      "run.event": "#/$defs/RunEvent",
+      "run.subscribed": "#/$defs/RunSubscribedEvent",
       "settings.changed": "#/$defs/SettingsChangedEvent",
       "system.alert": "#/$defs/SystemAlertEvent",
       "system.heartbeat": "#/$defs/SystemHeartbeatEvent",
@@ -246,6 +374,12 @@
     },
     {
       "$ref": "#/$defs/SettingsChangedEvent"
+    },
+    {
+      "$ref": "#/$defs/RunEvent"
+    },
+    {
+      "$ref": "#/$defs/RunSubscribedEvent"
     }
   ],
   "title": "ToolboxEvent"

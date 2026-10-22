@@ -29,6 +29,7 @@
 | 任务执行（git 同步→构建→发布） | 动态任务 CRUD，多目标串行、失败即停，构建实例智能匹配 | `app_ado/ui/tasks_tab.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 | 只发布 / 回滚 / 停止 | 跳过构建只发 Release、回滚 N 版本、毫秒级响应式停止 | `app_ado/ui/tasks_tab.py`（`deploy_only_task`/`rollback_task`/`stop_one_task`） | [ado-pipeline](capabilities/ado-pipeline.md) |
 | 构建 API | Pipelines 与 Build Definitions 触发/查询/等待/取消、agent 池覆盖 | `app_ado/ado_build_http.py`、`app_ado/ado_build_query.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
+| 重写 S3-A 任务基础层（阶段检查点） | 任务配置 API、SQLite 运行记录/增量事件、隔离 Git 适配器；真实执行入口仍关闭，任务页尚未迁移 | `next/backend/src/toolbox_backend/api/task_routes.py`、`services/runs.py`、`adapters/run_store.py` | [ado-pipeline](capabilities/ado-pipeline.md#重写-s3-a-阶段检查点) |
 | 发布 API | 建 Release、自动启动 notStarted 环境、监控 stages | `app_ado/ado_release_http.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 | Git 合并（本地/远程 PR） | 本地 `git merge`（失败自动 abort+reset）或 ADO PR 远程合并 | `app_ado/ado_git_ops.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 

@@ -12,13 +12,18 @@ from toolbox_backend.adapters.ado_http import AdoHTTP
 from toolbox_backend.adapters.ado_read import AdoRead
 from toolbox_backend.adapters.config_store import ConfigStore, MigrationStep
 from toolbox_backend.adapters.credentials import CredentialStore, LegacyCredentialSource
-from toolbox_backend.api import routes, settings_routes, work_item_routes, ws
+from toolbox_backend.adapters.run_store import RunStore
+from toolbox_backend.adapters.task_git import GitAdapter
+from toolbox_backend.api import routes, settings_routes, task_routes, work_item_routes, ws
 from toolbox_backend.api.middleware import BearerAuth, BodyLimit, HostGuard
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.models import SettingsChangedData, SettingsChangedEvent
+from toolbox_backend.logging_setup import register_secret
 from toolbox_backend.services.events import EventHub
+from toolbox_backend.services.runs import RunService
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
+from toolbox_backend.services.tasks import TasksService
 from toolbox_backend.services.work_items import WorkItemsService
 from toolbox_backend.settings import Settings
 
@@ -42,7 +47,11 @@ def create_app(
     ado_http: AdoHTTP | None = None,
     migrations: dict[int, MigrationStep] | None = None,
     ado_read: AdoRead | None = None,
+    task_executor=None,
+    task_git: GitAdapter | None = None,
 ) -> FastAPI:
+    register_secret(settings.token)
+
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Read startup state without creating a directory. Interrupted imports keep the
@@ -58,12 +67,14 @@ def create_app(
                 await app.state.config_store.update(config.revision, interrupted)
         except SettingsError:
             pass  # Exposed via GET /api/settings; never reset corrupt/unsupported files.
+        await app.state.run_service.initialize()
         beat = asyncio.create_task(app.state.system.heartbeat_loop(settings.heartbeat_interval_s))
         try:
             yield
         finally:
             beat.cancel()
             await asyncio.gather(beat, return_exceptions=True)
+            await app.state.run_service.close()
 
     app = FastAPI(
         title="TOOLBOX backend",
@@ -109,6 +120,14 @@ def create_app(
     app.state.work_items_service = WorkItemsService(
         app.state.settings_service, ado_read or AdoRead()
     )
+    app.state.run_store = RunStore(settings.data_dir, hub.publish_run)
+    app.state.tasks_service = TasksService(
+        app.state.settings_service, app.state.run_store, task_git or GitAdapter(settings.data_dir)
+    )
+    store.before_commit = app.state.tasks_service.guard
+    app.state.settings_service.guard_resource = app.state.tasks_service.guard_resource
+    app.state.run_service = RunService(app.state.tasks_service, app.state.run_store, task_executor)
+    app.include_router(task_routes.router)
     app.include_router(work_item_routes.router)
     app.include_router(routes.router)
     app.include_router(ws.router)

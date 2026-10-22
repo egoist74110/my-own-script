@@ -1,6 +1,7 @@
 """stderr-only logging with token redaction."""
 
 import base64
+import json
 import logging
 import sys
 
@@ -10,6 +11,8 @@ _known_secrets: set[str] = set()
 def register_secret(value: str) -> None:
     if len(value) >= 8:
         _known_secrets.add(value)
+        _known_secrets.add(json.dumps(value, ensure_ascii=False)[1:-1])
+        _known_secrets.add(json.dumps(value, ensure_ascii=True)[1:-1])
         _known_secrets.add(base64.b64encode((":" + value).encode()).decode())
 
 

@@ -229,6 +229,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["runs_api_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run */
+        get: operations["run_api_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events */
+        get: operations["events_api_runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile */
+        post: operations["reconcile_api_runs__run_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -308,6 +393,94 @@ export interface paths {
         put?: never;
         /** Set Alert */
         post: operations["set_alert_api_system_alert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks */
+        get: operations["tasks_api_tasks_get"];
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_api_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Task Order */
+        put: operations["task_order_api_tasks_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Task */
+        get: operations["task_api_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Task */
+        delete: operations["delete_task_api_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Task */
+        patch: operations["patch_task_api_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preflight */
+        post: operations["preflight_api_tasks__task_id__preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_tasks__task_id__runs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -648,6 +821,109 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /** DeployTarget */
+        DeployTarget: {
+            /** Build Id */
+            build_id?: string | null;
+            /** Build Kind */
+            build_kind?: string | null;
+            /** Build Name */
+            build_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Name
+             * @default 目标1
+             */
+            name: string;
+            /** Release Id */
+            release_id?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Release Stage Ids */
+            release_stage_ids?: string[];
+            /** Release Stage Names */
+            release_stage_names?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** EffectView */
+        EffectView: {
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Effect Id */
+            effect_id: string;
+            /** Error Category */
+            error_category: string | null;
+            /** Intent */
+            intent: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Intent At */
+            intent_at: string;
+            /** Intent Key */
+            intent_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "git_push" | "build_create" | "build_cancel" | "release_create" | "env_deploy";
+            /** Owned */
+            owned: boolean;
+            /** Remote Id */
+            remote_id: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "intent" | "confirmed" | "rejected" | "unknown";
+            /** Step No */
+            step_no: number;
+        };
+        /** FlowInput */
+        FlowInput: {
+            /**
+             * Build Branch
+             * @default
+             */
+            build_branch: string;
+            /** Merges */
+            merges?: components["schemas"]["MergeInput"][];
+            /** Push Branches */
+            push_branches?: string[];
+            /** Update Branches */
+            update_branches?: string[];
+        };
+        /** GitFlow */
+        GitFlow: {
+            /**
+             * Build Branch
+             * @default
+             */
+            build_branch: string;
+            /** Merges */
+            merges?: components["schemas"]["GitMergeRule"][];
+            /** Push Branches */
+            push_branches?: string[];
+            /** Update Branches */
+            update_branches?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** GitMergeRule */
+        GitMergeRule: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -826,6 +1102,13 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** MergeInput */
+        MergeInput: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        };
         /** MutationResponse */
         MutationResponse: {
             /** Id */
@@ -859,6 +1142,44 @@ export interface components {
             pat: string;
             /** Revision */
             revision: number;
+        };
+        /** PlanResponse */
+        PlanResponse: {
+            /** Expires At */
+            expires_at: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /** Revision */
+            revision: number;
+            /** Steps */
+            steps: {
+                [key: string]: components["schemas"]["JsonValue"];
+            }[];
+            /** Targets */
+            targets: {
+                [key: string]: components["schemas"]["JsonValue"];
+            }[];
+            /** Task Summary */
+            task_summary: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Warnings */
+            warnings: string[];
+        };
+        /** PreflightRequest */
+        PreflightRequest: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "sync_build_release" | "deploy_only" | "rollback";
+            /** Revision */
+            revision: number;
+            /** Rollback Offset */
+            rollback_offset?: number | null;
         };
         /** Project */
         Project: {
@@ -898,6 +1219,102 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** RunEventData */
+        RunEventData: {
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Run Id */
+            run_id: string;
+            /** Run Seq */
+            run_seq: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "state" | "log" | "checkpoint";
+        };
+        /** RunEventsResponse */
+        RunEventsResponse: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["RunEventData"][];
+            /** Next Seq */
+            next_seq: number;
+        };
+        /** RunListResponse */
+        RunListResponse: {
+            /** Cursor */
+            cursor: string | null;
+            /** Items */
+            items: components["schemas"]["RunResponse"][];
+        };
+        /** RunResponse */
+        RunResponse: {
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Config Revision */
+            config_revision: number;
+            /** Created At */
+            created_at: string;
+            /** Deadline At */
+            deadline_at: string;
+            /** Effects */
+            effects: components["schemas"]["EffectView"][];
+            /** Finished At */
+            finished_at: string | null;
+            /** Last Seq */
+            last_seq: number;
+            /** Log Bytes */
+            log_bytes: number;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "sync_build_release" | "deploy_only" | "rollback";
+            /** Phase */
+            phase: string;
+            /** Reason Code */
+            reason_code: string | null;
+            /**
+             * Recovery State
+             * @enum {string}
+             */
+            recovery_state: "none" | "pending" | "reconciled" | "manual_required";
+            /** Request Hash */
+            request_hash: string;
+            /** Request Id */
+            request_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at: string | null;
+            /** State Version */
+            state_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown";
+            /** Steps */
+            steps: components["schemas"]["StepView"][];
+            /** Stop Reason */
+            stop_reason: ("user" | "timeout" | "shutdown") | null;
+            /** Store Error */
+            store_error?: string | null;
+            /** Summary */
+            summary: string;
+            /** Task Id */
+            task_id: string;
+            /** Task Snapshot */
+            task_snapshot: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Updated At */
+            updated_at: string;
+        };
         /** SettingsResponse */
         SettingsResponse: {
             /** App Version */
@@ -921,6 +1338,241 @@ export interface components {
              * @enum {string}
              */
             store_state: "ok" | "readonly_error";
+        };
+        /** StartRequest */
+        StartRequest: {
+            /**
+             * Ack Old App Idle
+             * @constant
+             */
+            ack_old_app_idle: true;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** StartResponse */
+        StartResponse: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** StepView */
+        StepView: {
+            /** Checkpoint */
+            checkpoint: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Finished At */
+            finished_at: string | null;
+            /** Kind */
+            kind: string;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "unknown";
+            /** Step No */
+            step_no: number;
+            /** Target Index */
+            target_index: number | null;
+        };
+        /** TargetInput */
+        TargetInput: {
+            /** Build Id */
+            build_id?: string | null;
+            /** Build Kind */
+            build_kind?: ("pipeline" | "build") | null;
+            /** Build Name */
+            build_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Name
+             * @default 目标1
+             */
+            name: string;
+            /** Release Id */
+            release_id?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Release Stage Ids */
+            release_stage_ids?: string[];
+            /** Release Stage Names */
+            release_stage_names?: string[];
+        };
+        /** TaskCreate */
+        TaskCreate: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            git_flow?: components["schemas"]["FlowInput"];
+            /**
+             * Local Repo Path
+             * @default
+             */
+            local_repo_path: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Targets */
+            targets?: components["schemas"]["TargetInput"][];
+            /**
+             * Tg Command
+             * @default
+             */
+            tg_command: string;
+            /**
+             * Tg Desc
+             * @default
+             */
+            tg_desc: string;
+        };
+        /** TaskListResponse */
+        TaskListResponse: {
+            /** Items */
+            items: components["schemas"]["TaskView"][];
+            /** Revision */
+            revision: number;
+        };
+        /** TaskOrder */
+        TaskOrder: {
+            /** Ids */
+            ids: string[];
+            /** Revision */
+            revision: number;
+        };
+        /** TaskPatch */
+        TaskPatch: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            git_flow?: components["schemas"]["FlowInput"] | null;
+            /** Local Repo Path */
+            local_repo_path?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /** Revision */
+            revision: number;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Targets */
+            targets?: components["schemas"]["TargetInput"][] | null;
+            /** Tg Command */
+            tg_command?: string | null;
+            /** Tg Desc */
+            tg_desc?: string | null;
+        };
+        /** TaskResponse */
+        TaskResponse: {
+            item: components["schemas"]["TaskView"];
+            /** Revision */
+            revision: number;
+        };
+        /** TaskValidation */
+        TaskValidation: {
+            /** Valid */
+            valid: boolean;
+        };
+        /** TaskView */
+        TaskView: {
+            /** Active Run Id */
+            active_run_id: string | null;
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            git_flow?: components["schemas"]["GitFlow"];
+            /** Id */
+            id: string;
+            /**
+             * Local Repo Path
+             * @default
+             */
+            local_repo_path: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Targets */
+            targets?: components["schemas"]["DeployTarget"][];
+            /**
+             * Tg Command
+             * @default
+             */
+            tg_command: string;
+            /**
+             * Tg Desc
+             * @default
+             */
+            tg_desc: string;
+            validation: components["schemas"]["TaskValidation"];
+            /** Warnings */
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
         };
         /** TestRequest */
         TestRequest: {
@@ -1670,6 +2322,167 @@ export interface operations {
             };
         };
     };
+    runs_api_runs_get: {
+        parameters: {
+            query?: {
+                task_id?: string | null;
+                status?: ("queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_api_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_api_runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_api_runs__run_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     settings_api_settings_get: {
         parameters: {
             query?: never;
@@ -1783,6 +2596,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tasks_api_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+        };
+    };
+    create_task_api_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_order_api_tasks_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_api_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_api_tasks__task_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_task_api_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preflight_api_tasks__task_id__preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_tasks__task_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartResponse"];
                 };
             };
             /** @description Validation Error */

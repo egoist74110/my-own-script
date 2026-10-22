@@ -991,7 +991,7 @@
 
 ## S3 通用合同与模型分工
 
-- **派工门禁**：用户确认本合同及待决项；主控更新已决/分包，提交输入SHA、预置依赖并生成契约后才派工。当前仅文档提交，无施工/测试/审计派发；不因有计划而启动worker。
+- **派工门禁**：用户确认本合同及待决项；主控更新已决/分包，提交输入SHA、预置依赖并生成契约后才派工。用户已确认并解除门禁，实际施工/测试/审计状态以PROGRESS最新记录为准。
 - 主控 requested GPT 6.1 Sol/high，实际型号/档位无提供方元数据则unknown；后端施工 codex exec GPT 6.1 Sol/medium、sandbox workspace-write，不联网；测试子agent GPT 6 Luna/high（新增独立用例）；端口用例由主控沙箱外跑。
 - 前端施工 Gemini，Antigravity CLI `agy`：确认后先 `agy models` 核验，偏好实际列出的Gemini 3.x Pro/Flash高档，无指定型号记unavailable、不换厂商。每轮一个 `agy --print --dangerously-skip-permissions`，按隔离需要加 `--sandbox`，不使用JSON/流式；首轮按cwd从 `~/.gemini/antigravity-cli/cache/last_conversations.json` 取conversation_id，续用 `--conversation <id>`，禁用 `--continue`。lark MCP启动卡超时记blocked并告用户，不擅改全局配置。前端独立测试由Gemini新增独立用例或主控另派GPT 6 Luna/high。
 - 所有代码审计交Claude Code CLI Sonnet 5.5/medium，仅Read/Grep/Glob与限定只读git/测试命令，禁止Edit/Write；先核实CLI help与本机runtime已验证参数，不猜型号可用性。JSON回执记录session_id/modelUsage，修复后 `--resume <session_id>` 续接同会话、保留发现编号；429/额度不足记pending/unavailable，不换模型冒充审计。异步不阻塞其他包，不要求审到零问题。
@@ -1038,6 +1038,13 @@
 - 自动验收：`pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm guard:dist`、`pnpm contracts:check`全部exit0；独立测试位于`tests/independent/s3c-*`。覆盖CRUD/冲突与ACL阻断、preflight失效、二次确认/取消、双击幂等、后台继续、unknown/取消真实语义、重连缺口/乱序/重复/后端重启、并发run日志隔离、键盘焦点、无假执行数据/PAT。
 - 删除任务feature中已替换mock；侧栏未迁移的其他feature mock不扩范围。主控假环境联调留截图：任务、编辑、计划确认、运行日志、停止/unknown、历史。真实Tauri/ADO验收另列。
 - 回退：限定上述路径至输入SHA；不能把假页面状态当真实run结果。
+
+### S3-C 主控裁决：既有 mock 测试迁移（2026-10-23）
+
+- Gemini只读侦查及主控原文抽查确认，四个既有文件固化了S0.5 mock：`tests/unit/pages.test.ts`、`tests/independent/e-alert.test.ts`、`tests/unit/s1c.test.ts`、`tests/independent/settings-independent.test.ts`。S3-C测试write_scope另允许修改这四文件中的**任务相关用例**，其他feature用例不改；无需保留产品里的假任务来迁就测试。
+- 原断言的安全/键盘/单选/阻止冒泡/告警非模态可交互/ARIA面板关联语义全部保留。原固定任务可迁到按正式DTO构造的假API夹具；新建需实际打开表单、提交、等待服务响应后再断言列表变化，不能继续断言本地push假数据。
+- 全局告警不能把真实run凭空改为failed；失败样式由假服务提供真实形状的failed状态/事件驱动，另外保留system.hello/system.alert驱动横幅与导航告警的验证。虚构的周KPI断言替换为真实运行历史断言（不得在产品中保留虚构统计）。每处既有断言的改动须在交付逐条说明替代覆盖，禁止删用例、放宽安全断言或用skip换通过。
+- 新增独立S3-C用例仍为硬要求，上述迁移不冒充独立测试。正式API输出类型由S3-B冻结后生成，不在这次侦查中手写模型。
 
 ## S3 集成验收（主控）
 

@@ -133,6 +133,61 @@ S1 ADO 请求在锁内取得同一快照的 library/PAT，释放锁后发送；c
 - 全部新路由走 S0 认证；PAT 不进响应/事件/配置，远端 JSON 的凭据回显递归脱敏，包含凭据的
   媒体拒绝返回。生产日志关闭 HTTPX/httpcore 的 URL 诊断，出站失败只返回固定分类/文案。
 
+## S3-A 任务与运行内核
+
+- 新增 `/api/tasks` 读取、增删改、`PUT /api/tasks/order` 与预检接口；写入沿用
+  SettingsService 的 ConfigStore、revision CAS 和单次提交。请求只接受表单字段；存量任务及
+  git_flow/targets 中的未知字段保留，执行快照只投影已知字段。`legacy_flows` 不再生成任务。
+  ACL 引用阻止删除；活动/unknown 任务及其项目、library 在同一协调边界内阻止变更。
+- **生产 preflight/start 返回 409 `unsupported_task`**，直到 S3-B 接入完整执行适配器。
+  HTTP 不接受 executor、cwd、URL、argv、owner 或测试远端开关。应用创建时可通过
+  `create_app(task_executor=..., task_git=...)` 做可信依赖注入；没有环境变量或页面后门。
+- 运行库 `<data-dir>/runs.sqlite3` 为 schema v1，WAL / FULL / foreign_keys / 5 秒 busy timeout；
+  DB、WAL/SHM、runner.lock 与仓库锁为 0600，目录为 0700，拒绝符号链接 DB/锁文件。
+  一个数据目录一个运行器。配置不参与伪跨库事务：锁内冻结配置，再一次事务提交 run、步骤、
+  预约和首事件；成功之后才排队。四 worker，最多 100 个 queued，等待许可可取消。
+- `runs/run_steps/run_effects/run_events/run_reservations` 保存七态、CAS 版本、白名单快照、
+  request_id/hash、意图/回执和持久 run_seq。未知结果保留预约；重启不重发写操作。
+  无意图 queued 转 cancelled，其余活动运行转 unknown。损坏/高版本库不重置；兼容历史可读，
+  写入返回 `run_store_unavailable`，普通设置与工单功能继续使用配置库。
+- `GET /api/runs` 使用 created_at/run_id 游标（默认 50、最多 100），`/{id}` 返回步骤/效果，
+  `/{id}/events` 从 after_seq 分页（默认 200、最多 1000）。`/{id}/cancel` 幂等落盘，
+  终态重复取消 200；`/{id}/reconcile` 202 只读核实。unknown 每 30 秒核实，15 分钟后
+  manual_required，预约保留；无执行适配器时不会发送远端请求。
+- 已认证 `/ws/events` 接收 `{type:"subscribe",topic:"run",run_id,after_seq}` 与对应
+  unsubscribe。先登记，再按持久水位回放，缓冲实时增量并按 run_seq 去重；完成后发送
+  `run.subscribed {run_id,last_seq}`。每连接最多 8 个 run，队列 256/4408；未订阅不收运行日志。
+  envelope.seq 仍为进程序号，不能用于重连补齐。S0 已认证后的无关/垃圾帧仍忽略。
+- 日志使用有界跨块行缓冲，先去终端控制码再脱敏，超长无换行输出丢弃整行并继续排空。
+  每条最多 8 KiB，每 run 原始输出预算 20 MiB，预算落库并只追加一次截断提示。
+  不持久化 PAT、Basic/Bearer、进程环境或任意远端响应体。
+
+S3-B 继续使用 `domain/task_execution.py` 中的 `TaskExecutor`，不是另建运行模型：
+
+1. `prepare(snapshot, operation, rollback_offset) -> PreparedExecution` 只读验证来源/定义/stage，
+   返回有序 steps、显示 targets、资源键、冻结的制品/部署尝试信息及总预算。
+2. `execute(ExecutionContext) -> ExecutionOutcome` 用 `context.operation/snapshot/deadline_at` 执行。
+   设置 `step_no`，通过 `checkpoint` 保存类型化进度；每次远端写先 `intent`，可靠响应后
+   `receipt`，步骤完成 `complete_step`。`current()` 可读持久步骤/效果；`log` 接受脱敏前的
+   文本和可选 raw_bytes。SQLite 提交后由唯一回调广播，adapter 不直接发 WS。
+3. `reconcile(context)` 只查询，不能调用 `intent`。观察结果可写本地 receipt/步骤状态，
+   但不能创建、取消或部署远端资源；全部效果核实后才返回终态。不明结果继续 unknown。
+
+`adapters/task_git.py` 使用固定 argv、隔离 Git/SSH 环境、显式 origin refs 与非强制 push；
+生产只支持 `user@fqdn:path`、`ssh://user@fqdn[:port]/path` 及现有 SSH agent/known_hosts。
+禁用用户 SSH 配置、代理、私钥文件/交互认证、Git 全局配置、hooks/外部 helper/driver。
+HTTPS、SSH 别名、远程 PR 写均不在本版支持范围。file 远端仅由测试构造器的
+`test_remote_root` 允许，路径必须位于该临时根目录内。
+root/common-dir 的 flock 由监督进程和 Git 子进程继承；控制管道 EOF（含后端 SIGKILL）
+会 TERM → 最多 5 秒 → KILL → wait，直到子进程退出才释放锁。不会按落盘旧 pid 回收进程。
+失败只 abort 本次 merge；已 push 的分支不撤回，结束尽力恢复原 checkout，构建提交单独解析
+build_branch 并与 origin 精确核对。禁止 force/reset --hard/clean/stash，也禁止操作新旧应用源码目录。
+
+S3-A 新增无需端口的测试为 `tests/test_s3_{runs,faults,git,ws,lead_regressions}.py` 和
+`tests/independent/s3a/`，自动包含在下述沙箱子集中。Git 网络测试只有临时 bare 的 file 协议；
+另有 fake 进程的输出失败、锁继承与真实 SIGKILL 孤儿回收测试。真实 SSH/ADO/Keychain 与
+真实端口 HTTP/WS 由主控另行验收，不能把注入执行器的结果当真实远端验收。
+
 ## 测试
 
 ```sh

@@ -92,6 +92,7 @@ class SettingsService:
         self.legacy = legacy
         self.legacy_config = LegacyConfig(legacy_dir)
         self.http = http
+        self.guard_resource = lambda kind, ident: None
 
     def _get(self, key: str) -> str | None:
         try:
@@ -436,6 +437,7 @@ class SettingsService:
 
     async def patch_library(self, lid: str, body: LibraryPatch):
         def operation(tx):
+            self.guard_resource("library", lid)
             lib = find(tx.config.ado.libraries, lid)
             if body.base_url and origin(lib.base_url) != origin(body.base_url):
                 if not body.pat and not body.keep_pat and self._get(account(lid)):
@@ -525,6 +527,7 @@ class SettingsService:
 
     async def put_pat(self, lid: str, revision: int, value: str):
         def operation(tx):
+            self.guard_resource("library", lid)
             find(tx.config.ado.libraries, lid)
             self._put_pat(tx, lid, value)
             return MutationResponse(revision=tx.config.revision)
@@ -560,6 +563,7 @@ class SettingsService:
 
     async def delete_pat(self, lid, revision):
         def operation(tx):
+            self.guard_resource("library", lid)
             find(tx.config.ado.libraries, lid)
             warnings = self._remove_credential(tx, account(lid))
             return MutationResponse(revision=tx.config.revision, warnings=warnings)
@@ -574,6 +578,7 @@ class SettingsService:
 
     async def delete_library(self, lid, revision):
         def operation(tx):
+            self.guard_resource("library", lid)
             find(tx.config.ado.libraries, lid)
             pids = {p.id for p in tx.config.ado.projects if p.library_id == lid}
             self._in_use(tx.config, pids)
@@ -619,6 +624,8 @@ class SettingsService:
 
     async def project(self, body: ProjectCreate | ProjectPatch, pid: str | None = None):
         def operation(tx):
+            if pid:
+                self.guard_resource("project", pid)
             ident = pid or "proj:" + str(uuid.uuid4())
 
             def mutate(c):
@@ -640,6 +647,7 @@ class SettingsService:
 
     async def delete_project(self, pid, revision):
         def operation(tx):
+            self.guard_resource("project", pid)
             find(tx.config.ado.projects, pid)
             self._in_use(tx.config, {pid})
 

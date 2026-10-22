@@ -5,6 +5,13 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from toolbox_backend.api.middleware import token_matches
+from toolbox_backend.domain.errors import SettingsError
+from toolbox_backend.domain.models import (
+    RunEvent,
+    RunEventData,
+    RunSubscribedData,
+    RunSubscribedEvent,
+)
 
 router = APIRouter()
 
@@ -46,10 +53,88 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue[str]) -> None:
         await ws.send_text(await queue.get())
 
 
-async def _drain_incoming(ws: WebSocket) -> None:
+async def _run_enqueue(hub, sub, model, data):
+    while sub.queue.full() and not sub.overflowed.is_set():
+        sub.queue.space.clear()
+        if sub.queue.full():
+            await sub.queue.space.wait()
+    if not sub.overflowed.is_set():
+        hub.enqueue(sub, model, data)
+
+
+async def _subscribe_run(ws, sub, frame):
+    rid, after = frame.get("run_id"), frame.get("after_seq")
+    if (
+        not isinstance(rid, str)
+        or len(rid) > 128
+        or type(after) is not int
+        or after < 0
+        or (rid not in sub.runs and len(sub.runs) >= 8)
+    ):
+        raise ValueError("invalid subscription")
+    hub, store = ws.app.state.hub, ws.app.state.run_store
+    # Register before the first DB await. Concurrent commits are buffered until replay ends.
+    sub.runs[rid] = after
+    sub.replaying[rid] = []
+    try:
+        run = await store.get(rid)
+        watermark = run["last_seq"]
+        if after > watermark:
+            raise ValueError("future cursor")
+        while after < watermark:
+            page = await store.events(rid, after, 1000)
+            for event in page["items"]:
+                if event["run_seq"] > watermark:
+                    break
+                await _run_enqueue(hub, sub, RunEvent, RunEventData(**event))
+                after = event["run_seq"]
+                sub.runs[rid] = after
+        await _run_enqueue(
+            hub, sub, RunSubscribedEvent, RunSubscribedData(run_id=rid, last_seq=watermark)
+        )
+        pending = sub.replaying[rid]
+        while pending:
+            event = pending.pop(0)
+            if event["run_seq"] > sub.runs[rid]:
+                await _run_enqueue(hub, sub, RunEvent, RunEventData(**event))
+                sub.runs[rid] = event["run_seq"]
+        del sub.replaying[rid]
+    except BaseException:
+        sub.runs.pop(rid, None)
+        sub.replaying.pop(rid, None)
+        raise
+
+
+async def _drain_incoming(ws: WebSocket, sub=None) -> None:
     while True:
         message = await ws.receive()
         if message["type"] == "websocket.disconnect":
+            return
+        if sub is None:
+            continue
+        raw = message.get("text")
+        # S0 ignored post-auth garbage/binary frames. Only recognised run messages add
+        # protocol semantics; keep existing clients and regression behavior unchanged.
+        if raw is None or len(raw) > 4096:
+            continue
+        try:
+            frame = json.loads(raw)
+        except ValueError, RecursionError:
+            continue
+        if (
+            not isinstance(frame, dict)
+            or frame.get("topic") != "run"
+            or frame.get("type") not in {"subscribe", "unsubscribe"}
+        ):
+            continue
+        try:
+            if frame.get("type") == "subscribe" and frame.get("topic") == "run":
+                await _subscribe_run(ws, sub, frame)
+            elif frame.get("type") == "unsubscribe" and frame.get("topic") == "run":
+                sub.runs.pop(frame.get("run_id"), None)
+                sub.replaying.pop(frame.get("run_id"), None)
+        except ValueError, TypeError, SettingsError:
+            await _close(ws, 1008)
             return
 
 
@@ -73,7 +158,7 @@ async def events(ws: WebSocket) -> None:
     system = app.state.system
     sub = hub.subscribe(hello=system.hello_json)
     pump = asyncio.create_task(_pump(ws, sub.queue))
-    incoming = asyncio.create_task(_drain_incoming(ws))
+    incoming = asyncio.create_task(_drain_incoming(ws, sub))
     overflow = asyncio.create_task(sub.overflowed.wait())
     tasks = {pump, incoming, overflow}
     try:

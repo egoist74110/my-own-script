@@ -654,3 +654,39 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 运行时预检：codex exec/resume与Claude Code help可用；`agy models` exit0，仅列出的Gemini高档为 `gemini-3.8-flash-high`（Gemini 3.8 Flash High），前端选此型号，无Gemini Pro，不替换厂商。Claude尚未执行审计请求，型号可用性与modelUsage在实际审计回执核实。
 - 后端无新增依赖；先从本确认提交创建S3-A worktree并离线同步uv.lock。S3-A先实现运行内核/配置/Git；S3-B接入ADO后才开放完整真实执行链；S3-C随后替换任务mock。派工结果另追加，不把准备状态记成已开工。
 - S3-A已派：codex exec，requested `gpt-6.1-sol / medium`，sandbox workspace-write，输入`bcfeba5`，worktree `.local/worktrees/s3a`；session `01a16444-9e5a-7da0-8286-67f40c7827f8`，actual model/effort未知（JSON尚无型号回执）。主控 `uv sync --offline --frozen` exit0（33个锁定包，Python3.14.7，无新增依赖），派工单要求GPT6 Luna/high新增独立测试。请求/输出 `.local/dispatch/s3a/`，状态running。
+- 主控启动基线复验：输入版本后端全量pytest **572 passed**（135.29s），前端 **755 passed**；均exit0，未改断言。S3-A进行中，不能把基线结果当集成验收。
+- 补充运行时证据：S3-A原生rollout的 `turn_context` 记录 model=`gpt-6.1-sol`、effort=`medium`、workspace-write、network_access=false；这是本地运行时配置回执，非提供方底层路由保证。独立测试已实际调用原生 `collaboration.spawn_agent`，requested `gpt-6-luna / high`，返回task_name=`/root/s3a_tests`；其实际型号/档位无独立回执仍unknown。
+- **CR-S3A-L01（major，open，主控亲自复现）**：Git command等待中，进程先退出、日志sink随后失败时，`sink_errors`只在等待drains之前检查，可能漏掉末尾日志持久化错误而返回命令成功。主控在施工树重跑S3新增集合：**34 passed / 1 failed**（`test_late_output_journal_failure_cannot_report_command_success`，DID NOT RAISE SettingsError）。复现与观察源码哈希存 `.local/dispatch/s3a/lead-red-l01.json`，修复前不接收该版本。
+- S3-C输入侦查已派（非施工/审计）：Antigravity CLI `agy --print`，requested `gemini-3.8-flash-high / high`，mode=plan、sandbox、单轮纯文本，5分钟上限；cwd为重写worktree。限定只读现有前端/测试/启动器，不运行测试/应用、不联网、不修改文件、不派发。用于收集S3-C组件与测试接入点，正式前端施工仍等S3-B冻结契约；请求/输出 `.local/dispatch/s3c-scout/`，会话ID待首轮完成后按cwd取缓存，actual未知。
+- S3-C侦查返回exit0，cwd缓存会话 `023e830f-4b59-4cf6-a5b2-daa0d0344d16`；actual model/effort仍unknown（无提供方回执），前端源码无改动。事实导航见 `.local/dispatch/s3c-scout/final.txt`：EventClient无公开send、BackendRuntime只有api/start/stop；旧任务mock耦合触点为pages、e-alert、s1c、settings-independent四个测试文件。主控已读过runtime/events/侧栏原文；后续按冻结DTO迁移夹具与交互，不能保留mock制造的任务结果或虚构周KPI。
+
+### S3-A 候选接收与主控回归（2026-10-23）
+
+- 施工会话 `01a16444-9e5a-7da0-8286-67f40c7827f8` 因 Codex CLI 账户 usage limit 退出（exit1），没有最终交付报告，也未完成最后一轮全量验收；状态 **unavailable**。保留原会话/施工树，额度恢复后同会话续接，不静默换模型。CLI 提示 5:03 AM，时区未核实，不推算恢复时刻。
+- **CR-S3A-L01** 主控新增确定性回归：强制进程退出等待先完成、日志sink随后失败；修前1 failed（DID NOT RAISE SettingsError）。修复为drains结束后二次检查sink错误，Git/日志定向 **20 passed**。
+- **CR-S3A-L02（major，主控亲自复现并小修复）**：SQLite已提交queued后取消HTTP请求，执行派发随请求丢失，任务永久停queued。新增回归按提交后挂起→取消请求→释放交接，修前1 failed（等待executor进入超时）。RunService持有shielded acceptance任务并登记收尾，关闭时先等已开始接收完成再回收worker；回归+faults **26 passed**。两项回归在 `tests/test_s3_lead_regressions.py`，未删除/放宽施工方用例。
+- 候选清理仅新增/改动文件的格式、import及内部锁等待参数名；ruff通过，契约已重生。最终后端全量验收进行中，不能把定向结果当集成通过。
+- S3-A交叉审计已异步派发：Claude Code CLI requested `claude-sonnet-5-5 / medium`，只读Read/Grep/Glob及精确允许的只读git/既有假环境测试命令，禁止Edit/Write/派发/联网。review_id=`s3a-cross`，预分配session=`d20575a3-cb48-45a0-8de1-c02aec1ff0f4`（待JSON回执确认），输入基线`bcfeba5`+29文件SHA256清单；请求/回执 `.local/reviews/s3a-cross/`，actual/modelUsage待回执，不以参数冒充实际回执。
+
+### S3-A 首轮审计与阶段检查点
+
+- 审计首轮exit0，JSON确认同一session `d20575a3-cb48-45a0-8de1-c02aec1ff0f4`；`modelUsage` 唯一模型键及canonicalModel均为 `claude-sonnet-5-5`，provider=`firstParty`。medium由命令可验证，提供方未回执实际effort。首轮结论 **pass after minor fixes**，7项minor；L01/L02代码层面确认修复。精确白名单拒绝其带cd及不同参数的Bash命令，未扩大权限；审计者只读源码，未跑测试/核验SHA或完整审阅生成契约及既有测试，不冒充全覆盖。
+
+| finding_id | 主控核实与处置 |
+| --- | --- |
+| CR-S3A-001 | **deferred，S3-B接入前落实**：纯本地异常/总超时的failed/cancelled分类需结合阶段与远端观察。不能仅凭effects为空判定安全终态：复用的owned=false构建仍可能运行。生产executor尚未接入，入口关闭。 |
+| CR-S3A-002 | **deferred，原S3-A施工会话恢复后优先修**：收尾的DB/CAS失败可使worker退出而持久状态仍running/cancelling；需登记失联worker/诊断及同进程只读恢复。DB真正不可写时不能伪造unknown已落盘。当前保留预约，重启recover；不宣称此项闭环。 |
+| CR-S3A-003 | **fixed（主控）**：关闭时逐worker容错，finally发停止信号，最外层finally关闭DB/锁。新增cancel journal抛错回归，修前失败。 |
+| CR-S3A-004 | **fixed（主控）**：checkpoint UPDATE检查rowcount，不存在步骤404并事务回滚，不发假checkpoint事件。新增回归修前DID NOT RAISE。 |
+| CR-S3A-005 | **fixed（主控）**：raw_bytes预算仍持久计数，空safe文本不发log事件；后续文本只追加一个seq。新增回归修前2 != 1。 |
+| CR-S3A-006 | **rejected（合同依据）**：WORK_PACKAGES规定活动/unknown任务编辑/删除409，sort_order也属于编辑字段；更改活动任务位置应阻断，不擅自放宽为只锁执行字段。其他任务单独PATCH仍可用；待同会话确认/挑战。 |
+| CR-S3A-007 | **fixed（主控）**：临时bare远端改写source ref后，真实GitAdapter.execute修前fetch失败；仅fetch至refs/remotes/origin的refspec加`+`，push及本地分支均不强制。新增回归验证远端跟踪更新、本地main不变。 |
+
+- 003/004/005/007新增回归均由主控亲自先跑失败，修复后与L01/L02合计 **6 passed**。修复delta限定binary patch已check后同步回施工树，第二轮同会话 `--resume` 复核进行中；保留001/002延期与006拒绝，不要求审到零问题。
+- 集成按 `next/backend`、`next/contracts` 限定binary patch，先 `git apply --check` 后应用；主控生成前端 `schema.d.ts`。首轮集成版本全量后端 **639 passed**（166.13s），前端 **755 passed**（37文件）；frozen离线安装/typecheck/lint/build/guard:dist/contracts:check通过；后端ruff/contracts通过。Rust fmt/clippy离线通过，test **36 passed**（8+9+19）；根目录旧代码守卫 **66 passed / 2 skipped**（68项收集，ok-script两例因平台符号不可用跳过），均在重写目录执行。
+- 上述639是审计小修复之前版本；最后修复版正在重新全量验收，最终结果另追加，不套用旧结果。独立测试目录实际收集 **10项新增用例**，已包含在全量集合；子agent最终报告因父施工会话quota退出未核齐，不虚构其交付。施工自修的修前证据已从CLI提取30条失败命令；主控尚未核齐每项反向补丁复现，需原会话续接整理，当前只保存阶段检查点，**不宣称S3-A工程交付或整个S3完成**。
+- 四技能/生命周期复核：确认单一ConfigStore写入、配置锁内预约、SQLite状态/事件原子提交，副作用意图先行；unknown预约保留；Git管道/监督进程/继承锁与关闭finally有测试，HTTP请求取消后的接受任务由后端持有。001/002残留已明确，不声明production-ready。
+- S3-B/C **not_dispatched**；B公开API核实和接力要点保留 `.local/dispatch/s3b/`，C侦查已完成。后续顺序：额度恢复续接原S3-A会话核齐交付/优先修002 → S3-B完整ADO链及001 → 冻结DTO和假fixture → Gemini S3-C。无新增用户决策。
+- 未测：真实SSH agent/host key/远端push、真实ADO构建/发布/回滚、Keychain及Tauri人工运行；本轮全部外部写测试为临时bare或假执行器，没有对真实远端操作。施工worktree/本地回执保留，未删除；没有启动需长期保留的业务进程。
+- Claude第二轮exit0，JSON确认仍是同session，modelUsage仍仅 `claude-sonnet-5-5`/firstParty，medium实际effort无提供方回执；结论仍 **pass after minor fixes**。确认003/004/005/007关闭、接受006拒绝，无新发现；001/002继续deferred/open，明确002是S3-A验收未完成项。只读复核patch与测试结构，未独立运行测试/校验SHA，不宣称审计全通过。后续修复继续resume此session，不另换会话或模型。
+- **最终修复版主控验收**：后端完整 `pytest -q` **643 passed**（164.28s），ruff、contracts --check、git diff --check及改动范围/SHA256一致性检查通过；前端/Rust/根目录守卫结果仍对应相同未改源码。此结果仅证明当前自动检查通过，不关闭001/002、不替代施工最终报告/全部修前证据核齐或真实验收。当前包状态 **checkpoint / partial**；本地提交后不push，pre-commit自动版本递增单列为既有行为。

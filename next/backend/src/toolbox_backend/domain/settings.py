@@ -149,6 +149,7 @@ class Ado(StrictModel):
 
 
 class DeployTarget(BaseModel):
+    model_config = ConfigDict(extra="allow")
     name: str = "目标1"
     enabled: bool = True
     build_kind: str | None = None
@@ -161,11 +162,13 @@ class DeployTarget(BaseModel):
 
 
 class GitMergeRule(BaseModel):
+    model_config = ConfigDict(extra="allow")
     source: str
     target: str
 
 
 class GitFlow(BaseModel):
+    model_config = ConfigDict(extra="allow")
     build_branch: str = ""
     update_branches: list[str] = Field(default_factory=list)
     merges: list[GitMergeRule] = Field(default_factory=list)

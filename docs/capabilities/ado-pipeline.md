@@ -34,3 +34,11 @@
 - 认证用 `Basic base64(":PAT")`，PAT 只存 Keychain，绝不进日志。
 - PAT 最小权限建议见 `docs/SECURITY.md`（Build 读+执行、Release 读+写+执行、Code 只读）。
 - 老格式 `flows` 会自动迁移成 `tasks`（`app_ado/task_migrate.py`，加载时落盘）。
+
+## 重写 S3-A 阶段检查点
+
+`next/backend` 已加入任务 CRUD/排序及引用保护 API、`<data-dir>/runs.sqlite3` WAL 运行记录、检查点/副作用意图/预约和按 run_seq 回放的事件流。实现入口为 `api/task_routes.py`、`services/tasks.py`、`services/runs.py`、`adapters/run_store.py`；接口由 `next/contracts` 生成。
+
+`adapters/task_git.py` 使用隔离环境和固定 argv，仓库 root/common-dir 互斥，监督进程负责回收本次子进程。fetch 可刷新远端跟踪引用，push 始终非强制；失败保留已发生的推送，不做硬重置。自动测试只使用临时 bare 远端和假执行器。
+
+这是基础层检查点：真实 ADO 执行器待 S3-B 接入，生产 preflight/start 返回 `unsupported_task`；任务页仍为旧 mock，待 S3-C 替换。纯本地异常分类及收尾失败后的同进程恢复尚有审计待办，不能视作完整 S3 或真实环境验收通过。合同与最新证据见 `docs/modernization/WORK_PACKAGES.md`、`PROGRESS.md`。

@@ -56,6 +56,8 @@ class Transaction:
             candidate = Config.model_validate(candidate.model_dump(by_alias=True))
         except ValidationError:
             raise SettingsError("validation_error", "配置校验失败", 422) from None
+        if self.store.before_commit:
+            self.store.before_commit(self.config, candidate)
         self.store._write(candidate)
         self.config = candidate
         self.revisions.append(candidate.revision)
@@ -75,6 +77,7 @@ class ConfigStore:
         self.lock_timeout_s = 5.0
         self._lock = asyncio.Lock()
         self.on_change = on_change
+        self.before_commit = None
         # v1 is the first production version. Only explicitly registered, pure steps
         # may upgrade an older version; no guessed v0 data shape or implicit reset.
         self.migrations = dict(migrations or {})

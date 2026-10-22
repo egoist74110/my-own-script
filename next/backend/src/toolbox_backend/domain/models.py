@@ -57,7 +57,40 @@ class SettingsChangedEvent(_Envelope):
     data: SettingsChangedData
 
 
+class RunEventData(BaseModel):
+    run_id: str
+    run_seq: int = Field(ge=1)
+    type: Literal["state", "log", "checkpoint"]
+    payload: dict
+
+
+class RunEvent(BaseModel):
+    seq: int = Field(ge=0)
+    topic: Literal["run"] = "run"
+    ts: datetime
+    type: Literal["run.event"] = "run.event"
+    data: RunEventData
+
+
+class RunSubscribedData(BaseModel):
+    run_id: str
+    last_seq: int = Field(ge=0)
+
+
+class RunSubscribedEvent(BaseModel):
+    seq: int = Field(ge=0)
+    topic: Literal["run"] = "run"
+    ts: datetime
+    type: Literal["run.subscribed"] = "run.subscribed"
+    data: RunSubscribedData
+
+
 Event = Annotated[
-    SystemHelloEvent | SystemHeartbeatEvent | SystemAlertEvent | SettingsChangedEvent,
+    SystemHelloEvent
+    | SystemHeartbeatEvent
+    | SystemAlertEvent
+    | SettingsChangedEvent
+    | RunEvent
+    | RunSubscribedEvent,
     Field(discriminator="type"),
 ]
