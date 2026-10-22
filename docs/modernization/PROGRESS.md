@@ -622,3 +622,16 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - S2-E 派工（基线 `5d591e2`）：S2-E1（CR-S2C-001）续接 S2-C 施工 agent，worktree `.local/worktrees/s2e1`；S2-E2（CR-S2B-001..003）续接 S2-B 施工 agent，worktree `.local/worktrees/s2e2`；均 requested sonnet / medium，actual unknown；并行，文件不重叠。
 - S2-E1 集成（主控）：施工者（续接 S2-C agent，requested sonnet / medium，actual unknown）新增 `tests/unit/settings-s2e1.test.ts` 4 例，未派测试子 agent（合同允许，`verified_by=executor` + 主控复核）。主控在 worktree 临时反向应用 src 补丁复跑：3 failed / 1 passed（护栏），恢复后全过——修前失败证据属实。修法：settling 时若用户改过的字段服务器也变了即不 adopt，基线与 revision 不动，保存走 409 合并提示。集成版本前端 **732 passed**，typecheck/lint/build/guard:dist/contracts:check 通过，提交 `3d0fdd3`。CR-S2C-001 → fixed（待审计第二轮）。
 - S2-E2 集成（主控）：施工者（续接 S2-B agent，requested sonnet / medium，actual unknown）新增 5 例回归（`tests/unit/work-items-e2.test.ts`）；测试子 agent haiku / medium，independent=true，新增 18 例（`tests/independent/s2e2-*`），发现被拦截但带 media_id 的附件缺下载按钮，已修；一例因 store 对相同 revision 不触发而改为递增 revision（store 不在范围、后端 revision 单调，接受）。主控反向应用 src 补丁复跑新回归：**5 failed**，恢复后全过。修法：settings.changed 先 cancelQueries 再 invalidate，六个查询传 signal；刷新详情先等重取再 forgetFailed，过期计数按引用者（`get(id, owner)`/`release(owner)`）统计；凡有 media_id 的附件都有下载按钮。既有断言改写 1 处（security 测试按文本精确定位“下载 doc.txt”，断言内容不变）。施工者关于“SVG 附件下载 415”的担忧经核实不存在：后端附件关系一律登记为 attachment kind（CR-S2A-L01 后与内联 image 分开），不会 415。集成版本前端 **755 passed**，typecheck/lint/build/guard:dist/contracts:check 通过，提交 `ca190df`。CR-S2B-001..003 → fixed（待审计第二轮）。
+
+### S2-B/S2-C 交叉审计第二轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s2bc-cross-e96dd3b / round2 | `f90885e..ca190df` 的 `next/desktop`（S2-E1、S2-E2） | codex exec resume，同一 session `01a163e0-…`，gpt-6.1-sol / high；连续 | returned（exit 0） | **pass**：CR-S2C-001、CR-S2B-001..003 fixed，无新发现；复用首轮内存探针，另核对多 owner 过期计数、clear 中止并 revoke、被拦截附件下载只请求后端不透明 id；只读 vitest 737 passed / 1 skipped |
+
+## S2 阶段状态（2026-10-22）
+
+- 自动验收：完成。集成 HEAD 上后端 `pytest` 572 passed、ruff/contracts 通过；前端 `pnpm test` 755 passed，typecheck/lint/build/guard:dist/contracts:check 通过；`src-tauri` fmt/clippy/test 通过；旧应用守卫 66 passed / 2 skipped 不变。
+- 交叉审计：S2-A（Opus，两轮，CR-S2A-001..004 + I-2/I-4）与 S2-B/S2-C（GPT 6.1 Sol，两轮，CR-S2B-001..003、CR-S2C-001）全部闭环；主控自查发现 CR-S2A-L01、CR-S2D-L01 已修。
+- 待用户真实环境验收（未测）：真实 ADO 列表/详情/评论/历史/子项/附件；**CR-NEXT-004** 跨源 CDN（若属实追加方案 B）；I-5（base_url 与远端路径大小写/编码不一致时误拦）、I-7（batch 返回 null 元素）；真实 Keychain；Tauri 内 blob 图片、CSP 与 opener；Playwright e2e。
+- 施工 worktree `.local/worktrees/s2a..s2e2`（约 1.5 GB）：逐文件核对，s2d、s2e1、s2e2 与主仓库完全一致；s2a/s2b/s2c 中不一致的文件均为被后续包（S2-D、S2-E）或两包合并改动覆盖的旧版本。删除待用户确认。
