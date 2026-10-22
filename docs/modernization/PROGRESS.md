@@ -482,3 +482,10 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 待用户真实环境验收（未测）：真实 Keychain 读取旧条目的系统授权弹窗/拒绝后导入 failed 体验、真实 ADO 测试连接与远端项目、Tauri 内渲染、多窗口并发编辑、Playwright e2e（未装浏览器）。
 - UX 待办（不阻塞）：A→B→A 后切回显示旧草稿；非 patch 写入推进 revision 后 library 详情保存会多一次 409 合并提示。
 - 施工 worktree `.local/worktrees/s1a..s1g`（约 1.5 GB）：用户 2026-10-22 确认后移除（移除前逐个核对改动文件均已集成入主 worktree；`git worktree remove --force` + `prune`）。补丁、派工单与施工/测试输出保留在 git 忽略的 `.local/dispatch/`、`.local/reviews/`。
+
+## 下一步规划（主控 2026-10-22，S1 完成后）
+
+- 顺序建议：**S2 工单 → S3 任务执行**（MIGRATION_PLAN 允许二者并行，但同一主控串行更稳）。理由：S2 以只读为主，不触发构建/发布/推送，便于用户真实验收；它会先把 ADO HTTP 客户端层（认证、origin 约束、超时、错误分类，沿用 S1 `adapters/ado_http.py` 的边界）扩展成通用读取层，S3 直接复用。S3 引入统一运行模型（ARCHITECTURE §4，SQLite WAL 检查点、`unknown` 状态）与真实写操作（git push、触发构建/发布），风险高，单独一个切片做。
+- S2 范围草案：看板列/列表/详情/评论/子项/Updates（只读）；附件与内联图片后端代理（D01：按 library origin 逐跳校验、跨源终止，旧应用 `trusted_base_url` 规则）；ADO HTML 后端白名单清洗 + 前端 DOMPurify；本地仓库（local_repos）增删改（S1 推迟项）；工单页由 mock 换真实接口。**不含**：TG `/wi`（S4）、MCP 分析按钮与 AI 会话（S5/S6）、ADO MCP server（S6）。
+- 需在 S2 派工前请用户拍板：① UI 是否提供“新建工单”（旧应用只在 MCP 工具里建单）；② CR-NEXT-004——真实工单附件是否 302 到跨源 CDN（需用户在旧应用或浏览器里确认一次），决定是否要“明示受信 origin”配置。
+- 遗留待办并入 S2：S1 UX 小项（A→B→A 旧草稿、非 patch 写入后的额外 409 合并提示）、S05-004（导航角标 aria、审批条 window 监听，原定 S5，可顺带看但不强求）。
