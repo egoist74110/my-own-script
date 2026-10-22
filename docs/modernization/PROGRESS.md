@@ -209,6 +209,7 @@ actual 型号/档位：四个施工者与四个测试者均为 Claude Code 原�
 
 ### 资源与清理
 
-- 保留（git 忽略）：`.local/worktrees/s0a|s0b|s0c`（施工 worktree，集成已完成，可 `git worktree remove`）、`.local/cargo-target` 约 4.0 GB、`next/.local/spike` 约 206 MB、`.local/design`、`.local/ref/rhine-lock`、联调日志。
+- 施工 worktree `.local/worktrees/s0a|s0b|s0c`：用户确认后移除（逐文件核对仅余临时占位与主控修正前的旧版本，`git worktree remove --force` + `prune`，约 561 MB）。
+- 保留（git 忽略）：`.local/cargo-target` 约 4.0 GB、`next/.local/spike` 约 206 MB、`.local/design`、`.local/ref/rhine-lock`、联调日志。
 - 子 agent 报告其 scratchpad 下临时目录（`/private/tmp/claude-501/s0c-scratch` 等）删除被权限拦截，未绕过，留待用户处理。
 - 无残留进程（按 pid/pgid 核对）。
