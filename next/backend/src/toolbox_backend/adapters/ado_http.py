@@ -3,6 +3,7 @@
 import base64
 import json
 import ssl
+import time
 from typing import Literal
 from urllib.parse import quote, urljoin
 
@@ -49,10 +50,14 @@ class AdoHTTP:
             return ConnectionResult(category="no_credential", message="未配置 PAT"), []
         register_secret(pat)
         url = library.base_url + "/" + quote(collection, safe="") + "/_apis/projects"
-        if origin(url) != origin(library.base_url):
+        # httpx normalizes dot segments; check the actual outgoing path boundary.
+        path = httpx.URL(url).path
+        prefix = httpx.URL(library.base_url).path.rstrip("/") + "/"
+        if origin(url) != origin(library.base_url) or not path.startswith(prefix):
             return ConnectionResult(category="network", message="请求地址越界"), []
         auth = base64.b64encode((":" + pat).encode()).decode()
         status = None
+        deadline = time.monotonic() + 10.0
         try:
             with httpx.Client(
                 transport=self.transport,
@@ -67,6 +72,8 @@ class AdoHTTP:
                     headers={"Authorization": f"Basic {auth}", "Accept": "application/json"},
                 ) as response:
                     status = response.status_code
+                    if time.monotonic() >= deadline:
+                        raise httpx.ReadTimeout("total deadline")
                     if 300 <= status < 400:
                         try:
                             target = origin(urljoin(url, response.headers.get("location", "")))
@@ -96,6 +103,8 @@ class AdoHTTP:
                         ), []
                     body = bytearray()
                     for chunk in response.iter_bytes(chunk_size=65536):
+                        if time.monotonic() >= deadline:
+                            raise httpx.ReadTimeout("total deadline")
                         if len(body) + len(chunk) > LIMIT:
                             return ConnectionResult(
                                 http_status=status,

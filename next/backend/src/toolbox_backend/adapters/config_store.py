@@ -262,7 +262,11 @@ class ConfigStore:
                         self._loop.call_soon_threadsafe(self.on_change, revision)
 
     async def _serialized(self, operation: Callable[[], T]) -> T:
-        async with self._lock:
+        try:
+            await asyncio.wait_for(self._lock.acquire(), self.lock_timeout_s)
+        except TimeoutError:
+            raise SettingsError("store_busy", "存储忙，请稍后重试", 503) from None
+        try:
             self._loop = asyncio.get_running_loop()
             task = asyncio.create_task(asyncio.to_thread(operation))
             try:
@@ -271,6 +275,8 @@ class ConfigStore:
                 # A thread cannot be cancelled. Keep ownership until it releases flock.
                 await task
                 raise
+        finally:
+            self._lock.release()
 
     async def run(self, expected_revision: int | None, operation: Callable[[Transaction], T]) -> T:
         return await self._serialized(lambda: self._run(expected_revision, operation))

@@ -12,7 +12,7 @@ from toolbox_backend.adapters.ado_http import AdoHTTP
 from toolbox_backend.adapters.credentials import MemoryCredentials
 from toolbox_backend.app import create_app
 from toolbox_backend.domain.settings import CredentialMeta, DynamicTask
-from toolbox_backend.logging_setup import RedactingFormatter
+from toolbox_backend.logging_setup import RedactingFormatter, register_secret
 from toolbox_backend.settings import Settings
 
 PAT = "FAKE_S1_PAT_MUST_NEVER_APPEAR_731cae"
@@ -170,10 +170,8 @@ async def test_preview_is_zero_write_then_import_keeps_rules_and_secrets_private
             event = sub.queue.get_nowait()
             assert json.loads(event)["topic"] == "settings"
             artifacts.append(event)
-        formatter = RedactingFormatter([], "%(message)s")
-        artifacts.extend(formatter.format(record) for record in caplog.records)
-        record = logging.LogRecord("test", logging.ERROR, "", 0, "failure " + PAT, (), None)
-        artifacts.append(formatter.format(record))
+        artifacts.extend(record.getMessage() for record in caplog.records)
+        artifacts.append(caplog.text)
         assert all(PAT not in artifact for artifact in artifacts)
         again = await client.post(
             "/api/settings/import/execute", json={"fingerprint": plan["fingerprint"]}
@@ -779,3 +777,10 @@ async def test_dev_fake_credentials_seed_legacy_pat_state(tmp_path):
         plan = (await client.post("/api/settings/import/preview")).json()
         assert [lib["pat_status"] for lib in plan["libraries"] if lib["id"] == "lib:sample"] == ["found"]
         assert "fake-pat-" not in json.dumps(plan)
+
+
+def test_known_pat_is_redacted_by_formatter():
+    # Keep formatter unit coverage separate from raw application-log assertions.
+    register_secret(PAT)
+    record = logging.LogRecord("test", logging.ERROR, "", 0, "failure " + PAT, (), None)
+    assert PAT not in RedactingFormatter([], "%(message)s").format(record)

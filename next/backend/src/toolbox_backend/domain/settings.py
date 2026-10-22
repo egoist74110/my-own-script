@@ -30,7 +30,7 @@ def name(value: str) -> str:
 
 
 def segment(value: str) -> str:
-    if not 1 <= len(value) <= 256 or any(
+    if value in {".", ".."} or not 1 <= len(value) <= 256 or any(
         c in "/\\" or unicodedata.category(c).startswith("C") for c in value
     ):
         raise ValueError("invalid path segment")
@@ -70,7 +70,7 @@ def origin(value: str) -> str:
 
 def pat_value(value: SecretStr) -> SecretStr:
     raw = value.get_secret_value()
-    if not 1 <= len(raw) <= 1024 or any(
+    if not 8 <= len(raw) <= 1024 or any(
         c.isspace() or unicodedata.category(c).startswith("C") for c in raw
     ):
         raise ValueError("invalid credential")

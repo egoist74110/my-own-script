@@ -8,7 +8,7 @@ _known_secrets: set[str] = set()
 
 
 def register_secret(value: str) -> None:
-    if value:
+    if len(value) >= 8:
         _known_secrets.add(value)
         _known_secrets.add(base64.b64encode((":" + value).encode()).decode())
 

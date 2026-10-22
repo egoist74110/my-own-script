@@ -133,7 +133,11 @@ class SettingsService:
 
     def _statuses(self, config: Config) -> list[CredentialStatus]:
         libs = {lib.id: lib for lib in config.ado.libraries}
-        keys = set(config.credentials) | {account(lid) for lid in libs}
+        keys = (
+            set(config.credentials)
+            | {account(lid) for lid in libs}
+            | set(config.import_.written_credentials)
+        )
         result = []
         for key in sorted(keys):
             meta = config.credentials.get(key)
@@ -143,6 +147,8 @@ class SettingsService:
                 state = "present" if present else "missing"
             except SettingsError:
                 present, state = None, "unreadable"
+            if not meta and key in config.import_.written_credentials:
+                state = "orphan"
             if meta and (meta.state == "pending_delete" or lid not in libs):
                 state = "pending_delete" if meta.state == "pending_delete" else "orphan"
             result.append(
@@ -179,14 +185,19 @@ class SettingsService:
             **config.ado.model_dump(exclude={"libraries"}),
         )
 
-    def _preview(self, config: Config):
+    def _preview(self, config: Config, values: dict | None = None):
         allowed(config)
         plan = self.legacy_config.read()
         for lib in plan.summary["libraries"]:
             try:
-                lib["pat_status"] = "found" if self._legacy_get(lib["id"]) else "missing"
+                value = self._legacy_get(lib["id"])
+                lib["pat_status"] = "found" if value else "missing"
+                if values is not None:
+                    values[lib["id"]] = value
             except Exception:
                 lib["pat_status"] = "unreadable"
+                if values is not None:
+                    values[lib["id"]] = credential_error()
         if contains_secret(json.dumps(plan.summary, ensure_ascii=False)) or any(
             contains_secret(raw.decode("utf-8", errors="replace"))
             for raw in plan.originals.values()
@@ -223,10 +234,17 @@ class SettingsService:
             raise
 
     async def execute(self, fingerprint: str) -> MutationResponse:
+        # Old Keychain may prompt indefinitely. Never hold a store lock while reading it.
+        config = await self.store.read()
+        values = {}
+        prepared = await asyncio.to_thread(self._preview, config, values)
+
         def operation(tx: Transaction):
-            plan = self._preview(tx.config)
-            if plan.fingerprint != fingerprint:
+            allowed(tx.config)
+            plan = self.legacy_config.read()
+            if plan.fingerprint != fingerprint or prepared.fingerprint != fingerprint:
                 raise SettingsError("import_source_changed", "源配置已变化，请重新预览")
+            plan.summary = prepared.summary
             if plan.summary["errors"]:
                 raise SettingsError("import_not_allowed", "预览存在阻断错误")
             planned = [account(lib.id) for lib in plan.config.ado.libraries]
@@ -249,7 +267,9 @@ class SettingsService:
             snapshot = None
             try:
                 for lib in plan.config.ado.libraries:
-                    value = self._legacy_get(lib.id)
+                    value = values.get(lib.id)
+                    if isinstance(value, SettingsError):
+                        raise value
                     if value:
                         key = account(lib.id)
                         self._set(key, value)
@@ -301,13 +321,16 @@ class SettingsService:
 
     async def decline(self) -> MutationResponse:
         def operation(tx):
-            allowed(tx.config)
+            if tx.config.import_.state not in {"none", "failed"}:
+                raise SettingsError("import_not_allowed", "已完成或跳过导入")
             for key in tx.config.import_.written_credentials:
                 self._delete(key)
 
             def mutate(c):
                 c.import_.state = "declined"
                 c.import_.finished_at = stamp()
+                for key in c.import_.written_credentials:
+                    c.credentials.pop(key, None)
                 c.import_.written_credentials = []
                 c.import_.error = None
 
@@ -316,20 +339,15 @@ class SettingsService:
 
         return await self.store.run(None, operation)
 
-    def _put_pat(self, tx: Transaction, lid: str, value: str, mutate=lambda c: None):
-        # Commit the metadata intent first. A failed set remains observable as missing /
-        # unreadable, and the account is always discoverable for retry or cleanup.
+    def _put_pat(self, tx: Transaction, lid: str, value: str):
+        self._set(account(lid), value)
+
         def update(c):
-            mutate(c)
             c.credentials[account(lid)] = CredentialMeta(
-                ref=lid,
-                source="manual",
-                updated_at=stamp(),
+                ref=lid, source="manual", updated_at=stamp(),
             )
 
-        register_secret(value)
         tx.commit(update)
-        self._set(account(lid), value)
 
     async def create_library(self, body: LibraryCreate):
         def operation(tx):
@@ -339,9 +357,18 @@ class SettingsService:
                 c.ado.libraries.append(lib)
 
             if body.pat:
-                self._put_pat(tx, lib.id, body.pat.get_secret_value(), mutate)
-            else:
-                tx.commit(mutate)
+                register_secret(body.pat.get_secret_value())
+            tx.commit(mutate)
+            if body.pat:
+                try:
+                    self._put_pat(tx, lib.id, body.pat.get_secret_value())
+                except SettingsError as exc:
+                    if exc.code == "credential_backend_error":
+                        def rollback(c):
+                            c.ado.libraries = [x for x in c.ado.libraries if x.id != lib.id]
+                            c.credentials.pop(account(lib.id), None)
+                        tx.commit(rollback)
+                    raise
             return MutationResponse(revision=tx.config.revision, id=lib.id)
 
         return await self.store.run(body.revision, operation)
@@ -372,6 +399,7 @@ class SettingsService:
                     Ado.model_validate(candidate.ado.model_dump())
                 except ValidationError:
                     raise SettingsError("validation_error", "配置校验失败", 422) from None
+                old_value = self._get(account(lid))
                 self._set(account(lid), body.pat.get_secret_value())
 
                 def with_meta(c):
@@ -382,7 +410,26 @@ class SettingsService:
                         updated_at=stamp(),
                     )
 
-                tx.commit(with_meta)
+                try:
+                    tx.commit(with_meta)
+                except Exception:
+                    try:
+                        if old_value is None:
+                            self._delete(account(lid))
+                        else:
+                            self._set(account(lid), old_value)
+                    except SettingsError:
+                        # Persist a cleanup marker even if deleting the replacement fails.
+                        try:
+                            self._delete(account(lid))
+                        finally:
+                            def pending(c):
+                                c.credentials[account(lid)] = CredentialMeta(
+                                    ref=lid, source="manual", updated_at=stamp(),
+                                    state="pending_delete",
+                                )
+                            tx.commit(pending)
+                    raise
             else:
                 tx.commit(mutate)
             return MutationResponse(revision=tx.config.revision)
@@ -414,7 +461,13 @@ class SettingsService:
             self._delete(key)
         except SettingsError:
             return ["凭据删除失败，保留 pending_delete，可在凭据页重试"]
-        tx.commit(lambda c: c.credentials.pop(key, None))
+        def removed(c):
+            c.credentials.pop(key, None)
+            c.import_.written_credentials = [
+                item for item in c.import_.written_credentials if item != key
+            ]
+
+        tx.commit(removed)
         return []
 
     async def delete_pat(self, lid, revision):
@@ -462,6 +515,9 @@ class SettingsService:
     async def delete_orphan(self, key, revision):
         def operation(tx):
             meta = tx.config.credentials.get(key)
+            if not meta and key in tx.config.import_.written_credentials:
+                warnings = self._remove_credential(tx, key)
+                return MutationResponse(revision=tx.config.revision, warnings=warnings)
             if not meta:
                 raise SettingsError("not_found", "凭据索引不存在", 404)
             if meta.state != "pending_delete" and any(
@@ -518,21 +574,20 @@ class SettingsService:
         return MutationResponse(revision=config.revision)
 
     async def connection(self, lid: str, body: TestRequest, *, listing: bool = False):
-        # Keep the same file lock while loading the saved origin and PAT. Origin edits
-        # cannot race a request into sending the previous credential to a new host.
-        def operation(tx):
+        # Select destination and credential together; edits cannot mix their origins.
+        def snapshot(tx):
             lib = find(tx.config.ado.libraries, lid)
             value = body.pat.get_secret_value() if body.pat else self._get(account(lid))
-            result, projects = self.http.projects(lib, body.collection, value, listing=listing)
-            if listing and not result.ok:
-                if result.category == "no_credential":
-                    raise SettingsError("no_credential", result.message, 409)
-                raise SettingsError(
-                    "ado_request_failed",
-                    result.message,
-                    502,
-                    category=result.category,
-                )
-            return projects if listing else result
+            return lib, value
 
-        return await self.store.run(None, operation)
+        lib, value = await self.store.run(None, snapshot)
+        result, projects = await asyncio.to_thread(
+            self.http.projects, lib, body.collection, value, listing=listing,
+        )
+        if listing and not result.ok:
+            if result.category == "no_credential":
+                raise SettingsError("no_credential", result.message, 409)
+            raise SettingsError(
+                "ado_request_failed", result.message, 502, category=result.category,
+            )
+        return projects if listing else result

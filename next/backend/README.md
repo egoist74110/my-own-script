@@ -49,7 +49,7 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
   新 Keychain service 为 `toolbox-next`，account 为 `ado_pat:<library_id>`。
   旧 service `my-own-script` 只有只读适配器，S1 只读取 ADO PAT。
 - 普通读取不创建文件、不迁移。文件不存在时返回内存中的空配置（revision 0）。
-  写入在线程中执行：进程内锁 → flock（最多等待 5 秒）→ 重读 → 比较 revision → 副本变更与完整校验
+  写入在线程中执行：进程内锁（最多等待 5 秒）→ flock（最多等待 5 秒）→ 重读 → 比较 revision → 副本变更与完整校验
   → 同目录临时文件 flush/fsync → `os.replace` → fsync 目录 → 释放锁 → `settings.changed {revision}`。
   每次成功提交 revision +1；旧 revision 返回 409 `revision_conflict`。replace 是提交点，替换后的异常会核验已提交内容。
 - 启动时显式调用 `ConfigStore.initialize()`。v1 是首个生产版本，生产迁移注册表为空。
@@ -73,12 +73,14 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
    `flows` 原样保留，非 S1 配置及未知顶层键保留到 imported 段。
 2. 执行请求携带 fingerprint；在锁内重新核对。源变化时不写 config.json、导入快照或新凭据；
    允许提前创建基础设施目录和 config.lock。仅在配置为空且状态 none/failed 时允许执行。
-3. 先提交 in_progress 和计划 account，再逐项从旧 service 读取 PAT 并写新 service，记录已写 account。
+3. 锁外读取旧 PAT 到内存，锁内重读源文件并核对指纹；先提交 in_progress 和计划 account，
+   再将内存中的 PAT 写入新 service，记录已写 account。
    最后复制四个文件的原文快照，并一次提交 ado/tasks/imported/凭据索引及 completed。
 4. 凭据、快照或最终提交失败时保留已写的新凭据，配置保持空，记录 failed，支持重试。
    快照复制失败会清理不完整目录；最终提交失败会删除本次快照。进程中断遗留 in_progress 时，启动将其转为 failed，
    保留写入意图供重试或清理。若故障同时令错误状态写入失败，则保留磁盘上的状态，不能保证即时落盘 failed。
-5. none 可跳过为 declined；failed 放弃时先删除已记录的新凭据再提交 declined。
+5. none/failed 可跳过为 declined，不要求配置仍为空；failed 放弃时先删除已记录的新凭据再提交 declined。
+   失败导入中尚未进入索引的新凭据以 orphan 显示，可在凭据页删除。
    completed/declined 为终态，不提供再次导入。任何路径均不回写旧目录或修改旧 Keychain 条目。
 
 ## HTTP 与安全边界
@@ -86,7 +88,9 @@ TOOLBOX_LEGACY_CONFIG_DIR="$PWD/tests/fixtures/legacy" TOOLBOX_CREDENTIALS=memor
 全部 HTTP 路由经过 Host → CORS → Bearer → BodyLimit；默认请求体上限 64 KiB，含分块累计限制。
 WS 必须带允许的 Origin，随后通过首帧 token 认证。CORS 方法恰好为 GET、POST、PUT、PATCH、DELETE、OPTIONS。
 
-ADO 请求只发送到已保存 library 的 origin，collection 按路径段编码；不跟随重定向，超时 10 秒/连接 5 秒，
+PAT 输入长度为 8–1024；短于 8 的旧值不会登记到脱敏器。
+ADO 请求在锁内取得同一快照的 library/PAT，释放锁后发送；collection/project 拒绝点路径段，
+最终请求路径必须在 base_url 路径下。不跟随重定向，总时长截止 10 秒（响应流逐块检查）/连接 5 秒，
 响应最多读取 1 MiB。修改 origin 且已有 PAT 时必须替换 PAT 或显式 keep_pat。
 候选 PAT 测试不保存；响应、错误、事件和日志不返回 PAT 或远端响应原文。
 远端项目列表成功返回最多 500 个 `{name}`；非法参数返回 422 `validation_error`，无 PAT 返回
@@ -111,8 +115,11 @@ S1 出站请求只使用 MockTransport，测试扫描响应、日志、事件、
 禁止监听端口的沙箱内使用以下子集；真实 HTTP/WS/进程启动回归由主控在沙箱外执行：
 
 ```sh
-.venv/bin/python -m pytest -q tests/test_s1_store.py tests/test_s1_settings.py tests/test_s1_ado.py tests/test_hub.py tests/test_contracts.py tests/independent/test_fault_contracts.py tests/test_slow_client.py::test_stalled_connection_closed_with_4408_via_handler
+.venv/bin/python -m pytest -q tests/test_s1_store.py tests/test_s1_settings.py tests/test_s1_ado.py tests/test_s1d_regressions.py tests/test_hub.py tests/test_contracts.py tests/independent/test_fault_contracts.py tests/test_slow_client.py::test_stalled_connection_closed_with_4408_via_handler
 ```
+
+S1-D 进程 stderr 用例 `tests/test_s1d_process.py::test_cr006_dev_memory_process_stderr_never_contains_pat`
+需要回环端口，由主控在沙箱外运行（或沙箱外运行完整 `pytest -q`）。
 
 ## 契约生成
 
