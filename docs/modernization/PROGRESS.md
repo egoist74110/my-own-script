@@ -258,3 +258,9 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 - dev:web 按 pid 结束，后端与 vite 随之退出（核对无 `toolbox_backend`/`dev-web.mjs` 残留）；浏览器窗格视口已复位。
 - 施工 worktree `.local/worktrees/s05` 保留，待用户确认后移除；patch 与日志在会话 scratchpad。
+
+### 异步交叉审计
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 连续性/结果 |
+| --- | --- | --- | --- | --- |
+| s05-cross-3a5dac1 / round1 | `3da8820..3a5dac1` 的 `next/desktop`、`next/THIRD_PARTY.md` | codex exec，gpt-6.1-sol / high，sandbox read-only（CLI 头部回执了 model/effort/sandbox） | pending | session `01a16310-6d52-7d10-b3c3-e8d1302038c4`；请求与输出在 `.local/reviews/s05-cross-3a5dac1/`；不阻塞后续施工 |
