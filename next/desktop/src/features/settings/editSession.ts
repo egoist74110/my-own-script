@@ -71,7 +71,12 @@ export function useEditSession<K extends string>(
       settling = false
       const srv = o.server()
       const rev = serverRevision()
-      if (srv && rev !== null && !sameAsBaseline(srv)) adopt(srv, rev)
+      if (!srv || rev === null || sameAsBaseline(srv)) return
+      // 用户已改的字段若服务器上也变了（与基线不同）：不 adopt，基线与 revision 不动，
+      // 下一次保存得到 409 并走合并提示（CR-S2C-001）；否则替换未改字段、前移基线。
+      if (keys.some((k) => draftOf(k) !== baseline.fields[k] && srv[k] !== baseline.fields[k]))
+        return
+      adopt(srv, rev)
     },
   )
 
