@@ -338,12 +338,12 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | fixed（S1-D）；待审计复核 |
-| CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | fixed（S1-D）；待审计复核 |
-| CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | fixed（S1-D）；待审计复核 |
-| CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | fixed（S1-D）；待审计复核 |
-| CR-S1A-005 | minor | PAT 元数据/Keychain/base_url 提交顺序导致状态漂移；极端情况下（磁盘写失败）新 PAT 留在旧 origin 下 | fixed（S1-D）；待审计复核 |
-| CR-S1A-006 | minor | “日志无 PAT”断言先经脱敏格式化再判断，近似恒真；缺进程级 stderr 检查 | fixed（S1-D）；待审计复核 |
+| CR-S1A-001 | major | 测试连接/远端列表的出站请求、导入时读旧 Keychain 都在 store 锁内执行；httpx 读超时非总时长；进程内锁等待无上限 → 设置写入被无界阻塞（审计探针：并发写排队 1.8s） | partially_fixed（round2）：锁内 IO 已消除；总时长截止未生效 → CR-S1A-008 |
+| CR-S1A-002 | major | 导入 failed 后若用户新建过 library，`decline` 复用“store 为空”前提被永久拒绝；已写入的新 PAT 条目不在凭据页可见 | fixed（S1-D）；round2 确认 |
+| CR-S1A-003 | minor | 脱敏器无最小长度：短 PAT（如 1 字符）登记后，任何配置写入因 `contains_secret` 被拒，日志被打碎 | fixed（S1-D）；round2 确认 |
+| CR-S1A-004 | minor | collection/project 允许 `.`/`..`，请求可越出 base_url 路径前缀（同 origin，PAT 不跨主机） | fixed（S1-D）；round2 确认 |
+| CR-S1A-005 | minor | PAT 元数据/Keychain/base_url 提交顺序导致状态漂移；极端情况下（磁盘写失败）新 PAT 留在旧 origin 下 | fixed（S1-D）；round2 确认 |
+| CR-S1A-006 | minor | “日志无 PAT”断言先经脱敏格式化再判断，近似恒真；缺进程级 stderr 检查 | fixed（S1-D）；round2 确认 |
 
 - S1-D 合同已写入 WORK_PACKAGES，排在 S1-B 集成之后（文件重叠）。
 - cleanup：审计者在会话 scratchpad 留下 `c814/`（`git archive` 导出副本，无密钥）与 `probe/`（探针脚本）；审计者与主控的删除命令均被权限拦截，未绕过；用户 2026-10-22 手动删除，主控复核已不存在。
@@ -368,3 +368,18 @@ actual 型号/档位：施工与测试均为 Claude Code 原生子 agent，调�
 - 主控审阅：`connection` 在锁内同一快照取 `(library, PAT)`，锁外 `to_thread` 发请求；进程内锁 `wait_for(acquire, 5s)` → `store_busy`；与审计建议一致。
 - 集成版本：后端 `ruff`、`contracts --check` 通过，`pytest` **382 passed**；契约无漂移，前端 `contracts:check` 通过（前端代码无改动）。施工者交付报告移至 git 忽略的 `.local/dispatch/s1d/S1-D-REPORT.md`，未入库。
 - 注意：PAT 最小长度现为 8，前端设置页未做同样的前置校验，短 PAT 由后端 422 拒绝并显示固定文案（可接受，列入 S1 收尾 UX 小项）。
+
+### S1-A 交叉审计第二轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 连续性/结果 |
+| --- | --- | --- | --- | --- |
+| s1a-cross-814a921 / round2 | `1ffc729..9c94613` 的 `next/backend`（S1-D） | 同一原生子 agent 续接（SendMessage），requested opus / medium；actual unknown | returned | 连续；pass after minor fixes：002–006 fixed，001 partially_fixed，新增 007、008（minor）；审计者在主仓库干净 HEAD `d7f77df` 跑 382 passed、ruff/contracts 通过；探针复现 007、008；确认主控放宽 `test_s1d_process` 分类断言合理；scratchpad 探针已自删 |
+
+主控核对代码，两条新发现属实：
+
+| finding_id | 级别 | 问题 | 处置 |
+| --- | --- | --- | --- |
+| CR-S1A-007 | minor | `patch_library` 提交失败后无条件恢复旧 PAT；若 `os.replace` 已落盘而回读失败（提交结果不确定），磁盘已是新 base_url，旧 PAT 被绑到新 origin | open → S1-E：失败后重读磁盘，新值保留新 PAT、旧值恢复旧 PAT、读不到则删除并 `pending_delete` |
+| CR-S1A-008 | minor | `iter_bytes(chunk_size=65536)` 缓冲至 64 KiB 才产出，慢速滴流时 deadline 与 1 MiB 检查不执行（探针 20.1s 才 timeout）；回归用例首块恰为 64 KiB 未覆盖 | open → S1-E：改 `iter_raw()` 逐原始块检查，回归改为小块滴流 |
+
+info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（当前无记录路径）；恰为配置 JSON 固定子串的 ≥8 位 PAT 会触发写入闸门（真实 ADO PAT 52 位）；create 回滚时 Keychain `set` 抛错但实际已写入会留下未索引条目；新 service 的 Keychain 读取仍在锁内（其他请求 5s 后 `store_busy`）。
