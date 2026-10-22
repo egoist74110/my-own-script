@@ -532,3 +532,4 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 | I-2 | info | 二次取消时许可可能在线程结束前释放 | open → S2-D |
 | I-3 | info | S1 测试连接超限文案变化、新增 busy 等 | accepted（分类不变） |
 | I-4 | info | 存量重名条目只改路径也被拒；空 PATCH 推进 revision；`isdir` 网络挂载延迟 | 第一项 → S2-D；其余 accepted |
+- S2-D 派工：codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s2d` @ `1f9ad6b`，session `01a163cc-a28c-7eb3-ab0d-b28e2abb9e8f`；actual unknown；测试子 agent requested gpt-6-luna / high，独立用例写 `tests/independent/s2d/`。与 S2-B/S2-C 并行。
