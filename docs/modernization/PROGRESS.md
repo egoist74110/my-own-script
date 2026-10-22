@@ -634,4 +634,4 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 自动验收：完成。集成 HEAD 上后端 `pytest` 572 passed、ruff/contracts 通过；前端 `pnpm test` 755 passed，typecheck/lint/build/guard:dist/contracts:check 通过；`src-tauri` fmt/clippy/test 通过；旧应用守卫 66 passed / 2 skipped 不变。
 - 交叉审计：S2-A（Opus，两轮，CR-S2A-001..004 + I-2/I-4）与 S2-B/S2-C（GPT 6.1 Sol，两轮，CR-S2B-001..003、CR-S2C-001）全部闭环；主控自查发现 CR-S2A-L01、CR-S2D-L01 已修。
 - 待用户真实环境验收（未测）：真实 ADO 列表/详情/评论/历史/子项/附件；**CR-NEXT-004** 跨源 CDN（若属实追加方案 B）；I-5（base_url 与远端路径大小写/编码不一致时误拦）、I-7（batch 返回 null 元素）；真实 Keychain；Tauri 内 blob 图片、CSP 与 opener；Playwright e2e。
-- 施工 worktree `.local/worktrees/s2a..s2e2`（约 1.5 GB）：逐文件核对，s2d、s2e1、s2e2 与主仓库完全一致；s2a/s2b/s2c 中不一致的文件均为被后续包（S2-D、S2-E）或两包合并改动覆盖的旧版本。删除待用户确认。
+- 施工 worktree `.local/worktrees/s2a..s2e2`（约 1.5 GB）：逐文件核对，s2d、s2e1、s2e2 与主仓库完全一致；s2a/s2b/s2c 中不一致的文件均为被后续包（S2-D、S2-E）或两包合并改动覆盖的旧版本。用户 2026-10-22 确认后移除：`git worktree remove --force` ×6 + `git worktree prune`，`git worktree list` 只剩 `main` 与 `rewrite/next`，`.local/worktrees/` 为空。补丁、派工单与施工/测试/审计输出保留在 git 忽略的 `.local/dispatch/`、`.local/reviews/`。
