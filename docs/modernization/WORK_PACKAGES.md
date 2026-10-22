@@ -813,3 +813,7 @@
 - 不处理：I-1（总时长按跳计算，与 S1-E 同法，合同已接受）、I-3（S1 文案变化，分类不变）。
 - 每项回归先在修前失败（报告附失败摘要）；验收命令同 S2-A（端口用例由主控沙箱外运行）。
 - 修复后续接 S2-A 审计者第二轮复核（异步）。
+
+### S2-D 主控裁决（2026-10-22，施工首轮交回 partial 后）
+
+- **CR-S2A-003 修法替换**：预置 nh3 0.3.7 的 `clean` 没有 `generic_attributes` 参数（主控核实签名）。改为在两遍共用的 `attribute_filter` 中按“标签 → 显式属性白名单”判定：属性不在该标签的白名单（首遍为 `ATTRS` + `img[src]`，末遍为 `ATTRS` + `img[data-media-id]`、`span[data-blocked-origin]`）中一律返回 `None`；白名单式，不是只拉黑 `lang`/`title`。依赖不变。回归 `test_sanitizer_drops_generic_attributes` 保持不改。
