@@ -418,3 +418,21 @@ info（记录不处置）：导入的短于 8 位旧 PAT 不登记脱敏器（�
 - 集成版本：后端 `pytest` **390 passed**、ruff/contracts 通过；前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **392 passed**；`git diff --check` 通过。
 - 未测：真实浏览器/Tauri 渲染、真实后端联调下的多窗口冲突、setActive 带 warnings（无入口）。
 - 复核：CR-S1A-007/008 续接 Opus 审计者第三轮、CR-S1B-001..004 续接 codex 审计会话 `01a16373-…` 第二轮，均异步。
+
+### S1 功能清单（对照旧能力 `docs/capabilities/config-and-secrets.md`、`app_ado/ui/code_config_tab.py`）
+
+| 旧能力 | S1 处置 | 说明 |
+| --- | --- | --- |
+| YAML 配置读写（`~/.config/my-own-script/`） | 改进 | 新独立数据目录 `toolbox-next`，版本化 schema、原子替换、跨进程锁、revision 乐观并发；读取不写盘（D05）；旧配置一次性只读导入，永不回写 |
+| flows→tasks 与 ACL task_ids 迁移 | 改进 | 导入时按原始键存在性判定（D04/WP-13），`tasks: []` 不复活、`null`/错误类型阻断；任务编辑在 S3 |
+| Library 增删改 + PAT 录入 | 迁移 + 改进 | PAT 只写不读回；改 origin 需重新确认 PAT；被任务引用拒删；删库同时删新 Keychain 条目（旧应用不删） |
+| Project 增删改 + “获取 Projects” | 迁移 + 改进 | 远端项目列表只发往所属 origin、不跟随重定向；唯一键改为 (library, collection, project) |
+| 当前 library/project | 迁移 | `PUT /api/ado/active` |
+| PAT 发现失败弹窗（status/headers/body 截断） | 有意改变 | 只返回固定分类与脱敏文案，不回显远端原文（安全收紧，S1 合同已定） |
+| “获取 Collections”（旧应用为桩） | 不迁移 | 旧功能本就未实现 |
+| 本地仓库（local_repos）增删改 | **推迟到 S2** | 数据已导入并经 `GET /api/ado` 返回，但 S1 设置页未提供编辑（用户限定的 S1 范围不含）；工单 S2 首个使用它，届时提供 |
+| Keychain 其他条目（TG、AI 机器人、VPN/TOTP、dsh、Figma、Lark app secret） | 推迟 | 用户决定：由 S4/S5/S6/S7/S8 各自一次性只读导入 |
+| 应用内自更新 | 推迟到 S9 | 不在 S1 范围 |
+
+- 资源所有权：S1 不切换任何单例资源（TG/MCP/Lark 刷新仍归旧应用）。
+- 待用户真实环境验收（未测）：真实 Keychain 读取旧条目时的系统授权弹窗与“始终允许”、拒绝授权时导入进入 failed 的体验、真实 ADO 测试连接与远端项目列表、Tauri 内渲染、多窗口并发编辑。
