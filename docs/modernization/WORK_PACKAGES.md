@@ -324,7 +324,7 @@
 
 # S1：设置与凭据
 
-依据：[MIGRATION_PLAN.md](MIGRATION_PLAN.md) S1 行与 §4 WP-13 处置；[ARCHITECTURE.md](ARCHITECTURE.md) §3、§5；本文件 WP-13 的迁移判定规则；PROGRESS 中 S0、S0.5 的遗留发现。状态：**合同草案，待用户确认后派工**（2026-10-22）。
+依据：[MIGRATION_PLAN.md](MIGRATION_PLAN.md) S1 行与 §4 WP-13 处置；[ARCHITECTURE.md](ARCHITECTURE.md) §3、§5；本文件 WP-13 的迁移判定规则；PROGRESS 中 S0、S0.5 的遗留发现。状态：用户 2026-10-22 确认合同与两项待决（见末节「S1 已决」），开始派工。
 
 用户已定（不再讨论）：
 
@@ -359,7 +359,7 @@
 
 ### 位置与标识
 
-- 新应用存储标识 `APP_STORE_ID`（**待用户拍板，见合同末“待决”第 1 项**；下文以 `<store-id>` 表示）。
+- 新应用存储标识 `APP_STORE_ID = "toolbox-next"`（用户 2026-10-22 确认；与 Tauri bundle id 解耦，S9 改名不迁移；下文 `<store-id>` 即此值）。
 - 数据目录：默认 `~/Library/Application Support/<store-id>/`；可由命令行 `--data-dir` 或环境变量 `TOOLBOX_DATA_DIR` 覆盖（测试与 dev:web 必用）。目录 0700，文件 0600。
 - 旧配置来源目录：默认 `~/.config/my-own-script/`；`TOOLBOX_LEGACY_CONFIG_DIR` 覆盖。后端对它**只打开读**（`open(..., "rb")`），不 mkdir、不写、不改权限、不跟随指向目录外的符号链接（`resolve()` 后须仍在该目录下）。
 - 新 Keychain service：`<store-id>`；旧 service：`my-own-script`（只读）。account 命名：`ado_pat:<library_id>`。
@@ -475,7 +475,7 @@
 ## S1 通用合同
 
 - 输入版本：本合同提交后的 `rewrite/next` commit（派工时写明 SHA）。
-- 授权：在各自目录内联网安装依赖（后端 `uv add pyyaml keyring`，前端如需 pnpm 依赖），用户级缓存可用；不装全局工具；不装 Playwright 浏览器（e2e 推迟，列入未测）。
+- 授权：后端新依赖 `pyyaml`、`keyring` 由主控在输入 SHA 中预先加入（施工者无需联网）；前端如需 pnpm 依赖可在 `next/desktop` 内安装；用户级缓存可用；不装全局工具；不装 Playwright 浏览器（e2e 推迟，列入未测）。
 - 施工位置：`git worktree add --detach .local/worktrees/<包> <SHA>`；施工者不 commit，主控按限定路径 patch 集成并提交。
 - **测试隔离（硬性）**：数据目录、旧配置目录一律 `tmp_path`；凭据只用 fake/内存实现，`conftest.py` 自动夹具把 `keyring` 后端设为“任何调用即抛错并记录”的守卫后端（子进程设 `PYTHON_KEYRING_BACKEND` 指向同等守卫），并在会话结束断言守卫记录为空——仅改 HOME 不足以隔离 Keychain；HTTP 只用 `MockTransport`，socket 守卫拦截非回环连接。不读真实 `~/.config/my-own-script`、真实 Keychain，不连真实 ADO/TG。
 - `pnpm dev:web` 联调：脚本必须给后端设 `TOOLBOX_DATA_DIR`（临时目录）、`TOOLBOX_LEGACY_CONFIG_DIR`（仓库内假旧配置 fixture）、`TOOLBOX_CREDENTIALS=memory`（预置假 PAT），不得落到真实目录与 Keychain。
@@ -538,7 +538,9 @@
 - 未测（允许，列入账本）：真实 Keychain 读旧条目时的系统授权弹窗与“始终允许”行为、真实 ADO 测试连接、Tauri 内渲染、Playwright e2e。
 - 交叉审计：S1-A、S1-B 各一轮，异步，跨厂商优先。
 
-## S1 待决（需用户拍板后派工）
+## S1 已决（用户 2026-10-22 按建议确认）
 
 1. **新应用存储标识 `<store-id>`**（数据目录名 + 新 Keychain service 名）：建议固定为 `toolbox-next`，与 Tauri bundle id（`dev.toolbox.next`，S9 前会改）解耦，S9 改名不需要迁移凭据和数据目录。备选：直接用 `dev.toolbox.next`，S9 改名时做一次迁移。
 2. **本轮导入哪些密钥**：建议只导入 ADO PAT（本轮唯一用到的）；TG Bot Token、AI 专属机器人、VPN/TOTP、dsh、Figma、Lark app secret 由 S4/S5/S6/S7/S8 在启用对应能力时各做一次“该能力的一次性导入”（同样只读旧条目）。理由：最小权限，TOTP 种子与 VPN 密码不提前复制一份；每次只弹该能力的 Keychain 授权。备选：S1 一次性导入全部静态密钥（Lark 轮换凭据除外）。
+
+结论：1 → `toolbox-next`；2 → 本轮只导入 ADO PAT，其他静态密钥由对应切片在启用能力时各做一次只读导入。
