@@ -557,3 +557,50 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 主控审阅：004 的线程清洗只收集候选 URL 并输出 `candidate-N` 占位，回事件循环后按单响应 200 预算登记替换；攻击者内容无法伪造 `data-media-id`（首遍 img 只放行 src/alt，alt 值引号已转义），既有 `test_html_cannot_forge_generated_media_attributes` 仍通过。I-2 取消路径循环 shield 直到线程结束。
 - 集成：限定 `next/backend` 的 binary patch；集成版本后端 `pytest` **572 passed**、ruff/contracts 通过；契约无漂移（前端 `contracts:check` 通过）。
 - CR-S2A-001..004、I-2、I-4（第一项）→ fixed（待审计第二轮确认）。
+
+### S2-A 交叉审计第二轮
+
+| review_id | 审计目标 | 模型/档位 | 状态 | 结果 |
+| --- | --- | --- | --- | --- |
+| s2a-cross-bd90107 / round2 | `8a0fa3d..fa2357a` 的 `next/backend`（S2-D + CR-S2D-L01） | 同一原生子 agent 续接（SendMessage），requested opus / medium；连续；actual unknown | returned | **pass**：CR-S2A-001..004、I-2、I-4（第一项）fixed，无新 minor 及以上；主仓库干净 HEAD 跑 572 passed；探针（纯函数）已自删 |
+
+info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较，base_url 与远端在大小写/编码形式不同时会误拦（安全方向）；I-6 单响应 200 预算由图片先用完，附件可能拿不到 media_id；I-7 `workitemsbatch` 若返回 null 元素会整体 502（旧应用同样会崩）。S2-A 审计发现全部闭环。
+
+### S2-B 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S2-B 工单页 | Claude Code 原生子 agent，requested sonnet / medium；中途 429 中断，SendMessage 续接；actual unknown | 施工者派 haiku / medium，independent=true，新增 149 例（`tests/independent/s2b-{sanitize,media,page}.test.ts`），发现 1 个缺陷（附件页过期图片点“刷新详情”不重取）由施工者修复 | passed，提交 `e96dd3b` |
+
+- 施工者新增 72 例（`work-items.test.ts`、`work-items-security.test.ts`：12 条 XSS 语料经描述/评论、img 只有 `blob:`、Bearer 不进 URL/DOM/存储、revoke、链接不导航、Tauri 走 opener）。mock 删除导致 7 个既有用例改写为基于假后端（`tests/unit/wi-fake.ts`，openapi 形状）的等价断言，主控核对未放宽（看板列/搜索/告警可点击原意保留；一处方向键用例改为在当前页签上按 →）。
+- 偏差（接受）：插件注册在 `src-tauri/src/app.rs`（Builder 所在，lib.rs 只 re-export）；mailto 不打开（opener scope 只含 http/https）；非图片附件增加“下载”按钮（Bearer 取 blob 触发下载，10 秒或卸载后 revoke）。
+- 主控审阅：DOMPurify 显式 ALLOWED_TAGS/ATTR、URI 只 http/https/mailto、FORBID style/src/srcset/class/id/target；外链 `safeExternalUrl` 拒绝非 http(s) 与 userinfo；媒体缓存卸载时 abort + revoke；capability 仅 `opener:allow-open-url`（http/https）；CSP 只给 `img-src` 加 `blob:`。
+- 集成：限定 `next/desktop` 的 binary patch（与 S2-C 共同改过的 `settings-independent.test.ts` 无冲突，`git apply --check` 通过）。集成版本：frozen install、typecheck、lint、build、guard:dist、contracts:check 通过，`rm -rf dist && pnpm test` **728 passed**（S2-B 643 + S2-C 新增 85）；`src-tauri` fmt/clippy `-D warnings`/test 通过；后端 572 passed；旧应用守卫 66 passed / 2 skipped 不变；`git diff --check` 通过。
+- `next/` 与本目录文档以外的改动只有 `app_version.py`（仓库 pre-commit 钩子每次提交自动递增第 4 段，S1 起即如此，非施工改动）。
+
+### S2 主控联调（`pnpm dev:web`，假 ADO fixture，浏览器窗格 1440×960）
+
+- 设置页：预览导入 → 确认 → 执行（仓库假旧配置）；工单页：项目“示例 ADO / 示例项目”、看板列“开发中 2”（fake-ado 不按列过滤，#102“新建”也出现，属 fixture 行为）、列表 #101/#102、筛选与分页控件；详情 #101：元信息、标签、“在浏览器打开”，描述中同源图片为 `blob:` 且已解码（naturalWidth>0），跨源图片显示“已拦截外部图片 · https://external.example.test:443”；评论（示例评审者）、子项（#102）、历史（r3 System.Title 旧→新，纯文本）、附件（示例附件.txt + 下载）均正常；检查器 AI 分析禁用并标 S5。
+- 安全核对：媒体请求 URL 无查询串；localStorage 只有 `toolbox.work-items.selection = {project_id, column}`。控制台仅有指向端口 50711 的 WS 失败——S2-B 施工者早先在同一窗格留下的旧后端端口（本次后端端口不同、状态栏在线），非本次问题。
+- 回收：按 pid SIGTERM `pnpm dev:web`（23299），uv/后端进程退出，1420 释放，临时数据目录已删。截图未落盘（窗格截图只在会话内）。
+
+### S2 功能清单（对照 `docs/capabilities/work-items.md`、旧 `ui/work_items_tab.py`）
+
+| 旧能力 | S2 处置 | 说明 |
+| --- | --- | --- |
+| 选项目 + 固定五列看板 | 迁移 | 列名与默认“开发中”不变；选择存 localStorage（旧应用写 ui_settings.yaml） |
+| 列表（按 BoardColumn WIQL）+ 关键词/指派筛选 + 分页 | 迁移 + 改进 | WIQL `$top=500` 并提示截断；列表不再拉 relations；分页 10/50/100 |
+| 详情：描述 + 评论 + 内联图片 | 迁移 + 改进 | 后端 nh3 + 前端 DOMPurify 双重清洗（旧应用无清洗）；图片经后端代理，同源 + 路径前缀 + 逐跳校验，跨源显示占位（旧应用跳过无占位，CR-NEXT-005 在新应用解决） |
+| ReproSteps / AcceptanceCriteria | 新增 | 旧 UI 未展示 |
+| 关联单（子项） | 迁移 + 改进 | BFS 8 层、≤500、去环 |
+| 历史 Updates | 新增（UI） | 旧应用只在 MCP 用 |
+| 附件 | 改进 | 列表 + 下载（旧 UI 只下载图片落盘到 `~/.config/.../work_item_view/`，新应用不落盘） |
+| “在浏览器打开” | 改进 | 网页地址 `_workitems/edit/{id}`（旧应用给的是 API url）；Tauri 走系统浏览器 |
+| 本地仓库 local_repos 增删改 | 迁移（S1 推迟项） | 设置页「本地仓库」页签 |
+| MCP 分析 / 复制提示词 | 推迟 S5 | 检查器面板禁用标 S5 |
+| TG `/wi` | 推迟 S4 | |
+| ADO MCP server（含 `ado_create_work_item`） | 推迟 S6 | 用户决定 S2 不做 UI 建单 |
+
+- 资源所有权：S2 不切换任何单例资源。
+- 待用户真实环境验收（未测）：真实 ADO 列表/详情/评论/历史/子项、**CR-NEXT-004 附件是否跨源 CDN**（若是，追加方案 B 小包）、I-5/I-7 两项、真实 Keychain、Tauri 内 blob 图片与 opener、Playwright e2e。
+- 交叉审计：S2-A 两轮闭环；S2-B/S2-C 审计 s2bc-cross round1 已派（codex exec，gpt-6.1-sol / high，sandbox read-only，session `01a163e0-93a8-7621-b72f-980852f7b7ec`），pending。
