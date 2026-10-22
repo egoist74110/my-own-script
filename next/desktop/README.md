@@ -1,7 +1,7 @@
-# TOOLBOX 桌面前端（S0-B：HUD 壳）
+# TOOLBOX 桌面前端（S0.5：方向 E 液态玻璃 × 游戏 UI · 工具优先）
 
 Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + vue-query。
-单页总览：左栏能力索引、时钟、后端连接状态、告警演示开关、WARNING 框、∞ 占位。
+骨架：208px 侧栏（编号导航 + Pinned）｜主区（工具栏 + 内容）｜可收起的右侧检查器｜底部状态栏。三屏 mock：任务 `/tasks`、工单 `/work-items`、AI 会话 `/ai`（`/` 重定向 `/tasks`）。
 
 ## 命令（在 `next/desktop`）
 
@@ -26,9 +26,26 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 
 ## 目录
 
-`src/app`（壳、路由、runtime）· `src/design`（令牌与 HUD 样式）· `src/components`（含 `ui/` shadcn-vue 拷入组件）· `src/features/overview` · `src/api`（连接、客户端、事件）· `src/stores`。
-测试在 `tests/unit`；`tests/independent` 为独立验证用例目录。
+- `src/app`：壳（`App.vue`）、路由、runtime、`inspector.ts`（检查器容器注入）、`mock/`（侧栏 Pinned、状态栏 VPN/TG/MCP 的 mock）。
+- `src/design`：`tokens.css`（令牌）、`ui.css`（玻璃/切角/斜切/条纹/动效关键帧）、`app.css`（入口与 body 背景）。
+- `src/components`：基础组件；`ui/` 为 shadcn-vue 拷入件（仅 Switch）。
+- `src/features/{tasks,work-items,ai}`：页面；各自 `mock/` 放虚构数据。feature 之间不互相引用内部文件。
+- `src/shared/cn.ts`：类名合并。注意不能放 `src/lib/`（仓库根 `.gitignore` 的 `lib/` 规则会让它不入库）。
+- `src/api`、`src/stores`：连接、客户端、事件、Pinia（`backend` 连接/告警；`ui` 检查器开合）。
+- 测试在 `tests/unit`；`tests/independent` 为独立验证用例目录。`tests/independent/repo-guard` 检查 `dist/`，需先 `pnpm build`。
+
+## 组件清单（`src/components`）
+
+GlassPanel（`cut` lg/sm/none）· AppTabs（Reka Tabs，斜切，方向键）· AppButton（primary/accent/ghost）· IconButton（32x32，必须 `label`）· TextInput · SearchBox（⌘K/Ctrl+K 聚焦，Esc 失焦，不做真实搜索）· BlockTag · StampBadge（CLEAR/FAILED/ROLLBACK）· StageBar（done/run/pending/fail，运行中流动纹）· EnergyBar（0..N 段）· StatusDot（ok/run/warn/idle）· AlertBanner · ApprovalBar（Y/A/N，输入框聚焦时不响应，发出 `decide`）· InspectorPanel（Teleport 进壳的检查器）· SidebarNav · StatusBar · AlertToggle。
+
+## 告警
+
+状态只来自 store 的 `alert`（`system.alert` / `system.hello`）。告警时：主区顶部黑色横幅（`reason`，缺省给默认文案）；任务页 mock 里 `errorOnAlert` 的行与检查器转橙；导航「任务」角标变 `!`。无遮罩，工作区保持可交互。
+
+## mock 位置与如何换接口
+
+mock 只在 `src/features/<feature>/mock/` 与 `src/app/mock/`。页面只调用一个取数组合式（`useTasks()` / `useWorkItems()` / `useAiSessions()`，返回响应式数据与动作）。换真实接口时：保持组合式的返回形状，把内部换成 `useQuery` + `runtime.api()`（见 `components/StatusBar.vue` 的 `/health` 查询），页面模板不用改。审批 Y/A/N 目前只改 mock 状态，接后端时在 `useAiSessions().decide` 里发请求。
 
 ## 来源
 
-视觉语言与字体许可见 `../THIRD_PARTY.md`。∞ 主视觉为自绘占位。
+视觉语言与字体许可见 `../THIRD_PARTY.md`。设计参考见 `docs/modernization/design/e-tool-first/`（只作参考，未拷贝）。

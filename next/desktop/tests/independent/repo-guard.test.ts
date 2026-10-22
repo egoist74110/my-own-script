@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = process.cwd()
-const FORBIDDEN = /rhine[\s_-]*lab|arknights|莱茵|fonts\.googleapis\.com/i
+const FORBIDDEN = /rhine|arknights|莱茵|fonts\.googleapis/i
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

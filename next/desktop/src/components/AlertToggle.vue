@@ -34,19 +34,28 @@ async function request(next: boolean) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-1.5" data-testid="alert-toggle">
-    <div class="flex items-center gap-3">
-      <Switch
-        id="alert-demo"
-        aria-label="告警演示开关"
-        :model-value="store.alert.active"
-        :disabled="pending"
-        @update:model-value="(v: boolean) => request(v)"
-      />
-      <label for="alert-demo" class="text-xs font-semibold tracking-[1.2px]">ALERT DEMO</label>
-    </div>
-    <span v-if="error" role="alert" class="micro text-[var(--orange)]" data-testid="alert-error">{{
-      error
-    }}</span>
-  </div>
+  <span class="toggle" data-testid="alert-toggle">
+    <label for="alert-demo" class="lbl">告警演示</label>
+    <Switch
+      id="alert-demo"
+      aria-label="告警演示开关"
+      :model-value="store.alert.active"
+      :disabled="pending"
+      @update:model-value="(v: boolean) => request(v)"
+    />
+    <span v-if="error" role="alert" class="err" data-testid="alert-error">{{ error }}</span>
+  </span>
 </template>
+
+<style scoped>
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.err {
+  font-size: 10.5px;
+  color: var(--warn-ink);
+  font-family: var(--font-mono);
+}
+</style>

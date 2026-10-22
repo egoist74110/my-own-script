@@ -1,50 +1,37 @@
 /*
- * 设计令牌：工业 HUD。数值来自设计稿 Hud-Main 的 `.hud` 令牌；
- * 视觉语言来源见 next/THIRD_PARTY.md。
- * `--denied`：0 = 常态，1 = 告警；注册为 <number> 以便过渡。
- * 令牌必须定义在 `.hud` 元素上（而非 :root），color-mix 才会随该元素的 --denied 重新计算。
+ * 设计令牌：方向 E「液态玻璃 × 游戏 UI · 工具优先」。
+ * 数值参考 docs/modernization/design/e-tool-first，改写为独立 CSS；视觉来源见 next/THIRD_PARTY.md。
+ * 强调色 --acc 只做底色（填充/条/点），其上文字用 --ink；不得用作文字色。
  */
-@property --denied {
-  syntax: '<number>';
-  inherits: true;
-  initial-value: 0;
-}
+:root {
+  --ink: #14161a;
+  --mute: #545a68;
+  --line: rgba(20, 22, 26, 0.09);
+  --pearl-a: #f4f5f8;
+  --pearl-b: #eceef3;
+  --pearl-c: #f2efea;
+  --page-bg: #eef0f4;
+  --glass-solid: #f8f9fb;
 
-.hud {
-  --orange: #ff7b00;
-  --lime: #b9e432;
-  --paper: color-mix(in srgb, #e7e5e1, #0b0b0c calc(var(--denied) * 100%));
-  --ink: color-mix(in srgb, #111214, #f2f0eb calc(var(--denied) * 100%));
-  --inv: color-mix(in srgb, #f2f0eb, #111214 calc(var(--denied) * 100%));
-  /* 文字灰 #5f5c57：纸面对比度 >= 4.5:1 */
-  --mute: color-mix(in srgb, #5f5c57, #9a9893 calc(var(--denied) * 100%));
-  --faint: color-mix(in srgb, #c9c6c0, #2b2b2d calc(var(--denied) * 100%));
-  --card: color-mix(in srgb, #f6f5f2, #151618 calc(var(--denied) * 100%));
-  --tab: color-mix(in srgb, #dcdad5, #1d1e20 calc(var(--denied) * 100%));
-  --accent: color-mix(in srgb, #7fa316, var(--orange) calc(var(--denied) * 100%));
-  --accent-fill: color-mix(in srgb, var(--lime), var(--orange) calc(var(--denied) * 100%));
-  --fa: color-mix(in srgb, #ffffff, #5a2a08 calc(var(--denied) * 100%));
-  --fb: color-mix(in srgb, #cdc8bf, #120b06 calc(var(--denied) * 100%));
-  --fe: color-mix(
-    in srgb,
-    rgba(17, 18, 20, 0.35),
-    rgba(255, 123, 0, 0.9) calc(var(--denied) * 100%)
-  );
+  --acc: #c6f432;
+  --warn: #ff6a00;
+  /* 橙色文字/图标用深橙（#ff6a00 在珍珠底上不足 4.5:1）；橙色只作填充 */
+  --warn-ink: #a34100;
+  /* 绿色文字用深绿 */
+  --ok-ink: #3d5600;
+  --soft: rgba(20, 22, 26, 0.06);
+  --faint: rgba(20, 22, 26, 0.1);
 
-  --font-sans: 'Montserrat', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-display: 'Oxanium', 'PingFang SC', sans-serif;
+  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  /* 微型字号下限 */
+
+  --text-body: 13px;
   --text-micro: 10px;
-
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  background: var(--paper);
-  color: var(--ink);
-  transition: --denied 0.6s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hud {
-    transition: none;
-  }
+  --row-h: 46px;
+  --target-min: 32px;
+  --cut-lg: 12px;
+  --cut-sm: 6px;
+  --skew: 5px;
+  --sidebar-w: 208px;
 }

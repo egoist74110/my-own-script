@@ -4,12 +4,23 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
   return createRouter({
     history,
     routes: [
+      { path: '/', redirect: '/tasks' },
       {
-        path: '/',
-        name: 'overview',
-        component: () => import('@/features/overview/OverviewPage.vue'),
+        path: '/tasks',
+        name: 'tasks',
+        component: () => import('@/features/tasks/TasksPage.vue'),
       },
-      { path: '/:pathMatch(.*)*', redirect: '/' },
+      {
+        path: '/work-items',
+        name: 'work-items',
+        component: () => import('@/features/work-items/WorkItemsPage.vue'),
+      },
+      {
+        path: '/ai',
+        name: 'ai',
+        component: () => import('@/features/ai/AiSessionsPage.vue'),
+      },
+      { path: '/:pathMatch(.*)*', redirect: '/tasks' },
     ],
   })
 }
