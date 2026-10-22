@@ -28,7 +28,13 @@ const collection = ref('')
 const result = ref<ConnectionResult | null>(null)
 const confirmDelete = ref(false)
 /** 待确认的 origin 变更：冻结的完整请求体与目标 origin（确认只提交它，期间名称/地址输入禁用）。 */
-const pending = ref<{ body: { name?: string; base_url?: string }; origin: string } | null>(null)
+const pending = ref<{
+  body: { name?: string; base_url?: string }
+  origin: string
+  /** 冻结时的目标条目 id 与编辑会话：确认只发往它，会话变了就不可确认。 */
+  id: string
+  session: number
+} | null>(null)
 const localError = ref<string | null>(null)
 
 const isNew = computed(() => props.library === null)
@@ -36,6 +42,12 @@ const projects = computed(() =>
   (ctx.ado.data.value?.projects ?? []).filter((p) => p.library_id === props.library?.id),
 )
 const disabled = computed(() => ctx.busy.value || !ctx.writable.value)
+
+/**
+ * 编辑会话：每次开始编辑（选中条目变化或新建）递增。写请求发出时捕获当时的会话，
+ * 响应及回调只在会话仍是当前会话时作用于组件状态，否则丢弃（CR-S1B-005）。
+ */
+let session = 0
 
 /** 编辑基线：开始编辑（选中/新建）时的字段值与当时的 revision；外部变更不改它。 */
 let baseline: { name: string; base_url: string; revision: number | null } = {
@@ -50,13 +62,14 @@ function captureBaseline() {
     revision: ctx.ado.data.value?.revision ?? null,
   }
 }
-const baseOpts = () => ({
+const baseOpts = (s: number) => ({
   ...(baseline.revision !== null ? { revision: baseline.revision } : {}),
-  onConflict: mergeConflict,
+  onConflict: () => mergeConflict(s),
 })
 
 /** revision_conflict 后：用户改过的字段保留，未改字段换成服务器新值，基线整体更新。 */
-function mergeConflict(): boolean {
+function mergeConflict(s: number): boolean {
+  if (s !== session) return false
   pending.value = null
   const fresh = ctx.ado.data.value
   const lib = fresh?.libraries.find((l) => l.id === props.library?.id)
@@ -67,13 +80,15 @@ function mergeConflict(): boolean {
   return true
 }
 
-function applySaved(body: { name?: string; base_url?: string }, revision: number) {
+function applySaved(s: number, body: { name?: string; base_url?: string }, revision: number) {
+  if (s !== session) return
   baseline = { ...baseline, ...body, revision }
   pending.value = null
 }
 
 /** PAT 类写操作用缓存 revision：若只有本次写入推进了 revision，则基线随之前进。 */
-function advanceBaseline(r: { ok: boolean; rev: number | null; data?: unknown }) {
+function advanceBaseline(s: number, r: { ok: boolean; rev: number | null; data?: unknown }) {
+  if (s !== session) return
   const d = r.data as { revision?: number } | undefined
   if (r.ok && r.rev !== null && r.rev === baseline.revision && typeof d?.revision === 'number')
     baseline.revision = d.revision
@@ -82,6 +97,7 @@ function advanceBaseline(r: { ok: boolean; rev: number | null; data?: unknown })
 watch(
   () => props.library?.id ?? null,
   () => {
+    session++
     captureBaseline()
     name.value = props.library?.name ?? ''
     baseUrl.value = props.library?.base_url ?? ''
@@ -92,7 +108,7 @@ watch(
     pending.value = null
     localError.value = null
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 
 function validate(): string | null {
@@ -112,13 +128,15 @@ async function create() {
     localError.value = patError(value)
     if (localError.value) return
   }
+  const s = session
   let sent = false
   try {
     const r = await ctx.createLibrary(name.value.trim(), baseUrl.value.trim(), value || null)
     sent = r.sent
-    if (r.ok && r.data.id) emit('select', r.data.id)
+    if (r.ok && r.data.id && s === session) emit('select', r.data.id)
   } finally {
-    if (sent) pat.value = ''
+    // 会话已变时切换已清空 PAT，此处不得清掉新会话里用户输入的内容
+    if (sent && s === session) pat.value = ''
   }
 }
 
@@ -134,25 +152,26 @@ async function save() {
   if (localError.value || !props.library) return
   const body = changed()
   if (!Object.keys(body).length) return
+  const s = session
+  const id = props.library.id
+  const origin = originOf(body.base_url ?? baseline.base_url) ?? ''
   const r = await ctx.patchLibrary(
-    props.library.id,
+    id,
     body,
     (e: ApiError) => {
-      if (e.code !== 'pat_origin_change') return false
-      pending.value = {
-        body: { ...body },
-        origin: originOf(body.base_url ?? baseline.base_url) ?? '',
-      }
+      if (e.code !== 'pat_origin_change' || s !== session) return false
+      pending.value = { body: { ...body }, origin, id, session: s }
       return true
     },
-    baseOpts(),
+    baseOpts(s),
   )
-  if (r.ok) applySaved(body, r.data.revision)
+  if (r.ok) applySaved(s, body, r.data.revision)
 }
 
 async function resolveOrigin(mode: 'keep' | 'replace') {
   const frozen = pending.value
-  if (!props.library || !frozen) return
+  if (!props.library || !frozen || frozen.session !== session) return
+  const s = frozen.session
   const value = pat.value
   if (mode === 'replace') {
     localError.value = !value ? '请输入新的 PAT' : patError(value)
@@ -162,15 +181,15 @@ async function resolveOrigin(mode: 'keep' | 'replace') {
   let sent = false
   try {
     const r = await ctx.patchLibrary(
-      props.library.id,
+      frozen.id,
       { ...frozen.body, ...(mode === 'keep' ? { keep_pat: true } : { pat: value }) },
       undefined,
-      baseOpts(),
+      baseOpts(s),
     )
     sent = r.sent
-    if (r.ok) applySaved(frozen.body, r.data.revision)
+    if (r.ok) applySaved(s, frozen.body, r.data.revision)
   } finally {
-    if (sent) pat.value = ''
+    if (sent && s === session) pat.value = ''
   }
 }
 
@@ -179,19 +198,21 @@ async function savePat() {
   const value = pat.value
   localError.value = patError(value)
   if (localError.value) return
+  const s = session
   let sent = false
   try {
     const r = await ctx.putPat(props.library.id, value)
     sent = r.sent
-    advanceBaseline(r)
+    advanceBaseline(s, r)
   } finally {
-    if (sent) pat.value = ''
+    if (sent && s === session) pat.value = ''
   }
 }
 
 async function removePat() {
   if (!props.library) return
-  advanceBaseline(await ctx.deletePat(props.library.id))
+  const s = session
+  advanceBaseline(s, await ctx.deletePat(props.library.id))
 }
 
 async function test() {
@@ -202,19 +223,22 @@ async function test() {
     if (localError.value) return
   }
   result.value = null
+  const s = session
   let sent = false
   try {
     const r = await ctx.testConnection(props.library.id, collection.value.trim(), value || null)
     sent = r.sent
-    if (r.ok) result.value = r.data
+    if (r.ok && s === session) result.value = r.data
   } finally {
-    if (sent) pat.value = ''
+    if (sent && s === session) pat.value = ''
   }
 }
 
 async function remove() {
   if (!props.library) return
+  const s = session
   const r = await ctx.deleteLibrary(props.library.id)
+  if (s !== session) return
   confirmDelete.value = false
   if (r.ok) emit('deleted')
 }

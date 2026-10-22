@@ -55,11 +55,20 @@ export function useSettingsContext() {
     return a
   }
 
+  // overview 请求的发起/完成序号：故障后只认「故障之后发起、且未被取消并真正完成」的请求。
+  let overviewStarted = 0
+  let overviewDoneMax = 0
   const overview = useQuery({
     queryKey: [...QK, 'overview'],
     enabled: online,
     retry: false,
-    queryFn: (): Promise<SettingsResponse> => unwrap(api().GET('/api/settings')),
+    // 读取 signal 使 vue-query 在取消（被新的刷新取代）时置 aborted
+    queryFn: async ({ signal }): Promise<SettingsResponse> => {
+      const idx = ++overviewStarted
+      const data = await unwrap(api().GET('/api/settings'))
+      if (!signal.aborted) overviewDoneMax = Math.max(overviewDoneMax, idx)
+      return data
+    },
   })
   const ado = useQuery({
     queryKey: [...QK, 'ado'],
@@ -80,16 +89,21 @@ export function useSettingsContext() {
     () => void qc.invalidateQueries({ queryKey: QK }),
   )
 
-  // 写请求收到 503 store_unavailable 后置位，直到刷新确认 store_state=ok 才解除
-  const storeFault = ref(false)
-  // 任何一次 overview 刷新确认 store_state=ok（含 settings.changed 触发的）即解除
-  watch(
-    () => overview.dataUpdatedAt.value,
-    () => {
-      if (overview.isSuccess.value && overview.data.value?.store_state === 'ok')
-        storeFault.value = false
-    },
-  )
+  // 写请求收到 503 store_unavailable 后记下当时已发起的 overview 请求数（故障标记）；
+  // 只有标记之后发起并实际完成、且返回 store_state=ok 的 overview 请求才解除禁写。
+  // 离线（查询未启用）、刷新未执行/失败/被取消都保持禁写。
+  const faultMark = ref<number | null>(null)
+  const storeFault = computed(() => faultMark.value !== null)
+  function maybeReleaseFault() {
+    if (
+      faultMark.value !== null &&
+      overviewDoneMax > faultMark.value &&
+      overview.isSuccess.value &&
+      overview.data.value?.store_state === 'ok'
+    )
+      faultMark.value = null
+  }
+  watch(() => overview.dataUpdatedAt.value, maybeReleaseFault)
   const writable = computed(() => overview.data.value?.store_state === 'ok' && !storeFault.value)
   const revision = computed(() => ado.data.value?.revision ?? overview.data.value?.revision ?? null)
   const loadError = computed(() =>
@@ -101,11 +115,6 @@ export function useSettingsContext() {
   const clearNotice = () => (notice.value = null)
 
   const refresh = () => qc.invalidateQueries({ queryKey: QK })
-
-  function overviewConfirmedOk(): boolean {
-    const st = qc.getQueryState<SettingsResponse>([...QK, 'overview'])
-    return st?.status === 'success' && st.data?.store_state === 'ok'
-  }
 
   /**
    * 执行一次写操作。`handle` 返回 true 表示调用方已自行展示该错误（如 pat_origin_change），
@@ -172,9 +181,9 @@ export function useSettingsContext() {
         }
       }
       if (error.code === 'store_unavailable') {
-        storeFault.value = true
+        faultMark.value = overviewStarted
         await refresh()
-        if (overviewConfirmedOk()) storeFault.value = false
+        maybeReleaseFault()
       }
       return { ok: false, error, sent, rev: used }
     } finally {

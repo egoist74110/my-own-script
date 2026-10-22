@@ -28,6 +28,9 @@ const isActive = computed(
     ctx.ado.data.value?.active_library_id === props.project.library_id,
 )
 
+/** 编辑会话：每次开始编辑（选中条目变化或新建）递增；写响应只在会话未变时作用于组件状态（CR-S1B-005）。 */
+let session = 0
+
 /** 编辑基线：开始编辑（选中/新建）时的字段值与当时的 revision；外部变更不改它。 */
 type Fields = { library_id: string; collection: string; project: string }
 let baseline: Fields & { revision: number | null } = {
@@ -46,7 +49,8 @@ function captureBaseline() {
 }
 
 /** revision_conflict 后：用户改过的字段保留，未改字段换成服务器新值，基线整体更新。 */
-function mergeConflict(): boolean {
+function mergeConflict(s: number): boolean {
+  if (s !== session) return false
   const fresh = ctx.ado.data.value
   const p = fresh?.projects.find((x) => x.id === props.project?.id)
   if (!fresh || !p) return false
@@ -64,15 +68,23 @@ function mergeConflict(): boolean {
 
 /** setActive 用缓存 revision：若只有本次写入推进了 revision，则基线随之前进。 */
 async function activate() {
+  const s = session
   const r = await ctx.setActive(props.project!.library_id, props.project!.id)
   const d = r.ok ? (r.data as { revision?: number }) : undefined
-  if (r.ok && r.rev !== null && r.rev === baseline.revision && typeof d?.revision === 'number')
+  if (
+    s === session &&
+    r.ok &&
+    r.rev !== null &&
+    r.rev === baseline.revision &&
+    typeof d?.revision === 'number'
+  )
     baseline.revision = d.revision
 }
 
 watch(
   () => props.project?.id ?? null,
   () => {
+    session++
     captureBaseline()
     libraryId.value = props.project?.library_id ?? libraries.value[0]?.id ?? ''
     collection.value = props.project?.collection ?? ''
@@ -81,7 +93,7 @@ watch(
     confirmDelete.value = false
     localError.value = null
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 
 function validate(): string | null {
@@ -100,13 +112,14 @@ function validate(): string | null {
 async function save() {
   localError.value = validate()
   if (localError.value) return
+  const s = session
   if (isNew.value) {
     const r = await ctx.createProject(
       libraryId.value,
       collection.value.trim(),
       projectName.value.trim(),
     )
-    if (r.ok && r.data.id) emit('select', r.data.id)
+    if (r.ok && r.data.id && s === session) emit('select', r.data.id)
     return
   }
   const p = props.project!
@@ -117,9 +130,9 @@ async function save() {
   if (!Object.keys(body).length) return
   const r = await ctx.patchProject(p.id, body, {
     ...(baseline.revision !== null ? { revision: baseline.revision } : {}),
-    onConflict: mergeConflict,
+    onConflict: () => mergeConflict(s),
   })
-  if (r.ok) baseline = { ...baseline, ...body, revision: r.data.revision }
+  if (r.ok && s === session) baseline = { ...baseline, ...body, revision: r.data.revision }
 }
 
 async function fetchRemote() {
@@ -128,13 +141,16 @@ async function fetchRemote() {
     localError.value = '请先选择 library 并填写 collection'
     return
   }
+  const s = session
   const r = await ctx.remoteProjects(libraryId.value, collection.value.trim())
-  if (r.ok) remote.value = r.data.map((x) => x.name)
+  if (r.ok && s === session) remote.value = r.data.map((x) => x.name)
 }
 
 async function remove() {
   if (!props.project) return
+  const s = session
   const r = await ctx.deleteProject(props.project.id)
+  if (s !== session) return
   confirmDelete.value = false
   if (r.ok) emit('deleted')
 }
