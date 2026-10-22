@@ -130,7 +130,7 @@ function expectNoPatLeak(fake: Fake, spies: Spies) {
 }
 
 describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调不得作用于切换后的条目', () => {
-  it('L1 A 保存延迟成功：A→B→A 后，旧成功响应不推进切回的 A 的基线（再保存仍以切回时 revision 5 发出）', async () => {
+  it('L1 A 保存延迟成功：A→B→A 后，旧成功响应不经由旧会话回调改写；刷新落定后未改动的草稿跟随服务器（S2-C UX），再保存以服务器 revision 6 发出', async () => {
     const fake = createFake()
     const g = hold(fake, (c) => c.method === 'PATCH' && c.path === LA)
     const b = await open(fake)
@@ -145,14 +145,14 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
     fake.state.ado = adoWith(6, { name: 'A新名' })
     g.release(json({ revision: 6 }))
     await settle()
-    // 旧响应不改写切回后的草稿
-    expect(valueOf(b, 'library 名称')).toBe('示例库')
+    // S2-C UX：会话开始时有写入在途，落定后未改动的草稿对齐到当前服务器值（不再显示旧草稿）
+    expect(valueOf(b, 'library 名称')).toBe('A新名')
 
     await typeInto(b, 'library 名称', 'A再改')
     await click(b, 'library-save')
     expect(calls(fake, 'PATCH').at(-1)!.path).toBe(LA)
     expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({
-      revision: 5,
+      revision: 6,
       name: 'A再改',
       keep_pat: false,
     })
@@ -192,7 +192,7 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
     expect(isDisabled(b, 'library-save')).toBe(false)
   })
 
-  it('L4 A 的「保留已存 PAT」确认请求在途时切到 B：请求体与路径都属于 A（冻结 id），响应不推进 B 的基线', async () => {
+  it('L4 A 的「保留已存 PAT」确认请求在途时切到 B：请求体与路径都属于 A（冻结 id）；B 字段未变，基线静默前移到 6', async () => {
     const fake = createFake()
     fake.handlers.push(originChange)
     const g = hold(fake, (c) => c.method === 'PATCH' && body(c).keep_pat === true)
@@ -220,7 +220,8 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
     await typeInto(b, 'library 名称', 'B改')
     await click(b, 'library-save')
     expect(calls(fake, 'PATCH').at(-1)!.path).toBe(LB)
-    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 5, name: 'B改', keep_pat: false })
+    // S2-C UX：B 的字段与基线相同，revision 因 A 的写入前进 -> 基线静默前移到 6（不再 409）
+    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 6, name: 'B改', keep_pat: false })
   })
 
   it('L5 A 的「替换 PAT」确认请求在途时切到 B：PAT 只出现在该请求体中；切换后 B 的 PAT 输入为空，且 PAT 不进入 DOM/URL/console', async () => {
@@ -249,7 +250,7 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
     expectNoPatLeak(fake, spies)
   })
 
-  it('L6 A 的 PUT /pat 在途时切到 B：PAT 保存成功不推进 B 的基线（B 保存仍以 revision 5 发出，冲突时按合并处理）', async () => {
+  it('L6 A 的 PUT /pat 在途时切到 B：B 字段与基线相同，刷新后基线静默前移（B 保存以 revision 6 发出，无合并提示）', async () => {
     const fake = createFake()
     fake.handlers.push((c) =>
       c.method === 'PATCH' && c.path === LB && body(c).revision !== 6
@@ -270,15 +271,12 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
 
     await typeInto(b, 'library 名称', 'B改')
     await click(b, 'library-save')
-    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 5, name: 'B改', keep_pat: false })
-    expect(byTid(b, 'settings-notice').text()).toContain('已合并最新内容')
-    expect(valueOf(b, 'library 名称')).toBe('B改')
-
-    await click(b, 'library-save')
     expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 6, name: 'B改', keep_pat: false })
+    expect(byTid(b, 'settings-notice').text()).not.toContain('已合并最新内容')
+    expect(valueOf(b, 'library 名称')).toBe('B改')
   })
 
-  it('L7 A 的 DELETE /pat 在途时切到 B：删除成功不推进 B 的基线，B 的草稿与 revision 5 保持', async () => {
+  it('L7 A 的 DELETE /pat 在途时切到 B：B 字段未变，基线静默前移到 6，B 的草稿保持', async () => {
     const fake = createFake()
     fake.handlers.push((c) =>
       c.method === 'PATCH' && c.path === LB && body(c).revision !== 6
@@ -298,11 +296,11 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
 
     await typeInto(b, 'library 名称', 'B改')
     await click(b, 'library-save')
-    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 5, name: 'B改', keep_pat: false })
+    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 6, name: 'B改', keep_pat: false })
     expect(valueOf(b, 'library 名称')).toBe('B改')
   })
 
-  it('L8 A 的保存延迟返回 revision_conflict：A→B→A 后不合并旧 A 的服务器值，回到的 A 草稿为切回时的值', async () => {
+  it('L8 A 的保存延迟返回 revision_conflict：A→B→A 后不走合并（无合并提示）；未改动的草稿对齐到当前服务器值（S2-C UX）', async () => {
     const fake = createFake()
     const g = hold(fake, (c) => c.method === 'PATCH' && c.path === LA)
     const b = await open(fake)
@@ -315,7 +313,7 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
     fake.state.ado = adoWith(9, { name: '外部名' })
     g.release(err(409, 'revision_conflict', '冲突', { revision: 9 }))
     await settle()
-    expect(valueOf(b, 'library 名称')).toBe('示例库')
+    expect(valueOf(b, 'library 名称')).toBe('外部名')
     expect(byTid(b, 'settings-notice').text()).not.toContain('已合并最新内容')
   })
 
@@ -388,7 +386,7 @@ describe('CR-S1B-005 library：A 的写请求在途时切换，响应与回调�
 })
 
 describe('CR-S1B-005 project：同类场景', () => {
-  it('P1 A 的保存延迟返回 revision_conflict：A→B→A 后 A 的草稿为切回时的值，不合并旧响应', async () => {
+  it('P1 A 的保存延迟返回 revision_conflict：A→B→A 后不走合并（无合并提示）；未改动的草稿对齐到当前服务器值（S2-C UX）', async () => {
     const fake = createFake()
     twoLibs(fake)
     const g = hold(fake, (c) => c.method === 'PATCH' && c.path === PA)
@@ -404,7 +402,7 @@ describe('CR-S1B-005 project：同类场景', () => {
     })
     g.release(err(409, 'revision_conflict', '冲突', { revision: 9 }))
     await settle()
-    expect(valueOf(b, 'project 名称')).toBe('项目甲')
+    expect(valueOf(b, 'project 名称')).toBe('外部项')
     expect(byTid(b, 'settings-notice').text()).not.toContain('已合并最新内容')
   })
 
@@ -433,7 +431,7 @@ describe('CR-S1B-005 project：同类场景', () => {
     expect(selected(b, 'project-row-proj:b')).toBe('true')
   })
 
-  it('P3 setActive 的 PUT /active 在途时 proj:b→proj:a→proj:b：切回后 B 的基线仍为 revision 5', async () => {
+  it('P3 setActive 的 PUT /active 在途时 proj:b→proj:a→proj:b：B 字段未变，切回后基线静默前移到 revision 6', async () => {
     const fake = createFake()
     twoLibs(fake)
     const g = hold(fake, (c) => c.method === 'PUT' && c.path === '/api/ado/active')
@@ -455,7 +453,7 @@ describe('CR-S1B-005 project：同类场景', () => {
     await typeInto(b, 'project 名称', '乙改')
     await click(b, 'project-save')
     expect(calls(fake, 'PATCH').at(-1)!.path).toBe(PB)
-    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 5, project: '乙改' })
+    expect(calls(fake, 'PATCH').at(-1)!.body).toEqual({ revision: 6, project: '乙改' })
   })
 
   it('P4 远端项目获取在途时切换条目，再回到新建：旧的远端列表不得出现在新的新建会话中', async () => {

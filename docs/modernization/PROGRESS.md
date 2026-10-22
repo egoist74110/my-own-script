@@ -533,3 +533,15 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 | I-3 | info | S1 测试连接超限文案变化、新增 busy 等 | accepted（分类不变） |
 | I-4 | info | 存量重名条目只改路径也被拒；空 PATCH 推进 revision；`isdir` 网络挂载延迟 | 第一项 → S2-D；其余 accepted |
 - S2-D 派工：codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s2d` @ `1f9ad6b`，session `01a163cc-a28c-7eb3-ab0d-b28e2abb9e8f`；actual unknown；测试子 agent requested gpt-6-luna / high，独立用例写 `tests/independent/s2d/`。与 S2-B/S2-C 并行。
+
+### S2-C 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S2-C 设置页本地仓库 + UX | Claude Code 原生子 agent，requested sonnet / medium；中途 429 中断，SendMessage 续接；actual unknown | 施工者派 haiku / medium，independent=true，新增 52 例（`tests/independent/s2c-independent.test.ts`），发现 2 个缺陷（再次“新建”残留上次草稿，library 与本地仓库）由施工者修复 | passed，提交见下 |
+
+- 修前失败：UX 回归 12 例中 4 例失败（A→B→A 草稿两例、非 patch 写入后多余合并两例），修后全过；“本窗口切换当前项目后保存 library”一例修前即绿（单窗口切换面板会卸载 library 面板），保留为护栏。
+- 实现：新增 `editSession.ts` 统一 library/project/本地仓库的编辑会话与基线（比合同更大的重构，由 S1 既有测试与独立测试兜住，接受）。主控审阅：基线 revision 只在服务器字段与基线逐字段相同时静默前移，不会产生丢失更新；会话开始时若数据在刷新/写入在途，落定后只替换用户未改的字段。
+- 既有断言改写 10 处（`settings-s1f`、`settings`、`settings-independent`、`s1g-independent`），全部对应合同的两项语义变化（基线前移后 revision 期望值 +1/+2、A→B→A 未改字段跟随服务器、页签数 4→5）；“旧会话回调不执行、无合并提示”的核心保护保留。无删除/跳过。
+- 集成：限定 `next/desktop/src/features/settings`、`next/desktop/tests` 的 binary patch，`git apply --check` 后应用。集成版本前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **507 passed**；`git diff --check` 通过。
+- 未测：真实浏览器渲染与 Tab 顺序、真实后端下 `exists`/warnings、本地仓库 DELETE 的 409 路径。

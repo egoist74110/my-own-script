@@ -325,6 +325,39 @@ export function useSettingsContext() {
           ),
         '已删除 project',
       ),
+    createLocalRepo: (name: string, path: string) =>
+      act(
+        (revision) =>
+          unwrap(api().POST('/api/ado/local-repos', { body: { revision, name, path } })),
+        '已新建本地仓库',
+      ),
+    patchLocalRepo: (
+      id: string,
+      body: { name?: string; path?: string },
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/ado/local-repos/{id}', {
+              params: { path: { id } },
+              body: { ...body, revision },
+            }),
+          ),
+        '已保存本地仓库',
+        undefined,
+        opts,
+      ),
+    deleteLocalRepo: (id: string) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/ado/local-repos/{id}', {
+              params: { path: { id }, query: { revision } },
+            }),
+          ),
+        '已删除本地仓库',
+      ),
     setActive: (library_id: string | null, project_id: string | null) =>
       act(
         (revision) =>

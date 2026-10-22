@@ -4,10 +4,11 @@ import AppButton from '@/components/AppButton.vue'
 import BlockTag from '@/components/BlockTag.vue'
 import TextInput from '@/components/TextInput.vue'
 import type { Project } from './api'
+import { useEditSession } from './editSession'
 import { settingsContextKey } from './useSettings'
 
 /** 检查器：project 详情 / 新建（新建时可从远端获取 project 名）。 */
-const props = defineProps<{ project: Project | null }>()
+const props = defineProps<{ project: Project | null; startToken?: number }>()
 const emit = defineEmits<{ select: [id: string]; deleted: [] }>()
 const ctx = inject(settingsContextKey)!
 
@@ -28,67 +29,28 @@ const isActive = computed(
     ctx.ado.data.value?.active_library_id === props.project.library_id,
 )
 
-/** 编辑会话：每次开始编辑（选中条目变化或新建）递增；写响应只在会话未变时作用于组件状态（CR-S1B-005）。 */
-let session = 0
-
-/** 编辑基线：开始编辑（选中/新建）时的字段值与当时的 revision；外部变更不改它。 */
-type Fields = { library_id: string; collection: string; project: string }
-let baseline: Fields & { revision: number | null } = {
-  library_id: '',
-  collection: '',
-  project: '',
-  revision: null,
-}
-function captureBaseline() {
-  baseline = {
-    library_id: props.project?.library_id ?? '',
-    collection: props.project?.collection ?? '',
-    project: props.project?.project ?? '',
-    revision: ctx.ado.data.value?.revision ?? null,
-  }
-}
-
-/** revision_conflict 后：用户改过的字段保留，未改字段换成服务器新值，基线整体更新。 */
-function mergeConflict(s: number): boolean {
-  if (s !== session) return false
-  const fresh = ctx.ado.data.value
-  const p = fresh?.projects.find((x) => x.id === props.project?.id)
-  if (!fresh || !p) return false
-  if (libraryId.value === baseline.library_id) libraryId.value = p.library_id
-  if (collection.value.trim() === baseline.collection) collection.value = p.collection
-  if (projectName.value.trim() === baseline.project) projectName.value = p.project
-  baseline = {
-    library_id: p.library_id,
-    collection: p.collection,
-    project: p.project,
-    revision: fresh.revision,
-  }
-  return true
-}
+/** 编辑会话 + 基线（见 editSession.ts）：每次开始编辑都从当前服务器数据初始化草稿。 */
+const edit = useEditSession(ctx, {
+  drafts: { library_id: libraryId, collection, project: projectName },
+  // 直接查最新的服务器数据（条目已被删除时为 null）
+  server: () => {
+    const p = ctx.ado.data.value?.projects.find((x) => x.id === props.project?.id)
+    return p ? { library_id: p.library_id, collection: p.collection, project: p.project } : null
+  },
+  defaults: () => ({ library_id: libraries.value[0]?.id ?? '' }),
+})
 
 /** setActive 用缓存 revision：若只有本次写入推进了 revision，则基线随之前进。 */
 async function activate() {
-  const s = session
+  const s = edit.current()
   const r = await ctx.setActive(props.project!.library_id, props.project!.id)
-  const d = r.ok ? (r.data as { revision?: number }) : undefined
-  if (
-    s === session &&
-    r.ok &&
-    r.rev !== null &&
-    r.rev === baseline.revision &&
-    typeof d?.revision === 'number'
-  )
-    baseline.revision = d.revision
+  edit.advance(s, r)
 }
 
 watch(
-  () => props.project?.id ?? null,
+  () => `${props.project?.id ?? ''}|${props.startToken ?? 0}`,
   () => {
-    session++
-    captureBaseline()
-    libraryId.value = props.project?.library_id ?? libraries.value[0]?.id ?? ''
-    collection.value = props.project?.collection ?? ''
-    projectName.value = props.project?.project ?? ''
+    edit.begin()
     remote.value = null
     confirmDelete.value = false
     localError.value = null
@@ -112,27 +74,24 @@ function validate(): string | null {
 async function save() {
   localError.value = validate()
   if (localError.value) return
-  const s = session
+  const s = edit.current()
   if (isNew.value) {
     const r = await ctx.createProject(
       libraryId.value,
       collection.value.trim(),
       projectName.value.trim(),
     )
-    if (r.ok && r.data.id && s === session) emit('select', r.data.id)
+    if (r.ok && r.data.id && s === edit.current()) emit('select', r.data.id)
     return
   }
   const p = props.project!
-  const body: { library_id?: string; collection?: string; project?: string } = {}
-  if (libraryId.value !== baseline.library_id) body.library_id = libraryId.value
-  if (collection.value.trim() !== baseline.collection) body.collection = collection.value.trim()
-  if (projectName.value.trim() !== baseline.project) body.project = projectName.value.trim()
+  const body = edit.changed()
   if (!Object.keys(body).length) return
   const r = await ctx.patchProject(p.id, body, {
-    ...(baseline.revision !== null ? { revision: baseline.revision } : {}),
-    onConflict: () => mergeConflict(s),
+    ...edit.revisionOpt(),
+    onConflict: () => edit.mergeConflict(s),
   })
-  if (r.ok && s === session) baseline = { ...baseline, ...body, revision: r.data.revision }
+  if (r.ok) edit.saved(s, body, r.data.revision)
 }
 
 async function fetchRemote() {
@@ -141,16 +100,16 @@ async function fetchRemote() {
     localError.value = '请先选择 library 并填写 collection'
     return
   }
-  const s = session
+  const s = edit.current()
   const r = await ctx.remoteProjects(libraryId.value, collection.value.trim())
-  if (r.ok && s === session) remote.value = r.data.map((x) => x.name)
+  if (r.ok && s === edit.current()) remote.value = r.data.map((x) => x.name)
 }
 
 async function remove() {
   if (!props.project) return
-  const s = session
+  const s = edit.current()
   const r = await ctx.deleteProject(props.project.id)
-  if (s !== session) return
+  if (s !== edit.current()) return
   confirmDelete.value = false
   if (r.ok) emit('deleted')
 }

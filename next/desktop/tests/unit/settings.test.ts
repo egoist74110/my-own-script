@@ -57,13 +57,13 @@ async function typeInto(b: B, label: string, value: string) {
 const pwd = (b: B) => b.wrapper.get('input[type=password]')
 
 describe('S1-B 导航与页签', () => {
-  it('导航 08 设置启用，路由 /settings；页签 导入·ADO 连接·凭据·常规', async () => {
+  it('导航 08 设置启用，路由 /settings；页签 导入·ADO 连接·本地仓库·凭据·常规', async () => {
     const b = await open(createFake())
     const link = b.wrapper.get('nav a[href="/settings"]')
     expect(link.text()).toContain('设置')
     expect(link.attributes('aria-current')).toBe('page')
     const tabs = b.wrapper.findAll('[role=tab]').map((t) => t.text().replace(/\d+$/, '').trim())
-    expect(tabs).toEqual(['导入', 'ADO 连接', '凭据', '常规'])
+    expect(tabs).toEqual(['导入', 'ADO 连接', '本地仓库', '凭据', '常规'])
     await b.done()
   })
 

@@ -89,7 +89,7 @@ describe('CR-S1B-001：编辑基线与 409 合并', () => {
     expect(patchesOf(fake)[1]!.body).toEqual({ revision: 9, name: '我的改名', keep_pat: false })
   })
 
-  it('library：外部改动未触及用户编辑的字段时不改基线，保存仍带基线 revision（不自动重试）', async () => {
+  it('library：外部只推进 revision、条目字段未变时基线 revision 静默前移，保存带新 revision（不自动重试）', async () => {
     const fake = createFake()
     fake.handlers.push((c) =>
       c.method === 'PATCH'
@@ -101,7 +101,7 @@ describe('CR-S1B-001：编辑基线与 409 合并', () => {
     await typeInto(b, 'library 名称', 'N1')
     await externalChange(b, fake, makeAdo({ revision: 7 }))
     await click(b, 'library-save')
-    expect(patchesOf(fake)[0]!.body).toMatchObject({ revision: 5 })
+    expect(patchesOf(fake)[0]!.body).toMatchObject({ revision: 7 })
     await flushPromises()
     expect(patchesOf(fake)).toHaveLength(1)
   })

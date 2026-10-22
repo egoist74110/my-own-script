@@ -9,6 +9,7 @@ export type ImportState = S['ImportState']
 export type AdoResponse = S['AdoResponse']
 export type LibraryView = S['LibraryView']
 export type Project = S['Project']
+export type LocalRepoView = S['LocalRepoView']
 export type CredentialStatus = S['CredentialStatus']
 export type ConnectionResult = S['ConnectionResult']
 

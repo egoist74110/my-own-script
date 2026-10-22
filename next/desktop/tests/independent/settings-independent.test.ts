@@ -564,7 +564,7 @@ describe('页签：可访问关联与键盘', () => {
     const b = await open(createFake())
     await selectTab(b, 'ADO 连接')
     const idx = b.wrapper.findAll('[role=tab]').map((t) => t.attributes('tabindex'))
-    expect(idx).toEqual(['-1', '0', '-1', '-1'])
+    expect(idx).toEqual(['-1', '0', '-1', '-1', '-1'])
   })
 
   it('/tasks 筛选页签：aria-controls 指向 tabpanel，aria-labelledby 随键盘切换跟随当前页签', async () => {

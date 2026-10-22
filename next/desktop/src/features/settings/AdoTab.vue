@@ -17,6 +17,8 @@ type Sel =
 const ctx = inject(settingsContextKey)!
 const ui = useUiStore()
 const sel = ref<Sel | null>(null)
+/** 每次点「新建」递增：再次点新建也开始新的编辑会话（草稿重新初始化）。 */
+const startToken = ref(0)
 
 const libraries = computed(() => ctx.ado.data.value?.libraries ?? [])
 const projects = computed(() => ctx.ado.data.value?.projects ?? [])
@@ -37,6 +39,7 @@ const selectedProject = computed(() =>
 )
 
 function pick(next: Sel) {
+  if (next.kind === 'new-library' || next.kind === 'new-project') startToken.value++
   sel.value = next
   ui.inspectorOpen = true
 }
@@ -155,12 +158,14 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
       <LibraryPanel
         v-if="sel?.kind === 'new-library' || selectedLibrary"
         :library="selectedLibrary"
+        :start-token="startToken"
         @select="(id: string) => pick({ kind: 'library', id })"
         @deleted="sel = null"
       />
       <ProjectPanel
         v-else-if="sel?.kind === 'new-project' || selectedProject"
         :project="selectedProject"
+        :start-token="startToken"
         @select="(id: string) => pick({ kind: 'project', id })"
         @deleted="sel = null"
       />

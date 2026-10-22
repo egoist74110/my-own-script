@@ -8,6 +8,7 @@ import AdoTab from './AdoTab.vue'
 import CredentialsTab from './CredentialsTab.vue'
 import GeneralTab from './GeneralTab.vue'
 import ImportTab from './ImportTab.vue'
+import LocalReposTab from './LocalReposTab.vue'
 import { settingsContextKey, useSettingsContext } from './useSettings'
 import './settings.css'
 
@@ -32,6 +33,7 @@ watch(
 const tabs = computed(() => [
   { value: 'import', label: '导入' },
   { value: 'ado', label: 'ADO 连接', count: ctx.ado.data.value?.libraries.length },
+  { value: 'repos', label: '本地仓库', count: ctx.ado.data.value?.local_repos.length },
   { value: 'credentials', label: '凭据', count: ctx.credentials.data.value?.length },
   { value: 'general', label: '常规' },
 ])
@@ -97,13 +99,14 @@ const ASIDE: Record<string, string> = {
       <template #default="{ item }">
         <ImportTab v-if="item.value === 'import'" />
         <AdoTab v-else-if="item.value === 'ado'" />
+        <LocalReposTab v-else-if="item.value === 'repos'" />
         <CredentialsTab v-else-if="item.value === 'credentials'" />
         <GeneralTab v-else />
       </template>
     </AppTabs>
   </GlassPanel>
 
-  <InspectorPanel v-if="tab !== 'ado'" label="说明">
+  <InspectorPanel v-if="tab !== 'ado' && tab !== 'repos'" label="说明">
     <div class="st-inspector">
       <p class="st-note">{{ ASIDE[tab] }}</p>
     </div>
