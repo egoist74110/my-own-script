@@ -455,5 +455,16 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 
 | finding_id | 级别 | 问题 | 处置 |
 | --- | --- | --- | --- |
-| CR-S1B-005 | major | 保存进行中仍可切换选中条目；A 的延迟响应（`pat_origin_change` 回调、`applySaved`、冲突合并）写入当前组件状态，确认时用当前 `props.library.id` → 把 A 的地址修改 PATCH 到 B（审计内存复现）；成功路径污染 B 的基线导致 B 的合法草稿不发请求。ProjectPanel 同类 | open → S1-G |
-| CR-S1B-003（剩余） | major | `overviewConfirmedOk()` 只看缓存状态；离线（查询 `enabled:false`）时 503 后不发刷新，却以错误前缓存的 `ok` 解除禁写 | open → S1-G |
+| CR-S1B-005 | major | 保存进行中仍可切换选中条目；A 的延迟响应（`pat_origin_change` 回调、`applySaved`、冲突合并）写入当前组件状态，确认时用当前 `props.library.id` → 把 A 的地址修改 PATCH 到 B（审计内存复现）；成功路径污染 B 的基线导致 B 的合法草稿不发请求。ProjectPanel 同类 | fixed（S1-G `892a5c0`）；待 round3 复核 |
+| CR-S1B-003（剩余） | major | `overviewConfirmedOk()` 只看缓存状态；离线（查询 `enabled:false`）时 503 后不发刷新，却以错误前缓存的 `ok` 解除禁写 | fixed（S1-G `892a5c0`）；待 round3 复核 |
+
+### S1-G 集成（主控）
+
+| 包 | 施工 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| S1-G | Claude Code 原生子 agent，requested sonnet / medium；actual unknown | haiku / medium，independent=true，新增 22 例（`tests/independent/s1g-independent.test.ts`），未发现产品缺陷 | passed，提交 `892a5c0` |
+
+- 修前失败：撤掉 src 改动后自测 8 例中 5 例失败（另 3 例为护栏，修前即通过）。修法：面板级编辑会话计数（`flush:'sync'` watch），所有响应回调按会话丢弃跨会话结果，冻结确认对象带条目 id 与会话；overview 以发起/完成序号判定“故障后实际完成”的请求（偏差：未用 `dataUpdatedAt` 时间戳比较，序号更严格，接受）。无既有断言改写。
+- 集成版本：前端 typecheck/lint/build/guard:dist/contracts:check 通过，`rm -rf dist && pnpm test` **422 passed**。
+- 流程偏差：施工者用裸 `git stash`/`apply`/`drop` 撤回 src 做修前对比（stash 栈与其他 worktree 共享）；主控核对 stash 栈为空，无他人条目受影响，记录在案，后续派工单明确禁止裸 stash。
+- 留意（未改）：A→B→A 且 A 的旧保存已成功时，切回 A 显示的仍可能是旧草稿值（按“旧会话响应丢弃”合同），列入 UX 小项。
