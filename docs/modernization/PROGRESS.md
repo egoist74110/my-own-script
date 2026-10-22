@@ -498,3 +498,4 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 新发现：CR-S2-PRE-001（minor）`httpx` 只在后端 dev 依赖组，生产代码 `adapters/ado_http.py` 直接 import → 非 dev 安装缺依赖。open：合同确认后主控在依赖预置提交中修正。
 - 用户 2026-10-22 确认合同：1 不做新建工单；2 先按同源规则 A，CR-NEXT-004 由用户稍后在真实工单确认。
 - 依赖预置（主控，联网）：后端 `uv add httpx nh3`（nh3 0.3.7）+ `uv remove --dev httpx` → **CR-S2-PRE-001 fixed**；前端 `pnpm add dompurify@3.4.17 @tauri-apps/plugin-opener@2.7.2`；Rust `cargo add tauri-plugin-opener@2`（2.7.2）+ `cargo fetch`（插件尚未注册，由 S2-B 接入）。预置后：后端 `pytest` 390 passed、ruff/contracts 通过；前端 frozen install/typecheck/lint 通过，`pnpm test` 422 passed；`cargo check --offline` 通过。
+- S2-A 派工：codex exec，requested gpt-6.1-sol / medium，sandbox workspace-write，worktree `.local/worktrees/s2a` @ `dc377b4`，session `01a163a6-e205-7a70-bd9f-99ef2c687e8c`；actual unknown。派工单要求测试子 agent（requested gpt-6-luna / high）新增独立用例于 `tests/independent/s2a/`。请求与输出在 `.local/dispatch/s2a/`。S2-B、S2-C 待 S2-A 集成后派。
