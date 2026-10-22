@@ -481,4 +481,4 @@ info（记录）：提交实际成功但返回 503 时不广播 `settings.change
 - 交叉审计：S1-A（CR-S1A-001..008，Opus 三轮）与 S1-B（CR-S1B-001..005，GPT 6.1 Sol 三轮）全部闭环；S1-C 相关 CR-S05-001..005 于 s05-cross 第二轮闭环（003 收尾于 S1-B）。
 - 待用户真实环境验收（未测）：真实 Keychain 读取旧条目的系统授权弹窗/拒绝后导入 failed 体验、真实 ADO 测试连接与远端项目、Tauri 内渲染、多窗口并发编辑、Playwright e2e（未装浏览器）。
 - UX 待办（不阻塞）：A→B→A 后切回显示旧草稿；非 patch 写入推进 revision 后 library 详情保存会多一次 409 合并提示。
-- 施工 worktree `.local/worktrees/s1a..s1g` 待用户确认后移除。
+- 施工 worktree `.local/worktrees/s1a..s1g`（约 1.5 GB）：用户 2026-10-22 确认后移除（移除前逐个核对改动文件均已集成入主 worktree；`git worktree remove --force` + `prune`）。补丁、派工单与施工/测试输出保留在 git 忽略的 `.local/dispatch/`、`.local/reviews/`。
