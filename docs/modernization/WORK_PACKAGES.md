@@ -1722,6 +1722,11 @@ ai: {
 - 模型回退：用户原话“你直接派下一个有额度的模型去做事情啊”。codex（gpt-6.1-sol 与 gpt-6-luna 共用额度）用尽期间，后端施工按 prefs 候选顺序改派 Claude Sonnet 5.5 / medium（Claude Code 原生子 agent 通道，actual 无提供方回执记 unknown），测试改派 Claude Haiku 5.5 / medium；codex 恢复后的后续包回到 codex。只有必须用 Codex 本身的事项（Codex 最小会话协议核对）等待额度。
 - S5-D 拆为两段：**S5-D1**（终端会话、会话列表/新建、AI CLI 设置分区、dev 假 AI 接线）只依赖已冻结的 S5-A 契约，可与 S5-B 并行；**S5-D2**（结构化 chat 流、审批卡、续聊、工单入口、AI 机器人卡片）在 S5-B/S5-C 契约冻结后同一 agy 会话续接。xterm 两个依赖由主控 `pnpm add -E @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0` 加入（已决10），施工者不改依赖。
 
+### S5-D2 主控裁决：既有 AI 页 mock 测试迁移（2026-10-24）
+
+- S5-D2 按合同删除 AI 页 mock 后，`tests/independent/{r1-pages,e-controls,e-alert,s1c-ui}.test.ts` 中 22 例因断言 R1 mock 内容失败（施工者按禁令未改）。同 S3-C 裁决：S5-D2 独立测试员的 write_scope 另允许修改这四个文件中**AI 会话页相关用例**，其他 feature 用例不改；改用按正式 DTO 构造的假 API/事件夹具驱动真实页面，保留审批 Y/A/N、单次决定、输入焦点不误触、空白/trim、会话隔离、告警横幅非模态等语义；不在产品里保留假数据迁就测试。
+- 真实页面已不存在的功能（如筛选 Tabs、搜索、检查器收起）不得删用例换通过：保留失败并登记缺陷，由主控裁定补功能或撤销需求。每处改动逐条说明替代覆盖。
+
 ## S5 集成验收（主控）
 
 - 后端完整 pytest/ruff/contracts；前端 frozen install/typecheck/lint/test/build/guard:dist/contracts:check；Rust `cargo fmt --check`、`cargo clippy --offline -- -D warnings`、`cargo test --offline`（确认后端组回收与 AI 监督器叠加时退出不超时）；根目录旧代码守卫测试不回退；`git diff --check` 与限定路径检查。S4 的 877/944 是历史基线，不冒充 S5 结果。
