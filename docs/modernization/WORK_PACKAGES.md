@@ -1717,6 +1717,11 @@ ai: {
 - 自动验收：`pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm guard:dist`、`pnpm contracts:check` 全部 exit 0。覆盖：事件回放与 WS 断线补齐（不重复渲染，吸取 S3C-F2 教训）、审批三种决定与已由另一端处理、终端 attach/resize/输入、新会话校验与高权限确认、各错误码文案、Token 不进 DOM/storage、键盘可达。
 - 主控 dev:web 假环境截图：无会话空态、等待审批、运行中、终端视图、新会话 Sheet、AI 配置、AI 机器人卡片（conflict）、工单 AI 分析跳转。
 
+### S5 主控修订（2026-10-23，codex 额度用尽后）
+
+- 模型回退：用户原话“你直接派下一个有额度的模型去做事情啊”。codex（gpt-6.1-sol 与 gpt-6-luna 共用额度）用尽期间，后端施工按 prefs 候选顺序改派 Claude Sonnet 5.5 / medium（Claude Code 原生子 agent 通道，actual 无提供方回执记 unknown），测试改派 Claude Haiku 5.5 / medium；codex 恢复后的后续包回到 codex。只有必须用 Codex 本身的事项（Codex 最小会话协议核对）等待额度。
+- S5-D 拆为两段：**S5-D1**（终端会话、会话列表/新建、AI CLI 设置分区、dev 假 AI 接线）只依赖已冻结的 S5-A 契约，可与 S5-B 并行；**S5-D2**（结构化 chat 流、审批卡、续聊、工单入口、AI 机器人卡片）在 S5-B/S5-C 契约冻结后同一 agy 会话续接。xterm 两个依赖由主控 `pnpm add -E @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0` 加入（已决10），施工者不改依赖。
+
 ## S5 集成验收（主控）
 
 - 后端完整 pytest/ruff/contracts；前端 frozen install/typecheck/lint/test/build/guard:dist/contracts:check；Rust `cargo fmt --check`、`cargo clippy --offline -- -D warnings`、`cargo test --offline`（确认后端组回收与 AI 监督器叠加时退出不超时）；根目录旧代码守卫测试不回退；`git diff --check` 与限定路径检查。S4 的 877/944 是历史基线，不冒充 S5 结果。

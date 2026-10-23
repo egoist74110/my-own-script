@@ -907,3 +907,10 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 结论写入 WORK_PACKAGES「协议核对结论」：Claude 权限档无 `default`（改 `manual`），`--permission-prompt-tool stdio` 审批协议可用（拒绝已核对、允许未核对），`--session-id` 预设 id、`--resume` 已核对；Codex `exec` 已无 `--full-auto`（改 `-s`），exec/resume 均可经 stdin 读提示词，resume 不收 `-s/-C`；agy 有 stream-json 事件且首事件给 `conversation_id`（取消读 `last_conversations.json` 与同 cwd 互斥），`--sandbox` 不带 dangerously 不会卡但本身 always-proceed，`--mode plan` 用于工单分析，print 超时会 exit 0 + SUCCESS 返回部分输出（适配器须识别）。
 - 待办：Codex 最小会话（effort 合法值、`--json` 事件结构、thread_id）待额度恢复（2026-10-24 01:46 后）。S5-A 已集成的配置枚举（Claude `default`、agy `sandbox|auto`）由 S5-B 按上述结论修订。
 - 清理：临时目录在 scratchpad，未写仓库；Claude 在 `~/.claude/projects` 为临时目录生成了 4 个会话记录、agy 在其缓存生成 4 条会话（CLI 自管，未删除）。
+
+### S5-D1 与 S5-B 并行派工（2026-10-23）
+
+- 用户原话“先派 S5-D 第一段（agy gemini-3.8-flash-high，--sandbox）：终端视图和 AI CLI 配置，基于已集成的 S5-A 接口；S5-B 等 Codex 额度恢复。”随后补充“怎么默认会说等额度。你直接派下一个有额度的模型去做事情啊”。主控据此不等 codex，S5-B 立即改派下一候选。合同「S5 主控修订」已写入回退规则与 S5-D 拆段。主控 actual unknown。
+- S5-D1：worktree `.local/worktrees/s5d`（detached `267f355`，前端 frozen offline install、后端 uv offline sync）；主控联网 `pnpm add -E @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0`（发布于 2025-12-22），frozen offline 复装通过。施工 agy `--sandbox --model gemini-3.8-flash-high --effort high --print=<请求>`（不用 dangerously），请求/输出 `.local/dispatch/s5d/`；独立测试待交付后由主控另派。actual model/effort=unknown（agy 无回执）。
+- S5-B：codex 额度用尽（2026-10-24 01:46 恢复），按 prefs 回退到 **Claude Sonnet 5.5 / medium**，通道 Claude Code 原生子 agent（后台），worktree `.local/worktrees/s5b`（detached `267f355`）；测试员指定 Claude Haiku 5.5 / medium（子 agent 不能派则由主控另派）。actual model/effort=unknown（原生子 agent 无提供方回执，记 requested）。请求含协议核对结论（Claude `--permission-prompt-tool stdio`/`--session-id`、Codex `-s` 与 stdin、agy stream-json/`--mode plan`/超时判定）与配置枚举修订。
+- 状态：S5-B、S5-D1 **dispatched / running**；S5-C、S5-D2 not_dispatched；Codex 最小会话核对待额度恢复。
