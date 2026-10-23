@@ -154,9 +154,13 @@ def create_app(
     if os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") is not None:
         from toolbox_backend.adapters.credentials import MemoryCredentials
         from toolbox_backend.adapters.fake_telegram import FakeTelegram
-        if (os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") != "1" or not settings.dev
-                or os.environ.get("TOOLBOX_CREDENTIALS") != "memory"
-                or not isinstance(credentials, MemoryCredentials)):
+
+        if (
+            os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") != "1"
+            or not settings.dev
+            or os.environ.get("TOOLBOX_CREDENTIALS") != "memory"
+            or not isinstance(credentials, MemoryCredentials)
+        ):
             raise ValueError("TOOLBOX_DEV_FAKE_TELEGRAM requires --dev and memory credentials")
         fake = FakeTelegram()
         telegram_transport = fake.transport
@@ -177,13 +181,19 @@ def create_app(
             return {"items": fake.sent}
 
     app.state.telegram_service = TelegramService(
-        app.state.settings_service, app.state.telegram_store, app.state.run_service, hub,
+        app.state.settings_service,
+        app.state.telegram_store,
+        app.state.run_service,
+        hub,
         transport=telegram_transport,
+        work_items=app.state.work_items_service,
     )
     prior_event = app.state.run_store.on_event
+
     def run_event(event):
         prior_event(event)
         app.state.telegram_service.on_run_event(event)
+
     app.state.run_store.on_event = run_event
     app.include_router(telegram_routes.router)
     app.include_router(task_routes.router)

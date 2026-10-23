@@ -2,11 +2,14 @@
 
 import asyncio
 import json
+import logging
 import random
 import re
 import secrets
 import time
 import uuid
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from toolbox_backend.adapters.config_store import stamp
@@ -27,6 +30,11 @@ from toolbox_backend.logging_setup import contains_secret, redact_exception, reg
 
 TOKEN_ACCOUNT = "telegram_bot_token"
 NOTIFY_STATES = {"running", "succeeded", "failed", "cancelled", "unknown", "manual_required"}
+
+
+@dataclass
+class HandlerScope:
+    detached: bool = False
 
 
 def invalid(message="Telegram 配置无效"):
@@ -50,7 +58,7 @@ def identities(update):
 
 
 class TelegramService:
-    def __init__(self, settings, store, runs, hub, *, transport=None):
+    def __init__(self, settings, store, runs, hub, *, transport=None, work_items=None):
         self.settings = settings
         self.config_store = settings.store
         self.store = store
@@ -75,10 +83,24 @@ class TelegramService:
         self._closing = False
         self._poll_task = None
         self._handlers = set()
+        self._detached = set()
+        self._handler_scopes = {}
+        self._handler_context = ContextVar("telegram_handler_scope", default=None)
         self.checkpoint = lambda _: None
         self._work = None
         self._chat_locks = {}
         self._baseline_delay = None
+        from toolbox_backend.services.telegram_commands import TelegramDispatcher
+
+        self.dispatcher = TelegramDispatcher(self, work_items)
+
+    def attached(self):
+        scope = self._handler_context.get()
+        return scope is None or not scope.detached
+
+    def ensure_attached(self):
+        if not self.attached():
+            raise asyncio.CancelledError
 
     def status(self, state, category=None):
         from toolbox_backend.domain.models import TelegramStatusEvent
@@ -320,11 +342,13 @@ class TelegramService:
                         "allowed_updates": ["message", "callback_query"],
                     },
                 )
-                if bot["baseline_done"]:
-                    await self.process_updates(updates)
-                else:
+                if not isinstance(updates, list):
+                    raise TelegramError("bad_response")
+                if not bot["baseline_done"]:
                     await self._accept_baseline(updates)
-                self.task = asyncio.create_task(self._session())
+                self.task = asyncio.create_task(
+                    self._session(updates if bot["baseline_done"] else None)
+                )
                 return MutationResponse(revision=config.revision)
             except TelegramError as exc:
                 self._error_state(exc)
@@ -346,7 +370,7 @@ class TelegramService:
             exc.category,
         )
 
-    async def _session(self):
+    async def _session(self, initial_updates=None):
         sender = None
         workers = []
         self._work = asyncio.Queue(maxsize=64)
@@ -368,6 +392,8 @@ class TelegramService:
             await self.recover_notifications()
             workers = [asyncio.create_task(self._worker()) for _ in range(2)]
             sender = asyncio.create_task(self._send_loop())
+            if initial_updates:
+                await self.process_updates(initial_updates, queued=True)
             self._poll_task = asyncio.create_task(self._poll())
             done, _ = await asyncio.wait(
                 [self._poll_task, sender, *workers], return_when=asyncio.FIRST_COMPLETED
@@ -378,20 +404,23 @@ class TelegramService:
             raise
         except TelegramError as exc:
             self._error_state(exc)
-        except SettingsError:
-            self.status("store_unavailable", "store_unavailable")
-        except Exception:
-            self.status("backoff", "bad_response")
+        except Exception as exc:
+            self.local_failure(exc)
         finally:
             background = [t for t in (self._poll_task, sender, *workers) if t is not None]
             for task in background:
                 task.cancel()
             await asyncio.gather(*background, return_exceptions=True)
             if self._handlers:
-                _, pending = await asyncio.wait(tuple(self._handlers), timeout=5)
-                for task in pending:
+                handlers = tuple(self._handlers)
+                for task in handlers:
                     task.cancel()
-                await asyncio.gather(*tuple(self._handlers), return_exceptions=True)
+                _, pending = await asyncio.wait(handlers, timeout=5)
+                for task in pending:
+                    self._handler_scopes[task].detached = True
+                    self._detached.add(task)
+                if pending:
+                    logging.getLogger(__name__).warning("Telegram category=detached_after_close")
             self._handlers.clear()
             self._work = None
             self._chat_locks.clear()
@@ -399,6 +428,8 @@ class TelegramService:
 
     def _handler_done(self, task):
         self._handlers.discard(task)
+        self._detached.discard(task)
+        self._handler_scopes.pop(task, None)
         if not task.cancelled():
             task.exception()
 
@@ -466,6 +497,21 @@ class TelegramService:
                     return
                 delay = self.backoff(self.consecutive_failures, exc.retry_after)
                 await asyncio.sleep(delay)
+            except Exception as exc:
+                self.local_failure(exc)
+                raise
+
+    def local_failure(self, exc):
+        store_error = isinstance(exc, OSError) or (
+            isinstance(exc, SettingsError)
+            and exc.code
+            in {"store_unavailable", "run_store_unavailable", "telegram_store_unavailable"}
+        )
+        category = "store_unavailable" if store_error else "local_failed"
+        self.status("store_unavailable" if store_error else "backoff", category)
+        logging.getLogger(__name__).error(
+            "Telegram local operation failed category=%s type=%s", category, type(exc).__name__
+        )
 
     @staticmethod
     def backoff(failures, retry_after=None):
@@ -510,6 +556,10 @@ class TelegramService:
                 await self._handle_registered(update)
 
     async def _handle_registered(self, update):
+        task = asyncio.current_task()
+        scope = HandlerScope()
+        self._handler_scopes[task] = scope
+        context = self._handler_context.set(scope)
         uid = update["update_id"]
         _, _, chat, _, _, _ = identities(update)
         lock, count = self._chat_locks.get(chat, (asyncio.Lock(), 0))
@@ -518,17 +568,24 @@ class TelegramService:
             async with lock:
                 try:
                     status = await self.handle_update(update)
+                    self.ensure_attached()
                     await self.store.finish(self.bot_id, uid, status or "handled")
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    await self.store.finish(self.bot_id, uid, "failed", "handler_failed")
+                    if not scope.detached:
+                        await self.store.finish(self.bot_id, uid, "failed", "handler_failed")
         finally:
-            _, count = self._chat_locks[chat]
-            if count == 1:
-                del self._chat_locks[chat]
-            else:
-                self._chat_locks[chat] = (lock, count - 1)
+            # A newer session may already own a different lock for this chat.
+            entry = self._chat_locks.get(chat)
+            if entry is not None and entry[0] is lock:
+                _, count = entry
+                if count == 1:
+                    del self._chat_locks[chat]
+                else:
+                    self._chat_locks[chat] = (lock, count - 1)
+            self._handler_scopes.pop(task, None)
+            self._handler_context.reset(context)
 
     async def resolve_acl(self, update):
         _, _, chat, user, un, private = identities(update)
@@ -602,38 +659,29 @@ class TelegramService:
         if role == "none":
             return "ignored"
         if isinstance(callback, dict):
-            token = callback.get("data")
-            if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{22}", token):
-                return "ignored"
-            action = await self.store.consume(token, self.bot_id, chat, user)
-            if action is None or action["kind"] != "menu":
-                return "ignored"
-            # Permission is resolved again at consumption, never inherited from the button.
-            role, group = await self.resolve_acl(update)
-            if role == "none":
-                return "ignored"
-            if self.client and isinstance(callback.get("id"), str):
-                await self.client.request(
-                    "answerCallbackQuery", {"callback_query_id": callback["id"]}
-                )
-            page = action["payload"].get("page")
-            if page == "status" and (role in {"owner", "legacy"} or group and group.can_status):
-                await self.reply(update, await self.status_text(role, group, chat))
-            elif page == "system" and role == "owner":
-                await self.reply(update, "该功能尚未迁移到新应用")
-            elif page == "tasks" or page == "wi" and role == "owner":
-                await self.reply(update, "暂未开放")
-            else:
-                return "ignored"
-            return "handled"
+            return await self.dispatcher.dispatch(update, command, role, group)
         if command.startswith("/") and time.time() - date > 300:
             clock = datetime.fromtimestamp(date, UTC).strftime("%H:%M")
             await self.reply(update, f"该指令发送于 {clock}，已过期，请重新发送")
             return "expired"
         if command in {"/help", "/start", "/menu"}:
-            pages = [("任务", "tasks")] if role == "owner" or group else []
+            pages = (
+                [("任务", "tasks")]
+                if role == "owner" or (group and (group.can_run or group.can_rollback))
+                else []
+            )
             if role == "owner":
-                pages += [("系统操作", "system"), ("工单", "wi")]
+                pages += [
+                    ("回滚", "rollback"),
+                    ("停止", "stop"),
+                    ("系统操作", "system"),
+                    ("工单", "wi"),
+                ]
+            elif group:
+                if group.can_rollback:
+                    pages.append(("回滚", "rollback"))
+                if group.can_stop:
+                    pages.append(("停止", "stop"))
             if role in {"owner", "legacy"} or group and group.can_status:
                 pages.append(("状态", "status"))
             buttons = []
@@ -641,7 +689,7 @@ class TelegramService:
                 token = await self.store.action(self.bot_id, chat, user, "menu", {"page": page})
                 buttons.append([{"text": label, "callback_data": token}])
             await self.reply(
-                update, "请选择菜单；执行类指令暂未开放", reply_markup={"inline_keyboard": buttons}
+                update, "请选择菜单", reply_markup={"inline_keyboard": buttons}, panel=True
             )
         elif command == "/status":
             if role == "owner" or role == "legacy" or group and group.can_status:
@@ -651,6 +699,9 @@ class TelegramService:
         elif command in {"/vpn", "/cc", "/mcp", "/svc", "/service", "/cancelrollback"}:
             await self.reply(update, "该功能尚未迁移到新应用")
         else:
+            result = await self.dispatcher.dispatch(update, command, role, group)
+            if result is not None:
+                return result
             await self.reply(update, "暂未开放")
         return "handled"
 
@@ -800,11 +851,33 @@ class TelegramService:
         )
         return MutationResponse(revision=config.revision)
 
-    async def reply(self, update, text, *, reply_markup=None):
-        _, _, chat, _, _, _ = identities(update)
-        await self.enqueue(chat, f"reply:{update['update_id']}:0", text, reply_markup=reply_markup)
+    async def reply(self, update, text, *, reply_markup=None, panel=False, chunk_size=4000):
+        self.ensure_attached()
+        message, callback, chat, _, _, _ = identities(update)
+        mid = message.get("message_id") if panel and isinstance(callback, dict) else None
+        mid = mid if type(mid) is int and mid > 0 else None
+        await self.enqueue(
+            chat,
+            f"reply:{update['update_id']}:0",
+            text,
+            reply_markup=reply_markup,
+            edit_message_id=mid,
+            chunk_size=chunk_size,
+        )
 
-    async def enqueue(self, chat, key, text, *, kind="reply", bot_id=None, reply_markup=None):
+    async def enqueue(
+        self,
+        chat,
+        key,
+        text,
+        *,
+        kind="reply",
+        bot_id=None,
+        reply_markup=None,
+        edit_message_id=None,
+        chunk_size=4000,
+    ):
+        self.ensure_attached()
         category = "redacted" if contains_secret(text) else None
         safe = "内容包含敏感信息，已隐藏" if category else redact_exception(text)
         await self.store.enqueue(
@@ -815,6 +888,8 @@ class TelegramService:
             kind=kind,
             error_category=category,
             reply_markup=reply_markup if category is None else None,
+            edit_message_id=edit_message_id,
+            chunk_size=chunk_size,
         )
 
     async def test_message(self, revision):
@@ -1007,7 +1082,15 @@ class TelegramService:
             if row["edit_message_id"] is not None:
                 method = "editMessageText"
                 payload["message_id"] = row["edit_message_id"]
-            await self.client.request(method, payload)
+            try:
+                await self.client.request(method, payload)
+            except TelegramError:
+                if method != "editMessageText":
+                    raise
+                # A panel edit failure never retries an execution action. Only its
+                # already materialized plain-text reply falls back to a new message.
+                payload.pop("message_id", None)
+                await self.client.request("sendMessage", payload)
             await self.store.sent(row["id"], "sent")
         except TelegramError as exc:
             age = (datetime.now(UTC) - datetime.fromisoformat(row["created_at"])).total_seconds()
@@ -1032,6 +1115,7 @@ class TelegramService:
                 await asyncio.sleep(0.1)
 
     async def _cleanup(self):
+        self.dispatcher.close()
         try:
             if self.bot_id and self.store._db is not None and not self.store.readonly_error:
                 try:

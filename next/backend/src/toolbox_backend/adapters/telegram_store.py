@@ -229,9 +229,15 @@ class TelegramStore:
         error_category=None,
         reply_markup=None,
         edit_message_id=None,
+        chunk_size=4000,
     ):
-        if contains_secret(text):
-            text, error_category = "内容包含敏感信息，已隐藏", "redacted"
+        markup_json = json.dumps(reply_markup) if reply_markup else ""
+        if (
+            contains_secret(text)
+            or contains_secret(markup_json)
+            or redact_exception(markup_json) != markup_json
+        ):
+            text, error_category, reply_markup = "内容包含敏感信息，已隐藏", "redacted", None
         else:
             text = redact_exception(text)
 
@@ -245,7 +251,7 @@ class TelegramStore:
                     key_base = f"bot:{bot_id}:{dedup_key}"
                 if db.execute("SELECT 1 FROM tg_outbox WHERE dedup_key=?", (key_base,)).fetchone():
                     return
-                chunks = [text[i : i + 4000] for i in range(0, len(text), 4000)] or [""]
+                chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
                 for i, chunk in enumerate(chunks):
                     pending = db.execute("SELECT count(*) FROM tg_outbox WHERE state='pending'")
                     if pending.fetchone()[0] >= 500:
@@ -278,7 +284,7 @@ class TelegramStore:
                             json.dumps(reply_markup)
                             if reply_markup and i == len(chunks) - 1
                             else None,
-                            edit_message_id,
+                            edit_message_id if i == 0 else None,
                         ),
                     )
 
@@ -330,7 +336,11 @@ class TelegramStore:
         def save():
             token, now = secrets.token_urlsafe(16), stamp()
             with self.transaction() as db:
-                db.execute("DELETE FROM tg_actions WHERE expires_at<=?", (now,))
+                # Keep unconsumed expired actions within the same eviction bounds so
+                # a late click can explain expiry even after another menu is opened.
+                db.execute(
+                    "DELETE FROM tg_actions WHERE expires_at<=? AND consumed_at IS NOT NULL", (now,)
+                )
                 for clause, args, limit in (
                     ("bot_id=?", (bot_id,), 256),
                     ("bot_id=? AND chat_id=?", (bot_id, chat_id), 16),
@@ -375,6 +385,44 @@ class TelegramStore:
                 return {**dict(row), "payload": json.loads(row["payload_json"])}
 
         return await self.call(save)
+
+    async def inspect_action(self, token, bot_id, chat_id, user_id):
+        def read():
+            row = (
+                self.require()
+                .execute(
+                    "SELECT * FROM tg_actions WHERE token=? AND bot_id=? "
+                    "AND chat_id=? AND user_id=?",
+                    (token, bot_id, chat_id, user_id),
+                )
+                .fetchone()
+            )
+            return {**dict(row), "payload": json.loads(row["payload_json"])} if row else None
+
+        return await self.call(read)
+
+    async def cancel_action(self, token, bot_id, chat_id, user_id):
+        def save():
+            with self.transaction() as db:
+                row = db.execute(
+                    "UPDATE tg_actions SET consumed_at=? WHERE token=? AND bot_id=? "
+                    "AND chat_id=? AND user_id=? AND consumed_at IS NULL",
+                    (stamp(), token, bot_id, chat_id, user_id),
+                )
+                return row.rowcount == 1
+
+        return await self.call(save)
+
+    async def action_result(self, token, run_id):
+        def save():
+            with self.transaction() as db:
+                db.execute(
+                    "UPDATE tg_actions SET result_run_id=? WHERE token=? "
+                    "AND consumed_at IS NOT NULL",
+                    (run_id, token),
+                )
+
+        await self.call(save)
 
     def _close(self):
         with self._lock:

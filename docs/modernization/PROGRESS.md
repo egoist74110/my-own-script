@@ -808,3 +808,14 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 状态：S4-B、S4-C **dispatched / running**。
 - S4-B 第 1 轮：exit 0，按“同类失败两次”交回。交付 `services/telegram_commands.py`、`services/telegram_work_items.py` 及 telegram/runs/store/http/fake/app 改动，新增 32 例（含独立 `/root/s4b_tests` 21 例）；契约无改动（contracts --check exit 0），既有测试未改。阻断：`test_s4b_execution.py::test_confirmed_telegram_run_uses_only_temporary_bare_git` 在沙箱内停在 git 步骤。**主控沙箱外复跑：整文件 5 passed、该用例连续 3 次 passed**，判定为沙箱环境限制、非执行链缺陷，不改生产代码/不放宽用例。剩余 ruff 两处、README、最终复核：同会话续接（`.local/dispatch/s4b/resume1-request.md`）。
 - S4-B 第 2 轮：ruff 两处、README「S4-B」、按钮文字脱敏与过期动作保留修复完成（新增 `test_s4b_security_lifecycle.py` 12 例；修前证据见施工报告）；无端口集合 680 passed。复核发现：S2 `outbound()` 取消后等待读取线程（JSON 15 秒/媒体 30 秒），Telegram 关闭超过 5 秒（回归 1 failed），施工者按停止条件交主控。**主控裁定**：不扩展 S2 共享出站（保留 6 许可语义）；Telegram 关闭等待≤5 秒后把仍卡在只读出站的处理器标 detached，此后零发送/零 DB 写/不触碰已关闭资源，进程退出可能延迟至 S2 预算，RunService 关闭不排在其后；合同「停用/关闭」条已同步修订。同会话续接第 3 轮（`.local/dispatch/s4b/resume2-request.md`）。
+
+### S4-B 集成（2026-10-23）
+
+- 第 3 轮：同会话续接，rollout turn_context 6 轮均回执 `gpt-6.1-sol` / medium；测试子agent `/root/s4b_tests` rollout `01a1677d-9ca7-…` 回执 `gpt-6-luna` / high，独立新增 21 例；本包新增用例共 48。施工者按裁定实现 detached 关闭语义，S2 `services/work_items.py` 与 `next/contracts` 对 `b64dd65` 无改动（主控 `git diff --quiet` 核实）；既有测试未改。
+- 结果：`services/telegram_commands.py`（构建发布/仅发布/回滚确认流、令牌原子消费+配置锁内权限重查、`uuid5` 幂等键、origin=telegram、停止归属、S3 错误码中文映射、菜单分页与按权限收紧）、`services/telegram_work_items.py`（owner 工单浏览、分块、60 秒缓存、图片白名单与限额）；telegram/runs/store/http/fake/app 衔接；按钮文字入箱脱敏；本地非 Telegram 异常可观察（backoff/store_unavailable）；关闭等待≤5 秒后 detached；lifespan 先关 RunService。
+- **主控修前复现**：集成树临时把 `adapters/telegram_store.py` 换回 `b64dd65` 版本，`test_s4b_security_lifecycle.py -k button_labels` **6 failed**；恢复后 6 passed（与施工树逐字节一致）。其余修前证据为施工者记录，未逐项复现（unknown）。
+- 集成：worktree `next/backend` 限定 binary patch（`.local/dispatch/s4b/integration.patch`），`git apply --check` 后应用。
+- 集成树首次全量 **873 passed / 2 failed**：①`test_s4b_execution.py::test_confirmed_telegram_run_uses_only_temporary_bare_git` 在主目录稳定失败、施工树通过；主控临时调试副本（已删除）显示运行实际 succeeded，但需轮询 441–520 次（10 ms/次），用例只等 400 次——负载下等待窗口过紧，非代码缺陷。**主控修改本包新增用例**：等待上限 400→3000 次（≈30 秒）并加注释，断言不变，主目录与施工树同步；整文件连跑 3 次 5 passed。②第二个失败当次输出被截断未取得用例名，重跑未复现——记 **unidentified / 疑似负载抖动**，后续全量若再现再定位。
+- 集成版本验收：后端全量 **875 passed**（260.72s，沙箱外含端口与 bare git），ruff exit 0，contracts --check exit 0；前端 contracts:check exit 0（契约无变化，schema.d.ts 未重生成）；`git diff --check` exit 0。Rust/旧代码守卫 not_run（未改）。
+- 未测：真实 Telegram/ADO/Keychain/系统代理/Tauri；dev:web 端到端待 S4-C 集成后主控联调。施工 worktree `.local/worktrees/s4a` 保留。
+- 状态：**S4-B integrated**（本地提交，未 push）；S4-C 施工已交回、独立测试进行中。

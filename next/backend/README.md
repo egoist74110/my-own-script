@@ -421,8 +421,8 @@ HTTP 返回 502 telegram_request_failed/category=conflict；GET 状态可见 con
 轮询状态：disabled → starting → polling ⇄ backoff；409 立即 conflict 并停止，不删 webhook、
 不自动重试；401/404 为 token_invalid；已有 webhook 为 webhook_set；库错误为 store_unavailable。
 retry 仅 conflict/backoff，做一次 timeout=0 探测；429 遵守 retry_after，网络退避
-1/2/5/10/30/60 秒（抖动，上限 60）。disable/shutdown 取消长轮询与发送，等待在途处理最多
-5 秒后取消，统一关闭客户端/数据库；已提交的 S3 run 不被 Telegram 停用取消。
+1/2/5/10/30/60 秒（抖动，上限 60）。disable/shutdown 取消长轮询、发送与在途处理器，最多
+等待 5 秒后隔离未完成处理器，完成自身客户端/数据库清理；已提交的 S3 run 不被 Telegram 停用取消。
 
 Bot API 唯一客户端固定 `https://api.telegram.org`，不跟随重定向；仅这个客户端 trust_env=True，
 遵循环境/macOS 代理。独立并发为轮询 1、发送 2、媒体 1；响应限额分别为 1 MiB/64 KiB。
@@ -433,8 +433,8 @@ ACL 顺序：私聊 owner → chat_id 成员 → 私聊 username 成员（首次
 user_id）→ 旧白名单（status）→ none。空 owner 不自动绑定，只认设置页签发的 6 位码 /bind；
 码仅在内存、10 分钟、同时一个、错 5 次作废。none 零回复；非 owner status 只列组内任务
 或自己触发的运行。/help、/start、/menu 使用服务端一次性菜单令牌（TTL 5 分钟，
-每 bot 活动≤256、每 chat≤16）；伪造/过期/跨主体令牌无效果。/status 与 /bind 可用，
-执行类与 /wi 回复“暂未开放”，服务/VPN/MCP/AI 回复“该功能尚未迁移到新应用”；完整执行留 S4-B。
+每 bot 活动≤256、每 chat≤16）；伪造/跨主体令牌无效果，过期动作提示重新操作。
+/status 与 /bind 可用，执行类与 /wi 流程见下方 S4-B；服务/VPN/MCP/AI 回复“该功能尚未迁移到新应用”。
 
 发件箱只在 control.enabled 时接收运行通知，入箱与停用协调；UI 通知给 owner（可关闭），
 Telegram 通知给触发 chat 并绑定原 bot。run/status 去重；同一状态不重复；重启扫描 enabled_at
@@ -493,3 +493,124 @@ chat:{id:6001,type:"private"},from:{id:6001},date:<当前Unix秒>,text:"/bind <�
 S4-A 新用例位于 tests/test_s4a_*.py 与 tests/independent/s4a/，只用 tmp_path、MemoryCredentials、
 MockTransport 和既有 keyring/socket 守卫。真实 Bot、系统代理、Keychain 与端口 HTTP/WS
 需主控或用户另行验收；沙箱内的无端口通过不等于这些环境已验证。
+
+## S4-B Telegram 执行与工单
+
+本包只增加 Bot 指令与内部服务调用；沿用 S4-A HTTP/WS DTO、路由、错误码和 SQLite schema，
+`contracts --check` 必须与冻结的 b64dd65 契约一致。HTTP start 仍不接受 origin；Bot 运行来源
+与 run 同事务持久化，HTTP 只公开 origin.kind。Bot 不执行任意命令、callback 参数或远端 URL。
+
+### 指令与确认
+
+- `/<tg_command>`、`/run <tg_command>`，或 `/help` → 任务：选择任务后选择“构建发布”或
+  “仅发布”，调用既有 RunService.preflight。计划展示任务、仓库、分支、各目标 definition/stage、
+  仅发布的精确 Build/commit 与警告；只有“确认执行”调用 RunService.start，“取消”作废对应确认。
+- `/rollback`：选择任务 → offset 1..5 → 对该 offset 预检 → 展示各目标冻结的历史 Release
+  ID、名称、创建时间、当前环境结果与精确制品 → 确认执行。展示读取只使用冻结 Release ID。
+- 确认后回复“已开始（运行 #短id）”。request_id 为 `uuid5(TG_NAMESPACE, action_token)`，
+  ack_old_app_idle=true，origin=telegram；执行、预约、幂等、超时与恢复全部复用 S3。
+  同一确认重复点击不会创建第二个 run；结果已登记时返回原 run，否则提示已处理。
+- plan/token 过期回复“计划已过期，请重新预检”及“重新预检”按钮，必须重新点击并确认，
+  不自动预检或启动。任务禁用、删除、配置变化或权限收回均阻止旧确认启动。
+- `/stop` 列出当前可停的活动/unknown 运行，点选调用幂等 cancel。固定提示
+  “停止不会回滚已部署内容；远端可能继续”；unknown 另提示“结果需要核实”。
+- `/status` 延续 S4-A 可见范围。系统操作保留“尚未迁移”提示，不显示服务、VPN、MCP、AI 入口。
+
+动作令牌由服务端生成：16 个随机字节的 base64url（22 字符），绑定 bot/chat/user，TTL 最长
+5 分钟；确认令牌同时受 plan 到期时间限制。单事务消费一次，消费后重新解析 ACL；最终
+start/cancel 在 ConfigStore 单写锁内再次授权，防止权限撤回与接受运行之间的竞态。
+每 Bot 活动令牌≤256，每 chat≤16，超限淘汰最旧未消费项；任务、项目、运行与关联项选择器
+每页最多 8 项并提供翻页，避免当前页生成超过上限的按钮。随机、跨 bot/chat/user 或旧式
+`runmode:build:<id>` 回调不触发执行。令牌和参数不来自客户端拼接，SQL 使用绑定参数。
+
+| 操作 | owner（仅私聊） | ACL 成员 | legacy / none |
+| --- | --- | --- | --- |
+| 构建发布、仅发布 | 全部有效任务 | can_run 且 task_ids 包含任务 | 不允许 |
+| 回滚 | 全部有效任务 | can_rollback 且 task_ids 包含任务 | 不允许 |
+| 停止 | 全部可停运行 | can_stop 且持久 origin.kind=telegram、origin.chat_id=当前 chat | 不允许 |
+| 状态 | 全部 | can_status；组内任务或自己触发的运行 | legacy 只读状态；none 零回复 |
+| 工单 | 允许 | 不允许 | 不允许 |
+
+菜单“任务”只对 owner 或拥有 can_run/can_rollback 的组显示；只有回滚权限的组进入任务后
+只提供回滚。非 owner 的停止归属使用数据库来源，重启后仍按同一规则授权。
+
+### /wi 只读浏览与图片
+
+`/wi` 选择已存项目 → 新建/待开发/开发中/测试/已关闭 → 列表（8 条/页）→ 详情。
+`/wi <编号>` 使用本 chat 已选项目，或当前活动/唯一项目。详情提供“全文”“关联项”；
+关联项显示父子工单与 S2 关联链接标签，可分页打开父子详情。不提供 MCP 分析或复制提示词按钮。
+项目/版块/页仅存内存；列表按项目、版块、配置 revision 缓存 60 秒，到期后重读，关闭时清空。
+每次读取前后重新确认 owner；读取中解绑 owner 不再发送详情或错误提示。
+
+全文只解析 S2 已清洗 HTML，转换纯文本，每块≤3900 字，不使用 parse_mode。图片只通过 S2
+媒体登记表获取，沿用同源、凭据与来源变更检查，不接受 Telegram 输入的下载 URL。再按文件
+签名筛选 png/jpeg/gif/webp：单张≤5 MiB、每工单最多检查前 10 个不同媒体、接受总量≤20 MiB；
+越界、失效、类型或大小不符的图片跳过并注明“N 张图片未发送”。图片字节不落盘，发送后释放；
+同一 worker 同时只取一张媒体，保留的合规图片总量受 20 MiB 限制，单次取图另受 S2 限额约束。
+2..10 张使用 sendMediaGroup，一张使用 sendPhoto；媒体并发独立为 1。上传超时或失败不自动
+重复上传，提示“图片发送失败或结果需要核实，请勿重复发送”，避免远端已收图却重复发送。
+
+### 固定错误文案
+
+不发送 SettingsError.detail、ADO 异常原文、git stderr 或请求 URL。未知执行错误统一
+“操作失败，请稍后重试”；未知工单类别统一“工单读取失败，请稍后重试”。
+
+| S3/内部 code | Telegram 中文 |
+| --- | --- |
+| task_active | 任务已有活动运行 |
+| resource_active | 发布资源正被其他运行占用 |
+| busy | 忙，请稍后重试 |
+| no_credential | 尚未配置所需凭据 |
+| unsupported_task | 该任务配置暂不支持执行 |
+| run_store_unavailable | 运行数据库不可用 |
+| telegram_store_unavailable | Telegram 数据库不可用 |
+| store_unavailable | 配置数据库不可用 |
+| plan_expired | 计划已过期，请重新预检 |
+| plan_changed | 任务或来源已变化，请重新预检 |
+| idempotency_conflict | 请求标识冲突，请查看运行状态 |
+| not_found | 任务或运行已不存在 |
+| revision_conflict | 配置已变化，请重新操作 |
+| validation_error | 任务不可执行或权限已变化 |
+| unsafe_repository | 仓库未通过安全检查 |
+| ado_request_failed | 远端请求失败，请稍后重试 |
+
+| /wi category（或 code） | Telegram 中文 |
+| --- | --- |
+| no_credential | 尚未配置 ADO 凭据 |
+| unauthorized / forbidden / not_found | ADO 认证失败 / 无权读取此工单 / 工单或项目不存在 |
+| timeout / network / tls | ADO 请求超时 / ADO 网络请求失败 / ADO 安全连接失败 |
+| redirect / blocked_origin | ADO 请求发生重定向，已拒绝 / 已拒绝外部媒体 |
+| bad_response / too_large | ADO 返回格式异常 / ADO 响应超过限额 |
+| media_expired / unsupported_media | 媒体已过期，请重新打开工单 / 不支持的图片类型 |
+| busy / store_unavailable | 忙，请稍后重试 / 配置数据库不可用 |
+
+### 队列、回复与关闭
+
+所有已登记 update 进入有界队列（并发 2、等待 64、同 chat 串行）。慢预检、工单读取和上传
+均由 worker 等待，不阻塞 getUpdates 与 S3 事件入队；满时对已授权用户回复“忙，请稍后重试”，
+记录该 update failed/busy，继续推进 offset。未知/未授权用户仍零回复。
+
+回调面板优先 editMessageText；失败只将已经生成的回复退回 sendMessage，不重新预检或执行。
+分块时只编辑首块，其余块新发，按钮附在最后一块。正文和按钮均在发件箱写入前扫描：按钮
+命中已登记密钥、URL 编码密钥或 Bot URL/认证头脱敏规则时，整条替换为固定隐藏文本并去掉按钮，
+避免敏感文字进入 DB/WAL、回复或 dev sent。通知规则与 sending→unknown 语义沿用 S4-A。
+
+轮询/会话遇到本地非 TelegramError 时记录固定类别及异常类型，不记录异常原文，进入可由
+GET/WS 观察的 backoff 或 store_unavailable。disable/shutdown 取消轮询、worker 与在途处理器，
+最多等待 5 秒；相册上传随处理取消，统一关闭客户端/DB/FD，并清空 chat 锁、工单状态及缓存。
+已提交的 S3 run 由 RunService 继续管理，不因 Telegram 停用被取消。
+
+S2 `outbound()` 保持原有语义：调用方取消后仍等待读取线程，直到同步 HTTP 客户端关闭才
+归还共享 6 许可。卡在此只读读取上的 Telegram 处理器在 5 秒后标记 detached，关闭流程停止
+等待它们。每处理器的上下文标记阻止迟到结果发送消息、写 Telegram 数据库、操作已关闭客户端，
+也不会因重新启用而恢复；结果和异常都被收取丢弃，关闭时最多记一条固定类别
+`detached_after_close`，不记录异常原文。完成后移除 detached 跟踪及上下文，不留下未处理异常。
+其 S2 许可在线程实际结束后归还，不提前释放。后端进程退出可能因此延迟到 S2 既有 JSON/媒体
+15/30 秒读取预算；只读读取无副作用，此延迟按主控修订合同接受。lifespan 先关闭 RunService，
+再关闭 TelegramService，因此 S3 停止不会排在这些读取之后。重试接管探测到的 updates 也进入
+有界工作队列，不在控制锁内等待慢读取，停用仍可及时取得控制锁。
+
+S4-B 用例：tests/test_s4b_execution.py、test_s4b_regressions.py、test_s4b_security_lifecycle.py 与
+tests/independent/s4b/；只用 tmp_path、内存凭据、MockTransport、假 ADO 和临时 bare Git。
+端口测试及 test_confirmed_telegram_run_uses_only_temporary_bare_git 在 codex 沙箱记 not_run，
+由主控沙箱外验收；后者已由主控确认整文件 5 passed，单用例连续 3 次 passed，不修改或跳过该用例。

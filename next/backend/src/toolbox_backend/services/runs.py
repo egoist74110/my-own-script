@@ -225,7 +225,7 @@ class RunService:
             warnings=prepared.warnings,
         )
 
-    async def start(self, tid, body, *, origin=None):
+    async def start(self, tid, body, *, origin=None, authorize=None):
         self.supported()
         if self.closing:
             raise SettingsError("busy", "后端正在关闭", 503)
@@ -247,6 +247,8 @@ class RunService:
             raise SettingsError("plan_expired", "执行计划已过期")
 
         def create(tx):
+            if authorize is not None and not authorize(tx.config):
+                raise SettingsError("validation_error", "权限已变化", 422)
             if plan["task_id"] != tid or tx.config.revision != plan["revision"]:
                 raise SettingsError("plan_changed", "任务或来源已变化，请重新预检")
             find_task(tx.config, tid)
@@ -394,8 +396,21 @@ class RunService:
             if not acquire.cancelled() and acquire.exception() is None:
                 self._semaphore.release()
 
-    async def cancel(self, rid):
-        result = await self.store.cancel(rid)
+    async def cancel(self, rid, *, authorize=None):
+        if authorize is None:
+            result = await self.store.cancel(rid)
+        else:
+
+            def guarded(tx):
+                def cancel():
+                    run = self.store._get(rid)
+                    if not authorize(tx.config, run):
+                        raise SettingsError("validation_error", "权限已变化", 422)
+                    return self.store._cancel(rid)
+
+                return self.store._call(cancel, (), {})
+
+            result = await self.tasks.store.run(None, guarded)
         if signal := self.cancellations.get(rid):
             signal.set()
         return result
