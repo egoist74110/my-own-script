@@ -437,13 +437,34 @@ class RunStore:
     async def list(self, **kwargs):
         return await self.call(self._list, **kwargs)
 
-    def _recover(self):
+    def _recover(self, run_ids=None, reason_code="backend_restart"):
+        previous_error = self.readonly_error
+        retry_write = run_ids is not None and previous_error == (
+            "运行库无法可靠写入；已禁止后续写操作"
+        )
+        # _call holds the store lock: no normal writer can slip through this probe.
+        # Only an actual recovery commit can lift a runtime write-failure guard.
+        if retry_write:
+            self.readonly_error = None
+        try:
+            recovered = self._recover_runs(run_ids, reason_code)
+        except BaseException:
+            if retry_write:
+                self.readonly_error = previous_error
+            raise
+        if retry_write and not recovered:
+            self.readonly_error = previous_error
+
+    def _recover_runs(self, run_ids, reason_code):
+        recovered = 0
         rows = (
             self._require()
             .execute("SELECT run_id FROM runs WHERE status IN (?,?,?,?)", ACTIVE)
             .fetchall()
         )
         for row in rows:
+            if run_ids is not None and row["run_id"] not in run_ids:
+                continue
             old = self._get(row["run_id"])
             effect = (
                 self._require()
@@ -452,19 +473,21 @@ class RunStore:
             )
             if old["status"] == "queued" and not effect:
                 self._transition(
-                    old["run_id"], old["state_version"], "cancelled", reason_code="backend_restart"
+                    old["run_id"], old["state_version"], "cancelled", reason_code=reason_code
                 )
             else:
                 self._transition(
                     old["run_id"],
                     old["state_version"],
                     "unknown",
-                    reason_code="backend_restart",
+                    reason_code=reason_code,
                     recovery_state="pending",
                 )
+            recovered += 1
+        return recovered
 
-    async def recover(self):
-        return await self.call(self._recover)
+    async def recover(self, *, run_ids=None, reason_code="backend_restart"):
+        return await self.call(self._recover, run_ids, reason_code)
 
     async def lookup(self, request_id):
         def read():

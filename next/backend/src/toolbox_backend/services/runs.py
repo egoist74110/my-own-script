@@ -18,6 +18,7 @@ from toolbox_backend.domain.task_execution import EffectIntent, ExecutionOutcome
 from toolbox_backend.services.tasks import execution_fields, find_task, validate_fields
 
 logger = logging.getLogger(__name__)
+LOST_WORKER_DIAGNOSTIC = "运行收尾未落盘；保留预约，等待只读恢复"
 
 
 class ExecutionContext:
@@ -93,6 +94,7 @@ class RunService:
         self.tasks, self.store, self.executor = tasks, store, executor
         self.plans = {}
         self.workers = {}
+        self.lost_workers = {}
         self.cancellations = {}
         self.reconciliations = {}
         self.acceptances = set()
@@ -116,6 +118,13 @@ class RunService:
                 pass  # A failed journal is exposed by HTTP; never resume writes.
 
     async def _recovery_round(self):
+        # Only exited workers may be recovered in-process; never disturb live workers.
+        for rid in list(self.lost_workers):
+            try:
+                await self.store.recover(run_ids=(rid,), reason_code="worker_lost")
+            except SettingsError:
+                continue  # No durable transition: retain both diagnosis and reservation.
+            self.lost_workers.pop(rid, None)
         cursor = None
         while True:
             page = await self.store.list(status="unknown", cursor=cursor, limit=100)
@@ -293,6 +302,17 @@ class RunService:
 
     async def _execute(self, rid, cancel):
         try:
+            await self._execute_worker(rid, cancel)
+        except (Exception, asyncio.CancelledError):
+            # Do not leak adapter/DB exception text or pretend unknown was committed.
+            self.lost_workers[rid] = LOST_WORKER_DIAGNOSTIC
+            logger.error("%s run_id=%s", LOST_WORKER_DIAGNOSTIC, rid)
+        finally:
+            self.workers.pop(rid, None)
+            self.cancellations.pop(rid, None)
+
+    async def _execute_worker(self, rid, cancel):
+        try:
             async with self._slot(cancel):
                 run = await self.store.get(rid)
                 if run["status"] != "queued":
@@ -324,10 +344,6 @@ class RunService:
         except Exception:
             # An adapter exception can occur after remote delivery: never infer failure.
             await self._finish(rid, ExecutionOutcome("unknown", "remote_unknown"))
-        finally:
-            self.workers.pop(rid, None)
-            self.cancellations.pop(rid, None)
-
     @contextlib.asynccontextmanager
     async def _slot(self, cancelled):
         acquire = asyncio.create_task(self._semaphore.acquire())

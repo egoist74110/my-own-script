@@ -675,7 +675,7 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 | finding_id | 主控核实与处置 |
 | --- | --- |
 | CR-S3A-001 | **deferred，S3-B接入前落实**：纯本地异常/总超时的failed/cancelled分类需结合阶段与远端观察。不能仅凭effects为空判定安全终态：复用的owned=false构建仍可能运行。生产executor尚未接入，入口关闭。 |
-| CR-S3A-002 | **deferred，原S3-A施工会话恢复后优先修**：收尾的DB/CAS失败可使worker退出而持久状态仍running/cancelling；需登记失联worker/诊断及同进程只读恢复。DB真正不可写时不能伪造unknown已落盘。当前保留预约，重启recover；不宣称此项闭环。 |
+| CR-S3A-002 | **fixed（2026-10-23，原会话续接；见「S3-A 收尾」）**；原记录：**deferred，原S3-A施工会话恢复后优先修**：收尾的DB/CAS失败可使worker退出而持久状态仍running/cancelling；需登记失联worker/诊断及同进程只读恢复。DB真正不可写时不能伪造unknown已落盘。当前保留预约，重启recover；不宣称此项闭环。 |
 | CR-S3A-003 | **fixed（主控）**：关闭时逐worker容错，finally发停止信号，最外层finally关闭DB/锁。新增cancel journal抛错回归，修前失败。 |
 | CR-S3A-004 | **fixed（主控）**：checkpoint UPDATE检查rowcount，不存在步骤404并事务回滚，不发假checkpoint事件。新增回归修前DID NOT RAISE。 |
 | CR-S3A-005 | **fixed（主控）**：raw_bytes预算仍持久计数，空safe文本不发log事件；后续文本只追加一个seq。新增回归修前2 != 1。 |
@@ -717,3 +717,15 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 未测：Tauri 内渲染与 Overlay 标题栏拖拽区、真机深色切换、Playwright e2e、`:focus-within` 与焦点陷阱真实浏览器行为（仅 jsdom）。
 - cleanup：本会话 dev:web 因端口占用未成功启动、已退出；施工 worktree `.local/worktrees/r1` 保留（删除前需问用户）；补丁与日志在 `.local/dispatch/r1/`。
 - 状态：**R1 integrated**；S3-C 可以本提交为输入派工。
+
+### S3-A 收尾（2026-10-23，CR-S3A-002）
+
+- 主控：Claude Code 会话，role: lead，requested Opus 5.5 / medium；actual=unknown（无提供方回执）。用户本日改派：前端 agy、后端 GPT、测试 GPT，不做交叉审计。
+- 施工：codex 额度已恢复，`codex exec resume 01a16444-9e5a-7da0-8286-67f40c7827f8` 同会话续接（未换会话/模型），`-m gpt-6.1-sol -c model_reasoning_effort=medium`，沙箱沿用首轮 workspace-write。本地 rollout `turn_context` 记录 model=`gpt-6.1-sol`、effort=`medium`、workspace-write、network_access=false（本地运行时回执，非提供方底层路由保证）。exit 0。请求/输出 `.local/dispatch/s3a/resume2-*`。续接前主控核对施工树与 `66a92f2` 后端/契约内容一致（仅 README 一行差异，已同步）。
+- 测试子agent：本轮未新派；上轮 `/root/s3a_tests`（requested gpt-6-luna / high，rollout turn_context 记录 gpt-6-luna/high）新增 10 例，施工者本轮复跑 10 passed。
+- CR-S3A-002 修复：`services/runs.py` worker 外层登记失联 worker（固定脱敏诊断，不外泄 DB/适配器异常文本），恢复轮仅对已退出 worker 调用限定 run 的 `recover(reason_code=worker_lost)`；`adapters/run_store.py` recover 支持限定 run_ids，运行期写故障保护仅在恢复事务成功提交后解除。DB 仍不可写时状态/last_seq 不变、预约保留、不调用 reconcile；恢复后 unknown/pending 再只读 reconcile，不重放执行。新增 `tests/test_s3_worker_recovery.py`（6 参数化：running/cancelling × DB 提交失败/CAS 冲突/SQLITE_FULL）。
+- **主控修前复现**：在集成树 `66a92f2` 只加新测试、生产代码未改：**6 failed**（`exited worker was forgotten`）；应用限定 patch（`.local/dispatch/s3a/cr002-fix.patch`，2 文件 +48/−9，`git apply --check` 后应用）后 S3 定向 **44 passed**。施工者另报 readonly 用例修前 2 failed（解除故障后仍 running/cancelling）。
+- 主控核查备注：`_execute` 外层同时吞下 CancelledError 并登记为失联；关闭时被取消的 worker 也会登记，但只影响登记，预约保留并由下次启动 recover 处理，不触发外部写。接受。
+- 上轮 30 条失败命令：施工者逐条对应到修复项（表见 `.local/dispatch/s3a/resume2-stdout.jsonl` 最终回复），**未逐项反向复现，状态 unknown**；其中 3 条为检索/探测非回归。主控不宣称该 30 项逐项复现闭环。
+- 集成版本验收（`next/backend`）：首次全量 pytest **648 passed / 1 failed**（`tests/independent/test_fault_lifecycle.py::test_sigterm_during_startup_window_does_not_hang[0.15]`，S0 启动窗口计时用例，与本改动无关；单独重跑 5 轮 25/25 passed，判为负载下计时抖动，记 flaky）；ruff exit 0；contracts --check exit 0；`git diff --check` exit 0。第二次全量 **649 passed**（170.51s，exit 0）。
+- 状态：CR-S3A-002 fixed；CR-S3A-001 仍 deferred 至 S3-B；CR-S3A-006 rejected 维持。S3-A **integrated**（生产 start/preflight 仍 unsupported_task，等 S3-B）。未测：端口外真实 SSH/ADO/Keychain/Tauri。施工 worktree `.local/worktrees/s3a` 保留（删除前问用户）。
