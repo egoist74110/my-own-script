@@ -960,3 +960,9 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成版本验收：前端 typecheck/lint/test **1065 passed / 73 文件**/build/guard:dist/contracts:check 全 exit 0（按 S5-C 契约）；`git diff --check` exit 0；后端未改（仍为 1100 passed）。
 - 未测：真实 PTY/Tauri WebView 终端交互；dev:web 端到端截图留 S5-D2 后与 S5 集成验收一起做。worktree `.local/worktrees/s5d` 保留（S5-D2 同 agy 会话续接）。
 - 状态：**S5-D1 integrated**（本地提交，未 push）；S5-A/B/C/D1 均已集成，剩 S5-D2 与 S5 集成验收。
+
+### S5-D2 派工（2026-10-24）
+
+- s5d worktree 切换：D1 改动已集成且存档于 `.local/dispatch/s5d/integration.patch`，主控以 `git apply -R` 反向移除并 `git checkout --` 恢复同步过的契约/schema 后，detached 切到 `7dee0ca`（未用 reset/stash），前端 frozen offline install、后端 uv offline sync 通过。
+- agy 同 `--conversation 6520b039-…` 续接（`--sandbox`，gemini-3.8-flash-high，actual unknown），请求 `.local/dispatch/s5d/round3-d2.md`：chat 会话流（事件回放去重/对账、Markdown 清洗、工具卡片）、新会话对话类型（模型/档位/高权限 ack/Claude 续聊候选）、审批卡 Y/A/N、续聊、工单详情「AI 分析」「复制提示词」、设置页三个 AI 机器人卡片（切换步骤 Sheet、`ack_old_bot_cleared`、按 slot 的状态）。独立测试交付后另派。
+- 状态：S5-D2 **dispatched / running**。
