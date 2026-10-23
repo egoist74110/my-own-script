@@ -853,3 +853,8 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 删除冲突文案（**fixed**）：`features/tasks/api.ts` `task_referenced` 改为“任务被 Telegram 权限组引用，无法直接删除”；既有断言 `tests/unit/s3c-tasks.test.ts:312` 按用户本次要求同步改为匹配新文案（仅改期望文本）。
 - 验收：前端 frozen install/typecheck/lint（0 error/8 既有 warning）/test **944 passed / 66 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；dev:web 本会话启动并停止，临时 `.claude/launch.json` 已删、1420 已释放。后端全量见下条。
 - 后端（含时区修复）：全量 pytest **877 passed**（258.46s，沙箱外），ruff exit 0，contracts --check exit 0。四项均 fixed，本地提交未 push。
+
+### 施工 worktree 清理（2026-10-23）
+
+- 用户要求统一清理。主控先把 `r1/s3a/s3b/s3c/s4a/s4c` 六个 worktree 相对各自 HEAD 的未提交改动（含未跟踪文件，不含忽略目录）存为 binary patch，归档到 `.local/dispatch/worktree-archive-20261023/`（内容均已按限定路径集成进 `rewrite/next`）。
+- `git worktree remove --force` 被 auto mode 分类器以“不可逆本地删除”拒绝，主控未绕过；待用户自行执行删除。S5 合同已开新会话（s5-contract）。
