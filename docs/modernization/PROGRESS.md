@@ -785,3 +785,5 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 施工：codex exec，`-m gpt-6.1-sol -c model_reasoning_effort=medium -s workspace-write`，不联网；请求与输出 `.local/dispatch/s4a/`（request.md、stdout.jsonl、stderr.log）。施工者可派一层测试子agent gpt-6-luna / high，仅写 `next/backend/tests/independent/s4a/`；不做交叉审计。实际型号/档位以 rollout turn_context 为准，返回后补记。
 - codex session `01a16743-a089-74d1-8d42-a2a6201bb517`。
 - 状态：S4-A **dispatched / running**；S4-B、S4-C not_dispatched。
+- 第 1 轮（2026-10-23）：exit 0，交回 **partial**。rollout turn_context 回执施工 `gpt-6.1-sol` / medium、workspace-write、network_access=false；测试子agent `/root/s4a_tests` rollout `01a16744-a8da-7d01-97d2-6b51b9645859` 回执 `gpt-6-luna` / high（本地运行时回执）。交付：`logging_setup.py` 脱敏扩展（bot URL/认证头/URL 编码/代理 userinfo/异常链）、`adapters/telegram_http.py`、施工回归 7 例（修前 6+1 failed）、独立 13 例；主控复跑 20 passed、ruff exit 0。其余目标未实现；施工者按规则停下列出 5 处既有断言冲突（schema 版本 1、读取 `imported.telegram`）。测试子agent曾试图 apply_patch 到主控目录（失败未落盘，主控确认主目录干净）。
+- 主控裁定：5 处冲突是已确认合同（config v2、移除 imported.telegram）的计划内变化，允许仅改这 5 处并保留原意（逐条列出）；要求导入路径与 v1→v2 迁移结果一致。`codex exec resume` 同会话续接第 2 轮，请求 `.local/dispatch/s4a/resume1-request.md`。
