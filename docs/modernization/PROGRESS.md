@@ -931,3 +931,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 
 - 按用户“直接派下一个有额度的模型”的指示，S5-B 集成后立即派 S5-C；codex 仍无额度，施工 Claude Sonnet 5.5 / medium（Claude Code 原生子 agent，后台），测试员 Claude Haiku 5.5 / medium（子 agent 自派，仅 `tests/independent/s5c/`）；actual unknown。worktree `.local/worktrees/s5c`（detached `bb4b4a3`），后端 uv offline sync、contracts --check exit 0。
 - 状态：S5-C **dispatched / running**；S5-D1 仍在施工；S5-D2 待 S5-C 契约冻结。
+
+### S5-D1 施工交回与独立测试派工（2026-10-23）
+
+- agy 第 1 轮 exit 0，actual model/effort=unknown（agy 无回执）。交付：AI 会话页真实终端会话（列表、`ai.session` 驱动、新会话 Sheet、xterm.js 终端视图、中断/关闭/删除、右栏信息；chat 与审批卡仍为 mock 并标注待 S5-B）、`terminal-protocol.ts` 纯函数（帧/分片/夹取/offset 去重）、设置页「AI CLI」分区（profiles、检测、升级 job、档位与风险说明、模型预设）、`events.ts` 的 ai 主题订阅、dev:web 假 AI 开关与临时 git 仓库。新增 39 例；施工者自报 frozen install/typecheck/lint/test **983 passed / 69 文件**/build/guard:dist/contracts:check 与 diff-check 全 exit 0。
+- 既有测试改动 2 处（新增「AI CLI」分区导致分区列表/roving tabindex 数组多一项）：`tests/unit/settings.test.ts:66`、`tests/independent/settings-independent.test.ts:567`。后者在施工者 write_scope 之外，但与 S4-C 同类改法、只补一项，主控接受并记录。
+- 主控核查：生产 DTO 类型均来自 `schema.d.ts`；`events.ts` 新增的 AISessionData/AIJobData/AISubscribedData 为手写事件载荷（沿用 S3/S4 做法，schema.d.ts 不含事件），与 `events.schema.json` 字段与必填逐项一致；AI 代码无 localStorage/sessionStorage/console 输出。
+- 独立测试：GPT 6 Luna 与 codex 共额度不可用，按回退规则派 **Claude Haiku 5.5 / medium**（原生子 agent，actual unknown），仅写 `tests/independent/s5d-*`。
+- 状态：S5-D1 **built / independent testing**；S5-C running。
