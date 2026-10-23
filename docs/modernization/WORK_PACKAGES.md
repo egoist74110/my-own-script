@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 6（2026-10-23 追加 S3 合同草案；S3 待用户确认后派工）
+- revision: 7（2026-10-23 追加 R1 方向 B 换皮合同；S3-C 改为依赖 R1）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
@@ -1030,9 +1030,10 @@
 
 ## S3-C：任务页换真实接口（Gemini）
 
+- **暂停（用户 2026-10-23）→ 改为依赖 R1**：方向 E 视觉不再沿用。S3-C 在 R1 集成后派工，视觉与结构以 `design/b-native/B-Tasks.dc.html` 和 R1 组件为准（下文「按设计E既有组件」作废）；R1 留下的任务页占位由 S3-C 替换。S3-A/S3-B 后端不受影响。
 - 依赖：S3-B正式契约与fake fixture集成；主控生成`schema.d.ts`后派。若并行只可按已冻结接口，不能靠mock假定新字段。
 - write_scope：`next/desktop/src/features/tasks/**`、`next/desktop/src/api/events.ts`与`src/app/backend-runtime.ts`（仅新增run消息/订阅回调和认证后send支持，保持旧调用兼容）、`next/desktop/src/components/SidebarNav.vue`（仅任务角标改真实状态）、`next/desktop/tests/**`（新增文件）、`next/desktop/scripts/dev-web.mjs`（仅任务假fixture生命周期）、`next/desktop/README.md`；schema由主控生成。共享路径变化先交主控，不批量改其他feature。
-- 结果：任务列表/搜索/启用筛选、详情与执行计划确认、条件CRUD与排序、运行历史/阶段/停止/unknown说明、日志分页与增量补齐；按设计E既有组件。选择态可localStorage仅存task_id；配置草稿/运行日志不持久到浏览器，token永不进URL/DOM/storage。
+- 结果：任务列表/搜索/启用筛选、详情与执行计划确认、条件CRUD与排序、运行历史/阶段/停止/unknown说明、日志分页与增量补齐；按 B-Tasks 设计稿与 R1 组件（StatusPill、Sheet、Banner、ListRow 等），步骤列表/日志面板在 S3-C 内新增。选择态可localStorage仅存task_id；配置草稿/运行日志不持久到浏览器，token永不进URL/DOM/storage。
 - 每次start确认展示任务、仓库/分支、目标definition/stage、精确制品（只发布/回滚）、不可撤回的已执行副作用，以及“请确认旧应用没有在跑同一任务”必选框；后端要求ack。queued/running/cancelling/unknown由服务驱动，不凭按钮点击乐观写成功；unknown可只读核实与打开校验链接。
 - 切换任务/刷新/断线时取消在途查询且防旧响应覆盖；先订阅再补齐，按连续run_seq去重；选中运行改变先退订旧run；页面卸载清理监听/abort/订阅，不取消后端任务。无任务/配置无效/无凭据/只读库/冲突/繁忙/远端可能继续均有可操作中文提示。
 - 自动验收：`pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm guard:dist`、`pnpm contracts:check`全部exit0；独立测试位于`tests/independent/s3c-*`。覆盖CRUD/冲突与ACL阻断、preflight失效、二次确认/取消、双击幂等、后台继续、unknown/取消真实语义、重连缺口/乱序/重复/后端重启、并发run日志隔离、键盘焦点、无假执行数据/PAT。
@@ -1080,3 +1081,94 @@
 - 用户2026-10-23原答复：**“均按你推荐的来”**，确认六项：1 主路径/只发布/回滚均纳入；2 完整任务增删改/排序，ACL引用禁止删除；3 每次确认旧应用空闲，不做跨应用锁；4 暂缓远程PR写、本地同步仅标准SSH agent，HTTPS/别名代理暂阻断；5 部分成功不得发布；6 仅部署所选环境，无法保证则阻断。
 - 本确认解除派工门禁；不授权真实远端push/构建/发布、读取真实配置/凭据或删除worktree，真实验收按专门清单另行授权。合同中“若纳入/待决”均由以上已决收敛，施工者不得选择备选路径。
 - 依赖预置：后端SQLite/git/锁使用Python标准库，不新增运行时依赖；主控在施工worktree用现有uv.lock离线同步工具环境。实际运行时核验和会话证据记PROGRESS。
+
+# R1：方向 B「macOS 原生」换皮（S3-C 前置）
+
+依据：[FRONTEND_STACK.md](FRONTEND_STACK.md) §9（用户 2026-10-23 选定 B，C 作深色参考；§7/§8 作废）；设计源码 `design/b-native/`（画板：工单浅色/深色、任务、设置、AI 会话、组件清单）。设计稿只作视觉与结构参考，**不得直接拷贝**其 HTML/脚本。用户 2026-10-23 下达。
+
+目标：只换视觉与布局骨架，**不改任何业务行为**（数据流、接口调用、校验、编辑会话、安全边界、键盘可达性都保持）。换完后工单页、设置页在 1440×900 下与设计稿一致，空/读取中/出错状态都有设计。
+
+## R1 通用合同
+
+- 输入版本：`rewrite/next` 上提交本合同的 commit（派工时写明 SHA）。
+- 授权：可在 `next/desktop` 内用 pnpm 移除依赖、更新 lockfile（用户级 pnpm store 可用）；本包**不新增 npm 依赖**（需要时停下交主控）。不装全局工具。主控可在 `rewrite/next` 本地提交，不 push。
+- 施工位置：`git worktree add --detach .local/worktrees/r1 <SHA>`；施工者不 commit，主控以限定路径 patch 集成。
+- write_scope：`next/desktop/src/**`（不含 `src/api/**`、`src/stores/backend.ts`、`src/app/backend-runtime.ts`）、`next/desktop/tests/**`、`next/desktop/package.json` 与 `pnpm-lock.yaml`（仅移除字体依赖）、`next/desktop/index.html`、`next/desktop/README.md`、`next/THIRD_PARTY.md`。后端、`next/contracts/**`、`src-tauri/**`、`scripts/**` 不动。
+- 保持不变：S0 连接与安全语义（token 只在内存、Bearer、WS 首帧 auth、退避重连、心跳判死、告警只由 `system.alert`/`system.hello` 驱动）；S1 设置的编辑会话/保存粒度/校验/确认流程；S2 工单的查询、分页、选择持久化（`toolbox.work-items.selection`）、HTML 清洗、媒体代理与过期刷新、外链拦截；AI 页审批 Y/A/N 行为。
+- 测试改动规则：方向 E 专属的**视觉断言**（令牌数值、切角/斜切、印章、能量条、阶段条、底部状态栏、编号导航、任务 mock 行）可以按 B 等价改写或删除；**行为/安全/连接/可访问性/设置/工单断言不得删除或放宽**，只能改定位方式（选择器、文案）。每个被改的既有测试文件在交付报告中列出改动理由。
+- 禁止：改 `next/` 以外文件；读真实密钥/用户配置；连真实 ADO/TG；源码与构建产物出现 `Rhine`/`RHINE`/`Arknights`/`fonts.googleapis.com`；为通过检查删除或放宽上面列出的行为测试；画假窗口按钮。
+- 升级条件：需要改连接/安全接口、后端契约、写入范围或新增依赖；某个既有行为测试无法在不放宽的前提下迁移；同类失败两次 → 停下交主控。
+- 分工：单包、单施工者（令牌、骨架、组件、页面互相耦合）。施工 Claude Code 原生子 agent，requested sonnet / medium；施工者委派测试子 agent（requested haiku / medium，independent=true）新增独立用例于 `tests/independent/r1-*.test.ts`。交叉审计异步，跨厂商：codex exec requested gpt-6.1-sol / high，只读。actual 无提供方回执记 unknown。
+
+## R1 已定决定（施工者不得自行更改）
+
+**令牌**（`src/design/tokens.css` 重写；`ui.css`、`app.css` 随之改写）
+
+- 浅色：窗口 `#FFFFFF`、侧栏 `#EEEDF1`、检查器/分组底 `#F7F7F9`、设置内容底 `#F5F5F7`、分隔线 `#E5E5EA`、正文 `#1D1D1F`、次要文字 `#6E6E73`、禁用文字 `#A1A1A6`、控件底 `#EDEDF0`、悬停 `#F2F2F5`、选中未聚焦 `#E3E2E8`、强调 `#0A63D6`（其上白字）、强调文字 `#0A55B8`、链接 `#0058D0`。
+- 深色（`@media (prefers-color-scheme: dark)`，跟随系统，本包不做手动切换）：窗口 `#121315`、侧栏 `#0E0F11`、列表 `#141517`、检查器 `#17181B`、分隔线 `#23252A`、控件底 `#1F2125`、选中控件 `#3A3D44`、正文 `#ECEDEF`、次要文字 `#8B8E98`、禁用文字 `#6F727C`、强调 `#C6F432`（其上文字 `#14161A`，绿色不作文字色）、链接 `#D4F56A`、选中行 `#262A1C`。
+- 运行状态八色（底 / 文字 / 圆点，浅色）：排队 `#F0F0F3/#3A3A3F/#8E8E93`、运行中 `#E6F0FD/#0A4FAD/#0A63D6`、停止中 `#FFF0E0/#8A3F00/#E07B00`、成功 `#E5F5EA/#16692F/#1F9D45`、失败 `#FDECEA/#A1211A/#D93025`、已取消 `#F0F0F3/#4A4A4F/#8E8E93`、需核实 `#FFF3DC/#7A4100/#D98A00`、已停用 `#F0F0F3/#6E6E73/#C7C7CC`；深色版由施工者按同一色相给出，并满足对比度测试。
+- 提示横幅：信息 `#F2F6FD`、警告 `#FFF6E5`、错误 `#FDECEA`，各配深色文字与 1px 内描边（取值见组件清单画板）。
+- 字体：系统字体 `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif`；等宽 `'SF Mono', ui-monospace, Menlo, monospace`，只用于编号、提交、路径、命令、日志。**移除** `@fontsource/oxanium`、`@fontsource/inter`、`@fontsource/jetbrains-mono` 依赖及 `main.ts` 中的导入。
+- 字号：详情标题 22/700、页面标题 15/700、长文正文 14（行高 1.65）、界面正文 13、次要 12、侧栏分组标题 11/600。
+- 尺寸：圆角 控件 6 · 行 7 · 分组 10 · 窗口 12；间距 4/8/12/16/20/28；控件高 28；所有顶栏 52 高；侧栏 232、列表栏 320–380、检查器 280。
+- 删除：切角/斜切（`clip-path`、`--cut-*`、`--skew`）、玻璃（`backdrop-filter`）、`--acc`/`--warn` 旧令牌及一切 Oxanium 用法。
+
+**应用骨架**（`src/app/App.vue` 重写）
+
+- 网格：通高侧栏 ｜ 页面区（每页自己的列表栏/详情/可开关检查器）。**去掉底部状态栏**。
+- 侧栏顶部 52px 为拖拽区（`data-tauri-drag-region`；真窗口按钮由 Tauri Overlay 标题栏提供，不画假的）；各页顶栏空白处同样可拖拽，控件除外。
+- 侧栏分组：「工作」任务/工单/AI 会话；「基础设施」MCP/服务/VPN（禁用，无切片号角标，`title` 说明“尚未提供”）；底部 设置 + 连接状态行。不做「已保存查询」区（无真实数据不放 mock）。侧栏不显示计数角标（S3-C 再接任务真实状态）。
+- 连接状态行（侧栏底部，按钮）：只显示后端真实状态（connecting/online/reconnecting/offline）。点开为弹出层：后端状态、pid、心跳延迟，以及 S0 的告警演示开关（仍只调用 `POST /api/system/alert`）。VPN/TG/MCP 在各自切片前不显示。
+- 检查器：页面顶栏右侧的切换按钮（`aria-pressed`），开合状态可存 localStorage `toolbox.ui.inspector`（仅布尔值）。
+
+**组件**（`src/components/`；旧组件删除或改名，不留双份）
+
+| 旧（E） | 新（B） |
+| --- | --- |
+| GlassPanel | Pane（纯色面，无玻璃/切角） |
+| AppTabs | SegmentedControl（Reka Tabs，方向键行为不变；横向用于看板列与详情页签，页签可带计数） |
+| AppButton primary/accent/ghost | Button：primary（强调底）/ default / destructive（红字）/ plain |
+| IconButton | ToolbarButton（无底色，按下态，必须有 aria-label） |
+| TextInput / SearchBox | TextField / SearchField（⌘K/Ctrl+K 聚焦、Esc 失焦保持） |
+| BlockTag | Tag（中性小标签，无编号块） |
+| StatusDot | StatusDot（改色） |
+| AlertBanner | Banner（info/warn/error，贴在所属区域内，不遮挡） |
+| ApprovalBar | ApprovalBar（改样式，Y/A/N 与输入框聚焦时不触发保持） |
+| InspectorPanel | Inspector |
+| SidebarNav | Sidebar（分组） |
+| StatusBar | 删除 → ConnectionStatus（侧栏底部 + 弹出层） |
+| StampBadge、EnergyBar、StageBar | 删除 |
+| — | 新增 StatusPill（八态）、ListRow（两行；悬停、选中聚焦=强调底白字、选中未聚焦=灰底，按列表 `:focus-within` 区分）、EmptyState（图标 + 标题 + 一句说明 + 动作）、Skeleton（骨架行）、Sheet（Reka Dialog，从顶栏下落的确认单，焦点陷阱，Esc 关闭） |
+
+`components/ui/switch` 改样式为系统风格开关。
+
+**页面**
+
+- 工单 `features/work-items`（对照 `B-Native` / `B-Dark`）：列表栏（标题 + “项目 · 看板列 N 项”、刷新、搜索、看板列分段控件、两行条目：标题/日期，`#编号 · 类型 · 指派 · P`，类型圆点）；现有分页（每页条数 + 上下页 + 共 N 条）保留，放在列表栏底部，**不改成滚动加载**。详情顶栏：项目、指派人弹出菜单 + 在浏览器打开 + 检查器开关。详情：类型/编号/父项一行 → 22px 标题 → “指派 · 创建 · 更新 · rN”一行 → 页签（描述/评论/子项/历史/附件，带计数）→ 正文 14px。检查器：状态、优先级、指派、看板列、严重度、区域、迭代、标签，下方 AI 分析（禁用，“即将推出”）。未配置项目、读取中（骨架）、出错（Banner/空状态 + 重试）、截断/跳过提示、图片过期提示全部按新组件。画布上的「筛选」「复制链接」**不做**。
+- 设置 `features/settings`（对照 `B-Settings`）：二级分区改为左侧竖向列表（Reka Tabs `orientation="vertical"`，键盘行为等价），彩色小图标 + 计数；内容区 `#F5F5F7` 底、分组白卡片、标签在左控件在右。存储只读、加载失败、提示（含任务/警告列表）改为 Banner；原右侧“说明”检查器取消，说明文字并入各分组标题下的说明。保存/取消/删除确认等按钮沿用现有编辑会话与确认语义，只改位置与样式；HTTP 明文与“PAT 将发往新地址”的警告保留且用 warn Banner。
+- AI 会话 `features/ai`（对照 `B-AI`）：仍为 mock；会话列表（Claude/Codex/Antigravity 徽标、待审批/运行中/完成）、对话气泡与工具调用条、内联审批条、输入框、检查器（上下文用量、目录、分支、关联工单、已允许命令）。mock 只改数据形态以配合新布局，仍只在 `features/ai/mock/`。
+- 任务 `features/tasks`：删除 S0.5 mock 任务台与 `features/tasks/mock/`，改为 EmptyState 占位（“任务执行正在接入”，说明由 S3 提供，不放假任务/假 KPI）。真实页面由 S3-C 按 `B-Tasks` 实现。
+- `/` 仍重定向 `/tasks`。
+
+**告警**：状态仍只由 store 的 `alert` 驱动。告警时页面区顶部出现 warn Banner（显示 `reason`，无则默认文案），侧栏连接状态行变橙；无遮罩、不拦截操作。
+
+**动效与可访问性**：只保留状态点运行中的脉冲与 Sheet 进出；`prefers-reduced-motion: reduce` 下关闭。可点击目标 ≥28px 且行内按钮命中区 ≥28×28；图标按钮均有 aria-label；Tab 可遍历侧栏、顶栏、列表行（Enter 选中）、页签、审批条；焦点环用系统蓝 2px 外描边（深色用强调绿）。
+
+## R1 验收
+
+1. 在 `next/desktop`：`pnpm install --frozen-lockfile`（lockfile 随字体依赖移除更新）、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm guard:dist`、`pnpm contracts:check` 全部 exit 0。
+2. 令牌测试：解析 `tokens.css`，断言浅/深两套关键令牌值；对比度：正文/次要文字在窗口、侧栏、检查器、控件底上 ≥4.5:1（两套）；白字在浅色强调上、`#14161A` 在深色强调上 ≥4.5:1；八种状态文字在各自底色上 ≥4.5:1；横幅文字在横幅底上 ≥4.5:1。
+3. 守卫测试：`src/**` 与 dist 不含 `clip-path`、`backdrop-filter`、`Oxanium`、`@fontsource`；既有禁词测试保留。
+4. 新组件单测：SegmentedControl 方向键与计数、ListRow 选中聚焦/未聚焦、Sheet 焦点陷阱与 Esc、EmptyState 动作、StatusPill 八态文案、ConnectionStatus 四种连接态与告警开关只发 `POST /api/system/alert`、Inspector 开关与 localStorage 只存布尔。
+5. 页面测试：工单四态（正常/未配置/读取中/出错）、设置三态（正常/HTTP 警告/只读）、AI 审批 Y/A/N、任务占位不含 mock 任务文本；告警经假 `system.alert` 进入 store 后出现 Banner 且页面按钮可点。
+6. 既有 S0/S1/S2 行为、安全、连接、可访问性测试全部通过；改写过的测试文件逐一列出理由。
+7. `next/desktop/README.md` 更新（目录、组件清单、令牌、深色模式、任务页占位说明）；`next/THIRD_PARTY.md` 去掉方向 E 与三个字体条目，写明改用系统字体、无第三方视觉来源。
+
+- 未测（允许，主控集成后处理）：Tauri 内渲染、深色模式真机切换、截图对照。
+- 回退：从输入 SHA 恢复 `next/desktop`（不含 src-tauri、scripts）与 `next/THIRD_PARTY.md`。
+
+## R1 集成验收（主控）
+
+- 集成版本重跑验收第 1 条全部命令；`git diff --check`；写入范围以外无改动。
+- `pnpm dev:web` 下 1440×900 截图对照 `design/b-native/`：工单四态（浅色）+ 正常态（深色，浏览器 `prefers-color-scheme: dark` 模拟）、设置三态、AI 两态、任务占位、告警态；差异逐条写进 PROGRESS，明显偏差退回施工者。
+- 交叉审计异步派发（codex gpt-6.1-sol / high，只读），不阻塞 S3-C 派工准备；S3-C 在 R1 集成提交后以其 SHA 为输入。

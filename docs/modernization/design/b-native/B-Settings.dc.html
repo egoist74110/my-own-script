@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>B · 设置</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0058D0}a:hover{color:#00449F}
+.b-root{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Helvetica Neue',sans-serif;color:#1D1D1F;font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.b-root *{box-sizing:border-box}
+.b-side{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;border:0;background:transparent;width:100%;font:inherit;font-size:13px;color:#1D1D1F;text-align:left;cursor:pointer}
+.b-side[disabled]{color:#86868B;cursor:default}
+.b-sec{font-size:11px;font-weight:600;color:#6E6E73;padding:14px 8px 4px}
+.b-set{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:7px;border:0;background:transparent;width:100%;font:inherit;font-size:13px;color:#1D1D1F;text-align:left;cursor:pointer}
+.b-ico{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.b-btn{font:inherit;font-size:13px;height:28px;padding:0 12px;border-radius:6px;border:0;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 1px 1px rgba(0,0,0,.06);color:#1D1D1F;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.b-btn-blue{background:#0A63D6;color:#fff;box-shadow:none}
+.b-btn[disabled]{color:#A1A1A6;cursor:not-allowed}
+.b-group{background:#fff;border-radius:10px;box-shadow:0 0 0 .5px rgba(0,0,0,.12)}
+.b-grow{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 14px;border-bottom:1px solid #EFEFF2}
+.b-gh{font-size:13px;font-weight:700;margin:0 0 8px 4px}
+.b-field{height:28px;width:320px;padding:0 8px;border-radius:6px;border:0;box-shadow:inset 0 0 0 1px #D2D2D7;font:inherit;font-size:13px;background:#fff;color:#1D1D1F}
+.b-field[disabled]{background:#F5F5F7;color:#86868B}
+.b-lbl{color:#6E6E73}
+.b-mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+</style>
+</helmet>
+<div class="b-root" style="width:1440px;height:900px;background:#fff;display:flex;overflow:hidden;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)">
+
+  <aside style="width:232px;flex:none;background:#EEEDF1;border-right:1px solid #DAD9DE;display:flex;flex-direction:column;padding:0 10px 12px">
+    <div style="height:52px;display:flex;align-items:center;gap:8px;padding-left:8px" aria-hidden="true">
+      <span style="width:12px;height:12px;border-radius:50%;background:#FF5F57"></span><span style="width:12px;height:12px;border-radius:50%;background:#FEBC2E"></span><span style="width:12px;height:12px;border-radius:50%;background:#28C840"></span>
+    </div>
+    <nav aria-label="主导航" style="display:flex;flex-direction:column;gap:1px">
+      <div class="b-sec">工作</div>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><path d="M5 12l4 4L19 6"/></svg>任务</button>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>工单</button>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>AI 会话</button>
+      <div class="b-sec">基础设施</div>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3v6M16 3v6M5 9h14v4a7 7 0 0 1-14 0zM12 20v2"/></svg>MCP</button>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>服务</button>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>VPN</button>
+    </nav>
+    <div style="flex:1"></div>
+    <button class="b-side" aria-current="page" style="background:#D9D8DF;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3A3A3F" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>设置</button>
+    <div style="margin-top:8px;padding:8px;font-size:11.5px;color:#6E6E73;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#28A745"></span>已连接 · VPN · TG · MCP 2/3</div>
+  </aside>
+
+  <!-- 设置分区 -->
+  <nav aria-label="设置分区" style="width:220px;flex:none;border-right:1px solid #E5E5EA;padding:0 10px;display:flex;flex-direction:column;gap:2px">
+    <div style="height:52px;display:flex;align-items:center;padding-left:6px"><h1 style="margin:0;font-size:15px;font-weight:700">设置</h1></div>
+    <button class="b-set"><span class="b-ico" style="background:#8E8E93"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>导入旧配置</button>
+    <button class="b-set" aria-current="page" style="background:#0A63D6;color:#fff;font-weight:600"><span class="b-ico" style="background:#fff;color:#0A63D6"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/></svg></span>ADO 连接<span style="margin-left:auto;font-size:12px;font-weight:500">2</span></button>
+    <button class="b-set"><span class="b-ico" style="background:#5E5CE6"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>本地仓库<span style="margin-left:auto;font-size:12px;color:#6E6E73">5</span></button>
+    <button class="b-set"><span class="b-ico" style="background:#34A853"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg></span>凭据<span style="margin-left:auto;font-size:12px;color:#6E6E73">3</span></button>
+    <button class="b-set"><span class="b-ico" style="background:#636366"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>通用</button>
+  </nav>
+
+  <!-- 内容 -->
+  <main style="flex:1;min-width:0;background:#F5F5F7;display:flex;flex-direction:column;min-height:0">
+    <div style="height:52px;flex:none;display:flex;align-items:center;padding:0 28px;border-bottom:1px solid #E5E5EA;background:#fff">
+      <h2 style="margin:0;font-size:15px;font-weight:700">ADO 连接</h2>
+      <div style="flex:1"></div>
+      <span style="font-size:12px;color:#6E6E73">配置版本 r14 · 上次保存 14:20</span>
+    </div>
+
+    <sc-if value="{{isReadonly}}" hint-placeholder-val="{{false}}">
+      <div role="alert" style="margin:16px 28px 0;padding:12px 14px;border-radius:10px;background:#FDECEA;box-shadow:inset 0 0 0 1px #F3C2BD;display:flex;gap:10px;align-items:flex-start">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B3261E" stroke-width="2" aria-hidden="true" style="flex:none;margin-top:1px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <div style="flex:1"><div style="font-weight:600;color:#7A1A12">配置存储只读</div><div style="color:#5C2A25;margin-top:2px">配置文件版本比本应用新，或文件已损坏。可以查看，但所有修改已停用，避免覆盖。</div></div>
+        <button class="b-btn">在 Finder 中显示</button>
+      </div>
+    </sc-if>
+
+    <div style="flex:1;overflow:hidden;padding:20px 28px;display:flex;flex-direction:column;gap:22px;max-width:860px">
+      <section>
+        <h3 class="b-gh">Library</h3>
+        <div class="b-group">
+          <div class="b-grow" style="background:#F2F6FD;border-radius:10px 10px 0 0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="2" aria-hidden="true"><path d="M5 12l4 4L19 6"/></svg>
+            <div style="flex:1"><div style="font-weight:600">公司 ADO</div><div class="b-mono" style="font-size:12px;color:#6E6E73">https://ado.example.com/tfs</div></div>
+            <span style="font-size:12px;color:#16692F">PAT 已保存</span>
+            <span style="font-size:12px;color:#6E6E73;padding:0 8px;border-radius:999px;background:#E6E6EB">当前</span>
+          </div>
+          <div class="b-grow" style="border-bottom:0">
+            <span style="width:18px"></span>
+            <div style="flex:1"><div style="font-weight:600">测试环境</div><div class="b-mono" style="font-size:12px;color:#6E6E73">{{testUrl}}</div></div>
+            <sc-if value="{{isHttp}}" hint-placeholder-val="{{false}}"><span style="font-size:12px;color:#8A3F00;font-weight:600">HTTP 明文</span></sc-if>
+            <span style="font-size:12px;color:#6E6E73">未保存 PAT</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin:8px 0 0 4px"><button class="b-btn" aria-label="添加 library" disabled="{{ro}}">＋</button><button class="b-btn" aria-label="删除 library" disabled="{{ro}}">－</button></div>
+      </section>
+
+      <section>
+        <h3 class="b-gh">公司 ADO</h3>
+        <div class="b-group">
+          <div class="b-grow"><label for="lib-name" style="width:120px">名称</label><input id="lib-name" class="b-field" value="公司 ADO" disabled="{{ro}}"></div>
+          <div class="b-grow"><label for="lib-url" style="width:120px">地址</label><input id="lib-url" class="b-field b-mono" value="https://ado.example.com/tfs" disabled="{{ro}}"></div>
+          <div class="b-grow" style="align-items:flex-start;padding-top:12px">
+            <label for="lib-pat" style="width:120px;margin-top:4px">PAT</label>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <input id="lib-pat" type="password" class="b-field" placeholder="粘贴新的 PAT；不会回显" disabled="{{ro}}">
+              <span style="font-size:12px;color:#6E6E73">钥匙串中已保存 · 10 月 20 日更新。留空则保持不变。</span>
+            </div>
+          </div>
+          <div class="b-grow" style="border-bottom:0">
+            <label for="lib-col" style="width:120px">测试连接</label>
+            <input id="lib-col" class="b-field" style="width:200px" placeholder="DefaultCollection" value="Collection" disabled="{{ro}}">
+            <button class="b-btn" disabled="{{ro}}">测试</button>
+            <sc-if value="{{tested}}" hint-placeholder-val="{{true}}"><span style="font-size:12.5px;color:#16692F;display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:#1F9D45"></span>连接正常 · 找到 6 个项目</span></sc-if>
+          </div>
+        </div>
+        <sc-if value="{{isHttp}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#FFF6E5;box-shadow:inset 0 0 0 1px #F3D9A4;color:#5C3A10;font-size:12.5px">地址是 http://，PAT 会以明文发送。只在可信内网中使用；保存前需要再次确认。</div>
+        </sc-if>
+      </section>
+
+      <section>
+        <h3 class="b-gh">项目</h3>
+        <div class="b-group">
+          <div class="b-grow"><div style="flex:1"><span style="font-weight:600">Portal</span><span style="color:#6E6E73"> · Collection</span></div><span style="font-size:12px;color:#6E6E73">被 5 个任务引用</span><span style="font-size:12px;color:#6E6E73;padding:0 8px;border-radius:999px;background:#E6E6EB">当前</span></div>
+          <div class="b-grow" style="border-bottom:0"><div style="flex:1"><span style="font-weight:600">Billing</span><span style="color:#6E6E73"> · Collection</span></div><span style="font-size:12px;color:#6E6E73">被 2 个任务引用</span></div>
+        </div>
+        <div style="display:flex;gap:6px;margin:8px 0 0 4px"><button class="b-btn" disabled="{{ro}}">添加项目…</button></div>
+      </section>
+    </div>
+
+    <div style="height:56px;flex:none;border-top:1px solid #E5E5EA;background:#fff;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 28px">
+      <span style="margin-right:auto;font-size:12.5px;color:#6E6E73">{{dirtyText}}</span>
+      <button class="b-btn" disabled="{{ro}}">还原</button>
+      <button class="b-btn b-btn-blue" disabled="{{ro}}" style="opacity:{{saveOpacity}}">保存修改</button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["正常","HTTP 明文警告","存储只读"],"default":"正常"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state ?? '正常';
+    const ro = st === '存储只读';
+    const http = st === 'HTTP 明文警告';
+    return {
+      ro,
+      isReadonly: ro,
+      isHttp: http,
+      tested: st === '正常',
+      testUrl: http ? 'http://10.0.8.20:8080/tfs' : 'https://ado-test.example.com/tfs',
+      dirtyText: ro ? '只读：无法保存' : '1 处未保存的修改',
+      saveOpacity: ro ? 0.45 : 1
+    };
+  }
+}
+</script>
+</body>
+</html>

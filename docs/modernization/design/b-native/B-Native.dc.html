@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>B · macOS 原生 · 工单</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0058D0}a:hover{color:#00449F}
+.b-root{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Helvetica Neue',sans-serif;color:#1D1D1F;font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.b-root *{box-sizing:border-box}
+.b-side{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;border:0;background:transparent;width:100%;font:inherit;font-size:13px;color:#1D1D1F;text-align:left;cursor:pointer}
+.b-side[disabled]{color:#86868B;cursor:default}
+.b-sec{font-size:11px;font-weight:600;color:#6E6E73;padding:14px 8px 4px}
+.b-tb{height:28px;min-width:28px;padding:0 8px;border-radius:6px;border:0;background:transparent;color:#4A4A4F;display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;cursor:pointer}
+.b-segbtn{height:24px;padding:0 10px;border:0;border-radius:5px;background:transparent;font:inherit;font-size:12.5px;color:#1D1D1F;cursor:pointer}
+.b-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;padding:9px 14px 10px 26px;font:inherit;cursor:pointer;position:relative;border-radius:7px}
+.b-btn{font:inherit;font-size:13px;height:28px;padding:0 12px;border-radius:6px;border:0;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 1px 1px rgba(0,0,0,.06);color:#1D1D1F;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.b-btn-blue{background:#0A63D6;color:#fff;box-shadow:none}
+.b-btn[disabled]{color:#A1A1A6;cursor:not-allowed}
+.b-tab{height:26px;padding:0 12px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12.5px;color:#3A3A3F;cursor:pointer}
+.b-lbl{color:#6E6E73}
+.b-mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.b-skel{background:#E8E8EC;border-radius:4px;height:10px}
+</style>
+</helmet>
+<div class="b-root" style="width:1440px;height:900px;background:#fff;display:flex;overflow:hidden;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)">
+
+  <!-- 侧栏：贴满窗口高度，交通灯在其上 -->
+  <aside style="width:232px;flex:none;background:#EEEDF1;border-right:1px solid #DAD9DE;display:flex;flex-direction:column;padding:0 10px 12px">
+    <div style="height:52px;display:flex;align-items:center;gap:8px;padding-left:8px" aria-hidden="true">
+      <span style="width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#FEBC2E;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#28C840;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)"></span>
+    </div>
+    <nav aria-label="主导航" style="display:flex;flex-direction:column;gap:1px">
+      <div class="b-sec">工作</div>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><path d="M5 12l4 4L19 6"/></svg>任务<span style="margin-left:auto;color:#6E6E73;font-size:12px">1 运行中</span></button>
+      <button class="b-side" aria-current="page" style="background:#D9D8DF;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>工单<span style="margin-left:auto;color:#3A3A3F;font-size:12px;font-weight:500">23</span></button>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A63D6" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>AI 会话</button>
+      <div class="b-sec">基础设施</div>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3v6M16 3v6M5 9h14v4a7 7 0 0 1-14 0zM12 20v2"/></svg>MCP</button>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>服务</button>
+      <button class="b-side" disabled=""><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>VPN</button>
+      <div class="b-sec">已保存</div>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg>指派给我</button>
+      <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg>本迭代 Bug</button>
+    </nav>
+    <div style="flex:1"></div>
+    <button class="b-side"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>设置</button>
+    <div style="margin-top:8px;padding:8px;font-size:11.5px;color:#6E6E73;display:flex;align-items:center;gap:6px">
+      <span style="width:7px;height:7px;border-radius:50%;background:#28A745"></span>已连接 · VPN · TG · MCP 2/3
+    </div>
+  </aside>
+
+  <!-- 列表栏 -->
+  <section aria-label="工单列表" style="width:380px;flex:none;border-right:1px solid #E5E5EA;display:flex;flex-direction:column;min-height:0">
+    <div style="height:52px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px 0 16px">
+      <div style="display:flex;flex-direction:column;line-height:1.2">
+        <h1 style="margin:0;font-size:15px;font-weight:700">工单</h1>
+        <span style="font-size:11.5px;color:#6E6E73">Portal · 开发中 23 项</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="b-tb" aria-label="筛选"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button>
+      <button class="b-tb" aria-label="刷新"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+    </div>
+    <div style="padding:0 12px 10px;display:flex;flex-direction:column;gap:8px">
+      <label style="display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;background:#EDEDF0;border-radius:7px;color:#6E6E73">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input aria-label="搜索工单" placeholder="搜索" style="border:0;background:transparent;outline:none;font:inherit;flex:1;min-width:0;color:#1D1D1F">
+      </label>
+      <div role="tablist" aria-label="看板列" style="display:flex;padding:2px;background:#EDEDF0;border-radius:7px">
+        <button class="b-segbtn" role="tab" style="flex:1">新建</button>
+        <button class="b-segbtn" role="tab" style="flex:1">待开发</button>
+        <button class="b-segbtn" role="tab" aria-selected="true" style="flex:1;background:#fff;font-weight:600;box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.08)">开发中</button>
+        <button class="b-segbtn" role="tab" style="flex:1">测试</button>
+        <button class="b-segbtn" role="tab" style="flex:1">已关闭</button>
+      </div>
+    </div>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:0 40px;text-align:center">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="1.4" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <h2 style="margin:4px 0 0;font-size:15px;font-weight:600">没有 ADO 项目</h2>
+        <p style="margin:0;color:#6E6E73">在设置中添加组织地址和项目后，工单会显示在这里。</p>
+        <button class="b-btn b-btn-blue" style="margin-top:8px">打开设置…</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isError}}" hint-placeholder-val="{{false}}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:0 40px;text-align:center" role="alert">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C93400" stroke-width="1.5" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
+        <h2 style="margin:4px 0 0;font-size:15px;font-weight:600">无法读取工单</h2>
+        <p style="margin:0;color:#6E6E73">ADO 服务器 30 秒内没有响应。请确认 VPN 已连接。</p>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="b-btn">连接设置…</button><button class="b-btn b-btn-blue">重试</button></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+      <div aria-busy="true" style="padding:0 8px">
+        <sc-for list="{{skel}}" as="s" hint-placeholder-count="8">
+          <div style="padding:12px 14px 12px 26px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #F0F0F3">
+            <div style="display:flex;justify-content:space-between"><div class="b-skel" style="width:{{s.w}}"></div><div class="b-skel" style="width:36px"></div></div>
+            <div class="b-skel" style="width:40%;height:8px"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isNormal}}" hint-placeholder-val="{{true}}">
+      <ul style="list-style:none;margin:0;padding:0 8px;flex:1;overflow:hidden;display:flex;flex-direction:column;gap:1px">
+        <sc-for list="{{rows}}" as="w" hint-placeholder-count="10">
+          <li>
+            <button class="b-row" style="background:{{w.bg}};color:{{w.fg}}" aria-current="{{w.current}}">
+              <span style="position:absolute;left:10px;top:15px;width:8px;height:8px;border-radius:50%;background:{{w.dot}}" aria-hidden="true"></span>
+              <span style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-weight:600;font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{w.title}}</span>
+                <span style="font-size:12px;color:{{w.sub}};flex:none">{{w.date}}</span>
+              </span>
+              <span style="font-size:12px;color:{{w.sub}};display:flex;gap:6px">
+                <span class="b-mono">#{{w.id}}</span><span>{{w.type}}</span><span>·</span><span>{{w.who}}</span><span style="margin-left:auto;font-weight:600">P{{w.p}}</span>
+              </span>
+            </button>
+          </li>
+        </sc-for>
+      </ul>
+      <div style="height:32px;flex:none;border-top:1px solid #E5E5EA;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:#6E6E73">显示 1–20 / 共 23 项 · 滚动加载</div>
+    </sc-if>
+  </section>
+
+  <!-- 详情 -->
+  <section aria-label="工单详情" style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+    <div style="height:52px;flex:none;display:flex;align-items:center;gap:4px;padding:0 12px;border-bottom:1px solid #E5E5EA">
+      <select aria-label="项目" style="height:28px;border:0;background:transparent;font:inherit;font-weight:500;color:#1D1D1F;padding:0 6px"><option>Portal</option></select>
+      <select aria-label="指派人" style="height:28px;border:0;background:transparent;font:inherit;color:#4A4A4F;padding:0 6px"><option>所有人</option></select>
+      <div style="flex:1"></div>
+      <button class="b-tb" aria-label="在浏览器打开"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+      <button class="b-tb" aria-label="复制链接"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
+      <span style="width:1px;height:18px;background:#E0E0E5;margin:0 6px"></span>
+      <button class="b-tb" aria-label="显示检查器" aria-pressed="true" style="background:#E8E8ED"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex">
+      <div style="flex:1;min-width:0;overflow:hidden">
+        <sc-if value="{{showDetail}}" hint-placeholder-val="{{true}}">
+          <div style="padding:22px 32px 0;max-width:820px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6E6E73">
+              <span style="display:inline-flex;align-items:center;gap:5px;color:#0A55B8;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:#0A63D6"></span>用户情景</span>
+              <span class="b-mono">#2318</span>
+              <span>·</span>
+              <span>上级 <a href="#">#2290 统一登录与会话管理</a></span>
+            </div>
+            <h2 style="margin:8px 0 6px;font-size:22px;font-weight:700;letter-spacing:-.2px;line-height:1.3">登录页支持 SSO 后跳回原地址</h2>
+            <div style="font-size:12.5px;color:#6E6E73">林知远 · 10 月 18 日创建 · 今天 14:20 更新 · r7</div>
+            <div style="display:flex;gap:4px;margin:16px 0 0;padding:3px;background:#F2F2F5;border-radius:8px;width:max-content" role="tablist" aria-label="工单内容">
+              <button class="b-tab" role="tab" aria-selected="true" style="background:#fff;font-weight:600;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06)">描述</button>
+              <button class="b-tab" role="tab">评论 3</button>
+              <button class="b-tab" role="tab">子项 2</button>
+              <button class="b-tab" role="tab">历史</button>
+              <button class="b-tab" role="tab">附件 1</button>
+            </div>
+          </div>
+          <div style="padding:20px 32px;max-width:820px;font-size:14px;line-height:1.65;color:#1D1D1F">
+            <p style="margin:0 0 12px">用户从深链进入后被要求登录，登录完成总是回到首页，原本要打开的页面丢了。</p>
+            <p style="margin:0 0 20px">希望登录成功后跳回进入前的地址。地址只允许同源路径，外部地址一律回首页。</p>
+            <h3 style="margin:0 0 6px;font-size:14px;font-weight:700">验收标准</h3>
+            <ul style="margin:0 0 20px;padding-left:20px">
+              <li>从工单深链进入 → 登录 → 回到该工单</li>
+              <li>returnUrl 带外部域名时被忽略，回首页</li>
+              <li>会话过期后重新登录，同样回到原页面</li>
+            </ul>
+            <h3 style="margin:0 0 6px;font-size:14px;font-weight:700">关联</h3>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <a href="#">PR 412 · feat(auth): 保留 returnUrl</a>
+              <a href="#">分支 feature/sso-return</a>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{noDetail}}" hint-placeholder-val="{{false}}">
+          <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#86868B;font-size:15px">未选择工单</div>
+        </sc-if>
+      </div>
+
+      <!-- 检查器 -->
+      <aside aria-label="检查器" style="width:280px;flex:none;border-left:1px solid #E5E5EA;background:#F7F7F9;padding:18px 16px;display:flex;flex-direction:column;gap:18px;font-size:12.5px">
+        <sc-if value="{{showDetail}}" hint-placeholder-val="{{true}}">
+          <dl style="margin:0;display:grid;grid-template-columns:72px minmax(0,1fr);gap:9px 10px">
+            <dt class="b-lbl">状态</dt><dd style="margin:0"><span style="display:inline-flex;align-items:center;gap:5px;font-weight:500"><span style="width:8px;height:8px;border-radius:50%;background:#0A63D6"></span>开发中</span></dd>
+            <dt class="b-lbl">优先级</dt><dd style="margin:0;font-weight:500;color:#B23C00">P1 · 高</dd>
+            <dt class="b-lbl">指派</dt><dd style="margin:0">林知远</dd>
+            <dt class="b-lbl">看板列</dt><dd style="margin:0">开发中</dd>
+            <dt class="b-lbl">区域</dt><dd style="margin:0">Portal \ 账户</dd>
+            <dt class="b-lbl">迭代</dt><dd style="margin:0">Sprint 21</dd>
+            <dt class="b-lbl">标签</dt><dd style="margin:0;display:flex;gap:4px;flex-wrap:wrap"><span style="padding:0 6px;border-radius:4px;background:#E6E6EB">SSO</span><span style="padding:0 6px;border-radius:4px;background:#E6E6EB">登录</span></dd>
+          </dl>
+        </sc-if>
+        <div style="border-top:1px solid #E5E5EA;padding-top:16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px"><h2 style="margin:0;font-size:13px;font-weight:700">AI 分析</h2><span style="margin-left:auto;color:#6E6E73">即将推出</span></div>
+          <p style="margin:0;color:#6E6E73">生成分析、复制提示词，或开一个 AI 会话。</p>
+          <button class="b-btn" disabled="">开始分析</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["正常","未配置项目","读取中","出错"],"default":"正常"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state ?? '正常';
+    const dots = { '用户情景': '#0A63D6', 'Bug': '#D93025', '任务': '#C98A04', '功能': '#8E44C8' };
+    const data = [
+      [2318, '用户情景', '登录页支持 SSO 后跳回原地址', '林知远', 1, '14:20'],
+      [2321, 'Bug', '工单详情图片过期后不再刷新', '周沐', 1, '11:05'],
+      [2309, '任务', '迁移旧版发布配置到新格式', '林知远', 2, '昨天'],
+      [2304, 'Bug', '部署日志在 Safari 中换行错位', '未指派', 2, '昨天'],
+      [2297, '用户情景', '构建失败时推送通知到 Telegram', '陈一帆', 2, '昨天'],
+      [2290, '功能', '统一登录与会话管理', '许安', 1, '周二'],
+      [2286, '任务', '补齐附件下载失败的错误提示', '周沐', 3, '周二'],
+      [2279, 'Bug', '切换项目后筛选条件没有重置', '陈一帆', 3, '周二'],
+      [2271, '任务', '清理过期的构建缓存', '未指派', 4, '周一'],
+      [2265, '用户情景', '工单列表支持按迭代筛选', '许安', 3, '周一'],
+      [2259, 'Bug', '中文标题在 TG 通知里被截断', '周沐', 2, '10/19']
+    ];
+    const rows = data.map(([id, type, title, who, p, date], i) => {
+      const sel = i === 0;
+      return {
+        id, type, title, who, p, date,
+        bg: sel ? '#0A63D6' : 'transparent',
+        fg: sel ? '#FFFFFF' : '#1D1D1F',
+        sub: sel ? 'rgba(255,255,255,.88)' : '#6E6E73',
+        dot: sel ? '#FFFFFF' : dots[type],
+        current: sel ? 'true' : 'false'
+      };
+    });
+    const skel = ['70%', '55%', '78%', '62%', '50%', '74%', '60%', '68%'].map((w) => ({ w }));
+    return {
+      rows, skel,
+      isEmpty: st === '未配置项目',
+      isNormal: st === '正常',
+      isLoading: st === '读取中',
+      isError: st === '出错',
+      showDetail: st === '正常',
+      noDetail: st !== '正常'
+    };
+  }
+}
+</script>
+</body>
+</html>

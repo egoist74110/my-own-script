@@ -690,3 +690,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 未测：真实SSH agent/host key/远端push、真实ADO构建/发布/回滚、Keychain及Tauri人工运行；本轮全部外部写测试为临时bare或假执行器，没有对真实远端操作。施工worktree/本地回执保留，未删除；没有启动需长期保留的业务进程。
 - Claude第二轮exit0，JSON确认仍是同session，modelUsage仍仅 `claude-sonnet-5-5`/firstParty，medium实际effort无提供方回执；结论仍 **pass after minor fixes**。确认003/004/005/007关闭、接受006拒绝，无新发现；001/002继续deferred/open，明确002是S3-A验收未完成项。只读复核patch与测试结构，未独立运行测试/校验SHA，不宣称审计全通过。后续修复继续resume此session，不另换会话或模型。
 - **最终修复版主控验收**：后端完整 `pytest -q` **643 passed**（164.28s），ruff、contracts --check、git diff --check及改动范围/SHA256一致性检查通过；前端/Rust/根目录守卫结果仍对应相同未改源码。此结果仅证明当前自动检查通过，不关闭001/002、不替代施工最终报告/全部修前证据核齐或真实验收。当前包状态 **checkpoint / partial**；本地提交后不push，pre-commit自动版本递增单列为既有行为。
+
+### 2026-10-23：前端视觉方向重做，S3 界面施工暂停
+
+- 用户在 1440×900 dev:web 下看过任务/工单/设置后判断：方向 E「液态玻璃 × 游戏 UI」不适合做成正式软件，决定重出设计稿。
+- **S3-C 暂停**（not_dispatched → paused）；S3-A/S3-B 后端照常。新设计稿以工单页真实数据形态、1440×900 出 2~3 个方向供用户选择，选定后另立换皮工作包（令牌/基础组件 → 工单、设置两页），验收加对照设计稿截图。
+- 画布 https://claude.ai/artifact/Uno9R3vJky5oSRgvxb5D1K 出 A/B/C 三版工单页（数据为虚构，字段形态按 S2 真实接口）。**用户选定 B（macOS 原生），C 作为深色模式参考**；规则记入 FRONTEND_STACK §9。下一步：B 深色稿 → 其余页面与组件清单 → 换皮工作包合同。
+- 同画布补齐方向 B 的任务（运行中/确认运行/需要核实/没有任务，状态与步骤按 S3 合同七态与三种操作）、设置（ADO 连接；正常/HTTP 明文警告/存储只读）、AI 会话（等待审批/运行中/没有会话，仍为 S5 前的示意）与组件清单（色彩、字号、按钮、输入、列表行、状态、反馈、版式）。待用户过目后写换皮工作包合同；尚未对画布截图自查。
+- 用户确认页面与组件清单，下达写换皮合同。WORK_PACKAGES revision 7 追加 **R1：方向 B 换皮**（单包，Claude sonnet / medium 施工 + haiku 独立测试，codex gpt-6.1-sol / high 只读交叉审计；只换视觉不改行为；任务页改占位，由 S3-C 按 B-Tasks 实现）；S3-C 改为依赖 R1 集成。设计源码快照入库 `design/b-native/`。R1 状态 **not_dispatched**。
