@@ -858,6 +858,7 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 
 - 用户要求统一清理。主控先把 `r1/s3a/s3b/s3c/s4a/s4c` 六个 worktree 相对各自 HEAD 的未提交改动（含未跟踪文件，不含忽略目录）存为 binary patch，归档到 `.local/dispatch/worktree-archive-20261023/`（内容均已按限定路径集成进 `rewrite/next`）。
 - `git worktree remove --force` 被 auto mode 分类器以“不可逆本地删除”拒绝，主控未绕过；待用户自行执行删除。S5 合同已开新会话（s5-contract）。
+- 用户随后自行执行删除：六个 worktree 已移除并 prune，`git worktree list` 仅剩旧应用 `main` 与 `rewrite/next` 两行。
 
 ## 2026-10-23：S5 AI 开发（合同草案，待确认）
 
