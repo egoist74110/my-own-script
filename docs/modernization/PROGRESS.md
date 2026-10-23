@@ -858,3 +858,14 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 
 - 用户要求统一清理。主控先把 `r1/s3a/s3b/s3c/s4a/s4c` 六个 worktree 相对各自 HEAD 的未提交改动（含未跟踪文件，不含忽略目录）存为 binary patch，归档到 `.local/dispatch/worktree-archive-20261023/`（内容均已按限定路径集成进 `rewrite/next`）。
 - `git worktree remove --force` 被 auto mode 分类器以“不可逆本地删除”拒绝，主控未绕过；待用户自行执行删除。S5 合同已开新会话（s5-contract）。
+
+## 2026-10-23：S5 AI 开发（合同草案，待确认）
+
+- 主控：Claude Code 会话（由 S4 主控会话派生，role: lead），requested Opus 5.5 / medium；actual model/effort=unknown（无提供方回执），session_id=unknown。本轮只写合同，**未派工**、未委派任何施工/测试会话或子 agent。
+- 输入：`rewrite/next @ 90889b9`，开始时工作区干净；旧目录 `main @ 885d186` 只读（该目录有用户未提交改动，均不在 AI 会话/TG 桥相关文件，未触碰）。主控亲自核对 `app_main.py`、`ai_dev_session.py`、`ui/ai_dev_tab.py`、`ai_headless_session.py`、`ai_headless_tg_bridge.py`、`cc_approval_hook.py`、`codex_headless_session.py`、`codex_headless_tg_bridge.py`、`antigravity_headless_session.py`、`antigravity_headless_tg_bridge.py`（向导段）、`claude_sessions.py`、`models.py`、`ui/ai_config_tab.py`、`secrets.py`、`tg_control.py`（AI 模式/轮询/ACL 段）、`tg_work_items_bridge.py`、`tg_work_items_inline.py`、`ai_work_item_flow.py`、`ui/work_items_tab.py`（MCP 分析段）、`mcp_ado_work_items_server.py`（项目解析段），以及新端 `legacy_config.py`、`domain/settings.py`、`adapters/git_process.py`、`api/ws.py`、`app.py`、`src-tauri/src/backend.rs`（进程组段）、`features/ai/`。
+- 关键事实（详见 WORK_PACKAGES「S5 旧应用事实核实」）：PTY 在多线程 GUI 进程内 `os.fork()`，关闭只杀子进程 pid、不回收后代，chdir 失败被忽略；所有 AI 子进程无“父死即回收”；Claude 审批钩子是死代码（TG 会话固定 `auto`），TG 会话写死 `claude`；Codex/agy 提示词在 argv；Codex 续聊 id 只在内存；agy 按 cwd 取 conversation_id 同目录会串；Codex/agy 的 TG 向导可选“完全放开/自动批准”；TG 可手输任意目录起会话；AI 事件在读线程里同步发 TG（D11）；三个 AI 机器人与主机器人共用 `telegram_control_enabled`，但旧 AI 配置页“清除绑定”可单独停掉某个 AI 机器人；`can_dev_*` 组权限从未能在旧 UI 设置（实际仅 owner）；工单 MCP 分析提示词写死 Claude 工具前缀、依赖旧 MCP 与旧 UI active_*，并写回 `work_items_local_repo_id`；AI 机器人 Token 缺失时会话输出静默丢弃。
+- 合同追加在 WORK_PACKAGES「S5」（revision 9）：架构五问、状态模型与不变式、config schema v3 `ai` 段、AI Bot Token、`ai.sqlite3`、单线程监督器进程模型（后端不 fork、控制管道 EOF 回收进程组、启动扫描防 PID 复用）、env 过滤与 repo 边界、三种 headless 协议适配、Claude 审批、多槽位 TelegramService 与 AI 机器人逐个切换步骤/回退、`/wi` 与桌面 AI 分析、HTTP/WS（含终端二进制 WS）、安全核对表、S5-A/B/C（后端）/S5-D（前端）分包、验收命令与真实验收清单（另行授权）。
+- 加载技能：`backend-business-safety`、`backend-security-review`（按其要求写入状态模型/不变式/终止路径与四问风险表）；其余复核技能（architecture/data-consistency/resource-lifecycle）留实现后。
+- **十项待决**（推荐与影响见合同「S5 待决」）：1 AI 机器人切换时机；2 AI 机器人使用者范围；3 工作目录边界；4 高权限档位；5 默认档位与工单分析只读档；6 Claude 审批；7 会话事件持久化；8 工单分析依赖的 ADO MCP；9 真实 CLI 协议核对授权；10 前端 xterm.js 依赖安装。尚无用户已决。
+- 状态：S5-A/S5-B/S5-C/S5-D **not_dispatched**；交叉审计按用户 2026-10-23 决定不做。
+- 安全范围：未读真实配置/凭据/CLI 会话缓存，未连真实 Telegram/ADO，未启动任何 AI CLI；旧目录源码未改；未新建 worktree/进程/临时目录，无需清理。本轮只改 WORK_PACKAGES 与 PROGRESS，未运行功能测试（无代码改动）。
