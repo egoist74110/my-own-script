@@ -952,3 +952,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成版本验收（含 S5-LEAD-001）：后端全量 **1100 passed**（301.98s，沙箱外），ruff/contracts --check exit 0；前端 typecheck/lint/test **944 passed**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。
 - 未测：真实 Telegram/CLI；`/wi` 详情新按钮的完整渲染（只测令牌链路）；`telegram.status.slot` 无端到端断言。worktree `.local/worktrees/s5c` 保留。
 - 状态：**S5-C integrated**（本地提交，未 push）。S5-D1 第 2 轮已交回待核；S5-D2 可在 S5-D1 集成后派。
+
+### S5-D1 集成（2026-10-24）
+
+- agy 第 2 轮（同 `--conversation 6520b039-…`）exit 0，actual unknown。修复 S5D-T01..T09 与重连计数（连接稳定 ≥10 秒才清零），每项在 `tests/unit/s5d-*` 补回归；施工者自报测试员 74 例全通过、全量 1065 passed。主控核对：`tests/independent/s5d-*` 4 个文件 mtime 均早于第 2 轮请求（未被施工者改动）。S5D-T01..T09 **fixed**（修前失败由独立测试员观察，主控未逐项反向复现，记 unknown）。
+- 集成：worktree `next/desktop` 相对 `267f355` 的限定 binary patch（`.local/dispatch/s5d/integration.patch`，25 文件），排除 `schema.d.ts`（主目录为含 S5-B/S5-C 的更新版本）与 node_modules；主目录 `next/desktop` 自 `267f355` 仅 schema.d.ts 有变化，`git apply --check` 后应用，frozen offline install 通过（含 xterm 两依赖）。
+- 集成版本验收：前端 typecheck/lint/test **1065 passed / 73 文件**/build/guard:dist/contracts:check 全 exit 0（按 S5-C 契约）；`git diff --check` exit 0；后端未改（仍为 1100 passed）。
+- 未测：真实 PTY/Tauri WebView 终端交互；dev:web 端到端截图留 S5-D2 后与 S5 集成验收一起做。worktree `.local/worktrees/s5d` 保留（S5-D2 同 agy 会话续接）。
+- 状态：**S5-D1 integrated**（本地提交，未 push）；S5-A/B/C/D1 均已集成，剩 S5-D2 与 S5 集成验收。

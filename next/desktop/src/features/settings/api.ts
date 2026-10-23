@@ -35,6 +35,22 @@ export interface TelegramStatusData {
 }
 export type TaskView = S['TaskView']
 
+export type AIView = S['AIView']
+export type ProfileView = S['ProfileView']
+export type ProfileCreate = S['ProfileCreate']
+export type ProfilePatch = S['ProfilePatch']
+export type AISettingsPatch = S['AISettingsPatch']
+export type CheckResponse = S['CheckResponse']
+export type JobResponse = S['JobResponse']
+export type ResolvedCLI = S['ResolvedCLI']
+export type AgyAnalysis = S['AgyAnalysis']
+export type AgyDefaults = S['AgyDefaults']
+export type ClaudeAnalysis = S['ClaudeAnalysis']
+export type ClaudeDefaults = S['ClaudeDefaults']
+export type CodexAnalysis = S['CodexAnalysis']
+export type CodexDefaults = S['CodexDefaults']
+export type ModelPresets = S['ModelPresets']
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,

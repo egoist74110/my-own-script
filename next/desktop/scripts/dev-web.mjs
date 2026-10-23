@@ -1,6 +1,6 @@
 // `pnpm dev:web`：拉起 ../backend 后端 → 解析 READY 行 → 以环境变量启动 vite → 退出时回收后端。
 // token 只经子进程环境变量传给 vite，不写文件、不进 URL、不打印。
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,9 +10,20 @@ import { parseReadyLine } from './ready-line.mjs'
 
 const desktopDir = fileURLToPath(new URL('..', import.meta.url))
 const backendDir = fileURLToPath(new URL('../../backend', import.meta.url))
-// 隔离环境（S1/S3 合同）：临时数据目录、仓库内假旧配置、内存凭据 + 假 PAT；绝不落到真实目录与 Keychain。
+// 隔离环境（S1/S3/S5 合同）：临时数据目录、临时任务根目录、临时本地 git 仓库、仓库内假旧配置、内存凭据 + 假 PAT；绝不落到真实目录与 Keychain。
 const dataDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-web-'))
 const taskRootDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-task-root-'))
+const aiRepoDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-ai-repo-'))
+try {
+  spawnSync('git', ['init', '-b', 'main', aiRepoDir], { stdio: 'ignore' })
+  spawnSync('git', ['config', 'user.name', 'Toolbox Dev'], { cwd: aiRepoDir, stdio: 'ignore' })
+  spawnSync('git', ['config', 'user.email', 'dev@example.test'], {
+    cwd: aiRepoDir,
+    stdio: 'ignore',
+  })
+} catch {
+  // 忽略 git init 异常
+}
 const legacyDir = join(backendDir, 'tests', 'fixtures', 'legacy')
 const fakeCredentials = join(backendDir, 'tests', 'fixtures', 'dev-credentials.json')
 // 本地假 ADO（S2/S3 合同）：后端仅在 --dev + memory 凭据下接受，出站请求改读 fixture，不连任何真实服务。
@@ -25,6 +36,11 @@ function removeTempDirs() {
   }
   try {
     rmSync(taskRootDir, { recursive: true, force: true })
+  } catch {
+    // 临时目录清理失败不影响退出
+  }
+  try {
+    rmSync(aiRepoDir, { recursive: true, force: true })
   } catch {
     // 临时目录清理失败不影响退出
   }
@@ -94,6 +110,7 @@ function startBackend() {
         TOOLBOX_DEV_FAKE_ADO: fakeAdo,
         TOOLBOX_DEV_TASK_ROOT: taskRootDir,
         TOOLBOX_DEV_FAKE_TELEGRAM: '1',
+        TOOLBOX_DEV_FAKE_AI: '1',
       },
       stdio: ['pipe', 'pipe', 'inherit'],
     })
@@ -123,6 +140,7 @@ function startBackend() {
 try {
   const ready = await startBackend()
   console.error(`[dev:web] backend ready: pid=${ready.pid} port=${ready.port}`)
+  console.error(`[dev:web] fake AI local repo created: ${aiRepoDir}`)
   vite = spawn('pnpm', ['exec', 'vite'], {
     cwd: desktopDir,
     env: {

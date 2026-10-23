@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
-import { Database, Download, FolderGit2, KeyRound, Send, SlidersHorizontal } from 'lucide-vue-next'
+import {
+  Cpu,
+  Database,
+  Download,
+  FolderGit2,
+  KeyRound,
+  Send,
+  SlidersHorizontal,
+} from 'lucide-vue-next'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import AdoTab from './AdoTab.vue'
+import AiCliTab from './AiCliTab.vue'
 import CredentialsTab from './CredentialsTab.vue'
 import GeneralTab from './GeneralTab.vue'
 import ImportTab from './ImportTab.vue'
@@ -60,6 +69,13 @@ const tabs = computed(() => [
     icon: Send,
     iconColor: '#229ed9',
   },
+  {
+    value: 'ai',
+    label: 'AI CLI',
+    count: ctx.ai.data.value?.profiles.length,
+    icon: Cpu,
+    iconColor: '#c15f3c',
+  },
   { value: 'general', label: '常规', icon: SlidersHorizontal, iconColor: '#8e8e93' },
 ])
 const o = computed(() => ctx.overview.data.value ?? null)
@@ -71,6 +87,7 @@ const ASIDE: Record<string, string> = {
   import: '导入只发生一次：不同步、不回写旧配置；旧 Keychain 条目只读。',
   credentials: '凭据值永远不会显示在界面上，这里只有存在与否、来源和状态。',
   telegram: 'Bot Token 保存在安全钥匙串中，长轮询与所有者绑定独立于旧应用。',
+  ai: '管理 AI CLI 工具、运行档位与模型预设，内置配置不可删除。',
   general: '数据目录、旧配置目录与版本信息均为只读。',
 }
 const noticeKind = computed(() => {
@@ -140,6 +157,7 @@ const noticeKind = computed(() => {
           <LocalReposTab v-else-if="item.value === 'repos'" />
           <CredentialsTab v-else-if="item.value === 'credentials'" />
           <TelegramTab v-else-if="item.value === 'telegram'" />
+          <AiCliTab v-else-if="item.value === 'ai'" />
           <GeneralTab v-else />
         </template>
       </SegmentedControl>

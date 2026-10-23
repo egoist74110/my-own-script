@@ -564,7 +564,7 @@ describe('页签：可访问关联与键盘', () => {
     const b = await open(createFake())
     await selectTab(b, 'ADO 连接')
     const idx = b.wrapper.findAll('[role=tab]').map((t) => t.attributes('tabindex'))
-    expect(idx).toEqual(['-1', '0', '-1', '-1', '-1', '-1'])
+    expect(idx).toEqual(['-1', '0', '-1', '-1', '-1', '-1', '-1'])
   })
 
   it('/work-items 看板列页签：aria-controls 与 tabpanel 的 aria-labelledby 一致', async () => {

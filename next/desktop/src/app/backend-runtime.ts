@@ -7,6 +7,8 @@ import { useBackendStore } from '@/stores/backend'
 export interface BackendRuntime {
   /** 当前连接的 API 客户端；尚未取得连接信息时为 null。 */
   api(): ApiClient | null
+  /** 当前后端连接信息（含端口与 token）；尚未取得连接信息时为 null。token 不落盘。 */
+  getConnection?(): BackendConnection | null
   start(): void
   stop(): void
   /** 发送已认证的 WS 客户端消息（如 subscribe/unsubscribe）；未连接或未就绪时返回 false */
@@ -15,6 +17,10 @@ export interface BackendRuntime {
   subscribeRun(runId: string, afterSeq?: number): boolean
   /** 退订 run 日志 */
   unsubscribeRun(runId: string): boolean
+  /** 订阅 ai 主题 */
+  subscribeAi?(sessionId?: string, afterSeq?: number): boolean
+  /** 退订 ai 主题 */
+  unsubscribeAi?(sessionId?: string): boolean
   /** 注册事件监听器，返回解除监听的回调 */
   onEvent(listener: (event: EventEnvelope) => void): () => void
 }
@@ -43,11 +49,14 @@ export function createBackendRuntime(deps: RuntimeDeps = {}): BackendRuntime {
   })
   return {
     api: () => (conn ? client : null),
+    getConnection: () => conn,
     start: () => events.start(),
     stop: () => events.stop(),
     send: (msg) => events.send(msg),
     subscribeRun: (runId, afterSeq) => events.subscribeRun(runId, afterSeq),
     unsubscribeRun: (runId) => events.unsubscribeRun(runId),
+    subscribeAi: (sessionId, afterSeq) => events.subscribeAi(sessionId, afterSeq),
+    unsubscribeAi: (sessionId) => events.unsubscribeAi(sessionId),
     onEvent: (listener) => events.addEventListener(listener),
   }
 }

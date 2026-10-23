@@ -1,0 +1,210 @@
+// AI 模块 API 辅助：错误归一化、请求解包与类型引用
+import type { ApiClient } from '@/api/client'
+import type { components } from '@/api/schema'
+import { AI_ERROR_MESSAGES } from './terminal-protocol'
+
+export type AIView = components['schemas']['AIView']
+export type SessionView = components['schemas']['SessionView']
+export type SessionList = components['schemas']['SessionList']
+export type SessionCreate = components['schemas']['SessionCreate']
+export type ProfileView = components['schemas']['ProfileView']
+export type CheckResponse = components['schemas']['CheckResponse']
+export type JobResponse = components['schemas']['JobResponse']
+export type AISettingsPatch = components['schemas']['AISettingsPatch']
+export type ProfileCreate = components['schemas']['ProfileCreate']
+export type ProfilePatch = components['schemas']['ProfilePatch']
+export type MutationResponse = components['schemas']['MutationResponse']
+export type RepoView = components['schemas']['RepoView']
+export type AgyDefaults = components['schemas']['AgyDefaults']
+export type ClaudeDefaults = components['schemas']['ClaudeDefaults']
+export type CodexDefaults = components['schemas']['CodexDefaults']
+export type AgyAnalysis = components['schemas']['AgyAnalysis']
+export type ClaudeAnalysis = components['schemas']['ClaudeAnalysis']
+export type CodexAnalysis = components['schemas']['CodexAnalysis']
+export type ModelPresets = components['schemas']['ModelPresets']
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly detail: Record<string, unknown> = {},
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+export function toApiError(status: number, body: unknown): ApiError {
+  let defaultCode = 'unknown'
+  if (status === 503) defaultCode = 'ai_store_unavailable'
+  else if (status === 422) defaultCode = 'validation_error'
+  else if (status === 404) defaultCode = 'not_found'
+  else if (status === 409) defaultCode = 'conflict'
+
+  const detail =
+    typeof body === 'object' && body !== null ? (body as { detail?: unknown }).detail : undefined
+
+  let code = defaultCode
+  let detailObj: Record<string, unknown> = {}
+
+  if (typeof detail === 'object' && detail !== null && !Array.isArray(detail)) {
+    detailObj = detail as Record<string, unknown>
+    if (typeof detailObj.code === 'string') {
+      code = detailObj.code
+    }
+  } else if (typeof (body as { code?: unknown })?.code === 'string') {
+    code = (body as { code: string }).code
+  }
+
+  // 严格按 code 映射中文文案，不得原样回显服务端的原始 detail/message 字符串
+  const message = AI_ERROR_MESSAGES[code] ?? `请求失败（HTTP ${status}）`
+  return new ApiError(status, code, message, detailObj)
+}
+
+interface Result {
+  data?: unknown
+  error?: unknown
+  response: Response
+}
+
+export async function unwrap<R extends Result>(req: Promise<R>): Promise<NonNullable<R['data']>> {
+  let result: R
+  try {
+    result = await req
+  } catch {
+    throw new ApiError(0, 'network', '无法连接后端')
+  }
+  if (result.error !== undefined) throw toApiError(result.response.status, result.error)
+  return result.data as NonNullable<R['data']>
+}
+
+export async function fetchAiOverview(api: ApiClient): Promise<AIView> {
+  return unwrap(api.GET('/api/ai'))
+}
+
+export async function fetchAiSessions(
+  api: ApiClient,
+  state?: 'starting' | 'idle' | 'busy' | 'awaiting_approval' | 'closing' | 'ended' | 'failed',
+  limit?: number,
+): Promise<SessionList> {
+  return unwrap(
+    api.GET('/api/ai/sessions', {
+      params: { query: { state, limit } },
+    }),
+  )
+}
+
+export async function fetchAiSession(api: ApiClient, sessionId: string): Promise<SessionView> {
+  return unwrap(
+    api.GET('/api/ai/sessions/{sid}', {
+      params: { path: { sid: sessionId } },
+    }),
+  )
+}
+
+export async function createAiSession(api: ApiClient, body: SessionCreate): Promise<SessionView> {
+  return unwrap(
+    api.POST('/api/ai/sessions', {
+      body,
+    }),
+  )
+}
+
+export async function interruptAiSession(api: ApiClient, sessionId: string): Promise<SessionView> {
+  return unwrap(
+    api.POST('/api/ai/sessions/{sid}/interrupt', {
+      params: { path: { sid: sessionId } },
+    }),
+  )
+}
+
+export async function closeAiSession(api: ApiClient, sessionId: string): Promise<SessionView> {
+  return unwrap(
+    api.POST('/api/ai/sessions/{sid}/close', {
+      params: { path: { sid: sessionId } },
+    }),
+  )
+}
+
+export async function deleteAiSession(api: ApiClient, sessionId: string): Promise<void> {
+  await unwrap(
+    api.DELETE('/api/ai/sessions/{sid}', {
+      params: { path: { sid: sessionId } },
+    }),
+  )
+}
+
+export async function checkAiProfile(api: ApiClient, profileId: string): Promise<CheckResponse> {
+  return unwrap(
+    api.POST('/api/ai/profiles/{pid}/check', {
+      params: { path: { pid: profileId } },
+    }),
+  )
+}
+
+export async function upgradeAiProfile(api: ApiClient, profileId: string): Promise<JobResponse> {
+  return unwrap(
+    api.POST('/api/ai/profiles/{pid}/upgrade', {
+      params: { path: { pid: profileId } },
+    }),
+  )
+}
+
+export async function cancelAiJob(api: ApiClient, jobId: string): Promise<JobResponse> {
+  return unwrap(
+    api.POST('/api/ai/jobs/{jid}/cancel', {
+      params: { path: { jid: jobId } },
+    }),
+  )
+}
+
+export async function createAiProfile(
+  api: ApiClient,
+  body: ProfileCreate,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.POST('/api/ai/profiles', {
+      body,
+    }),
+  )
+}
+
+export async function patchAiProfile(
+  api: ApiClient,
+  profileId: string,
+  body: ProfilePatch,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.PATCH('/api/ai/profiles/{pid}', {
+      params: { path: { pid: profileId } },
+      body,
+    }),
+  )
+}
+
+export async function deleteAiProfile(
+  api: ApiClient,
+  profileId: string,
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.DELETE('/api/ai/profiles/{pid}', {
+      params: {
+        path: { pid: profileId },
+        query: { revision },
+      },
+    }),
+  )
+}
+
+export async function patchAiSettings(
+  api: ApiClient,
+  body: AISettingsPatch,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.PATCH('/api/ai/settings', {
+      body,
+    }),
+  )
+}

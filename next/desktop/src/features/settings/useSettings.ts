@@ -11,12 +11,18 @@ import {
   unwrap,
   type ActivityItem,
   type AdoResponse,
+  type AIView,
+  type AISettingsPatch,
+  type CheckResponse,
   type CredentialStatus,
   type GroupCreate,
   type GroupPatch,
   type ImportPreview,
+  type JobResponse,
   type MemberCreate,
   type MemberPatch,
+  type ProfileCreate,
+  type ProfilePatch,
   type SettingsResponse,
   type TaskView,
   type TelegramStatusData,
@@ -91,6 +97,13 @@ export function useSettingsContext() {
     queryFn: (): Promise<CredentialStatus[]> => unwrap(api().GET('/api/credentials')),
   })
   const telegramTabActive = ref(false)
+  const aiTabActive = ref(false)
+  const ai = useQuery({
+    queryKey: [...QK, 'ai'],
+    enabled: computed(() => online.value && aiTabActive.value),
+    retry: false,
+    queryFn: (): Promise<AIView> => unwrap(api().GET('/api/ai')),
+  })
   let latestWsPoller: TelegramStatusData | null = null
   let wsEventSeq = 0
 
@@ -684,6 +697,90 @@ export function useSettingsContext() {
       )
       return res?.items ?? []
     },
+    createAiProfile: (
+      body: Omit<ProfileCreate, 'revision'>,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/ai/profiles', {
+              body: { ...body, revision },
+            }),
+          ),
+        '已添加 AI CLI 配置',
+        handle,
+        opts,
+      ),
+    patchAiProfile: (
+      id: string,
+      body: Omit<ProfilePatch, 'revision'>,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/ai/profiles/{pid}', {
+              params: { path: { pid: id } },
+              body: { ...body, revision },
+            }),
+          ),
+        '已保存 AI CLI 配置',
+        handle,
+        opts,
+      ),
+    deleteAiProfile: (
+      id: string,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/ai/profiles/{pid}', {
+              params: { path: { pid: id }, query: { revision } },
+            }),
+          ),
+        '已删除 AI CLI 配置',
+        handle,
+        opts,
+      ),
+    checkAiProfile: async (id: string): Promise<CheckResponse> =>
+      unwrap(
+        api().POST('/api/ai/profiles/{pid}/check', {
+          params: { path: { pid: id } },
+        }),
+      ),
+    upgradeAiProfile: async (id: string): Promise<JobResponse> =>
+      unwrap(
+        api().POST('/api/ai/profiles/{pid}/upgrade', {
+          params: { path: { pid: id } },
+        }),
+      ),
+    cancelAiJob: async (id: string): Promise<JobResponse> =>
+      unwrap(
+        api().POST('/api/ai/jobs/{jid}/cancel', {
+          params: { path: { jid: id } },
+        }),
+      ),
+    patchAiSettings: (
+      body: Omit<AISettingsPatch, 'revision'>,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/ai/settings', {
+              body: { ...body, revision },
+            }),
+          ),
+        '已保存 AI 设置',
+        handle,
+        opts,
+      ),
   }
 
   return {
@@ -692,6 +789,8 @@ export function useSettingsContext() {
     credentials,
     telegram,
     telegramTabActive,
+    ai,
+    aiTabActive,
     tasks,
     writable,
     revision,

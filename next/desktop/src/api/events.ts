@@ -17,6 +17,25 @@ export interface TelegramStatusEventData {
   last_error_category?: string | null
 }
 
+export interface AISessionData {
+  session_id: string
+  state: 'starting' | 'idle' | 'busy' | 'awaiting_approval' | 'closing' | 'ended' | 'failed'
+  ended_reason?: string | null
+  last_seq: number
+}
+
+export interface AIJobData {
+  job_id: string
+  state: 'running' | 'succeeded' | 'failed' | 'cancelled'
+  exit_code?: number | null
+  output?: string
+}
+
+export interface AISubscribedData {
+  session_id: string
+  last_seq: number
+}
+
 export interface EventEnvelope {
   seq: number
   topic: string
@@ -53,6 +72,9 @@ export interface EventClientOptions {
   onRunEvent?: (data: components['schemas']['RunEventData'], envelope: EventEnvelope) => void
   onRunSubscribed?: (data: RunSubscribedData, envelope: EventEnvelope) => void
   onTelegramStatus?: (data: TelegramStatusEventData, envelope: EventEnvelope) => void
+  onAiSession?: (data: AISessionData, envelope: EventEnvelope) => void
+  onAiJob?: (data: AIJobData, envelope: EventEnvelope) => void
+  onAiSubscribed?: (data: AISubscribedData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -136,6 +158,25 @@ export class EventClient {
       type: 'unsubscribe',
       topic: 'run',
       run_id: runId,
+    })
+  }
+
+  /** 订阅 ai 主题 */
+  subscribeAi(sessionId?: string, afterSeq = 0): boolean {
+    return this.send({
+      type: 'subscribe',
+      topic: 'ai',
+      ...(sessionId ? { session_id: sessionId } : {}),
+      after_seq: afterSeq,
+    })
+  }
+
+  /** 退订 ai 主题 */
+  unsubscribeAi(sessionId?: string): boolean {
+    return this.send({
+      type: 'unsubscribe',
+      topic: 'ai',
+      ...(sessionId ? { session_id: sessionId } : {}),
     })
   }
 
@@ -252,6 +293,15 @@ export class EventClient {
         this.opts.onRunEvent?.(parsed.data as components['schemas']['RunEventData'], parsed)
       } else if (parsed.type === 'run.subscribed') {
         this.opts.onRunSubscribed?.(parsed.data as unknown as RunSubscribedData, parsed)
+      }
+    }
+    if (parsed.topic === 'ai') {
+      if (parsed.type === 'ai.session') {
+        this.opts.onAiSession?.(parsed.data as unknown as AISessionData, parsed)
+      } else if (parsed.type === 'ai.job') {
+        this.opts.onAiJob?.(parsed.data as unknown as AIJobData, parsed)
+      } else if (parsed.type === 'ai.subscribed') {
+        this.opts.onAiSubscribed?.(parsed.data as unknown as AISubscribedData, parsed)
       }
     }
     this.opts.onEvent?.(parsed)
