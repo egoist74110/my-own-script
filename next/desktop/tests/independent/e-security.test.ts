@@ -1,9 +1,9 @@
-// 方向 E 连接安全回归、禁词扫描、令牌对比度（独立编写）。全部使用假 token / 假 socket / 假 fetch。
+// 方向 B 连接安全回归、禁词扫描、令牌对比度（独立编写）。全部使用假 token / 假 socket / 假 fetch。
 import { flushPromises } from '@vue/test-utils'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { boot } from '../unit/boot'
+import { boot, openConnection } from '../unit/boot'
 import { FakeSocket, env, hello, resetSeq } from '../unit/helpers'
 
 const TOKEN = 'fake-token' // boot() 注入的假 token
@@ -44,6 +44,7 @@ describe('连接安全：token 只在内存与 HTTP/WS 头中', () => {
     await vi.waitFor(() =>
       expect(reqUrls(b.fetchMock).some((u) => u.endsWith('/health'))).toBe(true),
     )
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     const reqs = b.fetchMock.mock.calls.map((c) => c[0] as Request)
@@ -136,6 +137,7 @@ describe('连接安全：token 只在内存与 HTTP/WS 头中', () => {
     const b = await boot({ fetchImpl })
     b.sock.emit(hello(1))
     await flushPromises()
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     expect(b.wrapper.get('[data-testid=alert-error]').text()).toBe('请求失败（网络）')
@@ -189,76 +191,4 @@ describe('禁词与残留令牌', () => {
   })
 })
 
-// ---------- WCAG 对比度（从 tokens.css 解析） ----------
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '')
-  const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h
-  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)) as [number, number, number]
-}
-function lum([r, g, b]: [number, number, number]): number {
-  const f = (v: number) => {
-    const c = v / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  }
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
-}
-function ratio(a: [number, number, number], b: [number, number, number]): number {
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number]
-  return (hi + 0.05) / (lo + 0.05)
-}
-function mix(fg: [number, number, number], alpha: number, bg: [number, number, number]) {
-  return fg.map((v, i) => Math.round(v * alpha + bg[i]! * (1 - alpha))) as [number, number, number]
-}
-
-const tokensCss = readFileSync(join(ROOT, 'src/design/tokens.css'), 'utf8')
-function token(name: string): [number, number, number] {
-  const m = tokensCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,6})\\s*;`))
-  if (!m) throw new Error(`token --${name} not found in tokens.css`)
-  return hexToRgb(m[1]!)
-}
-
-describe('对比度（WCAG AA 正文 ≥ 4.5:1）', () => {
-  const pearls = ['pearl-a', 'pearl-b', 'pearl-c'] as const
-  // 玻璃近似：白色 52% 叠在珍珠底上（见 ui.css 的 .glass 渐变末端）
-  const glass = (p: [number, number, number]) => mix([255, 255, 255], 0.52, p)
-
-  it('--ink 与 --mute 在珍珠底及玻璃近似上 ≥ 4.5:1', () => {
-    for (const p of pearls) {
-      const base = token(p)
-      for (const bg of [base, glass(base)]) {
-        expect(ratio(token('ink'), bg), `ink on ${p}`).toBeGreaterThanOrEqual(4.5)
-        expect(ratio(token('mute'), bg), `mute on ${p}`).toBeGreaterThanOrEqual(4.5)
-      }
-    }
-  })
-
-  it('--warn-ink 与 --ok-ink 在珍珠底及玻璃近似上 ≥ 4.5:1', () => {
-    for (const p of pearls) {
-      const base = token(p)
-      for (const bg of [base, glass(base)]) {
-        expect(ratio(token('warn-ink'), bg), `warn-ink on ${p}`).toBeGreaterThanOrEqual(4.5)
-        expect(ratio(token('ok-ink'), bg), `ok-ink on ${p}`).toBeGreaterThanOrEqual(4.5)
-      }
-    }
-  })
-
-  it('墨色文字在强调色 --acc 与告警橙 --warn 填充上 ≥ 4.5:1', () => {
-    expect(ratio(token('ink'), token('acc'))).toBeGreaterThanOrEqual(4.5)
-    expect(ratio(token('ink'), token('warn'))).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('标记为「只做填充」的 --warn 不得作为珍珠底上的文字色（应低于 4.5:1，证明令牌注释成立）', () => {
-    expect(ratio(token('warn'), token('pearl-a'))).toBeLessThan(4.5)
-  })
-
-  it('告警横幅与审批条的深底文字：#f2f0eb / #ff6a00 标签 / #ff9a4d / #ffb27a 在 --ink 上 ≥ 4.5:1', () => {
-    const ink = token('ink')
-    for (const c of ['#f2f0eb', '#ff6a00', '#ff9a4d', '#ffb27a', '#ffffff']) {
-      expect(ratio(hexToRgb(c), ink), c).toBeGreaterThanOrEqual(4.5)
-    }
-  })
-
-  it('--acc 只做填充：不被当作文字色用于珍珠底（对比度不足，符合令牌注释）', () => {
-    expect(ratio(token('acc'), token('pearl-a'))).toBeLessThan(4.5)
-  })
-})
+// 令牌对比度（原方向 E 的珍珠/玻璃/黑橙断言）已随 R1 换皮由 tests/unit/tokens.test.ts 的 B 令牌对比度测试取代。

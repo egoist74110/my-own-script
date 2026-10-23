@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import BlockTag from '@/components/BlockTag.vue'
+import Tag from '@/components/Tag.vue'
 
 /** 导入预览 / 已完成摘要的分块展示。数据来自后端（形状宽松），逐字段防御式读取；不含任何凭据值。 */
 const props = defineProps<{ data: Record<string, unknown> }>()
@@ -79,7 +79,7 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
     <section class="st-section" aria-label="将导入的 libraries">
       <div class="st-head">
         <h2>Libraries</h2>
-        <BlockTag>{{ libraries.length }}</BlockTag>
+        <Tag>{{ libraries.length }}</Tag>
       </div>
       <table v-if="libraries.length" class="st-tbl" data-testid="import-libraries">
         <thead>
@@ -94,7 +94,7 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
             <td>{{ text(l.name) }}</td>
             <td class="st-mono">
               {{ text(l.base_url) }}
-              <BlockTag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</BlockTag>
+              <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
             </td>
             <td :class="{ 'st-warn': l.pat_status === 'unreadable' }">
               {{ PAT_STATE[text(l.pat_status)] ?? (l.pat_status ? text(l.pat_status) : '—') }}
@@ -108,7 +108,7 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
     <section class="st-section" aria-label="将导入的 projects">
       <div class="st-head">
         <h2>Projects</h2>
-        <BlockTag>{{ projects.length }}</BlockTag>
+        <Tag>{{ projects.length }}</Tag>
       </div>
       <table v-if="projects.length" class="st-tbl" data-testid="import-projects">
         <thead>
@@ -141,7 +141,7 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
         <dt class="lbl">原样保留</dt>
         <dd>
           <span class="st-tags">
-            <BlockTag v-for="s in preserved" :key="s">{{ s }}</BlockTag>
+            <Tag v-for="s in preserved" :key="s">{{ s }}</Tag>
             <span v-if="!preserved.length">—</span>
           </span>
         </dd>

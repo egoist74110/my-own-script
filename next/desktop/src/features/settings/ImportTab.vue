@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
 import type { ApiError, ImportPreview } from './api'
 import ImportBlocks from './ImportBlocks.vue'
 import { settingsContextKey } from './useSettings'
@@ -63,9 +63,9 @@ async function doDecline() {
       <section class="st-section" aria-label="导入状态">
         <div class="st-head">
           <h2>从旧配置导入</h2>
-          <BlockTag :tone="state === 'failed' ? 'warn' : state === 'completed' ? 'acc' : 'ink'">{{
+          <Tag :tone="state === 'failed' ? 'warn' : state === 'completed' ? 'ok' : 'neutral'">{{
             state ? STATE_TEXT[state] : ''
-          }}</BlockTag>
+          }}</Tag>
         </div>
         <p class="st-note">
           导入是一次性的：预览 → 确认 → 执行一次；此后不再同步，也永不回写旧配置。旧 Keychain
@@ -94,31 +94,31 @@ async function doDecline() {
           源配置在预览之后发生了变化，未写入任何内容。请重新预览。
         </p>
         <div class="st-actions">
-          <AppButton data-testid="import-preview" :disabled="disabled" @click="doPreview">
-            {{ preview ? '重新预览' : '预览导入' }}
-          </AppButton>
-          <AppButton
-            variant="ghost"
-            data-testid="import-decline"
+          <Button
+            variant="primary"
+            data-testid="import-preview"
             :disabled="disabled"
-            @click="doDecline"
+            @click="doPreview"
           >
+            {{ preview ? '重新预览' : '预览导入' }}
+          </Button>
+          <Button data-testid="import-decline" :disabled="disabled" @click="doDecline">
             {{ state === 'failed' ? '放弃导入' : '跳过导入' }}
-          </AppButton>
+          </Button>
         </div>
 
         <template v-if="preview">
           <ImportBlocks :data="preview as unknown as Record<string, unknown>" />
           <div class="st-actions">
-            <AppButton
+            <Button
               v-if="!confirming"
-              variant="accent"
+              variant="primary"
               data-testid="import-confirm"
               :disabled="disabled || hasBlockers"
               @click="confirming = true"
             >
               确认导入
-            </AppButton>
+            </Button>
             <span v-if="hasBlockers" class="st-note">存在阻断错误，无法导入。</span>
           </div>
           <div
@@ -131,17 +131,15 @@ async function doDecline() {
             <strong>再次确认：导入只会执行一次。</strong>
             <div>上述内容将复制到新应用；之后不再同步，也不会修改旧配置或旧 Keychain 条目。</div>
             <div class="st-actions">
-              <AppButton
-                variant="accent"
+              <Button
+                variant="primary"
                 data-testid="import-execute"
                 :disabled="disabled"
                 @click="doExecute"
               >
                 确认并执行导入
-              </AppButton>
-              <AppButton variant="ghost" :disabled="ctx.busy.value" @click="confirming = false">
-                取消
-              </AppButton>
+              </Button>
+              <Button :disabled="ctx.busy.value" @click="confirming = false"> 取消 </Button>
             </div>
           </div>
         </template>

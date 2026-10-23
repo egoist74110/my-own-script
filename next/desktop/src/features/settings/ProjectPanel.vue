@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import TextInput from '@/components/TextInput.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
+import TextField from '@/components/TextField.vue'
 import type { Project } from './api'
 import { useEditSession } from './editSession'
 import { settingsContextKey } from './useSettings'
@@ -118,9 +118,9 @@ async function remove() {
 <template>
   <div class="st-inspector" :data-testid="isNew ? 'project-new' : 'project-detail'">
     <div class="st-head">
-      <BlockTag>PROJ</BlockTag>
+      <Tag>PROJ</Tag>
       <h2>{{ isNew ? '新建 project' : project!.project }}</h2>
-      <BlockTag v-if="isActive" tone="acc">当前</BlockTag>
+      <Tag v-if="isActive" tone="ok">当前</Tag>
     </div>
 
     <div class="st-fld">
@@ -131,23 +131,18 @@ async function remove() {
     </div>
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">Collection</span>
-      <TextInput v-model="collection" label="collection" placeholder="DefaultCollection" />
+      <TextField v-model="collection" label="collection" placeholder="DefaultCollection" />
     </div>
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">Project</span>
-      <TextInput v-model="projectName" label="project 名称" placeholder="项目名" />
+      <TextField v-model="projectName" label="project 名称" placeholder="项目名" />
     </div>
 
     <template v-if="isNew">
       <div class="st-actions">
-        <AppButton
-          variant="ghost"
-          data-testid="remote-fetch"
-          :disabled="disabled"
-          @click="fetchRemote"
-        >
+        <Button data-testid="remote-fetch" :disabled="disabled" @click="fetchRemote">
           获取远端项目
-        </AppButton>
+        </Button>
       </div>
       <ul v-if="remote" class="st-list" data-testid="remote-list" aria-label="远端项目">
         <li v-for="n in remote" :key="n">
@@ -162,46 +157,44 @@ async function remove() {
     </p>
 
     <div class="st-actions">
-      <AppButton data-testid="project-save" :disabled="disabled" @click="save">
+      <Button variant="primary" data-testid="project-save" :disabled="disabled" @click="save">
         {{ isNew ? '新建' : '保存修改' }}
-      </AppButton>
-      <AppButton
+      </Button>
+      <Button
         v-if="!isNew"
-        variant="ghost"
         data-testid="project-activate"
         :disabled="disabled || isActive"
         @click="activate"
       >
         设为当前
-      </AppButton>
+      </Button>
     </div>
 
     <template v-if="!isNew">
       <hr class="st-sep" />
       <div v-if="!confirmDelete" class="st-actions">
-        <AppButton
-          variant="ghost"
+        <Button
           class="st-btn-danger"
           data-testid="project-delete"
           :disabled="disabled"
           @click="confirmDelete = true"
         >
           删除 project
-        </AppButton>
+        </Button>
       </div>
       <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除 project">
         <strong>确认删除「{{ project!.project }}」？</strong>
         <div>被任务引用时无法删除。</div>
         <div class="st-actions">
-          <AppButton
-            variant="primary"
+          <Button
+            variant="destructive"
             data-testid="project-delete-confirm"
             :disabled="disabled"
             @click="remove"
           >
             确认删除
-          </AppButton>
-          <AppButton variant="ghost" @click="confirmDelete = false">取消</AppButton>
+          </Button>
+          <Button @click="confirmDelete = false">取消</Button>
         </div>
       </div>
     </template>

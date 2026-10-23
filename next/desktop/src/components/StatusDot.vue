@@ -13,16 +13,17 @@ defineProps<{ state: 'ok' | 'run' | 'warn' | 'idle' }>()
   flex: none;
   width: 8px;
   height: 8px;
-  background: #7a8090;
+  border-radius: 50%;
+  background: var(--st-queued-dot);
 }
 .dot[data-state='ok'] {
-  background: var(--ink);
+  background: var(--st-success-dot);
 }
 .dot[data-state='run'] {
-  background: var(--acc);
+  background: var(--st-running-dot);
   animation: pulse 1.6s ease-out infinite;
 }
 .dot[data-state='warn'] {
-  background: var(--warn);
+  background: var(--st-stopping-dot);
 }
 </style>

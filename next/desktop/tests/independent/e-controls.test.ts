@@ -1,9 +1,9 @@
-// 方向 E 交互控件（独立编写）：审批条 Y/A/N、⌘K 搜索、Tabs 键盘、检查器收起、导航禁用项、路由。
+// 方向 B 交互控件（独立编写）：审批条 Y/A/N、⌘K 搜索、Tabs 键盘、检查器收起、导航禁用项、路由。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ApprovalBar from '@/components/ApprovalBar.vue'
-import SearchBox from '@/components/SearchBox.vue'
-import { boot } from '../unit/boot'
+import SearchField from '@/components/SearchField.vue'
+import { boot, openConnection } from '../unit/boot'
 import { FakeSocket, resetSeq } from '../unit/helpers'
 
 beforeEach(() => {
@@ -197,14 +197,15 @@ describe('/ai 页审批集成', () => {
     await flushPromises()
     expect(() => press('y')).not.toThrow()
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=task-row-t1]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=tasks-placeholder]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
     await b.done()
   })
 })
 
-describe('⌘K 搜索框 SearchBox', () => {
+describe('⌘K 搜索框 SearchField', () => {
   const mountSearch = () =>
-    mount(SearchBox, {
+    mount(SearchField, {
       props: { label: '搜索', modelValue: '', 'onUpdate:modelValue': () => {} },
       attachTo: document.body,
     })
@@ -257,10 +258,10 @@ describe('⌘K 搜索框 SearchBox', () => {
     expect(document.activeElement).not.toBe(input)
   })
 
-  it.each(['/tasks', '/work-items', '/ai'])('%s 页 ⌘K 可聚焦搜索输入框', async (path) => {
+  it.each(['/work-items', '/ai'])('%s 页 ⌘K 可聚焦搜索输入框', async (path) => {
     const b = await boot({ path })
     const search = b.wrapper.find('input[type=search]')
-    expect(search.exists(), `${path} 没有搜索框（SearchBox）`).toBe(true)
+    expect(search.exists(), `${path} 没有搜索框（SearchField）`).toBe(true)
     press('k', { metaKey: true })
     await flushPromises()
     expect(document.activeElement).toBe(search.element)
@@ -273,62 +274,46 @@ describe('Tabs（Reka）：点击与键盘', () => {
     b.wrapper.findAll('[role=tablist] [role=tab]')
   const activeLabel = (b: Awaited<ReturnType<typeof boot>>) =>
     b.wrapper.get('[role=tab][data-state=active]').text()
-  const taskIds = (b: Awaited<ReturnType<typeof boot>>) =>
-    b.wrapper.findAll('tbody tr').map((r) => r.attributes('data-testid'))
-
-  it('任务页 Tabs 为 tablist/tab，初始「全部」激活，7 个任务行', async () => {
-    const b = await boot()
-    expect(tabs(b).map((t) => t.text())).toEqual(['全部', '运行中', '收藏'])
-    expect(activeLabel(b)).toBe('全部')
-    expect(taskIds(b)).toHaveLength(7)
+  it('工单页看板列 Tabs 为 tablist/tab，初始「开发中」激活', async () => {
+    const b = await boot({ path: '/work-items' })
+    await flushPromises()
+    expect(tabs(b).map((t) => t.text().replace(/\s+/g, ' '))).toEqual([
+      '新建',
+      '待开发',
+      '开发中',
+      '测试',
+      '已关闭',
+    ])
+    expect(activeLabel(b)).toBe('开发中')
     await b.done()
   })
 
-  it('点击切换：「收藏」只显示收藏行，「运行中」只显示运行中行', async () => {
-    const b = await boot()
-    // Reka 在 mousedown（button 0）时激活；真实点击依次产生 mousedown 与 click。
-    await tabs(b)[2]!.trigger('mousedown', { button: 0 })
-    await tabs(b)[2]!.trigger('click')
+  it('点击切换看板列页签', async () => {
+    const b = await boot({ path: '/work-items' })
     await flushPromises()
-    expect(activeLabel(b)).toBe('收藏')
-    expect(taskIds(b)).toEqual(['task-row-t1', 'task-row-t4'])
-    await tabs(b)[1]!.trigger('mousedown', { button: 0 })
-    await tabs(b)[1]!.trigger('click')
+    await tabs(b)[3]!.trigger('mousedown', { button: 0 })
+    await tabs(b)[3]!.trigger('click')
     await flushPromises()
-    expect(taskIds(b)).toEqual(['task-row-t1'])
+    expect(activeLabel(b)).toBe('测试')
     await b.done()
   })
 
-  it('ArrowRight 切到下一个并激活（需挂载后 flushPromises 再发键盘事件）', async () => {
-    const b = await boot()
+  it('ArrowRight / ArrowLeft（环绕）/ End / Home 键盘切换看板列', async () => {
+    const b = await boot({ path: '/work-items' })
     await flushPromises()
-    ;(tabs(b)[0]!.element as HTMLElement).focus()
-    await tabs(b)[0]!.trigger('keydown', { key: 'ArrowRight' })
+    ;(tabs(b)[2]!.element as HTMLElement).focus()
+    await tabs(b)[2]!.trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
-    expect(activeLabel(b)).toBe('运行中')
-    await b.done()
-  })
-
-  it('ArrowLeft 从第一项向前：观察到的行为是环绕到最后一项', async () => {
-    const b = await boot()
+    expect(activeLabel(b)).toBe('测试')
+    await tabs(b)[3]!.trigger('keydown', { key: 'End' })
     await flushPromises()
-    ;(tabs(b)[0]!.element as HTMLElement).focus()
+    expect(activeLabel(b)).toBe('已关闭')
+    await tabs(b)[4]!.trigger('keydown', { key: 'Home' })
+    await flushPromises()
+    expect(activeLabel(b)).toBe('新建')
     await tabs(b)[0]!.trigger('keydown', { key: 'ArrowLeft' })
     await flushPromises()
-    expect(activeLabel(b)).toBe('收藏')
-    await b.done()
-  })
-
-  it('End 跳到最后一项，Home 回到第一项', async () => {
-    const b = await boot()
-    await flushPromises()
-    ;(tabs(b)[0]!.element as HTMLElement).focus()
-    await tabs(b)[0]!.trigger('keydown', { key: 'End' })
-    await flushPromises()
-    expect(activeLabel(b)).toBe('收藏')
-    await tabs(b)[2]!.trigger('keydown', { key: 'Home' })
-    await flushPromises()
-    expect(activeLabel(b)).toBe('全部')
+    expect(activeLabel(b)).toBe('已关闭')
     await b.done()
   })
 
@@ -340,27 +325,28 @@ describe('Tabs（Reka）：点击与键盘', () => {
     ;(ai[0]!.element as HTMLElement).focus()
     await ai[0]!.trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
-    expect(b.wrapper.findAll('ul li')).toHaveLength(3)
+    expect(b.wrapper.findAll('[data-testid^=session-]')).toHaveLength(3)
     await b.done()
   })
 })
 
 describe('检查器收起 / 展开', () => {
-  it('按钮 aria-label 与 aria-expanded 随状态变化；收起后内容仍在 DOM 但容器隐藏', async () => {
-    const b = await boot()
+  it('按钮 aria-label 与 aria-pressed 随状态变化；收起后内容仍在 DOM 但容器隐藏', async () => {
+    localStorage.clear()
+    const b = await boot({ path: '/ai' })
     const toggle = () => b.wrapper.get('[data-testid=inspector-toggle]')
     const panel = () => b.wrapper.get('[data-testid=inspector]').element as HTMLElement
     expect(toggle().attributes('aria-label')).toBe('收起检查器')
-    expect(toggle().attributes('aria-expanded')).toBe('true')
+    expect(toggle().attributes('aria-pressed')).toBe('true')
     expect(panel().style.display).not.toBe('none')
 
     await toggle().trigger('click')
     await flushPromises()
     expect(toggle().attributes('aria-label')).toBe('展开检查器')
-    expect(toggle().attributes('aria-expanded')).toBe('false')
+    expect(toggle().attributes('aria-pressed')).toBe('false')
     expect(panel().style.display).toBe('none')
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-inspector')).toBe('closed')
-    expect(b.wrapper.find('[data-testid=task-inspector]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=ai-inspector]').exists()).toBe(true)
 
     await toggle().trigger('click')
     await flushPromises()
@@ -370,39 +356,42 @@ describe('检查器收起 / 展开', () => {
     await b.done()
   })
 
-  it('任务页内部「关闭详情」同样收起检查器', async () => {
-    const b = await boot()
-    await b.wrapper.get('button[aria-label=关闭详情]').trigger('click')
-    await flushPromises()
-    expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-inspector')).toBe('closed')
-    await b.done()
-  })
-
-  it('收起状态跨页面保持；在 /ai 页仍收起，检查器内容也仍在 DOM', async () => {
-    const b = await boot()
+  it('收起状态跨页面保持；在 /work-items 页仍收起，检查器内容也仍在 DOM', async () => {
+    localStorage.clear()
+    const b = await boot({ path: '/ai' })
     await b.wrapper.get('[data-testid=inspector-toggle]').trigger('click')
     await flushPromises()
-    await b.router.push('/ai')
-    await vi.waitFor(() => expect(b.router.currentRoute.value.path).toBe('/ai'))
+    await b.router.push('/work-items')
+    await vi.waitFor(() => expect(b.router.currentRoute.value.path).toBe('/work-items'))
     await flushPromises()
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-inspector')).toBe('closed')
     expect(b.wrapper.get('[data-testid=inspector-toggle]').attributes('aria-label')).toBe(
       '展开检查器',
     )
-    expect(b.wrapper.find('[data-testid=ai-inspector]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=wi-ai]').exists()).toBe(true)
     await b.wrapper.get('[data-testid=inspector-toggle]').trigger('click')
     await flushPromises()
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-inspector')).toBe('open')
     await b.done()
   })
+
+  it('无检查器内容的页面（任务占位）不显示检查器栏', async () => {
+    localStorage.clear()
+    const b = await boot()
+    expect((b.wrapper.get('[data-testid=inspector]').element as HTMLElement).style.display).toBe(
+      'none',
+    )
+    await b.done()
+  })
 })
 
 describe('导航与路由', () => {
-  it('禁用导航项：aria-disabled、带切片号、不在 Tab 顺序中、无链接', async () => {
+  it('禁用导航项：aria-disabled、title 说明尚未提供、不在 Tab 顺序中、无链接', async () => {
     const b = await boot()
     const off = b.wrapper.findAll('[aria-disabled=true]')
-    expect(off.map((o) => o.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8'])
+    expect(off.map((o) => o.text())).toEqual(['MCP', '服务', 'VPN'])
     for (const o of off) {
+      expect(o.attributes('title')).toBe('尚未提供')
       expect(o.element.tagName).not.toBe('A')
       expect(o.attributes('href')).toBeUndefined()
       expect(o.attributes('tabindex')).toBeUndefined()
@@ -430,12 +419,13 @@ describe('导航与路由', () => {
   })
 })
 
-describe('告警态下的按钮与图标可访问名称（抽查）', () => {
-  it('任务页行操作按钮、检查器按钮、状态栏切换都有 aria-label', async () => {
-    const b = await boot()
-    for (const btn of b.wrapper.findAll('.icon-btn')) {
+describe('按钮与图标可访问名称（抽查）', () => {
+  it.each(['/work-items', '/ai'])('%s 页图标按钮都有 aria-label；告警开关有名称', async (path) => {
+    const b = await boot({ path })
+    for (const btn of b.wrapper.findAll('.tb')) {
       expect(btn.attributes('aria-label'), btn.html()).toBeTruthy()
     }
+    await openConnection(b)
     expect(b.wrapper.get('[role=switch]').attributes('aria-label')).toBe('告警演示开关')
     await b.done()
   })

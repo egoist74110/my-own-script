@@ -257,19 +257,14 @@ describe('详情与五个页签', () => {
     await openRow(b, 101)
     expect(b.wrapper.get('[data-testid=wi-row-101]').attributes('aria-current')).toBe('true')
     const d = b.wrapper.get('section[aria-label=工单详情]')
-    for (const s of [
-      '#101',
-      '工单标题 101',
-      'P2',
-      '演示',
-      '虚构',
-      '示例开发者',
-      '父项',
-      '#100',
-      '在浏览器打开',
-    ]) {
+    for (const s of ['#101', '工单标题 101', '示例开发者', '父项', '#100']) {
       expect(d.text()).toContain(s)
     }
+    // 「在浏览器打开」在详情顶栏（section 之外）
+    expect(b.wrapper.get('[data-testid=open-web]').text()).toBe('在浏览器打开')
+    // 优先级与标签在 R1 换皮后位于右侧检查器
+    const insp = b.wrapper.get('[data-testid=wi-props]').text()
+    for (const s of ['P2', '演示', '虚构', '示例开发者']) expect(insp).toContain(s)
     expect(fake.to('/api/work-items/101')[0]!.query).toEqual({ project_id: 'proj:a' })
     await b.done()
   })

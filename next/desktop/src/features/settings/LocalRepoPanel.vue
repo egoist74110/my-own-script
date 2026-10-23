@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import TextInput from '@/components/TextInput.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
+import TextField from '@/components/TextField.vue'
 import type { LocalRepoView } from './api'
 import { useEditSession } from './editSession'
 import { settingsContextKey } from './useSettings'
@@ -85,17 +85,17 @@ async function remove() {
 <template>
   <div class="st-inspector" :data-testid="isNew ? 'repo-new' : 'repo-detail'">
     <div class="st-head">
-      <BlockTag>REPO</BlockTag>
+      <Tag>REPO</Tag>
       <h2>{{ isNew ? '新建本地仓库' : repo!.name }}</h2>
     </div>
 
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">名称</span>
-      <TextInput v-model="name" label="仓库名称" placeholder="例如：主仓库" />
+      <TextField v-model="name" label="仓库名称" placeholder="例如：主仓库" />
     </div>
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">路径</span>
-      <TextInput v-model="path" label="仓库路径" placeholder="/Users/me/code/repo" />
+      <TextField v-model="path" label="仓库路径" placeholder="/Users/me/code/repo" />
       <p class="st-note">只保存路径文本，不会读取目录内容。</p>
     </div>
 
@@ -113,39 +113,36 @@ async function remove() {
     </p>
 
     <div class="st-actions">
-      <AppButton data-testid="repo-save" :disabled="disabled" @click="save">
+      <Button variant="primary" data-testid="repo-save" :disabled="disabled" @click="save">
         {{ isNew ? '新建' : '保存修改' }}
-      </AppButton>
+      </Button>
     </div>
 
     <template v-if="!isNew">
       <hr class="st-sep" />
       <div v-if="!confirmDelete" class="st-actions">
-        <AppButton
-          variant="ghost"
+        <Button
           class="st-btn-danger"
           data-testid="repo-delete"
           :disabled="disabled"
           @click="confirmDelete = true"
         >
           删除仓库
-        </AppButton>
+        </Button>
       </div>
       <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除本地仓库">
         <strong>确认删除「{{ repo!.name }}」？</strong>
         <div>只删除这条记录，不会动磁盘上的目录。</div>
         <div class="st-actions">
-          <AppButton
-            variant="primary"
+          <Button
+            variant="destructive"
             data-testid="repo-delete-confirm"
             :disabled="disabled"
             @click="remove"
           >
             确认删除
-          </AppButton>
-          <AppButton variant="ghost" data-testid="repo-delete-cancel" @click="confirmDelete = false"
-            >取消</AppButton
-          >
+          </Button>
+          <Button data-testid="repo-delete-cancel" @click="confirmDelete = false">取消</Button>
         </div>
       </div>
     </template>

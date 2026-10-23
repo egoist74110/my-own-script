@@ -1,37 +1,204 @@
 /*
- * 设计令牌：方向 E「液态玻璃 × 游戏 UI · 工具优先」。
- * 数值参考 docs/modernization/design/e-tool-first，改写为独立 CSS；视觉来源见 next/THIRD_PARTY.md。
- * 强调色 --acc 只做底色（填充/条/点），其上文字用 --ink；不得用作文字色。
+ * 设计令牌：方向 B「macOS 原生」。
+ * 数值参考 docs/modernization/design/b-native（只作参考，未拷贝其 HTML/脚本）；使用系统字体，无第三方视觉来源。
+ * 深色跟随系统（prefers-color-scheme），本版不做手动切换。
+ * 强调色（深色下为荧光绿）只作底色，其上文字用 --on-accent；绿色不作文字色。
  */
 :root {
-  --ink: #14161a;
-  --mute: #545a68;
-  --line: rgba(20, 22, 26, 0.09);
-  --pearl-a: #f4f5f8;
-  --pearl-b: #eceef3;
-  --pearl-c: #f2efea;
-  --page-bg: #eef0f4;
-  --glass-solid: #f8f9fb;
+  color-scheme: light dark;
 
-  --acc: #c6f432;
-  --warn: #ff6a00;
-  /* 橙色文字/图标用深橙（#ff6a00 在珍珠底上不足 4.5:1）；橙色只作填充 */
-  --warn-ink: #a34100;
-  /* 绿色文字用深绿 */
-  --ok-ink: #3d5600;
-  --soft: rgba(20, 22, 26, 0.06);
-  --faint: rgba(20, 22, 26, 0.1);
+  /* 面 */
+  --bg-window: #ffffff;
+  --bg-sidebar: #eeedf1;
+  --bg-list: #ffffff;
+  --bg-inspector: #f7f7f9;
+  --bg-group: #ffffff;
+  --bg-settings: #f5f5f7;
+  --line: #e5e5ea;
+  --line-sidebar: #dad9de;
 
-  --font-display: 'Oxanium', 'PingFang SC', sans-serif;
-  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* 文字 */
+  --ink: #1d1d1f;
+  --mute: #6e6e73;
+  /* 在侧栏、控件底、选中未聚焦行等稍深的面上使用的次要文字（#6e6e73 在这些面上不足 4.5:1） */
+  --mute-tint: #636368;
+  --disabled: #a1a1a6;
+  --link: #0058d0;
 
+  /* 控件与行 */
+  --ctl: #ededf0;
+  --ctl-selected: #ffffff;
+  --hover: #f2f2f5;
+  --sel-blur: #e3e2e8;
+  --sidebar-sel: #d9d8df;
+  --toolbar-pressed: #e8e8ed;
+  --field-line: #d2d2d7;
+  --skeleton: #e8e8ec;
+
+  /* 强调 */
+  --accent: #0a63d6;
+  --on-accent: #ffffff;
+  --accent-ink: #0a55b8;
+  --focus-ring: #0a63d6;
+  --row-sel-bg: #0a63d6;
+  --row-sel-fg: #ffffff;
+  --row-sel-sub: #e8f1fd;
+  --danger: #b3261e;
+
+  /* 运行状态八态：底 / 文字 / 圆点 */
+  --st-queued-bg: #f0f0f3;
+  --st-queued-fg: #3a3a3f;
+  --st-queued-dot: #8e8e93;
+  --st-running-bg: #e6f0fd;
+  --st-running-fg: #0a4fad;
+  --st-running-dot: #0a63d6;
+  --st-stopping-bg: #fff0e0;
+  --st-stopping-fg: #8a3f00;
+  --st-stopping-dot: #e07b00;
+  --st-success-bg: #e5f5ea;
+  --st-success-fg: #16692f;
+  --st-success-dot: #1f9d45;
+  --st-failed-bg: #fdecea;
+  --st-failed-fg: #a1211a;
+  --st-failed-dot: #d93025;
+  --st-cancelled-bg: #f0f0f3;
+  --st-cancelled-fg: #4a4a4f;
+  --st-cancelled-dot: #8e8e93;
+  --st-verify-bg: #fff3dc;
+  --st-verify-fg: #7a4100;
+  --st-verify-dot: #d98a00;
+  --st-disabled-bg: #f0f0f3;
+  /* 合同给的 #6e6e73 在 #f0f0f3 上只有 4.46:1，加深到 4.5:1 以上 */
+  --st-disabled-fg: #65656a;
+  --st-disabled-dot: #c7c7cc;
+
+  /* 提示横幅：底 / 内描边 / 文字 / 标题 */
+  --bn-info-bg: #f2f6fd;
+  --bn-info-line: #c9daf5;
+  --bn-info-fg: #173e73;
+  --bn-warn-bg: #fff6e5;
+  --bn-warn-line: #f3d9a4;
+  --bn-warn-fg: #5c3a10;
+  --bn-error-bg: #fdecea;
+  --bn-error-line: #f3c2bd;
+  --bn-error-fg: #5c2a25;
+  --bn-error-title: #7a1a12;
+
+  /* 工单类型圆点与优先级 */
+  --kind-default: #8e8e93;
+  --kind-story: #0a63d6;
+  --kind-bug: #d93025;
+  --kind-task: #c98a04;
+  --kind-feature: #8e44c8;
+  --p1: #b23c00;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+
+  /* 字号 */
+  --text-title: 22px;
+  --text-page: 15px;
+  --text-long: 14px;
   --text-body: 13px;
-  --text-micro: 10px;
-  --row-h: 46px;
-  --target-min: 32px;
-  --cut-lg: 12px;
-  --cut-sm: 6px;
-  --skew: 5px;
-  --sidebar-w: 208px;
+  --text-sub: 12px;
+  --text-group: 11px;
+
+  /* 尺寸 */
+  --r-ctl: 6px;
+  --r-row: 7px;
+  --r-group: 10px;
+  --r-window: 12px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --ctl-h: 28px;
+  --target-min: 28px;
+  --topbar-h: 52px;
+  --sidebar-w: 232px;
+  --list-w: 360px;
+  --inspector-w: 280px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-window: #121315;
+    --bg-sidebar: #0e0f11;
+    --bg-list: #141517;
+    --bg-inspector: #17181b;
+    --bg-group: #17181b;
+    --bg-settings: #121315;
+    --line: #23252a;
+    --line-sidebar: #23252a;
+
+    --ink: #ecedef;
+    --mute: #8b8e98;
+    --mute-tint: #8b8e98;
+    --disabled: #6f727c;
+    --link: #d4f56a;
+
+    --ctl: #1f2125;
+    --ctl-selected: #3a3d44;
+    --hover: #1b1d21;
+    --sel-blur: #1f2125;
+    --sidebar-sel: #1f2125;
+    --toolbar-pressed: #2a2d33;
+    --field-line: #34373e;
+    --skeleton: #23252a;
+
+    --accent: #c6f432;
+    --on-accent: #14161a;
+    --accent-ink: #d4f56a;
+    --focus-ring: #c6f432;
+    --row-sel-bg: #262a1c;
+    --row-sel-fg: #ecedef;
+    --row-sel-sub: #b8bba6;
+    --danger: #ff9b92;
+
+    --st-queued-bg: #26282d;
+    --st-queued-fg: #c9cbd2;
+    --st-queued-dot: #8b8e98;
+    --st-running-bg: #14263f;
+    --st-running-fg: #8dbbff;
+    --st-running-dot: #4c8dff;
+    --st-stopping-bg: #3a2610;
+    --st-stopping-fg: #ffc285;
+    --st-stopping-dot: #e07b00;
+    --st-success-bg: #12301c;
+    --st-success-fg: #7fdb9a;
+    --st-success-dot: #2fbf5c;
+    --st-failed-bg: #3a1613;
+    --st-failed-fg: #ffa79f;
+    --st-failed-dot: #f2574b;
+    --st-cancelled-bg: #26282d;
+    --st-cancelled-fg: #b4b6be;
+    --st-cancelled-dot: #8b8e98;
+    --st-verify-bg: #3a2d0c;
+    --st-verify-fg: #ffd27a;
+    --st-verify-dot: #d98a00;
+    --st-disabled-bg: #202226;
+    --st-disabled-fg: #8b8e98;
+    --st-disabled-dot: #5b5e66;
+
+    --bn-info-bg: #14202f;
+    --bn-info-line: #223a57;
+    --bn-info-fg: #b9d4fa;
+    --bn-warn-bg: #2b2211;
+    --bn-warn-line: #4a3a18;
+    --bn-warn-fg: #f2d9a6;
+    --bn-error-bg: #2e1715;
+    --bn-error-line: #54261f;
+    --bn-error-fg: #f5bdb6;
+    --bn-error-title: #ffa79f;
+
+    --kind-default: #8b8e98;
+    --kind-story: #4c8dff;
+    --kind-bug: #f2574b;
+    --kind-task: #e0a83a;
+    --kind-feature: #b57ee6;
+    --p1: #ff9a5c;
+  }
 }

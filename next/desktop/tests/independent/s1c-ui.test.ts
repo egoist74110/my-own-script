@@ -1,12 +1,12 @@
-// S1-C 独立边界/故障用例（independent=true）：AppTabs 键盘与多实例、告警开关故障态与可达性、AI 会话隔离。
+// S1-C 独立边界/故障用例（independent=true）：SegmentedControl 键盘与多实例、告警开关故障态与可达性、AI 会话隔离。
 // 只用假 fetch / 假 socket；fixtures 复用 tests/unit/boot.ts 与 tests/unit/helpers.ts。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
-import AppTabs from '@/components/AppTabs.vue'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import { tabTriggerId } from '@/components/tabs'
 import { FakeSocket, resetSeq } from '../unit/helpers'
-import { boot, bootUnconnected, json } from '../unit/boot'
+import { boot, bootUnconnected, json, openConnection } from '../unit/boot'
 
 beforeEach(() => {
   FakeSocket.reset()
@@ -28,9 +28,9 @@ function mountTabs(opts: { label?: string; withSlot?: boolean; initial?: string 
     opts.withSlot === false ? '' : `<template #default="{ item }">内容-{{ item.value }}</template>`
   const w = mount(
     {
-      components: { AppTabs },
+      components: { SegmentedControl },
       setup: () => ({ model, items, label: opts.label ?? '视图' }),
-      template: `<AppTabs v-model="model" :label="label" :items="items">${slot}</AppTabs>`,
+      template: `<SegmentedControl v-model="model" :label="label" :items="items">${slot}</SegmentedControl>`,
     },
     { attachTo: document.body },
   )
@@ -51,7 +51,7 @@ function expectPairing(w: ReturnType<typeof mountTabs>['w']) {
   })
 }
 
-describe('AppTabs 键盘与关联（独立）', () => {
+describe('SegmentedControl 键盘与关联（独立）', () => {
   it('方向键切换后，选中态与可见面板随之更新，tabpanel 关联保持一致', async () => {
     const { w, model } = mountTabs()
     await flushPromises()
@@ -76,9 +76,9 @@ describe('AppTabs 键盘与关联（独立）', () => {
     const model = ref('a')
     const w = mount(
       {
-        components: { AppTabs },
+        components: { SegmentedControl },
         setup: () => ({ model, items, tabTriggerId }),
-        template: `<div><AppTabs v-model="model" label="视图" :items="items" panel-id="pp" />
+        template: `<div><SegmentedControl v-model="model" label="视图" :items="items" panel-id="pp" />
           <div id="pp" role="tabpanel" :aria-labelledby="tabTriggerId('pp', model)">内容-{{ model }}</div></div>`,
       },
       { attachTo: document.body },
@@ -97,21 +97,21 @@ describe('AppTabs 键盘与关联（独立）', () => {
     w.unmount()
   })
 
-  it('同一应用内多个 AppTabs（工单页即如此）：所有 id 唯一，各自关联不串线', async () => {
+  it('同一应用内多个 SegmentedControl（工单页即如此）：所有 id 唯一，各自关联不串线', async () => {
     const m1 = ref('a')
     const m2 = ref('c')
     const w = mount(
       {
-        components: { AppTabs },
+        components: { SegmentedControl },
         setup: () => ({ m1, m2, items }),
-        template: `<div><AppTabs v-model="m1" label="甲组" :items="items"><template #default="{ item }">内容-{{ item.value }}</template></AppTabs><AppTabs v-model="m2" label="乙组" :items="items"><template #default="{ item }">内容-{{ item.value }}</template></AppTabs></div>`,
+        template: `<div><SegmentedControl v-model="m1" label="甲组" :items="items"><template #default="{ item }">内容-{{ item.value }}</template></SegmentedControl><SegmentedControl v-model="m2" label="乙组" :items="items"><template #default="{ item }">内容-{{ item.value }}</template></SegmentedControl></div>`,
       },
       { attachTo: document.body },
     )
     await flushPromises()
     const ids = Array.from(document.querySelectorAll('[id]')).map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
-    const groups = w.findAllComponents(AppTabs)
+    const groups = w.findAllComponents(SegmentedControl)
     expect(groups).toHaveLength(2)
     for (const g of groups) expectPairing(g as unknown as ReturnType<typeof mountTabs>['w'])
     // 改动第二组不影响第一组的选中与可见面板
@@ -127,7 +127,7 @@ describe('AppTabs 键盘与关联（独立）', () => {
     w.unmount()
   })
 
-  it('工单页（含两组 AppTabs）：文档内所有 id 唯一，aria-controls/aria-labelledby 都能解析', async () => {
+  it('工单页（含两组 SegmentedControl）：文档内所有 id 唯一，aria-controls/aria-labelledby 都能解析', async () => {
     const b = await boot({ path: '/work-items' })
     await flushPromises()
     const ids = Array.from(document.querySelectorAll('[id]')).map((e) => e.id)
@@ -166,6 +166,7 @@ describe('告警开关故障态与可达性（独立）', () => {
   it('请求在途时开关为 disabled，重复点击不再发第二个请求', async () => {
     const f = deferredAlertFetch()
     const b = await boot({ fetchImpl: f.fetchImpl })
+    await openConnection(b)
     await flushPromises()
     const sw = b.wrapper.get('[role=switch]')
     await sw.trigger('click')
@@ -184,6 +185,7 @@ describe('告警开关故障态与可达性（独立）', () => {
   it('请求体：开启发送 active=true + 演示原因；关闭发送 active=false 且 reason=null', async () => {
     const f = deferredAlertFetch()
     const b = await boot({ fetchImpl: f.fetchImpl })
+    await openConnection(b)
     await flushPromises()
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
@@ -207,6 +209,7 @@ describe('告警开关故障态与可达性（独立）', () => {
       })
     }) as unknown as typeof fetch
     const b = await boot({ fetchImpl })
+    await openConnection(b)
     await flushPromises()
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
@@ -223,6 +226,7 @@ describe('告警开关故障态与可达性（独立）', () => {
       throw new TypeError('network down')
     }) as unknown as typeof fetch
     const b = await boot({ fetchImpl })
+    await openConnection(b)
     await flushPromises()
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
@@ -240,6 +244,7 @@ describe('告警开关故障态与可达性（独立）', () => {
       return new Response(null, { status: 200 })
     }) as unknown as typeof fetch
     const b = await boot({ fetchImpl })
+    await openConnection(b)
     await flushPromises()
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
@@ -253,6 +258,7 @@ describe('告警开关故障态与可达性（独立）', () => {
 
   it('未连接时点击 → 连接建立后再点击：发出请求并清除“后端未连接”', async () => {
     const b = await bootUnconnected()
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     expect(b.wrapper.get('[data-testid=alert-error]').text()).toBe('后端未连接')
@@ -271,8 +277,9 @@ describe('告警开关故障态与可达性（独立）', () => {
   it('label 与开关关联：点击“告警演示”文字同样触发开关请求', async () => {
     const f = deferredAlertFetch()
     const b = await boot({ fetchImpl: f.fetchImpl })
+    await openConnection(b)
     await flushPromises()
-    const label = b.wrapper.get('label.lbl')
+    const label = b.wrapper.get('label[for=alert-demo]')
     const switchId = b.wrapper.get('[role=switch]').attributes('id')
     expect(label.attributes('for')).toBe('alert-demo')
     expect(switchId).toBe('alert-demo')

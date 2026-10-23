@@ -14,3 +14,13 @@ export function formatBytes(n: number | null | undefined): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
+
+/** 工单类型 → 圆点颜色（CSS 变量）。未知类型用中性色。 */
+export function kindColor(type: string | null | undefined): string {
+  const t = (type ?? '').toLowerCase()
+  if (t === 'bug') return 'var(--kind-bug)'
+  if (t === 'task' || t === '任务') return 'var(--kind-task)'
+  if (t === 'feature' || t === '功能') return 'var(--kind-feature)'
+  if (t === 'user story' || t === '用户情景' || t === '用户故事') return 'var(--kind-story)'
+  return 'var(--kind-default)'
+}

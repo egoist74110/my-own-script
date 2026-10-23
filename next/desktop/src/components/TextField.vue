@@ -15,7 +15,7 @@ const model = defineModel<string>({ default: '' })
 </script>
 
 <template>
-  <label class="text-input cut-xs">
+  <label class="text-input field">
     <span class="sr-only">{{ label }}</span>
     <textarea v-if="multiline" v-model="model" rows="2" :placeholder="placeholder"></textarea>
     <input
@@ -31,13 +31,14 @@ const model = defineModel<string>({ default: '' })
 </template>
 
 <style scoped>
-.text-input {
+.field {
   display: flex;
   align-items: center;
-  min-height: var(--target-min);
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.75);
-  box-shadow: inset 0 0 0 1px var(--line);
+  min-height: var(--ctl-h);
+  padding: 0 8px;
+  border-radius: var(--r-ctl);
+  background: var(--bg-window);
+  box-shadow: inset 0 0 0 1px var(--field-line);
 }
 input,
 textarea {
@@ -49,13 +50,21 @@ textarea {
   font: inherit;
   color: var(--ink);
 }
+input::placeholder,
+textarea::placeholder {
+  color: var(--mute);
+}
 textarea {
   resize: none;
   line-height: 1.6;
-  padding: 6px 0;
+  padding: 4px 0;
 }
-.text-input:focus-within {
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
+.field:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 </style>

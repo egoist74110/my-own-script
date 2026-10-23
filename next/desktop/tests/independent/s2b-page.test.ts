@@ -365,7 +365,7 @@ describe('详情错误态与降级文案', () => {
     const b = await open(w)
     await clickRow(b, 1)
     expect(detailEl(b).get('[data-testid=wi-error]').text()).toContain('工单或项目不存在')
-    expect(detailEl(b).find('button').text()).toContain('重试')
+    expect(detailEl(b).get('[data-testid=wi-error] button').text()).toContain('重试')
     expect(row(b, 2).element).toBeTruthy()
   })
 

@@ -1,7 +1,7 @@
-# TOOLBOX 桌面前端（S0.5：方向 E 液态玻璃 × 游戏 UI · 工具优先）
+# TOOLBOX 桌面前端（R1：方向 B「macOS 原生」）
 
 Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + vue-query。
-骨架：208px 侧栏（编号导航 + Pinned）｜主区（工具栏 + 内容）｜可收起的右侧检查器｜底部状态栏。任务 `/tasks` 与 AI 会话 `/ai` 仍是 mock；工单 `/work-items` 已接真实接口（S2-B）；设置 `/settings` 已接真实接口（`/` 重定向 `/tasks`）。
+骨架：232px 通高侧栏（分组导航 + 底部设置/连接状态行）｜页面区（每页自己的列表栏 / 详情 / 顶栏，52px）｜可开关的右侧检查器（280px）。没有底部状态栏。任务 `/tasks` 是占位页（任务执行由 S3 接入）；AI 会话 `/ai` 仍是 mock；工单 `/work-items` 与设置 `/settings` 已接真实接口（`/` 重定向 `/tasks`）。
 
 ## 命令（在 `next/desktop`）
 
@@ -27,35 +27,50 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 
 ## 目录
 
-- `src/app`：壳（`App.vue`）、路由、runtime、`inspector.ts`（检查器容器注入）、`mock/`（侧栏 Pinned、状态栏 VPN/TG/MCP 的 mock）。
-- `src/design`：`tokens.css`（令牌）、`ui.css`（玻璃/切角/斜切/条纹/动效关键帧）、`app.css`（入口与 body 背景）。
-- `src/components`：基础组件；`ui/` 为 shadcn-vue 拷入件（仅 Switch）。
-- `src/features/{tasks,ai}`：页面；各自 `mock/` 放虚构数据。`src/features/work-items`：工单页（真实接口，无 mock）。feature 之间不互相引用内部文件。
+- `src/app`：壳（`App.vue`）、路由、runtime、`inspector.ts`（检查器容器注入）。
+- `src/design`：`tokens.css`（浅色令牌 + `prefers-color-scheme: dark` 深色令牌）、`ui.css`（焦点环、列表行、动效关键帧、reduced-motion）、`app.css`（入口与 body）。
+- `src/components`：基础组件；`ui/` 为 shadcn-vue 拷入件（仅 Switch，已改系统风格）。
+- `src/features/ai`：AI 会话页，`mock/` 放虚构数据。`src/features/tasks`：任务占位页（无 mock）。`src/features/{work-items,settings}`：真实接口页面。feature 之间不互相引用内部文件。
 - `src/shared/cn.ts`：类名合并。注意不能放 `src/lib/`（仓库根 `.gitignore` 的 `lib/` 规则会让它不入库）。
-- `src/api`、`src/stores`：连接、客户端、事件、Pinia（`backend` 连接/告警；`ui` 检查器开合）。
-- 测试在 `tests/unit`；`tests/independent` 为独立验证用例目录。`pnpm test` 不依赖 `dist/`（源码禁词仍在测试里检查）；产物检查用 `pnpm guard:dist`（build 之后）。测试夹具 `tests/unit/boot.ts`：`boot()` 起连接，`bootUnconnected()` 不调用 `runtime.start()`（用于“未取得连接”场景）。
+- `src/api`、`src/stores`：连接、客户端、事件、Pinia（`backend` 连接/告警；`ui` 检查器开合，开合状态存 localStorage `toolbox.ui.inspector`，只存布尔值）。
+- 测试在 `tests/unit`；`tests/independent` 为独立验证用例目录（含测试子 agent 写的 `r1-*.test.ts`）。`pnpm test` 不依赖 `dist/`；产物检查用 `pnpm guard:dist`（build 之后）。测试夹具 `tests/unit/boot.ts`：`boot()` 起连接，`bootUnconnected()` 不调用 `runtime.start()`，`openConnection()` 打开侧栏连接状态弹出层（告警演示开关在里面）。
+
+## 设计令牌与深色模式
+
+令牌在 `src/design/tokens.css`，数值参考 `docs/modernization/design/b-native/`（只作参考，未拷贝）：
+
+- 浅色：窗口 `#FFFFFF`、侧栏 `#EEEDF1`、检查器 `#F7F7F9`、设置内容底 `#F5F5F7`、分隔线 `#E5E5EA`、正文 `#1D1D1F`、次要 `#6E6E73`、强调 `#0A63D6`（白字）。
+- 深色（跟随系统，本版不做手动切换）：窗口 `#121315`、侧栏 `#0E0F11`、列表 `#141517`、检查器 `#17181B`、正文 `#ECEDEF`、强调 `#C6F432`（其上文字 `#14161A`，绿色不作文字色）。
+- `--mute-tint`：侧栏、控件底、选中未聚焦行上用的次要文字（`#6E6E73` 在这些面上不足 4.5:1，故加深到 `#636368`）；运行状态「已停用」文字同理加深为 `#65656A`。
+- 运行状态八态（排队/运行中/停止中/成功/失败/已取消/需核实/已停用）与提示横幅（信息/警告/错误）各有底、文字、圆点（描边）令牌，深浅两套，均过 4.5:1。
+- 字体：系统字体栈（SF Pro + PingFang SC），等宽 SF Mono 只用于编号、提交、路径、命令、日志；不再打包任何字体。
+- 字号 22/15/14/13/12/11；圆角 6/7/10/12；间距 4/8/12/16/20/28；控件高 28；顶栏高 52。
 
 ## 组件清单（`src/components`）
 
-GlassPanel（`cut` lg/sm/none）· AppTabs（Reka Tabs，斜切，方向键；每个页签配 tabpanel 并用 aria-controls / aria-labelledby 关联。传默认插槽 `<AppTabs v-model=… :items=… label=…><template #default="{ item }">…</template></AppTabs>` 时当前面板显示插槽内容；不传插槽则面板为空且隐藏，内容仍由页面按 `v-model` 自行渲染）· AppButton（primary/accent/ghost）· IconButton（32x32，必须 `label`）· TextInput · SearchBox（⌘K/Ctrl+K 聚焦，Esc 失焦，不做真实搜索）· BlockTag · StampBadge（CLEAR/FAILED/ROLLBACK）· StageBar（done/run/pending/fail，运行中流动纹）· EnergyBar（0..N 段）· StatusDot（ok/run/warn/idle）· AlertBanner · ApprovalBar（Y/A/N，输入框聚焦时不响应，发出 `decide`）· InspectorPanel（Teleport 进壳的检查器）· SidebarNav · StatusBar · AlertToggle（视觉 20px，命中区经伪元素扩到 `--target-min` 32px）。
+Pane（纯色面，`surface`）· SegmentedControl（Reka Tabs，横向分段/页签，`orientation="vertical"` 为设置分区列表；可带计数；传默认插槽时每页签配 tabpanel，传 `panelId` 时 aria-controls 指向页面容器）· Button（primary/default/destructive/plain，高 28）· ToolbarButton（无底色，按下态，必须 `label`）· TextField · SearchField（⌘K/Ctrl+K 聚焦，Esc 失焦）· Tag（中性小标签）· StatusDot（ok/run/warn/idle）· StatusPill（八态，文案见 `pill.ts`）· Banner（info/warn/error，贴在所属区域内）· ApprovalBar（Y/A/N，输入框聚焦时不响应，发出 `decide`）· Inspector（Teleport 进壳的检查器）· InspectorToggle（顶栏开关，`aria-pressed`）· Sidebar（分组导航）· ConnectionStatus（侧栏底部状态行 + 弹出层：后端状态、pid、心跳延迟、告警演示开关）· AlertToggle · ListRow（两行；选中聚焦=强调底，选中未聚焦=灰底，由 `.b-list:focus-within` 区分）· EmptyState · Skeleton · Sheet（Reka Dialog 确认单，焦点陷阱，Esc 关闭；组件已提供，现有设置页确认仍是行内确认，未改用）。
 
 ## 告警
 
-状态只来自 store 的 `alert`（`system.alert` / `system.hello`）。告警时：主区顶部黑色横幅（`reason`，缺省给默认文案）；任务页 mock 里 `errorOnAlert` 的行与检查器转橙；导航「任务」角标变 `!`。无遮罩，工作区保持可交互。
+状态只来自 store 的 `alert`（`system.alert` / `system.hello`）。告警时：页面区顶部出现 warn Banner（`reason`，缺省给默认文案），侧栏连接状态行变橙；无遮罩，不拦截操作。
 
-## mock 位置与如何换接口
+## 任务页占位
 
-mock 只在 `src/features/<feature>/mock/` 与 `src/app/mock/`。页面只调用一个取数组合式（`useTasks()` / `useWorkItems()` / `useAiSessions()`，返回响应式数据与动作）。换真实接口时：保持组合式的返回形状，把内部换成 `useQuery` + `runtime.api()`（见 `components/StatusBar.vue` 的 `/health` 查询），页面模板不用改。`useAiSessions()` 的对话、已发送消息、审批记录与待审批命令按会话 id 隔离（`messages(id)` / `approvals(id)` / `pending(id)` / `send(id, text)` / `decide(id, decision)`）；审批 Y/A/N 目前只改 mock 状态，接后端时在 `decide` 里发请求。
+`/tasks` 只显示 EmptyState「任务执行正在接入」，不放假任务或假 KPI；S0.5 的 mock 任务台与 `features/tasks/mock/` 已删除。真实页面由 S3-C 按 `docs/modernization/design/b-native/B-Tasks.dc.html` 实现。
+
+## mock 位置
+
+mock 只在 `src/features/ai/mock/`。AI 页只调用 `useAiSessions()`（会话、对话、审批 Y/A/N 按会话 id 隔离；审批目前只改 mock 状态）。换真实接口时保持组合式的返回形状，内部换成 `useQuery` + `runtime.api()`（见 `components/ConnectionStatus.vue` 的 `/health` 查询）。
 
 ## 来源
 
-视觉语言与字体许可见 `../THIRD_PARTY.md`。设计参考见 `docs/modernization/design/e-tool-first/`（只作参考，未拷贝）。
+视觉用系统字体与自绘组件，无第三方视觉来源，见 `../THIRD_PARTY.md`。设计参考见 `docs/modernization/design/b-native/`（只作参考，未拷贝）。
 
 ## 工单页（S2-B）
 
-- 取数：vue-query，键 `['work-items','ado']` 与 `['work-items','p',projectId,...]`；`staleTime` 30s、不因窗口聚焦重取、工具栏「刷新」强制重取；切换项目清掉旧项目查询；`settings.changed` 使全部 `work-items` 查询失效。看板列固定五列（默认「开发中」），只请求当前列；筛选与分页（10/50/100）在前端。
+- 取数：vue-query，键 `['work-items','ado']` 与 `['work-items','p',projectId,...]`；`staleTime` 30s、不因窗口聚焦重取、列表栏「刷新」强制重取；切换项目清掉旧项目查询；`settings.changed` 使全部 `work-items` 查询失效。看板列固定五列（默认「开发中」），只请求当前列；筛选与分页（10/50/100）在前端。
 - `localStorage`（键 `toolbox.work-items.selection`）只存 `{project_id, column}`，读写 try/catch。
 - 外部 HTML：后端 nh3 清洗后，前端 `components/safe-html.ts`（DOMPurify 显式白名单）再清洗，`components/SafeHtml.vue` 渲染。`<img>` 无 src，只有 `data-media-id`；`components/media.ts` 的页面级缓存带 Bearer 取字节生成 `blob:` URL，同一详情内相同 id 复用，详情卸载/切换工单或项目时 `URL.revokeObjectURL`（含中止进行中的请求）。token 不进任何 URL/DOM/存储。
 - 链接：点击一律拦截（`components/open-external.ts`），Tauri 内用 opener 插件，`pnpm dev:web` 下 `window.open(url,'_blank','noopener')`；只放行 http(s)（opener 的 capability scope 同样只含 `http://*`、`https://*`），WebView 自身永不导航。mailto 在两种环境下都不打开。
-- 检查器的 AI 分析面板整体禁用并标 S5（MCP 分析 / 提示词 / AI 会话在 S5）。
+- 检查器列出状态、优先级、指派、看板列、严重度、区域、迭代、标签；其下 AI 分析面板整体禁用（「即将推出」，S5 提供）。详情顶栏有项目、指派人、在浏览器打开与检查器开关。
 - 未在真实环境验证：Tauri 内 opener 与 blob 图片渲染、真实 ADO。

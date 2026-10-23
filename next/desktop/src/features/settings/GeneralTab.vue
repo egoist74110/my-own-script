@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import BlockTag from '@/components/BlockTag.vue'
+import Tag from '@/components/Tag.vue'
 import { settingsContextKey } from './useSettings'
 
 const ctx = inject(settingsContextKey)!
@@ -37,9 +37,9 @@ const o = computed(() => ctx.overview.data.value ?? null)
         <dd class="st-mono">{{ o.revision }}</dd>
         <dt class="lbl">存储状态</dt>
         <dd data-testid="general-store-state">
-          <BlockTag :tone="o.store_state === 'ok' ? 'acc' : 'warn'">{{
+          <Tag :tone="o.store_state === 'ok' ? 'ok' : 'warn'">{{
             o.store_state === 'ok' ? '正常' : '只读错误'
-          }}</BlockTag>
+          }}</Tag>
         </dd>
       </dl>
     </template>

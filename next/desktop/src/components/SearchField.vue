@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Search } from 'lucide-vue-next'
 
-/** ⌘K / Ctrl+K 聚焦，Esc 失焦。本轮只是输入框，不做真实搜索。 */
+/** ⌘K / Ctrl+K 聚焦，Esc 失焦。只是输入框，过滤由页面自己做。 */
 defineProps<{ label: string; placeholder?: string }>()
 const model = defineModel<string>({ default: '' })
 const el = ref<HTMLInputElement | null>(null)
@@ -18,7 +18,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <label class="search cut-xs">
+  <label class="search">
     <Search :size="14" aria-hidden="true" />
     <span class="sr-only">{{ label }}</span>
     <input
@@ -36,15 +36,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--target-min);
-  width: 240px;
-  max-width: 100%;
+  gap: 6px;
+  min-height: var(--ctl-h);
   box-sizing: border-box;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.75);
-  box-shadow: inset 0 0 0 1px var(--line);
-  color: var(--mute);
+  padding: 0 8px;
+  border-radius: var(--r-row);
+  background: var(--ctl);
+  color: var(--mute-tint);
 }
 input {
   flex: 1;
@@ -55,13 +53,18 @@ input {
   font: inherit;
   color: var(--ink);
 }
+input::placeholder {
+  color: var(--mute-tint);
+}
 kbd {
-  font-size: 10px;
-  padding: 1px 5px;
-  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 11px;
+  color: var(--mute-tint);
 }
 .search:focus-within {
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+input:focus-visible {
+  outline: none;
 }
 </style>

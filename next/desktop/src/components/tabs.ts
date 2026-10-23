@@ -5,7 +5,7 @@ function safe(value: string): string {
     .join('')
 }
 
-/** `AppTabs` 传 `panelId` 时各 trigger 的 id；页面里承载内容的 tabpanel 用它设 `aria-labelledby`。 */
+/** `SegmentedControl` 传 `panelId` 时各 trigger 的 id；页面里承载内容的 tabpanel 用它设 `aria-labelledby`。 */
 export function tabTriggerId(panelId: string, value: string): string {
   return `${panelId}-tab-${safe(value)}`
 }

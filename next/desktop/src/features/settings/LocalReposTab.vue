@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import InspectorPanel from '@/components/InspectorPanel.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
 import { useUiStore } from '@/stores/ui'
 import LocalRepoPanel from './LocalRepoPanel.vue'
 import { settingsContextKey } from './useSettings'
@@ -36,15 +35,16 @@ const isSel = (id: string) => {
     <section class="st-section" aria-label="本地仓库">
       <div class="st-head">
         <h2>本地仓库</h2>
-        <BlockTag>{{ repos.length }}</BlockTag>
+        <Tag>{{ repos.length }}</Tag>
         <span class="st-grow"></span>
-        <AppButton
+        <Button
+          variant="primary"
           data-testid="repo-add"
           :disabled="ctx.busy.value || !ctx.writable.value"
           @click="pick({ kind: 'new' })"
         >
           ＋ 新建仓库
-        </AppButton>
+        </Button>
       </div>
       <table class="st-tbl" data-testid="repo-table">
         <thead>
@@ -82,7 +82,7 @@ const isSel = (id: string) => {
       </table>
     </section>
 
-    <InspectorPanel label="本地仓库详情">
+    <section class="st-section st-editor" aria-label="本地仓库详情">
       <LocalRepoPanel
         v-if="sel?.kind === 'new' || selected"
         :repo="selected"
@@ -93,6 +93,6 @@ const isSel = (id: string) => {
       <div v-else class="st-inspector" data-testid="repo-inspector-empty">
         <p class="st-note">选择一个本地仓库查看详情，或新建。路径只保存为文本，不会被读取。</p>
       </div>
-    </InspectorPanel>
+    </section>
   </div>
 </template>

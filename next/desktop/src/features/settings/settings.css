@@ -1,24 +1,29 @@
-/* 设置页公共样式（只用 tokens 里的颜色；橙色文字用 --warn-ink）。 */
+/* 设置页公共样式：分组白卡片 + 令牌色（警告文字用 --st-verify-fg 系，成功文字用 --st-success-fg 系）。 */
 .st-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 14px 16px 18px;
+  padding: 20px 28px 28px;
+  max-width: 880px;
 }
 .st-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px 16px 14px;
+  border-radius: var(--r-group);
+  background: var(--bg-group);
+  box-shadow: 0 0 0 0.5px var(--line);
 }
 .st-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: var(--target-min);
+  gap: 8px;
+  min-height: var(--ctl-h);
 }
 .st-head h2 {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--text-body);
   font-weight: 700;
 }
 .st-grow {
@@ -26,50 +31,48 @@
 }
 .st-note {
   margin: 0;
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--text-body);
+  line-height: 1.6;
   color: var(--mute);
 }
 .st-tbl {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: var(--text-body);
 }
 .st-tbl th {
   text-align: left;
   padding: 6px 10px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-sub);
   font-weight: 400;
-  letter-spacing: 1px;
   color: var(--mute);
-  text-transform: uppercase;
   border-bottom: 1px solid var(--line);
 }
 .st-tbl td {
   padding: 0 10px;
-  min-height: var(--row-h);
-  height: 40px;
+  height: 36px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
+}
+.st-tbl tbody tr:last-child td {
+  border-bottom: 0;
 }
 .st-tbl tbody tr[tabindex] {
   cursor: pointer;
 }
-.st-tbl tbody tr[tabindex]:hover,
-.st-tbl tbody tr[data-selected='true'] {
-  background: rgba(255, 255, 255, 0.7);
+.st-tbl tbody tr[tabindex]:hover {
+  background: var(--hover);
 }
 .st-tbl tbody tr[data-selected='true'] {
-  box-shadow: inset 3px 0 0 var(--ink);
+  background: var(--sel-blur);
 }
 .st-tbl tbody tr:focus-visible {
-  outline: 2px solid var(--warn);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 .st-mono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sub);
   word-break: break-all;
 }
 .st-tags {
@@ -79,17 +82,17 @@
   gap: 6px;
 }
 .st-warn {
-  color: var(--warn-ink);
+  color: var(--st-verify-fg);
   font-weight: 600;
 }
 .st-ok {
-  color: var(--ok-ink);
+  color: var(--st-success-fg);
   font-weight: 600;
 }
 .st-list {
   margin: 0;
   padding-left: 18px;
-  font-size: 12.5px;
+  font-size: var(--text-body);
   line-height: 1.7;
 }
 .st-kv {
@@ -99,20 +102,29 @@
   margin: 0;
   align-items: baseline;
 }
+.st-kv dt {
+  color: var(--mute);
+}
 .st-kv dd {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--text-body);
 }
 .st-box {
   padding: 10px 12px;
-  background: rgba(20, 22, 26, 0.04);
-  box-shadow: inset 3px 0 0 var(--ink);
-  font-size: 12.5px;
-  line-height: 1.7;
+  border-radius: 8px;
+  background: var(--bn-info-bg);
+  box-shadow: inset 0 0 0 1px var(--bn-info-line);
+  color: var(--bn-info-fg);
+  font-size: var(--text-body);
+  line-height: 1.6;
 }
 .st-box[data-tone='warn'] {
-  background: rgba(255, 106, 0, 0.1);
-  box-shadow: inset 3px 0 0 var(--warn);
+  background: var(--bn-warn-bg);
+  box-shadow: inset 0 0 0 1px var(--bn-warn-line);
+  color: var(--bn-warn-fg);
+}
+.st-box .st-warn {
+  color: inherit;
 }
 .st-actions {
   display: flex;
@@ -120,37 +132,45 @@
   align-items: center;
   gap: 8px;
 }
+/* 编辑器表单行：标签在左、控件在右 */
 .st-fld {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px 12px;
+  padding: 6px 0;
+}
+.st-fld > .lbl {
+  grid-column: 1;
+  padding-top: 5px;
+}
+.st-fld > :not(.lbl) {
+  grid-column: 2;
 }
 .st-select {
-  min-height: var(--target-min);
-  padding: 0 10px;
+  min-height: var(--ctl-h);
+  padding: 0 8px;
   border: 0;
-  background: rgba(255, 255, 255, 0.75);
-  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--bg-window);
+  box-shadow: inset 0 0 0 1px var(--field-line);
   font: inherit;
   color: var(--ink);
 }
-.st-select:focus-visible {
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
-}
 .st-btn-danger {
-  color: var(--warn-ink);
+  color: var(--danger);
 }
 .st-inspector {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-  overflow: auto;
+  gap: 8px;
+}
+.st-editor {
+  max-width: 880px;
 }
 .st-inspector h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-long);
   font-weight: 700;
   word-break: break-all;
 }
@@ -159,8 +179,4 @@
   background: var(--line);
   border: 0;
   margin: 0;
-}
-.st-tbl .blk,
-.st-head .blk {
-  white-space: nowrap;
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
 import type { CredentialStatus } from './api'
 import { settingsContextKey } from './useSettings'
 
@@ -31,7 +31,7 @@ const cleanable = (c: CredentialStatus) => c.state === 'orphan' || c.state === '
     <section class="st-section" aria-label="凭据状态">
       <div class="st-head">
         <h2>凭据状态</h2>
-        <BlockTag>{{ rows.length }}</BlockTag>
+        <Tag>{{ rows.length }}</Tag>
       </div>
       <p class="st-note">
         这里只显示凭据是否存在与来源，永远不显示凭据的值。录入或替换 PAT 在「ADO 连接」页签。
@@ -57,14 +57,13 @@ const cleanable = (c: CredentialStatus) => c.state === 'orphan' || c.state === '
             <td :class="{ 'st-warn': c.state !== 'present' }">{{ STATE[c.state] }}</td>
             <td class="st-mono">{{ c.updated_at ?? '—' }}</td>
             <td>
-              <AppButton
+              <Button
                 v-if="cleanable(c)"
-                variant="ghost"
                 :disabled="ctx.busy.value || !ctx.writable.value"
                 @click="ctx.deleteCredential(c.account)"
               >
                 清理
-              </AppButton>
+              </Button>
             </td>
           </tr>
           <tr v-if="!rows.length">

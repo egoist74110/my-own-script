@@ -1,5 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { existsSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeSocket, alertEvent, hello, resetSeq } from './helpers'
 import { boot } from './boot'
 import { createWiFake, detail, summary } from './wi-fake'
@@ -17,125 +18,47 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('任务页', () => {
-  it('常态：工具栏、任务表（名称/目标/阶段条/状态/耗时/印章）、检查器、统计', async () => {
+describe('任务页（R1：占位）', () => {
+  it('只有 EmptyState 占位，不含 S0.5 mock 任务台、假任务与假 KPI', async () => {
     const b = await boot()
     b.sock.emit(hello())
     await flushPromises()
     const w = b.wrapper
     expect(w.get('h1').text()).toBe('任务')
-    expect(w.findAll('thead th').map((t) => t.text())).toEqual([
-      '任务',
-      '目标',
-      '阶段',
-      '状态',
-      '耗时',
-      '结果',
-      '操作',
-    ])
-    expect(w.findAll('tbody tr')).toHaveLength(7)
-    const r1 = w.get('[data-testid=task-row-t1]')
-    expect(r1.findAll('.seg').map((s) => s.attributes('data-state'))).toEqual([
-      'done',
-      'run',
-      'pending',
-      'pending',
-    ])
-    expect(r1.text()).toContain('运行中')
-    expect(r1.attributes('data-alert')).toBeUndefined()
-    expect(w.get('[data-testid=task-row-t4]').text()).toContain('CLEAR')
-    expect(w.get('[data-testid=task-row-t6]').text()).toContain('FAILED')
-    expect(w.get('[data-testid=task-row-t7]').text()).toContain('ROLLBACK')
-    // 检查器（经 Teleport 进入壳的检查器容器）
-    const insp = w.get('[data-testid=inspector]')
-    expect(insp.find('[data-testid=task-inspector]').exists()).toBe(true)
-    expect(insp.text()).toContain('web-portal 发布')
-    expect(insp.find('[role=log]').exists()).toBe(true)
-    expect(insp.find('[role=meter]').exists()).toBe(true)
-    expect(w.text()).toContain('Runs/wk')
-    expect(w.find('[data-testid=task-inspector]').attributes('data-alert')).toBeUndefined()
+    const ph = w.get('[data-testid=tasks-placeholder]')
+    expect(ph.text()).toContain('任务执行正在接入')
+    expect(w.find('table').exists()).toBe(false)
+    expect(w.find('[data-testid=add-task]').exists()).toBe(false)
+    const text = w.get('main').text()
+    for (const bad of [
+      'web-portal',
+      'admin-console',
+      'docs-site',
+      'staging-a',
+      'Runs/wk',
+      'FAILED',
+      'CLEAR',
+      'ROLLBACK',
+      'HALT',
+    ]) {
+      expect(text).not.toContain(bad)
+    }
+    expect(existsSync(new URL('../../src/features/tasks/mock', import.meta.url))).toBe(false)
     await b.done()
   })
 
-  it('行可聚焦；Enter 与点击选中，检查器随之切换', async () => {
-    const b = await boot()
-    const rows = b.wrapper.findAll('tbody tr')
-    expect(rows.every((r) => r.attributes('tabindex') === '0')).toBe(true)
-    const r4 = b.wrapper.get('[data-testid=task-row-t4]')
-    await r4.trigger('keydown', { key: 'Enter' })
-    expect(r4.attributes('aria-selected')).toBe('true')
-    expect(b.wrapper.get('[data-testid=task-inspector]').text()).toContain('admin-console 仅发布')
-    await b.wrapper.get('[data-testid=task-row-t5]').trigger('click')
-    expect(b.wrapper.get('[data-testid=task-inspector]').text()).toContain('docs-site 发布')
-    expect(b.wrapper.get('[data-testid=task-row-t4]').attributes('aria-selected')).toBe('false')
-    await b.done()
-  })
-
-  it('行内按钮点击不会改变选中行', async () => {
-    const b = await boot()
-    await b.wrapper
-      .get('[data-testid=task-row-t3]')
-      .find('button[aria-label=运行]')
-      .trigger('click')
-    expect(b.wrapper.get('[data-testid=task-row-t1]').attributes('aria-selected')).toBe('true')
-    await b.done()
-  })
-
-  it('视图 Tabs 过滤；搜索过滤；⌘K 聚焦搜索框；新建任务追加一行', async () => {
-    const b = await boot()
-    const tabs = b.wrapper.findAll('[role=tab]')
-    await tabs[1]!.trigger('mousedown', { button: 0 })
-    await flushPromises()
-    expect(b.wrapper.findAll('tbody tr')).toHaveLength(1)
-    await tabs[0]!.trigger('mousedown', { button: 0 })
-    await flushPromises()
-    expect(b.wrapper.findAll('tbody tr')).toHaveLength(7)
-
-    const input = b.wrapper.get('input[type=search]')
-    press('k', window)
-    expect(document.activeElement).not.toBe(input.element) // 无修饰键
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-    expect(document.activeElement).toBe(input.element)
-    await input.setValue('docs')
-    expect(b.wrapper.findAll('tbody tr')).toHaveLength(1)
-    await input.setValue('')
-    await b.wrapper.get('[data-testid=add-task]').trigger('click')
-    expect(b.wrapper.findAll('tbody tr')).toHaveLength(8)
-    expect(b.wrapper.get('[data-testid=task-summary]').text()).toContain('8 个任务')
-    await b.done()
-  })
-
-  it('告警态：横幅、出错行、检查器带告警标记，导航角标 !；按钮仍可点击', async () => {
+  it('告警态：warn 横幅出现，页面区无遮罩，导航仍可点击', async () => {
     const b = await boot()
     b.sock.emit(hello())
-    await flushPromises()
     b.sock.emit(alertEvent(true, 'staging-a 被环境拒绝'))
     await flushPromises()
     const w = b.wrapper
     expect(w.get('[data-testid=alert-banner]').text()).toContain('staging-a 被环境拒绝')
-    const row = w.get('[data-testid=task-row-t1]')
-    expect(row.attributes('data-alert')).toBe('true')
-    expect(row.text()).toContain('失败')
-    expect(row.text()).toContain('FAILED')
-    expect(row.findAll('.seg').map((s) => s.attributes('data-state'))).toContain('fail')
-    // 其他行不受影响
-    expect(w.findAll('tbody tr[data-alert=true]')).toHaveLength(1)
-    expect(w.get('[data-testid=task-inspector]').attributes('data-alert')).toBe('true')
-    expect(w.get('[data-testid=task-inspector]').text()).toContain('HALT')
-    expect(w.get('[data-testid=nav-alert-badge]').text()).toBe('!')
-
-    // 工作区仍可交互：按钮、行选择、键盘、⌘K
-    await w.get('[data-testid=add-task]').trigger('click')
-    expect(w.findAll('tbody tr')).toHaveLength(8)
-    await w.get('[data-testid=task-row-t2]').trigger('click')
-    expect(w.get('[data-testid=task-row-t2]').attributes('aria-selected')).toBe('true')
-    expect(w.get('[data-testid=task-inspector]').attributes('data-alert')).toBeUndefined()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-    expect(document.activeElement).toBe(w.get('input[type=search]').element)
-
+    expect(w.get('.conn').attributes('data-alert')).toBe('true')
+    await w.get('nav a[href="/ai"]').trigger('click')
+    await vi.waitFor(() => expect(b.router.currentRoute.value.path).toBe('/ai'))
     b.sock.emit(alertEvent(false))
     await flushPromises()
-    expect(w.find('tbody tr[data-alert=true]').exists()).toBe(false)
     expect(w.find('[data-testid=alert-banner]').exists()).toBe(false)
     await b.done()
   })
@@ -243,7 +166,8 @@ describe('AI 会话页', () => {
     expect(w.findAll('[data-testid^=session-]')).toHaveLength(6)
     expect(w.get('[data-testid=approval-bar]').text()).toContain('pnpm vitest run')
     const insp = w.get('[data-testid=ai-inspector]')
-    expect(insp.text()).toContain('Context')
+    expect(insp.text()).toContain('上下文用量')
+    expect(insp.text()).toContain('已允许命令')
     expect(insp.text()).toContain('工具调用统计')
     expect(insp.find('[role=meter]').exists()).toBe(true)
     await b.done()

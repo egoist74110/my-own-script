@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ApiError, errorText } from './api'
-import AppButton from '@/components/AppButton.vue'
+import Banner from '@/components/Banner.vue'
+import Button from '@/components/Button.vue'
 
 /** 固定文案的错误提示；no_credential 给出跳设置的入口，可选“重试”。 */
 const props = defineProps<{ error: unknown; retry?: boolean }>()
@@ -13,31 +14,26 @@ const noCredential = computed(
 </script>
 
 <template>
-  <div class="wi-error" role="alert" data-testid="wi-error">
+  <Banner kind="error" role="alert" data-testid="wi-error" class="wi-error">
     <span>{{ text }}</span>
-    <RouterLink v-if="noCredential" to="/settings" class="wi-link">前往设置</RouterLink>
-    <AppButton v-if="retry" variant="ghost" @click="$emit('retry')">重试</AppButton>
-    <slot />
-  </div>
+    <template #actions>
+      <RouterLink v-if="noCredential" to="/settings" class="wi-link">前往设置</RouterLink>
+      <Button v-if="retry" @click="$emit('retry')">重试</Button>
+      <slot />
+    </template>
+  </Banner>
 </template>
 
 <style scoped>
 .wi-error {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  background: rgba(255, 140, 40, 0.14);
-  box-shadow: inset 3px 0 0 var(--warn);
+  margin: 8px 12px;
 }
 .wi-link {
-  color: var(--ink);
-  font-weight: 600;
-  text-decoration: underline;
-  min-height: var(--target-min);
   display: inline-flex;
   align-items: center;
+  min-height: var(--target-min);
+  color: var(--bn-error-title);
+  font-weight: 600;
+  text-decoration: underline;
 }
 </style>

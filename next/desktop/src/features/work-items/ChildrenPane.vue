@@ -44,7 +44,7 @@ const q = useQuery({
             :data-testid="`child-${c.id}`"
             @click="$emit('select', c.id)"
           >
-            <span class="ox">#{{ c.id }}</span>
+            <span class="mono id">#{{ c.id }}</span>
             <span class="tt">{{ c.title }}</span>
             <span class="wi-muted"
               >{{ c.type ?? '' }} · {{ c.state ?? '' }} · {{ c.assigned_to ?? '未指派' }}</span
@@ -65,16 +65,21 @@ const q = useQuery({
   gap: 8px;
   width: 100%;
   min-height: var(--target-min);
-  padding: 4px 10px;
+  padding: 6px 10px;
   border: 0;
-  background: rgba(20, 22, 26, 0.04);
+  border-radius: var(--r-row);
+  background: var(--bg-inspector);
   font: inherit;
   text-align: left;
   color: inherit;
   cursor: pointer;
 }
 .child:hover {
-  background: rgba(20, 22, 26, 0.09);
+  background: var(--hover);
+}
+.id {
+  font-size: var(--text-sub);
+  color: var(--mute);
 }
 .tt {
   font-weight: 600;

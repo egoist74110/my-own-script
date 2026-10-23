@@ -133,16 +133,16 @@ function onLink(ev: MouseEvent) {
   display: inline-block;
   padding: 2px 8px;
   font-size: 11.5px;
-  color: var(--mute);
-  background: rgba(20, 22, 26, 0.06);
-  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--mute-tint);
+  background: var(--ctl);
+  border-radius: 4px;
 }
 .safe-html :deep(.media-ph[hidden]),
 .safe-html :deep(img[hidden]) {
   display: none;
 }
 .safe-html :deep(a) {
-  color: var(--ink);
+  color: var(--link);
   text-decoration: underline;
 }
 .safe-html :deep(table) {
@@ -157,7 +157,10 @@ function onLink(ev: MouseEvent) {
 .safe-html :deep(pre) {
   overflow: auto;
   padding: 8px 10px;
-  background: rgba(20, 22, 26, 0.06);
+  border-radius: var(--r-ctl);
+  background: var(--ctl);
+  font-family: var(--font-mono);
+  font-size: var(--text-sub);
 }
 .safe-html :deep(blockquote) {
   margin: 0;

@@ -2,14 +2,19 @@
 import { useQuery } from '@tanstack/vue-query'
 import { RefreshCw } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import AppTabs from '@/components/AppTabs.vue'
+import { FileText } from 'lucide-vue-next'
+import Button from '@/components/Button.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import Inspector from '@/components/Inspector.vue'
+import InspectorToggle from '@/components/InspectorToggle.vue'
+import ListRow from '@/components/ListRow.vue'
+import SearchField from '@/components/SearchField.vue'
+import SegmentedControl from '@/components/SegmentedControl.vue'
+import Skeleton from '@/components/Skeleton.vue'
+import Tag from '@/components/Tag.vue'
+import ToolbarButton from '@/components/ToolbarButton.vue'
+import { openExternal } from '@/components/open-external'
 import { tabTriggerId } from '@/components/tabs'
-import BlockTag from '@/components/BlockTag.vue'
-import GlassPanel from '@/components/GlassPanel.vue'
-import IconButton from '@/components/IconButton.vue'
-import InspectorPanel from '@/components/InspectorPanel.vue'
-import SearchBox from '@/components/SearchBox.vue'
 import ErrorNotice from './ErrorNotice.vue'
 import WorkItemDetail from './WorkItemDetail.vue'
 import {
@@ -20,9 +25,10 @@ import {
   badShape,
   unwrap,
   type AdoResponse,
+  type WorkItemDetail as WiDetail,
   type WorkItemSummary,
 } from './api'
-import { formatDate } from './format'
+import { formatDate, kindColor } from './format'
 import { QUERY_DEFAULTS, WI_KEY, projectKey, useWiApi } from './queries'
 import { loadSelection, saveSelection } from './selection'
 import './panes.css'
@@ -146,309 +152,425 @@ watch(totalPages, (n) => {
 function refresh() {
   void qc.invalidateQueries({ queryKey: WI_KEY })
 }
+const selectedDetail = ref<WiDetail | null>(null)
+const projectName = computed(
+  () => projects.value.find((p) => p.id === projectId.value)?.project ?? '',
+)
+const subtitle = computed(() =>
+  [projectName.value, list.data.value ? `${column.value} ${items.value.length} 项` : column.value]
+    .filter(Boolean)
+    .join(' · '),
+)
+const inspectorRows = computed(() => {
+  const x = selectedDetail.value
+  if (!x) return []
+  return [
+    ['优先级', x.priority === null || x.priority === undefined ? '—' : `P${x.priority}`],
+    ['指派', x.assigned_to ?? '未指派'],
+    ['看板列', x.board_column ?? '—'],
+    ['严重度', x.severity ?? '—'],
+    ['区域', x.area_path ?? '—'],
+    ['迭代', x.iteration_path ?? '—'],
+  ] as [string, string][]
+})
 const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
 </script>
 
 <template>
-  <GlassPanel class="toolbar">
-    <div class="title">
-      <BlockTag>03</BlockTag>
-      <h1>工单</h1>
-    </div>
-    <label class="sel-wrap">
-      <span class="sr-only">项目</span>
-      <select
-        v-model="projectId"
-        class="sel"
-        data-testid="project-select"
-        :disabled="!projects.length"
-      >
-        <option v-for="p in projects" :key="p.id" :value="p.id">{{ projectLabel(p) }}</option>
-      </select>
-    </label>
-    <AppTabs v-model="column" :items="colTabs" label="看板列" panel-id="wi-list-panel" />
-    <span class="grow"></span>
-    <label class="sel-wrap">
-      <span class="sr-only">指派人</span>
-      <select v-model="assignee" class="sel" data-testid="assignee-select">
-        <option value="">全部指派人</option>
-        <option :value="UNASSIGNED">未指派</option>
-        <option v-for="a in assignees" :key="a" :value="a">{{ a }}</option>
-      </select>
-    </label>
-    <SearchBox v-model="keyword" label="搜索工单" placeholder="标题、#编号" />
-    <IconButton label="刷新" :aria-busy="refreshing" data-testid="refresh" @click="refresh"
-      ><RefreshCw :size="14" aria-hidden="true"
-    /></IconButton>
-  </GlassPanel>
-
-  <div class="cols">
-    <GlassPanel
-      id="wi-list-panel"
-      as="section"
-      role="tabpanel"
-      :aria-labelledby="tabTriggerId('wi-list-panel', column)"
-      :aria-busy="list.isPending.value && projectId !== null"
-      class="list"
-    >
-      <ErrorNotice v-if="ado.error.value" :error="ado.error.value" retry @retry="ado.refetch()" />
-      <div
-        v-else-if="ado.isSuccess.value && !projects.length"
-        class="empty-state"
-        data-testid="no-projects"
-      >
-        <p>还没有配置 ADO 项目。</p>
-        <RouterLink to="/settings" class="wi-link">前往设置</RouterLink>
+  <div class="wi">
+    <section aria-label="工单列表" class="listcol">
+      <header class="topbar" data-tauri-drag-region>
+        <div class="ttl">
+          <h1>工单</h1>
+          <span class="sub">{{ subtitle }}</span>
+        </div>
+        <span class="grow"></span>
+        <ToolbarButton label="刷新" :aria-busy="refreshing" data-testid="refresh" @click="refresh"
+          ><RefreshCw :size="16" aria-hidden="true"
+        /></ToolbarButton>
+      </header>
+      <div class="filters">
+        <SearchField v-model="keyword" label="搜索工单" placeholder="标题、#编号" />
+        <SegmentedControl
+          v-model="column"
+          :items="colTabs"
+          label="看板列"
+          panel-id="wi-list-panel"
+          fill
+        />
       </div>
-      <ErrorNotice
-        v-else-if="list.error.value"
-        :error="list.error.value"
-        retry
-        @retry="list.refetch()"
-      />
-      <template v-else>
-        <p v-if="list.data.value?.truncated" class="note" data-testid="truncated">
-          只显示前 500 条
-        </p>
-        <p v-if="list.data.value?.omitted" class="note" data-testid="omitted">
-          有 {{ list.data.value.omitted }} 条无法读取，已跳过
-        </p>
-        <ul>
-          <li v-for="w in rows" :key="w.id">
-            <button
-              type="button"
-              class="row"
-              :aria-current="w.id === selectedId ? 'true' : undefined"
-              :data-selected="w.id === selectedId"
-              :data-testid="`wi-row-${w.id}`"
-              @click="selectedId = w.id"
-            >
-              <span class="kind" :data-type="w.type ?? ''" aria-hidden="true"></span>
-              <span class="ox id">#{{ w.id }}</span>
-              <span class="t">
-                <span class="tt">{{ w.title }}</span>
-                <span class="sub"
-                  >{{ w.type ?? '—' }} · {{ w.assigned_to ?? '未指派' }} ·
-                  {{ w.state ?? '—' }}</span
-                >
-              </span>
-              <span class="mono meta"
-                >{{ w.priority === null || w.priority === undefined ? '' : `P${w.priority}`
-                }}<br />{{ formatDate(w.changed_date) }}</span
+
+      <div
+        id="wi-list-panel"
+        role="tabpanel"
+        :aria-labelledby="tabTriggerId('wi-list-panel', column)"
+        :aria-busy="list.isPending.value && projectId !== null"
+        class="listbody"
+      >
+        <ErrorNotice v-if="ado.error.value" :error="ado.error.value" retry @retry="ado.refetch()" />
+        <EmptyState
+          v-else-if="ado.isSuccess.value && !projects.length"
+          :icon="FileText"
+          title="没有 ADO 项目"
+          description="还没有配置 ADO 项目。在设置中添加组织地址和项目后，工单会显示在这里。"
+          data-testid="no-projects"
+        >
+          <template #actions>
+            <RouterLink to="/settings" class="link-btn">前往设置</RouterLink>
+          </template>
+        </EmptyState>
+        <ErrorNotice
+          v-else-if="list.error.value"
+          :error="list.error.value"
+          retry
+          @retry="list.refetch()"
+        />
+        <template v-else>
+          <p v-if="list.data.value?.truncated" class="note" data-testid="truncated">
+            只显示前 500 条
+          </p>
+          <p v-if="list.data.value?.omitted" class="note" data-testid="omitted">
+            有 {{ list.data.value.omitted }} 条无法读取，已跳过
+          </p>
+          <ul class="b-list rows">
+            <li v-for="w in rows" :key="w.id">
+              <ListRow
+                :title="w.title"
+                :meta="formatDate(w.changed_date)"
+                :dot="kindColor(w.type)"
+                :selected="w.id === selectedId"
+                :data-testid="`wi-row-${w.id}`"
+                @click="selectedId = w.id"
               >
-            </button>
-          </li>
-          <li v-if="list.isPending.value && projectId" class="empty">读取工单中…</li>
-          <li v-else-if="rows.length === 0" class="empty">没有匹配的工单</li>
-        </ul>
-        <nav v-if="filtered.length > 0" class="pager" aria-label="分页">
-          <label class="sel-wrap">
-            <span class="sr-only">每页条数</span>
-            <select v-model.number="pageSize" class="sel" data-testid="page-size">
-              <option v-for="n in PAGE_SIZES" :key="n" :value="n">{{ n }} 条/页</option>
-            </select>
-          </label>
-          <AppButton variant="ghost" :disabled="page <= 1" data-testid="prev-page" @click="page--"
-            >上一页</AppButton
-          >
-          <span class="mono" data-testid="page-info"
-            >{{ page }} / {{ totalPages }} · 共 {{ filtered.length }} 条</span
-          >
-          <AppButton
-            variant="ghost"
-            :disabled="page >= totalPages"
-            data-testid="next-page"
-            @click="page++"
-            >下一页</AppButton
-          >
-        </nav>
-      </template>
-    </GlassPanel>
+                <span class="mono">#{{ w.id }}</span>
+                <span>{{ w.type ?? '—' }}</span>
+                <span aria-hidden="true">·</span>
+                <span>{{ w.assigned_to ?? '未指派' }}</span>
+                <span aria-hidden="true">·</span>
+                <span>{{ w.state ?? '—' }}</span>
+                <span v-if="w.priority !== null && w.priority !== undefined" class="pri"
+                  >P{{ w.priority }}</span
+                >
+              </ListRow>
+            </li>
+          </ul>
+          <template v-if="list.isPending.value && projectId">
+            <Skeleton />
+            <p class="sr-only" role="status">读取工单中…</p>
+          </template>
+          <p v-else-if="rows.length === 0" class="empty">没有匹配的工单</p>
+        </template>
+      </div>
 
-    <WorkItemDetail
-      v-if="selectedId !== null && projectId"
-      :id="selectedId"
-      :key="`${projectId}:${selectedId}`"
-      :project-id="projectId"
-      @select="selectedId = $event"
-    />
-    <GlassPanel v-else as="section" aria-label="工单详情" class="detail-empty">
-      <p class="wi-muted">在左侧选择一个工单查看详情</p>
-    </GlassPanel>
-  </div>
+      <nav v-if="filtered.length > 0" class="pager" aria-label="分页">
+        <label class="sel-wrap">
+          <span class="sr-only">每页条数</span>
+          <select v-model.number="pageSize" class="sel" data-testid="page-size">
+            <option v-for="n in PAGE_SIZES" :key="n" :value="n">{{ n }} 条/页</option>
+          </select>
+        </label>
+        <Button :disabled="page <= 1" data-testid="prev-page" @click="page--">上一页</Button>
+        <span class="mono info" data-testid="page-info"
+          >{{ page }} / {{ totalPages }} · 共 {{ filtered.length }} 条</span
+        >
+        <Button :disabled="page >= totalPages" data-testid="next-page" @click="page++"
+          >下一页</Button
+        >
+      </nav>
+    </section>
 
-  <InspectorPanel label="AI 分析">
-    <div class="ai" data-testid="wi-ai" aria-disabled="true">
-      <header class="a-head"><BlockTag>S5</BlockTag><strong>AI 分析</strong></header>
-      <p class="note">AI 分析（MCP 分析、复制提示词、AI 会话）将在 S5 提供，当前不可用。</p>
-      <fieldset disabled class="ai-actions">
-        <legend class="sr-only">AI 分析操作（S5 提供）</legend>
-        <AppButton variant="ghost" disabled>复制提示词</AppButton>
-        <AppButton disabled>开始分析</AppButton>
-      </fieldset>
+    <div class="detailcol">
+      <header class="topbar" data-tauri-drag-region>
+        <label class="sel-wrap">
+          <span class="sr-only">项目</span>
+          <select
+            v-model="projectId"
+            class="sel strong"
+            data-testid="project-select"
+            :disabled="!projects.length"
+          >
+            <option v-for="p in projects" :key="p.id" :value="p.id">{{ projectLabel(p) }}</option>
+          </select>
+        </label>
+        <label class="sel-wrap">
+          <span class="sr-only">指派人</span>
+          <select v-model="assignee" class="sel" data-testid="assignee-select">
+            <option value="">全部指派人</option>
+            <option :value="UNASSIGNED">未指派</option>
+            <option v-for="a in assignees" :key="a" :value="a">{{ a }}</option>
+          </select>
+        </label>
+        <span class="grow"></span>
+        <Button
+          v-if="selectedDetail"
+          variant="plain"
+          data-testid="open-web"
+          @click="openExternal(selectedDetail.web_url)"
+          >在浏览器打开</Button
+        >
+        <InspectorToggle />
+      </header>
+      <section aria-label="工单详情" class="detailbody">
+        <WorkItemDetail
+          v-if="selectedId !== null && projectId"
+          :id="selectedId"
+          :key="`${projectId}:${selectedId}`"
+          :project-id="projectId"
+          @select="selectedId = $event"
+          @loaded="selectedDetail = $event"
+        />
+        <p v-else class="none">在左侧选择一个工单查看详情</p>
+      </section>
     </div>
-  </InspectorPanel>
+
+    <Inspector label="工单检查器">
+      <div class="insp">
+        <template v-if="selectedDetail">
+          <dl class="props" data-testid="wi-props">
+            <dt>状态</dt>
+            <dd>
+              <span class="st"
+                ><span
+                  class="kd"
+                  :style="{ background: kindColor(selectedDetail.type) }"
+                  aria-hidden="true"
+                ></span
+                >{{ selectedDetail.state ?? '—' }}</span
+              >
+            </dd>
+            <template v-for="[k, v] in inspectorRows" :key="k">
+              <dt>{{ k }}</dt>
+              <dd>{{ v }}</dd>
+            </template>
+            <template v-if="selectedDetail.tags?.length">
+              <dt>标签</dt>
+              <dd>
+                <ul class="tags" aria-label="标签">
+                  <li v-for="t in selectedDetail.tags ?? []" :key="t">
+                    <Tag>{{ t }}</Tag>
+                  </li>
+                </ul>
+              </dd>
+            </template>
+          </dl>
+        </template>
+        <div class="ai" data-testid="wi-ai" aria-disabled="true">
+          <strong>AI 分析</strong>
+          <p class="note">
+            即将推出：AI 分析（MCP 分析、复制提示词、AI 会话）将在 S5 提供，当前不可用。
+          </p>
+          <fieldset disabled class="ai-actions">
+            <legend class="sr-only">AI 分析操作（S5 提供）</legend>
+            <Button disabled>复制提示词</Button>
+            <Button variant="primary" disabled>开始分析</Button>
+          </fieldset>
+        </div>
+      </div>
+    </Inspector>
+  </div>
 </template>
 
 <style scoped>
-.toolbar {
+.wi {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px 8px 14px;
 }
-.title {
+.topbar {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  height: var(--topbar-h);
+  padding: 0 12px 0 16px;
+  box-sizing: border-box;
+}
+.detailcol .topbar {
+  border-bottom: 1px solid var(--line);
+  padding-left: 12px;
+}
+.ttl {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
 }
 h1 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-page);
   font-weight: 700;
+}
+.sub {
+  font-size: 11.5px;
+  color: var(--mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .grow {
   flex: 1;
+}
+.listcol {
+  flex: 0 0 var(--list-w);
+  width: var(--list-w);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-list);
+  border-right: 1px solid var(--line);
+}
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+.listbody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.rows {
+  flex: none;
+}
+.note {
+  margin: 0;
+  padding: 6px 16px;
+  font-size: var(--text-sub);
+  color: var(--mute);
+}
+.empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--mute);
+}
+.pri {
+  margin-left: auto;
+  font-weight: 600;
+}
+.pager {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sub);
+  color: var(--mute);
+}
+.info {
+  flex: 1;
+  text-align: center;
 }
 .sel-wrap {
   display: inline-flex;
 }
 .sel {
-  min-height: var(--target-min);
+  min-height: var(--ctl-h);
   max-width: 240px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.75);
+  padding: 0 6px;
   border: 0;
-  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: var(--r-ctl);
+  background: transparent;
   font: inherit;
-  font-size: 12.5px;
+  color: var(--mute);
+}
+.sel.strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.pager .sel {
+  background: var(--ctl);
   color: var(--ink);
 }
-.cols {
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+  padding: 0 12px;
+  border-radius: var(--r-ctl);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.detailcol {
   flex: 1;
-  overflow: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  min-height: 0;
-}
-.list {
-  flex: 1 1 380px;
-  max-width: 520px;
   min-width: 0;
-  padding: 4px 0;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
-ul {
+.detailbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.none {
+  flex: 1;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+  font-size: var(--text-page);
+}
+.insp {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 16px;
+  font-size: var(--text-body);
+}
+.props {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 9px 10px;
+}
+.props dt {
+  color: var(--mute);
+}
+.props dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.st {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.kd {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.tags {
   list-style: none;
   margin: 0;
   padding: 0;
-}
-.row {
-  display: grid;
-  grid-template-columns: 14px 62px 1fr auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  padding: 0 14px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.row:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-.row[data-selected='true'] {
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: inset 3px 0 0 var(--acc);
-  font-weight: 700;
-}
-.kind {
-  width: 8px;
-  height: 8px;
-  transform: rotate(45deg);
-  background: #7a8090;
-}
-.kind[data-type='Bug'] {
-  background: var(--warn);
-}
-.id {
-  font-size: 12px;
-  font-weight: 700;
-}
-.t {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.tt {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sub,
-.note {
-  font-size: 11px;
-  color: var(--mute);
-  font-weight: 400;
-}
-.meta {
-  font-size: 11px;
-  color: var(--mute);
-  text-align: right;
-  line-height: 1.4;
-}
-.note {
-  margin: 0;
-  padding: 8px 14px;
-}
-.empty {
-  padding: 16px;
-  color: var(--mute);
-}
-.pager {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  font-size: 12px;
-}
-.empty-state,
-.detail-empty {
-  padding: 18px;
-}
-.detail-empty {
-  flex: 999 1 420px;
-  min-height: 120px;
-}
-.wi-link {
-  color: var(--ink);
-  font-weight: 600;
-  text-decoration: underline;
+  gap: 4px;
 }
 .ai {
   display: flex;
   flex-direction: column;
-  opacity: 0.7;
-}
-.a-head {
-  padding: 14px 16px 10px;
-  display: flex;
-  align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--line);
+  opacity: 0.75;
+}
+.ai .note {
+  padding: 0;
 }
 .ai-actions {
   border: 0;
   margin: 0;
-  padding: 0 16px 16px;
+  padding: 0;
   display: flex;
   gap: 6px;
 }

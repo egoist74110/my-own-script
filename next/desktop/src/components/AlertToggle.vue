@@ -35,7 +35,7 @@ async function request(next: boolean) {
 
 <template>
   <span class="toggle" data-testid="alert-toggle">
-    <label for="alert-demo" class="lbl">告警演示</label>
+    <label for="alert-demo" class="lbl-text">告警演示</label>
     <Switch
       id="alert-demo"
       aria-label="告警演示开关"
@@ -51,10 +51,11 @@ async function request(next: boolean) {
 <style scoped>
 .toggle {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
-/* 视觉尺寸不变（20px），用伪元素把点击目标扩到 --target-min（32px） */
+/* 视觉尺寸 22px，用伪元素把点击目标扩到 --target-min（28px） */
 .hit {
   position: relative;
 }
@@ -63,14 +64,13 @@ async function request(next: boolean) {
   position: absolute;
   inset: calc((var(--target-min) - 100%) / -2) 0;
 }
-.lbl {
+.lbl-text {
   display: inline-flex;
   align-items: center;
   min-height: var(--target-min);
 }
 .err {
-  font-size: 10.5px;
-  color: var(--warn-ink);
-  font-family: var(--font-mono);
+  font-size: var(--text-sub);
+  color: var(--danger);
 }
 </style>

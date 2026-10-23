@@ -55,7 +55,7 @@ const q = useQuery({
 
 <style scoped>
 .f {
-  font-size: 12.5px;
+  font-size: var(--text-body);
   overflow-wrap: anywhere;
 }
 </style>

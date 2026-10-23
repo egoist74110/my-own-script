@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import InspectorPanel from '@/components/InspectorPanel.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
 import { useUiStore } from '@/stores/ui'
 import LibraryPanel from './LibraryPanel.vue'
 import ProjectPanel from './ProjectPanel.vue'
@@ -60,15 +59,16 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
     <section class="st-section" aria-label="Libraries">
       <div class="st-head">
         <h2>Libraries</h2>
-        <BlockTag>{{ libraries.length }}</BlockTag>
+        <Tag>{{ libraries.length }}</Tag>
         <span class="st-grow"></span>
-        <AppButton
+        <Button
+          variant="primary"
           data-testid="library-add"
           :disabled="ctx.busy.value || !ctx.writable.value"
           @click="pick({ kind: 'new-library' })"
         >
           ＋ 新建 library
-        </AppButton>
+        </Button>
       </div>
       <table class="st-tbl" data-testid="library-table">
         <thead>
@@ -93,12 +93,12 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
             <td>{{ l.name }}</td>
             <td class="st-mono">
               {{ l.base_url }}
-              <BlockTag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</BlockTag>
+              <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
             </td>
             <td :class="{ 'st-warn': l.credential.state !== 'present' }">
               {{ PAT[l.credential.state] }}
             </td>
-            <td><BlockTag v-if="active.lib === l.id" tone="acc">当前</BlockTag></td>
+            <td><Tag v-if="active.lib === l.id" tone="ok">当前</Tag></td>
           </tr>
           <tr v-if="!libraries.length">
             <td colspan="4" class="st-note">
@@ -112,15 +112,16 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
     <section class="st-section" aria-label="Projects">
       <div class="st-head">
         <h2>Projects</h2>
-        <BlockTag>{{ projects.length }}</BlockTag>
+        <Tag>{{ projects.length }}</Tag>
         <span class="st-grow"></span>
-        <AppButton
+        <Button
+          variant="primary"
           data-testid="project-add"
           :disabled="ctx.busy.value || !ctx.writable.value || !libraries.length"
           @click="pick({ kind: 'new-project' })"
         >
           ＋ 新建 project
-        </AppButton>
+        </Button>
       </div>
       <table class="st-tbl" data-testid="project-table">
         <thead>
@@ -145,7 +146,7 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
             <td>{{ libName(p.library_id) }}</td>
             <td class="st-mono">{{ p.collection }}</td>
             <td class="st-mono">{{ p.project }}</td>
-            <td><BlockTag v-if="active.proj === p.id" tone="acc">当前</BlockTag></td>
+            <td><Tag v-if="active.proj === p.id" tone="ok">当前</Tag></td>
           </tr>
           <tr v-if="!projects.length">
             <td colspan="4" class="st-note">还没有 project。</td>
@@ -154,7 +155,7 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
       </table>
     </section>
 
-    <InspectorPanel label="ADO 详情">
+    <section class="st-section st-editor" aria-label="ADO 详情">
       <LibraryPanel
         v-if="sel?.kind === 'new-library' || selectedLibrary"
         :library="selectedLibrary"
@@ -174,6 +175,6 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
           选择一个 library 或 project 查看详情；PAT 在 library 详情里录入或替换。
         </p>
       </div>
-    </InspectorPanel>
+    </section>
   </div>
 </template>

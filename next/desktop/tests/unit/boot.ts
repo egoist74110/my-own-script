@@ -81,3 +81,12 @@ async function mountApp(opts: BootOpts) {
     },
   }
 }
+
+/** 打开侧栏底部的连接状态弹出层（告警演示开关、pid、心跳延迟都在里面）。 */
+export async function openConnection(b: {
+  wrapper: { get: (s: string) => { trigger: (e: string) => Promise<unknown> } }
+}) {
+  if (document.querySelector('[data-testid=connection-popover]')) return
+  await b.wrapper.get('[data-testid=connection-trigger]').trigger('click')
+  await flushPromises()
+}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, onBeforeUnmount, ref, watch } from 'vue'
-import AppButton from '@/components/AppButton.vue'
+import Button from '@/components/Button.vue'
 import { mediaCacheKey, mediaFailureText } from '@/components/media'
 import type { Attachment } from './api'
 import { formatBytes } from './format'
@@ -61,7 +61,7 @@ async function download(a: Attachment) {
             }}</span>
           </template>
           <!-- 凡有 media_id 都可下载（图片附件另有缩略图；SVG/预览失败的也能下） -->
-          <AppButton variant="ghost" @click="download(a)">下载 {{ a.name }}</AppButton>
+          <Button @click="download(a)">下载 {{ a.name }}</Button>
           <span v-if="dlError[a.media_id]" class="media-ph" role="alert">{{
             dlError[a.media_id]
           }}</span>
@@ -80,9 +80,9 @@ async function download(a: Attachment) {
 .media-ph {
   align-self: flex-start;
   padding: 2px 8px;
-  font-size: 11.5px;
-  color: var(--mute);
-  background: rgba(20, 22, 26, 0.06);
-  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: 4px;
+  font-size: var(--text-sub);
+  color: var(--mute-tint);
+  background: var(--ctl);
 }
 </style>

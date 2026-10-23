@@ -1,20 +1,34 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const root = process.cwd()
-const tokensCss = readFileSync(join(root, 'src/design/tokens.css'), 'utf8')
-const uiCss = readFileSync(join(root, 'src/design/ui.css'), 'utf8')
-const appCss = readFileSync(join(root, 'src/design/app.css'), 'utf8')
+const read = (p: string) => readFileSync(join(root, p), 'utf8')
+const tokensCss = read('src/design/tokens.css')
+const uiCss = read('src/design/ui.css')
+const appCss = read('src/design/app.css')
 
-function token(name: string): string {
-  const m = new RegExp(`--${name}:\\s*([^;]+);`).exec(tokensCss)
-  if (!m) throw new Error(`token --${name} not found`)
-  return m[1]!.replace(/\s+/g, ' ').trim()
+// tokens.css = 浅色 :root 块 + `@media (prefers-color-scheme: dark)` 里的 :root 块
+const darkStart = tokensCss.indexOf('@media (prefers-color-scheme: dark)')
+const lightCss = tokensCss.slice(0, darkStart)
+const darkCss = tokensCss.slice(darkStart)
+
+function parse(css: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const m of css.matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)) {
+    out[m[1]!] = m[2]!.replace(/\s+/g, ' ').trim()
+  }
+  return out
 }
+const light = parse(lightCss)
+// 深色只覆盖一部分令牌，其余沿用浅色
+const dark = { ...light, ...parse(darkCss) }
 
 type RGB = [number, number, number]
-const hex = (h: string): RGB => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as RGB
+const hex = (h: string): RGB => {
+  expect(h, `不是 6 位十六进制色：${h}`).toMatch(/^#[0-9a-f]{6}$/i)
+  return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as RGB
+}
 function lum([r, g, b]: RGB): number {
   const c = [r, g, b].map((v) => {
     const x = v / 255
@@ -22,99 +36,271 @@ function lum([r, g, b]: RGB): number {
   })
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!
 }
-function contrast(a: RGB, b: RGB): number {
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number]
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [lum(hex(a)), lum(hex(b))].sort((x, y) => y - x) as [number, number]
   return (hi + 0.05) / (lo + 0.05)
 }
-/** 白色 alpha 叠在底色上（玻璃面板的不透明近似） */
-const overWhite = (alpha: number, base: RGB): RGB =>
-  base.map((v) => Math.round(255 * alpha + v * (1 - alpha))) as RGB
+const ok = (set: Record<string, string>, fg: string, bg: string, min = 4.5) =>
+  expect(
+    contrast(set[fg]!, set[bg]!),
+    `${fg} on ${bg} (${set[fg]} / ${set[bg]})`,
+  ).toBeGreaterThanOrEqual(min)
 
-const pearls = ['pearl-a', 'pearl-b', 'pearl-c'].map((n) => hex(token(n)))
-// 玻璃最透明处（.52）叠在三种珍珠底上，取最不利者
-const glass = pearls.map((p) => overWhite(0.52, p))
-
-describe('设计令牌（方向 E）', () => {
-  it('关键令牌值', () => {
-    expect(token('ink')).toBe('#14161a')
-    expect(token('mute')).toBe('#545a68')
-    expect(token('line')).toBe('rgba(20, 22, 26, 0.09)')
-    expect(token('acc')).toBe('#c6f432')
-    expect(token('warn')).toBe('#ff6a00')
-    expect(token('pearl-a')).toBe('#f4f5f8')
-    expect(token('pearl-b')).toBe('#eceef3')
-    expect(token('pearl-c')).toBe('#f2efea')
-    expect(token('page-bg')).toBe('#eef0f4')
+describe('设计令牌（方向 B）：浅色', () => {
+  it('面、分隔线、文字、控件、强调的关键值', () => {
+    const want: Record<string, string> = {
+      'bg-window': '#ffffff',
+      'bg-sidebar': '#eeedf1',
+      'bg-inspector': '#f7f7f9',
+      'bg-settings': '#f5f5f7',
+      line: '#e5e5ea',
+      ink: '#1d1d1f',
+      mute: '#6e6e73',
+      disabled: '#a1a1a6',
+      ctl: '#ededf0',
+      hover: '#f2f2f5',
+      'sel-blur': '#e3e2e8',
+      accent: '#0a63d6',
+      'on-accent': '#ffffff',
+      'accent-ink': '#0a55b8',
+      link: '#0058d0',
+    }
+    for (const [k, v] of Object.entries(want)) expect(light[k], k).toBe(v)
   })
-
-  it('字体令牌：Oxanium / Inter / JetBrains Mono，Inter 回退中文字体', () => {
-    expect(token('font-display')).toContain("'Oxanium'")
-    expect(token('font-sans')).toMatch(/^'Inter', 'PingFang SC', 'Hiragino Sans GB', system-ui/)
-    expect(token('font-mono')).toContain("'JetBrains Mono'")
+  it('运行状态八色（底 / 文字 / 圆点）', () => {
+    const want: Record<string, [string, string, string]> = {
+      queued: ['#f0f0f3', '#3a3a3f', '#8e8e93'],
+      running: ['#e6f0fd', '#0a4fad', '#0a63d6'],
+      stopping: ['#fff0e0', '#8a3f00', '#e07b00'],
+      success: ['#e5f5ea', '#16692f', '#1f9d45'],
+      failed: ['#fdecea', '#a1211a', '#d93025'],
+      cancelled: ['#f0f0f3', '#4a4a4f', '#8e8e93'],
+      verify: ['#fff3dc', '#7a4100', '#d98a00'],
+      disabled: ['#f0f0f3', '#65656a', '#c7c7cc'], // 文字由合同的 #6e6e73 加深（后者仅 4.46:1）,
+    }
+    for (const [k, [bg, fg, dot]] of Object.entries(want)) {
+      expect([light[`st-${k}-bg`], light[`st-${k}-fg`], light[`st-${k}-dot`]], k).toEqual([
+        bg,
+        fg,
+        dot,
+      ])
+    }
   })
-
-  it('密度与几何：正文 13px、行高 46px、目标 >= 32px、微型字 >= 10px、切角 12/6、斜切 5', () => {
-    expect(token('text-body')).toBe('13px')
-    expect(token('row-h')).toBe('46px')
-    expect(token('target-min')).toBe('32px')
-    expect(token('text-micro')).toBe('10px')
-    expect(token('cut-lg')).toBe('12px')
-    expect(token('cut-sm')).toBe('6px')
-    expect(token('skew')).toBe('5px')
-    expect(token('sidebar-w')).toBe('208px')
-    expect(uiCss).toMatch(/\.cut \{\s*clip-path: polygon\(\s*0 0,\s*calc\(100% - 12px\) 0/)
-    expect(uiCss).toMatch(/\.cut-xs \{\s*clip-path: polygon\(0 0, calc\(100% - 6px\) 0/)
-    expect(uiCss).toMatch(/\.skew \{\s*clip-path: polygon\(5px 0/)
+  it('提示横幅底与描边（信息 / 警告 / 错误）', () => {
+    expect(light['bn-info-bg']).toBe('#f2f6fd')
+    expect(light['bn-warn-bg']).toBe('#fff6e5')
+    expect(light['bn-error-bg']).toBe('#fdecea')
+    for (const k of ['info', 'warn', 'error']) {
+      expect(light[`bn-${k}-line`], k).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(light[`bn-${k}-fg`], k).toMatch(/^#[0-9a-f]{6}$/i)
+    }
   })
-
-  it('body 显式背景色与珍珠渐变', () => {
-    expect(appCss).toMatch(/background-color:\s*#eef0f4/)
-    expect(appCss).toContain('#f4f5f8 0%, #eceef3 60%, #f2efea 100%')
+  it('字体、字号、圆角、间距、尺寸', () => {
+    expect(light['font-sans']).toBe(
+      "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif",
+    )
+    expect(light['font-mono']).toBe("'SF Mono', ui-monospace, Menlo, monospace")
+    expect([light['text-title'], light['text-page'], light['text-long']]).toEqual([
+      '22px',
+      '15px',
+      '14px',
+    ])
+    expect([light['text-body'], light['text-sub'], light['text-group']]).toEqual([
+      '13px',
+      '12px',
+      '11px',
+    ])
+    expect([light['r-ctl'], light['r-row'], light['r-group'], light['r-window']]).toEqual([
+      '6px',
+      '7px',
+      '10px',
+      '12px',
+    ])
+    expect([
+      light['sp-1'],
+      light['sp-2'],
+      light['sp-3'],
+      light['sp-4'],
+      light['sp-5'],
+      light['sp-6'],
+    ]).toEqual(['4px', '8px', '12px', '16px', '20px', '28px'])
+    expect([light['ctl-h'], light['topbar-h'], light['sidebar-w'], light['inspector-w']]).toEqual([
+      '28px',
+      '52px',
+      '232px',
+      '280px',
+    ])
+    expect(light['target-min']).toBe('28px')
+    const list = parseInt(light['list-w']!)
+    expect(list).toBeGreaterThanOrEqual(320)
+    expect(list).toBeLessThanOrEqual(380)
   })
-
-  it('玻璃面板：blur(28px) saturate(180%)，并为不支持 backdrop-filter 的环境保留不透明回退', () => {
-    expect(uiCss).toContain('blur(28px) saturate(180%)')
-    expect(uiCss).toMatch(/\.glass \{[^}]*background: var\(--glass-solid\)/)
-    expect(uiCss).toMatch(/@supports \(backdrop-filter: blur\(1px\)\)/)
-    expect(token('glass-solid')).toBe('#f8f9fb')
+  it('--ink 在窗口、侧栏、检查器、设置底、控件底、选中未聚焦底上 >= 4.5:1', () => {
+    for (const bg of [
+      'bg-window',
+      'bg-sidebar',
+      'bg-inspector',
+      'bg-settings',
+      'bg-list',
+      'ctl',
+      'sel-blur',
+      'hover',
+      'sidebar-sel',
+    ]) {
+      ok(light, 'ink', bg)
+    }
   })
-
-  it('--denied 与 HUD 样式已删除', () => {
-    expect(tokensCss).not.toContain('--denied')
-    expect(uiCss + appCss).not.toContain('--denied')
-    expect(existsSync(join(root, 'src/design/hud.css'))).toBe(false)
+  it('--mute 在窗口、检查器、设置底上 >= 4.5:1；--mute-tint 在侧栏、控件底、选中未聚焦底上 >= 4.5:1', () => {
+    for (const bg of ['bg-window', 'bg-inspector', 'bg-settings', 'bg-list', 'bg-group', 'hover'])
+      ok(light, 'mute', bg)
+    for (const bg of ['bg-sidebar', 'ctl', 'sel-blur', 'hover']) ok(light, 'mute-tint', bg)
   })
+  it('白字在强调色上、强调文字/链接色在各面上、行选中态 >= 4.5:1', () => {
+    ok(light, 'on-accent', 'accent')
+    ok(light, 'row-sel-fg', 'row-sel-bg')
+    ok(light, 'row-sel-sub', 'row-sel-bg')
+    for (const bg of ['bg-window', 'bg-sidebar', 'bg-inspector', 'bg-settings']) {
+      ok(light, 'accent-ink', bg)
+      ok(light, 'link', bg)
+    }
+    for (const bg of ['bg-window', 'ctl', 'bg-inspector']) ok(light, 'danger', bg)
+  })
+  it('八种状态文字在各自底色上 >= 4.5:1', () => {
+    for (const k of [
+      'queued',
+      'running',
+      'stopping',
+      'success',
+      'failed',
+      'cancelled',
+      'verify',
+      'disabled',
+    ]) {
+      ok(light, `st-${k}-fg`, `st-${k}-bg`)
+    }
+  })
+  it('横幅文字（含错误标题）在横幅底上 >= 4.5:1', () => {
+    for (const k of ['info', 'warn', 'error']) ok(light, `bn-${k}-fg`, `bn-${k}-bg`)
+    ok(light, 'bn-error-title', 'bn-error-bg')
+  })
+})
 
+describe('设计令牌（方向 B）：深色（跟随系统）', () => {
+  it('深色在 @media (prefers-color-scheme: dark) 里，没有手动切换', () => {
+    expect(darkStart).toBeGreaterThan(0)
+    expect(tokensCss).not.toMatch(/data-theme|\.dark\b/)
+  })
+  it('面、文字、控件、强调的关键值', () => {
+    const want: Record<string, string> = {
+      'bg-window': '#121315',
+      'bg-sidebar': '#0e0f11',
+      'bg-list': '#141517',
+      'bg-inspector': '#17181b',
+      line: '#23252a',
+      ctl: '#1f2125',
+      'ctl-selected': '#3a3d44',
+      ink: '#ecedef',
+      mute: '#8b8e98',
+      disabled: '#6f727c',
+      accent: '#c6f432',
+      'on-accent': '#14161a',
+      link: '#d4f56a',
+      'row-sel-bg': '#262a1c',
+    }
+    for (const [k, v] of Object.entries(want)) expect(dark[k], k).toBe(v)
+  })
+  it('--ink / --mute 在窗口、侧栏、列表、检查器、控件底上 >= 4.5:1', () => {
+    for (const bg of [
+      'bg-window',
+      'bg-sidebar',
+      'bg-list',
+      'bg-inspector',
+      'bg-settings',
+      'bg-group',
+      'ctl',
+      'hover',
+      'sel-blur',
+      'sidebar-sel',
+    ]) {
+      ok(dark, 'ink', bg)
+      ok(dark, 'mute', bg)
+      ok(dark, 'mute-tint', bg)
+    }
+  })
+  it('#14161A 在强调绿上 >= 4.5:1；链接色、强调文字在各面上；行选中态', () => {
+    ok(dark, 'on-accent', 'accent')
+    for (const bg of ['bg-window', 'bg-sidebar', 'bg-list', 'bg-inspector']) {
+      ok(dark, 'link', bg)
+      ok(dark, 'accent-ink', bg)
+    }
+    ok(dark, 'row-sel-fg', 'row-sel-bg')
+    ok(dark, 'row-sel-sub', 'row-sel-bg')
+    for (const bg of ['bg-window', 'ctl', 'bg-inspector']) ok(dark, 'danger', bg)
+  })
+  it('绿色不作文字色：强调色不被用作 color', () => {
+    const css = [
+      uiCss,
+      appCss,
+      ...walk(join(root, 'src'))
+        .filter((f) => /\.(vue|css)$/.test(f))
+        .map((f) => readFileSync(f, 'utf8')),
+    ].join('\n')
+    expect(css).not.toMatch(/(^|[^-])color:\s*var\(--accent\)/)
+  })
+  it('八种状态文字在各自底色上 >= 4.5:1', () => {
+    for (const k of [
+      'queued',
+      'running',
+      'stopping',
+      'success',
+      'failed',
+      'cancelled',
+      'verify',
+      'disabled',
+    ]) {
+      ok(dark, `st-${k}-fg`, `st-${k}-bg`)
+    }
+  })
+  it('横幅文字在横幅底上 >= 4.5:1', () => {
+    for (const k of ['info', 'warn', 'error']) ok(dark, `bn-${k}-fg`, `bn-${k}-bg`)
+    ok(dark, 'bn-error-title', 'bn-error-bg')
+  })
+})
+
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((n) => {
+    const p = join(dir, n)
+    return statSync(p).isDirectory() ? walk(p) : [p]
+  })
+}
+
+describe('守卫：不含方向 E 残留', () => {
+  const files = walk(join(root, 'src')).filter((f) => /\.(ts|vue|css|html)$/.test(f))
+  const text = files.map((f) => ({ f, s: readFileSync(f, 'utf8') }))
+  it.each([
+    ['clip-path', /clip-path/],
+    // 字符串拆开写：Tailwind 会扫描 tests/ 里的字面量并据此生成同名工具类，进而污染产物
+    ['backdrop' + '-filter', new RegExp('backdrop' + '-filter')],
+    ['Oxanium', /oxanium/i],
+    ['@fontsource', /@fontsource/],
+    ['--cut-* / --skew', /--cut-|--skew\b/],
+    ['旧 --acc / --warn 令牌', /--acc\b|--warn\b|--warn-ink|--ok-ink/],
+  ])('src 不含 %s', (_n, re) => {
+    expect(text.filter(({ s }) => re.test(s)).map((x) => x.f)).toEqual([])
+  })
+  it('index.html 与 package.json 不含字体依赖', () => {
+    expect(read('index.html')).not.toMatch(/fontsource|fonts\.googleapis/)
+    expect(read('package.json')).not.toMatch(/@fontsource/)
+  })
+  it('不画假窗口按钮（红黄绿圆点色）', () => {
+    expect(text.filter(({ s }) => /#ff5f57|#febc2e|#28c840/i.test(s)).map((x) => x.f)).toEqual([])
+  })
   it('尊重 prefers-reduced-motion：关闭全部动画', () => {
     expect(uiCss).toMatch(/prefers-reduced-motion: reduce\)\s*{[^]*animation: none !important/)
   })
-
-  it('--ink、--mute 在珍珠底与玻璃面板上 >= 4.5:1', () => {
-    for (const name of ['ink', 'mute']) {
-      const c = hex(token(name))
-      for (const bg of [...pearls, ...glass, hex(token('glass-solid')), [255, 255, 255] as RGB]) {
-        expect(contrast(c, bg)).toBeGreaterThanOrEqual(4.5)
-      }
-    }
+  it('body 显式背景色与系统字体令牌', () => {
+    expect(appCss).toMatch(/background-color:\s*var\(--bg-window\)/)
+    expect(appCss).toMatch(/font-family:\s*var\(--font-sans\)/)
   })
-
-  it('墨色在 --acc、--warn 填充上 >= 4.5:1', () => {
-    const ink = hex(token('ink'))
-    expect(contrast(ink, hex(token('acc')))).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(ink, hex(token('warn')))).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('深橙/深绿文字令牌在珍珠底与玻璃上 >= 4.5:1；亮橙本身不足，只能作填充', () => {
-    for (const name of ['warn-ink', 'ok-ink']) {
-      for (const bg of [...pearls, ...glass]) {
-        expect(contrast(hex(token(name)), bg)).toBeGreaterThanOrEqual(4.5)
-      }
-    }
-    expect(contrast(hex(token('warn')), pearls[1]!)).toBeLessThan(4.5)
-  })
-
-  it('强调色不作为文字色：样式里没有 color: var(--acc)（只允许深色底上的点缀）', () => {
-    // 允许出现在黑底组件（审批条/阶段条/导航编号）上，这里只检查浅色面板里的通用类
-    expect(uiCss).not.toMatch(/(^|[^-])color:\s*var\(--acc\)/)
-  })
+  // dist 的检查由 `pnpm guard:dist`（build 之后）负责；测试文件不读取 dist/（见 s1c S0B-007）
 })

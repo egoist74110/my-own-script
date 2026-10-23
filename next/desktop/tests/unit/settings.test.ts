@@ -85,7 +85,7 @@ describe('S1-B 导航与页签', () => {
     const b = await open(createFake())
     const tabs = b.wrapper.findAll('[role=tab]')
     ;(tabs[0]!.element as HTMLElement).focus()
-    await tabs[0]!.trigger('keydown', { key: 'ArrowRight' })
+    await tabs[0]!.trigger('keydown', { key: 'ArrowDown' }) // R1：设置分区为竖向列表
     await flushPromises()
     expect(b.wrapper.get('[role=tab][aria-selected=true]').text()).toContain('ADO 连接')
     await b.done()

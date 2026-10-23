@@ -3,10 +3,9 @@ import { provide, ref } from 'vue'
 import { useBackendStore } from '@/stores/backend'
 import { useUiStore } from '@/stores/ui'
 import { inspectorHostKey } from '@/app/inspector'
-import AlertBanner from '@/components/AlertBanner.vue'
-import GlassPanel from '@/components/GlassPanel.vue'
-import SidebarNav from '@/components/SidebarNav.vue'
-import StatusBar from '@/components/StatusBar.vue'
+import Banner from '@/components/Banner.vue'
+import Pane from '@/components/Pane.vue'
+import Sidebar from '@/components/Sidebar.vue'
 
 const store = useBackendStore()
 const ui = useUiStore()
@@ -21,136 +20,85 @@ provide(inspectorHostKey, inspectorHost)
     :data-inspector="ui.inspectorOpen ? 'open' : 'closed'"
     data-testid="app-shell"
   >
-    <div aria-hidden="true" class="glows">
-      <div class="glow glow-a"></div>
-      <div class="glow glow-b"></div>
-    </div>
-
-    <GlassPanel as="aside" class="sidebar" aria-label="侧栏">
+    <Pane as="aside" surface="sidebar" class="sidebar" aria-label="侧栏">
       <div data-tauri-drag-region class="drag"></div>
-      <div class="brand">
-        <span class="mark cut-xs">
-          <svg aria-hidden="true" width="18" height="10" viewBox="0 0 24 14">
-            <path
-              d="M12 7C9.6 3.6 7.8 2 5.4 2 2.9 2 1 4.2 1 7s1.9 5 4.4 5c2.4 0 4.2-1.6 6.6-5Zm0 0c2.4 3.4 4.2 5 6.6 5 2.5 0 4.4-2.2 4.4-5s-1.9-5-4.4-5C16.2 2 14.4 3.6 12 7Z"
-              fill="none"
-              stroke="#c6f432"
-              stroke-width="2.4"
-            />
-          </svg>
-        </span>
-        <span class="ox wordmark">TOOLBOX</span>
-      </div>
-      <SidebarNav />
-    </GlassPanel>
+      <Sidebar />
+    </Pane>
 
     <main class="main" aria-label="主区">
-      <AlertBanner v-if="store.alert.active" :reason="store.alert.reason ?? null" />
-      <RouterView />
+      <Banner
+        v-if="store.alert.active"
+        kind="warn"
+        role="alert"
+        data-testid="alert-banner"
+        class="alert"
+      >
+        <span data-testid="alert-reason">{{
+          store.alert.reason?.trim() || '后端报告告警（未提供原因）'
+        }}</span>
+      </Banner>
+      <div class="page"><RouterView /></div>
     </main>
 
-    <GlassPanel
-      v-show="ui.inspectorOpen"
+    <Pane
+      v-show="ui.inspectorOpen && ui.inspectorUsers > 0"
       as="aside"
+      surface="inspector"
       class="inspector"
       aria-label="检查器"
       data-testid="inspector"
     >
       <div ref="inspectorHost" class="host"></div>
-    </GlassPanel>
-
-    <StatusBar />
+    </Pane>
   </div>
 </template>
 
 <style scoped>
 .shell {
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 14px;
+  display: flex;
   height: 100vh;
-  box-sizing: border-box;
-  padding: 14px;
-  /* clip 而非 hidden：hidden 仍是可滚动容器，聚焦右下角控件时会把整壳滚走 */
+  background: var(--bg-window);
+  /* clip 而非 hidden：hidden 仍是可滚动容器，聚焦边缘控件时会把整壳滚走 */
   overflow: clip;
-}
-.glows {
-  position: absolute;
-  inset: 0;
-  overflow: clip;
-  pointer-events: none;
-}
-.glow {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-.glow-a {
-  width: 560px;
-  height: 560px;
-  left: -180px;
-  top: -240px;
-  filter: blur(100px);
-  background: var(--acc);
-  opacity: 0.28;
-}
-.glow-b {
-  width: 520px;
-  height: 520px;
-  right: -160px;
-  bottom: -220px;
-  filter: blur(110px);
-  background: #b9d2ff;
-  opacity: 0.5;
 }
 .sidebar {
-  position: relative;
+  flex: none;
+  width: var(--sidebar-w);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 8px 12px;
+  padding: 0 10px 12px;
+  border-right: 1px solid var(--line-sidebar);
   min-height: 0;
-  overflow: auto;
 }
 .drag {
-  height: 28px;
   flex: none;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 8px 14px;
-}
-.mark {
-  width: 28px;
-  height: 28px;
-  background: var(--ink);
-  display: grid;
-  place-items: center;
-}
-.wordmark {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
+  height: var(--topbar-h);
 }
 .main {
-  position: relative;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow: auto;
 }
-.inspector {
-  position: relative;
-  width: 340px;
+.alert {
+  margin: 8px 12px 0;
+  flex: none;
+}
+.page {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
+}
+.inspector {
+  flex: none;
+  width: var(--inspector-w);
+  box-sizing: border-box;
+  display: flex;
   flex-direction: column;
+  border-left: 1px solid var(--line);
   overflow: hidden;
 }
 .host {

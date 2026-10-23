@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
-import AppTabs from '@/components/AppTabs.vue'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import { tabTriggerId } from '@/components/tabs'
 import { scan } from '../../scripts/forbidden-scan.mjs'
 import { FakeSocket, hello, resetSeq } from './helpers'
-import { boot, bootUnconnected } from './boot'
+import { boot, bootUnconnected, openConnection } from './boot'
 import { createWiFake, detail, summary } from './wi-fake'
 
 /** 工单页真实接口的假后端（原 mock 数据的等价物）。 */
@@ -45,6 +45,7 @@ describe('CR-S05-001：未取得连接时的告警开关', () => {
   it('点击开关：零请求，显示“后端未连接”，告警态不变', async () => {
     const b = await bootUnconnected()
     expect(b.runtime.api()).toBeNull()
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     expect(b.fetchMock).not.toHaveBeenCalled()
@@ -56,23 +57,24 @@ describe('CR-S05-001：未取得连接时的告警开关', () => {
   })
 })
 
-describe('CR-S05-002：告警开关点击目标 >= 32px', () => {
-  it('Switch 视觉 20px 不变，AlertToggle 用 --target-min 把命中区扩到 32px（开关与标签）', () => {
-    expect(src('components/ui/switch/Switch.vue')).toMatch(/\bh-5\b/)
+describe('CR-S05-002：告警开关点击目标 >= 28px（R1：目标最小 28）', () => {
+  it('Switch 视觉 22px（系统风格），AlertToggle 用 --target-min 把命中区扩到 28px（开关与标签）', () => {
+    expect(src('components/ui/switch/Switch.vue')).toMatch(/h-\[22px\]/)
     const t = src('components/AlertToggle.vue')
     expect(t).toMatch(/class="hit"/)
     expect(t).toMatch(/\.hit::after\s*{[^}]*position:\s*absolute[^}]*var\(--target-min\)/s)
-    expect(t).toMatch(/\.lbl\s*{[^}]*min-height:\s*var\(--target-min\)/s)
-    expect(src('design/tokens.css')).toMatch(/--target-min:\s*32px/)
+    expect(t).toMatch(/\.lbl-text\s*{[^}]*min-height:\s*var\(--target-min\)/s)
+    expect(src('design/tokens.css')).toMatch(/--target-min:\s*28px/)
   })
   it('挂载后开关带 hit 类', async () => {
     const b = await boot()
+    await openConnection(b)
     expect(b.wrapper.get('[role=switch]').classes()).toContain('hit')
     await b.done()
   })
 })
 
-describe('CR-S05-003：AppTabs tabpanel 关联', () => {
+describe('CR-S05-003：SegmentedControl tabpanel 关联', () => {
   const items = [
     { value: 'a', label: '甲' },
     { value: 'b', label: '乙' },
@@ -82,9 +84,9 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
     const slot = withSlot ? `<template #default="{ item }">内容-{{ item.value }}</template>` : ''
     const w = mount(
       {
-        components: { AppTabs },
+        components: { SegmentedControl },
         setup: () => ({ model, items }),
-        template: `<AppTabs v-model="model" label="视图" :items="items">${slot}</AppTabs>`,
+        template: `<SegmentedControl v-model="model" label="视图" :items="items">${slot}</SegmentedControl>`,
       },
       { attachTo: document.body },
     )
@@ -117,9 +119,9 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
     const model = ref('a')
     const w = mount(
       {
-        components: { AppTabs },
+        components: { SegmentedControl },
         setup: () => ({ model, items, tabTriggerId }),
-        template: `<div><AppTabs v-model="model" label="视图" :items="items" panel-id="pp" />
+        template: `<div><SegmentedControl v-model="model" label="视图" :items="items" panel-id="pp" />
           <div id="pp" role="tabpanel" :aria-labelledby="tabTriggerId('pp', model)"><p>列表-{{ model }}</p></div></div>`,
       },
       { attachTo: document.body },
@@ -145,7 +147,8 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
       const b = await boot({ path })
       await flushPromises()
       const controlled = b.wrapper.findAll('[aria-controls]')
-      expect(controlled.length).toBeGreaterThan(0)
+      // /tasks 已是占位页（R1），没有页签，只检查「若有则都可解析」
+      if (path !== '/tasks') expect(controlled.length).toBeGreaterThan(0)
       for (const el of controlled) {
         expect(document.getElementById(el.attributes('aria-controls')!)).not.toBeNull()
       }
@@ -155,7 +158,6 @@ describe('CR-S05-003：AppTabs tabpanel 关联', () => {
 
   // 页面级：当前页签 aria-controls 解析到的元素可见，包含当前真实内容，并由当前页签标注
   const pageCases: [string, string, string, string][] = [
-    ['/tasks', '视图', 'task-row-t1', '运行中'],
     ['/work-items', '看板列', 'wi-row-48213', '新建'],
     ['/ai', '按 AI 筛选', 'session-s1', 'Claude'],
   ]

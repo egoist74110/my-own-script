@@ -544,7 +544,7 @@ describe('导入状态与阻断', () => {
 })
 
 describe('页签：可访问关联与键盘', () => {
-  it('设置页签 Home/End/ArrowLeft 可达（ArrowLeft 从首项回绕到末项）', async () => {
+  it('设置页签 Home/End/ArrowUp 可达（竖向列表，ArrowUp 从首项回绕到末项）', async () => {
     const b = await open(createFake())
     const tabs = b.wrapper.findAll('[role=tab]')
     const selected = () => b.wrapper.get('[role=tab][aria-selected=true]').text()
@@ -555,7 +555,7 @@ describe('页签：可访问关联与键盘', () => {
     await b.wrapper.findAll('[role=tab]')[3]!.trigger('keydown', { key: 'Home' })
     await flushPromises()
     expect(selected()).toContain('导入')
-    await b.wrapper.findAll('[role=tab]')[0]!.trigger('keydown', { key: 'ArrowLeft' })
+    await b.wrapper.findAll('[role=tab]')[0]!.trigger('keydown', { key: 'ArrowUp' })
     await flushPromises()
     expect(selected()).toContain('常规')
   })
@@ -565,21 +565,6 @@ describe('页签：可访问关联与键盘', () => {
     await selectTab(b, 'ADO 连接')
     const idx = b.wrapper.findAll('[role=tab]').map((t) => t.attributes('tabindex'))
     expect(idx).toEqual(['-1', '0', '-1', '-1', '-1'])
-  })
-
-  it('/tasks 筛选页签：aria-controls 指向 tabpanel，aria-labelledby 随键盘切换跟随当前页签', async () => {
-    const b = await openPath('/tasks')
-    const sel = () => b.wrapper.get('[role=tab][aria-selected=true]')
-    expect(sel().attributes('aria-controls')).toBe('tasks-panel')
-    const panel = document.getElementById('tasks-panel')!
-    expect(panel.getAttribute('role')).toBe('tabpanel')
-    expect(panel.hasAttribute('hidden')).toBe(false)
-    expect(panel.getAttribute('aria-labelledby')).toBe(sel().attributes('id'))
-    await b.wrapper.findAll('[role=tab]')[0]!.trigger('keydown', { key: 'ArrowRight' })
-    await flushPromises()
-    expect(sel().text()).toContain('运行中')
-    expect(sel().attributes('aria-controls')).toBe('tasks-panel')
-    expect(panel.getAttribute('aria-labelledby')).toBe(sel().attributes('id'))
   })
 
   it('/work-items 看板列页签：aria-controls 与 tabpanel 的 aria-labelledby 一致', async () => {

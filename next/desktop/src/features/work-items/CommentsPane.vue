@@ -74,6 +74,6 @@ const q = useQuery({
   font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
-  color: var(--ink);
+  color: var(--link);
 }
 </style>

@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import { computed, onBeforeUnmount, provide, ref } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import AppTabs from '@/components/AppTabs.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import GlassPanel from '@/components/GlassPanel.vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
+import Banner from '@/components/Banner.vue'
+import Button from '@/components/Button.vue'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import SafeHtml from '@/components/SafeHtml.vue'
 import { createMediaCache, mediaCacheKey } from '@/components/media'
 import { openExternal } from '@/components/open-external'
@@ -14,7 +13,7 @@ import CommentsPane from './CommentsPane.vue'
 import ErrorNotice from './ErrorNotice.vue'
 import HistoryPane from './HistoryPane.vue'
 import { badShape, unwrap, type HtmlField, type WorkItemDetail } from './api'
-import { formatDate } from './format'
+import { formatDate, kindColor } from './format'
 import { QUERY_DEFAULTS, projectKey, useWiApi } from './queries'
 import './panes.css'
 
@@ -23,7 +22,7 @@ import './panes.css'
  * 页面级媒体缓存随之 clear()（中止请求 + revokeObjectURL 全部 blob）。
  */
 const props = defineProps<{ projectId: string; id: number }>()
-const emit = defineEmits<{ select: [id: number] }>()
+const emit = defineEmits<{ select: [id: number]; loaded: [detail: WorkItemDetail | null] }>()
 const { api, maybeApi, online, qc } = useWiApi()
 
 const media = createMediaCache(maybeApi)
@@ -67,19 +66,22 @@ const sections = computed(() => {
   return all.filter(([, , f]) => f && (f.html || f.omitted))
 })
 
-const props2 = computed(() => {
+// 检查器（页面级）需要详情数据：加载完成时上报，卸载时清空
+watch(d, (x) => emit('loaded', x), { immediate: true })
+onBeforeUnmount(() => emit('loaded', null))
+
+const metaLine = computed(() => {
   const x = d.value
-  if (!x) return []
+  if (!x) return ''
+  const rev = x.rev === null || x.rev === undefined ? null : `r${x.rev}`
   return [
-    ['指派', x.assigned_to ?? '未指派'],
-    ['看板列', x.board_column ?? '—'],
-    ['严重度', x.severity ?? '—'],
-    ['区域', x.area_path ?? '—'],
-    ['迭代', x.iteration_path ?? '—'],
-    ['创建', formatDate(x.created_date)],
-    ['变更', formatDate(x.changed_date)],
-    ['版本', x.rev === null || x.rev === undefined ? '—' : `r${x.rev}`],
-  ].filter(([, v]) => v !== '—') as [string, string][]
+    x.assigned_to ?? '未指派',
+    `创建 ${formatDate(x.created_date)}`,
+    `更新 ${formatDate(x.changed_date)}`,
+    rev,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 })
 
 // 先失效并等当前详情（及已打开的评论）重取完成，再清失败条目：
@@ -91,34 +93,28 @@ async function refreshDetail() {
 </script>
 
 <template>
-  <GlassPanel as="section" aria-label="工单详情" class="detail" :aria-busy="q.isPending.value">
-    <p v-if="q.isPending.value" class="wi-pane wi-muted">读取工单中…</p>
+  <div class="detail" :aria-busy="q.isPending.value">
+    <div v-if="q.isPending.value" class="wi-pane" role="status">
+      <div class="skel" aria-hidden="true">
+        <span class="bar" style="width: 30%"></span>
+        <span class="bar tall" style="width: 70%"></span>
+        <span class="bar" style="width: 45%"></span>
+      </div>
+      <p class="wi-muted">读取工单中…</p>
+    </div>
     <ErrorNotice v-else-if="q.error.value" :error="q.error.value" retry @retry="q.refetch()" />
     <template v-else-if="d">
       <header class="d-head">
         <div class="d-line">
-          <span class="type ox skew" :data-type="d.type ?? ''">{{
-            (d.type ?? '').toUpperCase()
-          }}</span>
-          <span class="ox idn">#{{ d.id }}</span>
-          <BlockTag v-if="d.priority !== null && d.priority !== undefined"
-            >P{{ d.priority }}</BlockTag
+          <span class="type" :data-type="d.type ?? ''"
+            ><span class="kd" :style="{ background: kindColor(d.type) }" aria-hidden="true"></span
+            >{{ d.type ?? '—' }}</span
           >
-          <span class="st"><span class="sq" aria-hidden="true"></span>{{ d.state ?? '—' }}</span>
-          <span class="grow"></span>
-          <AppButton variant="ghost" data-testid="open-web" @click="openExternal(d.web_url)"
-            >在浏览器打开</AppButton
-          >
-        </div>
-        <h2>{{ d.title }}</h2>
-        <dl class="props">
-          <div v-for="[k, v] in props2" :key="k" class="pair">
-            <dt class="lbl">{{ k }}</dt>
-            <dd>{{ v }}</dd>
-          </div>
-          <div v-if="d.parent_id" class="pair">
-            <dt class="lbl">父项</dt>
-            <dd>
+          <span class="mono idn">#{{ d.id }}</span>
+          <template v-if="d.parent_id">
+            <span aria-hidden="true">·</span>
+            <span class="parent-wrap"
+              >父项
               <button
                 type="button"
                 class="parent"
@@ -126,23 +122,26 @@ async function refreshDetail() {
                 @click="emit('select', d.parent_id!)"
               >
                 #{{ d.parent_id }}
-              </button>
-            </dd>
-          </div>
-        </dl>
-        <ul v-if="d.tags?.length" class="tags" aria-label="标签">
-          <li v-for="t in d.tags ?? []" :key="t">
-            <BlockTag>{{ t }}</BlockTag>
-          </li>
-        </ul>
+              </button></span
+            >
+          </template>
+        </div>
+        <h2>{{ d.title }}</h2>
+        <div class="meta">{{ metaLine }}</div>
       </header>
-      <p v-if="media.expired.value > 0" class="expired" role="status" data-testid="media-expired">
+      <Banner
+        v-if="media.expired.value > 0"
+        kind="warn"
+        role="status"
+        class="expired"
+        data-testid="media-expired"
+      >
         部分图片已过期
-        <AppButton variant="ghost" data-testid="refresh-detail" @click="refreshDetail"
-          >刷新详情</AppButton
-        >
-      </p>
-      <AppTabs v-model="tab" :items="tabs" label="工单内容" class="d-tabs">
+        <template #actions>
+          <Button data-testid="refresh-detail" @click="refreshDetail">刷新详情</Button>
+        </template>
+      </Banner>
+      <SegmentedControl v-model="tab" :items="tabs" label="工单内容" class="d-tabs">
         <template #default="{ item }">
           <div v-if="item.value === 'desc'" class="wi-pane" data-testid="wi-body">
             <template v-for="[key, label, f] in sections" :key="key">
@@ -178,108 +177,68 @@ async function refreshDetail() {
           <HistoryPane v-else-if="item.value === 'history'" :id="id" :project-id="projectId" />
           <AttachmentsPane v-else :attachments="d.attachments" />
         </template>
-      </AppTabs>
+      </SegmentedControl>
     </template>
-  </GlassPanel>
+  </div>
 </template>
 
 <style scoped>
 .detail {
-  flex: 999 1 420px;
+  flex: 1;
   min-width: 0;
-  min-height: 280px;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
 }
-.grow {
-  flex: 1;
-}
 .d-head {
-  padding: 14px 18px 12px;
+  padding: 22px 32px 0;
+  max-width: 820px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid var(--line);
+  gap: 6px;
 }
 .d-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  font-size: var(--text-sub);
+  color: var(--mute);
 }
 .type {
-  padding: 2px 12px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  background: var(--faint);
-  color: var(--ink);
-}
-.type[data-type='Bug'] {
-  background: var(--warn);
-}
-.idn {
-  font-size: 14px;
-  font-weight: 700;
-}
-.st {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  color: var(--accent-ink);
   font-weight: 600;
 }
-.sq {
-  width: 7px;
-  height: 7px;
-  background: var(--acc);
+.kd {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 h2 {
-  margin: 0;
-  font-size: 19px;
-  line-height: 1.4;
+  margin: 2px 0 0;
+  font-size: var(--text-title);
+  line-height: 1.3;
   font-weight: 700;
+  letter-spacing: -0.2px;
   overflow-wrap: anywhere;
 }
-.props {
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 4px 16px;
-}
-.pair {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-}
-.props dd {
-  margin: 0;
+.meta {
   font-size: 12.5px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.tags {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  color: var(--mute);
 }
 .d-tabs {
-  padding: 8px 14px 0;
+  padding: 14px 32px 0;
 }
 .d-tabs :deep(.tab-panel) {
-  margin: 0 -14px;
+  margin: 0 -32px;
 }
 .expired {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 18px;
-  font-size: 12.5px;
-  background: rgba(255, 140, 40, 0.14);
+  margin: 12px 32px 0;
+  max-width: 756px;
 }
 .parent,
 .link {
@@ -288,10 +247,26 @@ h2 {
   border: 0;
   background: none;
   font: inherit;
-  font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
-  color: var(--ink);
+  color: var(--link);
   text-align: left;
+}
+.parent {
+  min-width: var(--target-min);
+}
+.skel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: var(--skeleton);
+}
+.bar.tall {
+  height: 22px;
 }
 </style>

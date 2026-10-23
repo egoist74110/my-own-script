@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import AppButton from '@/components/AppButton.vue'
-import BlockTag from '@/components/BlockTag.vue'
-import TextInput from '@/components/TextInput.vue'
+import Button from '@/components/Button.vue'
+import Tag from '@/components/Tag.vue'
+import TextField from '@/components/TextField.vue'
 import {
   CATEGORY_TEXT,
   originOf,
@@ -219,13 +219,13 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
 <template>
   <div class="st-inspector" :data-testid="isNew ? 'library-new' : 'library-detail'">
     <div class="st-head">
-      <BlockTag>LIB</BlockTag>
+      <Tag>LIB</Tag>
       <h2>{{ isNew ? '新建 library' : library!.name }}</h2>
     </div>
 
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">名称</span>
-      <TextInput
+      <TextField
         v-model="name"
         label="library 名称"
         placeholder="例如：公司 ADO"
@@ -234,15 +234,13 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
     </div>
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">地址</span>
-      <TextInput
+      <TextField
         v-model="baseUrl"
         label="library 地址"
         placeholder="https://ado.example.com/tfs"
         :disabled="!!pending"
       />
-      <BlockTag v-if="isHttp" tone="warn" data-testid="http-warning"
-        >HTTP 明文：PAT 将以明文传输</BlockTag
-      >
+      <Tag v-if="isHttp" tone="warn" data-testid="http-warning">HTTP 明文：PAT 将以明文传输</Tag>
     </div>
 
     <p v-if="localError" class="st-warn" role="alert" data-testid="library-local-error">
@@ -263,31 +261,24 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
         替换。确认期间名称与地址已锁定。
       </div>
       <div class="st-actions">
-        <AppButton
-          variant="ghost"
-          data-testid="origin-keep"
-          :disabled="disabled"
-          @click="resolveOrigin('keep')"
-        >
+        <Button data-testid="origin-keep" :disabled="disabled" @click="resolveOrigin('keep')">
           保留已存 PAT
-        </AppButton>
-        <AppButton
-          variant="accent"
+        </Button>
+        <Button
+          variant="primary"
           data-testid="origin-replace"
           :disabled="disabled"
           @click="resolveOrigin('replace')"
         >
           用输入框中的 PAT 替换
-        </AppButton>
-        <AppButton variant="ghost" data-testid="origin-cancel" @click="pending = null">
-          取消修改地址
-        </AppButton>
+        </Button>
+        <Button data-testid="origin-cancel" @click="pending = null"> 取消修改地址 </Button>
       </div>
     </div>
 
     <div class="st-fld">
       <span class="lbl" aria-hidden="true">{{ isNew ? 'PAT（可选）' : 'PAT（只写）' }}</span>
-      <TextInput
+      <TextField
         v-model="pat"
         type="password"
         autocomplete="off"
@@ -299,9 +290,9 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
 
     <template v-if="isNew">
       <div class="st-actions">
-        <AppButton data-testid="library-create" :disabled="disabled" @click="create">
+        <Button variant="primary" data-testid="library-create" :disabled="disabled" @click="create">
           新建
-        </AppButton>
+        </Button>
       </div>
     </template>
     <template v-else>
@@ -315,43 +306,36 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
         </dd>
       </dl>
       <div class="st-actions">
-        <AppButton data-testid="library-save" :disabled="disabled || !!pending" @click="save"
-          >保存修改</AppButton
+        <Button
+          variant="primary"
+          data-testid="library-save"
+          :disabled="disabled || !!pending"
+          @click="save"
+          >保存修改</Button
         >
-        <AppButton
-          variant="ghost"
-          data-testid="pat-save"
-          :disabled="disabled || !pat"
-          @click="savePat"
-        >
+        <Button data-testid="pat-save" :disabled="disabled || !pat" @click="savePat">
           {{ library!.credential.present ? '替换 PAT' : '保存 PAT' }}
-        </AppButton>
-        <AppButton
+        </Button>
+        <Button
           v-if="library!.credential.present"
-          variant="ghost"
           data-testid="pat-delete"
           :disabled="disabled"
           @click="removePat"
         >
           删除 PAT
-        </AppButton>
+        </Button>
       </div>
 
       <hr class="st-sep" />
       <div class="st-fld">
         <span class="lbl" aria-hidden="true">测试连接 · collection</span>
-        <TextInput v-model="collection" label="测试用 collection" placeholder="DefaultCollection" />
+        <TextField v-model="collection" label="测试用 collection" placeholder="DefaultCollection" />
       </div>
       <p v-if="pat" class="st-note">将使用输入框里的 PAT 测试（不保存）。</p>
       <div class="st-actions">
-        <AppButton
-          variant="ghost"
-          data-testid="library-test"
-          :disabled="disabled || !collection.trim()"
-          @click="test"
-        >
+        <Button data-testid="library-test" :disabled="disabled || !collection.trim()" @click="test">
           测试连接
-        </AppButton>
+        </Button>
       </div>
       <div
         v-if="result"
@@ -370,15 +354,14 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
 
       <hr class="st-sep" />
       <div v-if="!confirmDelete" class="st-actions">
-        <AppButton
-          variant="ghost"
+        <Button
           class="st-btn-danger"
           data-testid="library-delete"
           :disabled="disabled"
           @click="confirmDelete = true"
         >
           删除 library
-        </AppButton>
+        </Button>
       </div>
       <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除 library">
         <strong>确认删除「{{ library!.name }}」？</strong>
@@ -386,15 +369,15 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
           将同时删除其下 {{ projects.length }} 个 project 与已存 PAT。被任务引用时无法删除。
         </div>
         <div class="st-actions">
-          <AppButton
-            variant="primary"
+          <Button
+            variant="destructive"
             data-testid="library-delete-confirm"
             :disabled="disabled"
             @click="remove"
           >
             确认删除
-          </AppButton>
-          <AppButton variant="ghost" @click="confirmDelete = false">取消</AppButton>
+          </Button>
+          <Button @click="confirmDelete = false">取消</Button>
         </div>
       </div>
     </template>

@@ -698,3 +698,22 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 画布 https://claude.ai/artifact/Uno9R3vJky5oSRgvxb5D1K 出 A/B/C 三版工单页（数据为虚构，字段形态按 S2 真实接口）。**用户选定 B（macOS 原生），C 作为深色模式参考**；规则记入 FRONTEND_STACK §9。下一步：B 深色稿 → 其余页面与组件清单 → 换皮工作包合同。
 - 同画布补齐方向 B 的任务（运行中/确认运行/需要核实/没有任务，状态与步骤按 S3 合同七态与三种操作）、设置（ADO 连接；正常/HTTP 明文警告/存储只读）、AI 会话（等待审批/运行中/没有会话，仍为 S5 前的示意）与组件清单（色彩、字号、按钮、输入、列表行、状态、反馈、版式）。待用户过目后写换皮工作包合同；尚未对画布截图自查。
 - 用户确认页面与组件清单，下达写换皮合同。WORK_PACKAGES revision 7 追加 **R1：方向 B 换皮**（单包，Claude sonnet / medium 施工 + haiku 独立测试，codex gpt-6.1-sol / high 只读交叉审计；只换视觉不改行为；任务页改占位，由 S3-C 按 B-Tasks 实现）；S3-C 改为依赖 R1 集成。设计源码快照入库 `design/b-native/`。R1 状态 **not_dispatched**。
+
+### R1：方向 B 换皮（2026-10-23，集成完成）
+
+- 主控：Claude Code 主会话（由 S3 主控会话派生，role: lead），requested Opus 5.5 / medium；actual model/effort=unknown（无提供方回执）。输入 `rewrite/next @ 493f9fd`（派工前确认 HEAD 未变），施工 worktree `.local/worktrees/r1`（detached）。
+- 施工：Claude Code 原生子 agent，requested sonnet / medium，actual unknown；agent_id `a9977194f0d6aa326`。测试子 agent（施工者委派）：requested haiku / medium，independent=true，actual unknown；agent_id `a062f719b49102fd7`，新增 `tests/independent/r1-{tokens,guards,components,connection,pages}.test.ts` 共 72 例，未发现生产缺陷（其 3 处类型错误由施工者改写法修正，断言未动）。
+- **交叉审计：用户 2026-10-23 取消（原话“不需要交叉审核，最多派个测试员就行了”），not_dispatched**；合同中 codex gpt-6.1-sol 审计条款本包不执行。
+- 改动：90 个文件，均在 R1 write_scope 内；`src/api/**`、`stores/backend.ts`、`app/backend-runtime.ts`、后端、contracts、src-tauri、scripts 未动。删除 E 组件 14 个与 `app/mock/{pinned,shell-status}.ts`、`features/tasks/mock/`；新增 Pane/Button/ToolbarButton/TextField/SearchField/Tag/StatusPill/Banner/Inspector/InspectorToggle/Sidebar/ConnectionStatus/ListRow/EmptyState/Skeleton/Sheet/SegmentedControl；令牌、骨架、工单/设置/AI/任务占位重写；移除三个 @fontsource（lockfile 同步）；README、THIRD_PARTY 更新。
+- 既有测试改动（施工者逐一列理由，主控抽查 diff）：仅改定位方式——boot.ts（新增 openConnection）、s1c、s1c-ui、e-security（开关前先开连接弹层）、settings/settings-independent（竖向分区 ArrowDown/Up）、s2b-page（重试按钮限定在 wi-error 内）、work-items（P2/标签/指派改在检查器断言，“在浏览器打开”在顶栏）、a11y（Tab 序列改在工单页、28px 目标）；E 视觉断言按 B 改写/删除——tokens、components、app、pages、e-alert、e-controls、e-security 对比度段、settings-independent 的 /tasks 页签用例（任务 mock 已删）。主控核对 e-alert/work-items/s2b-page/e-security 删除行：删除的只有任务 mock 行/检查器/角标与 E 令牌断言，告警只由 store 驱动、告警下可交互、连接安全断言保留或改在工单页等价断言。
+- 合同偏差（主控接受）：①合同令牌 `#6E6E73` 在侧栏 4.35、控件底 4.34、“已停用”底 4.46，不满足合同自身 4.5:1 验收，新增 `--mute-tint #636368` 用于这些面、已停用文字改 `#65656A`；深色选中行次行用 `--row-sel-sub`。②设置页删除/导入确认仍为行内确认（合同只要求沿用确认语义），Sheet 仅组件 + 单测。③工单列表行次行多一个“状态”字段（保留既有行信息断言）。④AI 会话徽标用 CL/CX/AG 文字缩写，检查器目录/分支/关联工单为 mock 派生值。
+- 集成：限定路径 binary patch（首版遗漏施工者 `git rm` 暂存的删除，改用 `git diff HEAD` 重新生成；`git apply -R` 撤回后重应用），每次 `git apply --check` 后应用，主仓库与施工 worktree `git diff HEAD --stat` 一致。
+- 截图对照（dev:web 1440×900；端口 1420 已被 09:19 启动的同目录 dev:web 占用——非本会话进程，未终止，直接复用其隔离临时后端 + 假 ADO；为进入正常态在其中新建假 library/project `Sample` 并填 fixture 假 PAT `dev-credentials.json` 值；告警演示开关开后已关回）：
+  - 第一轮退回施工者：**设置页内容区宽度 0**（竖向 SegmentedControl `width:100%` 撑满）、库/项目/仓库编辑器仍在右侧检查器（标签在上）、连接弹层 Esc 关不掉。施工者返工：竖向 tablist `width:auto`、编辑器进内容区白卡片（120px 标签列，标签在左）、设置页去掉检查器与开关、弹层文档级 Esc 关闭并回焦；新增 `tests/unit/settings-layout.test.ts` 5 例 + app.test 1 例。
+  - 第二轮主控复查：导航实测仅 113px（SegmentedControl 竖向规则 scoped 特异性 0,4,0 高于设置页 0,3,0，220px/内边距被覆盖）。主控小修：选择器改为 `.panel .settings-tabs[data-orientation='vertical'] :deep(.seg)`，同步更新 settings-layout 断言选择器并加注释；同步回施工 worktree。
+  - 通过：工单 未配置（浅/深）、正常 + 详情选中（浅/深，选中行浅色强调蓝白字、深色 `#262A1C`）、出错（未配置 PAT → 列表内 error Banner + 前往设置/重试）；设置 正常（ADO 连接两张卡片 + 编辑卡片）、HTTP 明文 warn Banner（字段下方内联）；AI 等待审批（会话列表、工具调用条、内联审批 Y/A/N、检查器）；任务占位（EmptyState，无 mock 文本）；告警（页面区顶部 warn 横幅、连接行变橙、页面可操作）。
+  - 残余差异（不退回，记录）：出错态设计稿为列表区居中图标 + “无法读取工单”，实现为列表顶部 error Banner（合同允许 Banner/空状态）；读取中骨架态一闪而过未截到（单测覆盖）；设置“存储只读”无法在 dev 后端触发（单测覆盖）；AI“运行中”态未单独截图；同源示例图片未显示属假 fixture 无媒体内容，非 R1 行为改动。
+- 集成版本验收（`next/desktop`，最终版）：`pnpm install --frozen-lockfile --offline`、typecheck、lint（0 error / 2 warning，既有 one-component-per-file）、`pnpm test` **847 passed / 43 文件**、build、guard:dist、contracts:check 全部 exit 0；`git diff --check` exit 0；写入范围外无改动；`src/**` 无 clip-path/backdrop-filter/Oxanium/@fontsource/禁词（dist 中 clip-path/backdrop-filter 字符串仅来自 Tailwind `.sr-only`、DOMPurify 与 tailwind-merge 内置表，guard:dist 通过）。
+- 未测：Tauri 内渲染与 Overlay 标题栏拖拽区、真机深色切换、Playwright e2e、`:focus-within` 与焦点陷阱真实浏览器行为（仅 jsdom）。
+- cleanup：本会话 dev:web 因端口占用未成功启动、已退出；施工 worktree `.local/worktrees/r1` 保留（删除前需问用户）；补丁与日志在 `.local/dispatch/r1/`。
+- 状态：**R1 integrated**；S3-C 可以本提交为输入派工。

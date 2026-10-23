@@ -2,7 +2,7 @@
 // 只用假 socket 与假 fetch，不连真实后端。
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { boot, json } from '../unit/boot'
+import { boot, json, openConnection } from '../unit/boot'
 import { FakeSocket, env, resetSeq } from '../unit/helpers'
 import { createWiFake, summary } from '../unit/wi-fake'
 
@@ -31,35 +31,22 @@ afterEach(() => {
 })
 
 describe('告警态：同时出现在横幅、任务行、检查器、导航角标', () => {
-  it('告警开启后四处同步出现，且只有 errorOnAlert 的 t1 行被标记', async () => {
+  it('告警开启后：页面区顶部 warn 横幅、侧栏连接状态行变橙；没有导航角标', async () => {
     const b = await boot()
     b.sock.emit(alertEnv(100, true, 'S0 DEMO ALERT'))
     await flushPromises()
 
     const banner = b.wrapper.get('[data-testid=alert-banner]')
     expect(banner.attributes('role')).toBe('alert')
+    expect(banner.attributes('data-tone')).toBe('warn')
     expect(b.wrapper.get('[data-testid=alert-reason]').text()).toBe('S0 DEMO ALERT')
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-alert')).toBe('true')
-
-    const t1 = b.wrapper.get('[data-testid=task-row-t1]')
-    expect(t1.attributes('data-alert')).toBe('true')
-    expect(t1.text()).toContain('失败')
-    expect(t1.text()).toContain('FAILED')
-    expect(t1.find('[data-state=fail]').exists()).toBe(true)
-
-    for (const id of ['t2', 't3', 't4', 't5', 't6', 't7']) {
-      expect(b.wrapper.get(`[data-testid=task-row-${id}]`).attributes('data-alert')).toBeUndefined()
-    }
-
-    const insp = b.wrapper.get('[data-testid=task-inspector]')
-    expect(insp.attributes('data-alert')).toBe('true')
-    expect(insp.text()).toContain('HALT')
-
-    expect(b.wrapper.get('[data-testid=nav-alert-badge]').text()).toBe('!')
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('true')
+    expect(b.wrapper.find('[data-testid=nav-alert-badge]').exists()).toBe(false)
     await b.done()
   })
 
-  it('告警解除后横幅、角标、行、检查器全部还原', async () => {
+  it('告警解除后横幅与连接状态行的告警态全部还原', async () => {
     const b = await boot()
     b.sock.emit(alertEnv(100, true, 'x'))
     await flushPromises()
@@ -68,17 +55,7 @@ describe('告警态：同时出现在横幅、任务行、检查器、导航角�
 
     expect(b.wrapper.find('[data-testid=alert-banner]').exists()).toBe(false)
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-alert')).toBe('false')
-    expect(b.wrapper.find('[data-testid=nav-alert-badge]').exists()).toBe(false)
-
-    const t1 = b.wrapper.get('[data-testid=task-row-t1]')
-    expect(t1.attributes('data-alert')).toBeUndefined()
-    expect(t1.text()).toContain('运行中')
-    expect(t1.text()).not.toContain('FAILED')
-    expect(t1.find('[data-state=fail]').exists()).toBe(false)
-
-    const insp = b.wrapper.get('[data-testid=task-inspector]')
-    expect(insp.attributes('data-alert')).toBeUndefined()
-    expect(insp.text()).not.toContain('HALT')
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('false')
     await b.done()
   })
 
@@ -133,29 +110,32 @@ describe('告警态：同时出现在横幅、任务行、检查器、导航角�
     await b.done()
   })
 
-  it('告警态下工作区仍可交互：新建任务、点行选中、导航切换、⌘K 聚焦', async () => {
-    const b = await boot()
+  it('告警态下工作区仍可交互：刷新、点行选中、导航切换、⌘K 聚焦', async () => {
+    const wi = createWiFake()
+    wi.lists['proj:a|开发中'] = { items: [summary(7), summary(8)], truncated: false, omitted: 0 }
+    const b = await boot({ path: '/work-items', fetchImpl: wi.fetch })
+    b.sock.emit(helloEnv(99))
     b.sock.emit(alertEnv(100, true, 'x'))
+    await vi.waitFor(() => expect(b.wrapper.find('[data-testid=wi-row-7]').exists()).toBe(true))
     await flushPromises()
+    expect(b.wrapper.find('[data-testid=alert-banner]').exists()).toBe(true)
 
-    const before = b.wrapper.findAll('tbody tr').length
-    await b.wrapper.get('[data-testid=add-task]').trigger('click')
+    const calls = () => wi.calls.length
+    const n = calls()
+    await b.wrapper.get('[data-testid=refresh]').trigger('click')
     await flushPromises()
-    expect(b.wrapper.findAll('tbody tr').length).toBe(before + 1)
+    expect(calls()).toBeGreaterThan(n)
 
-    await b.wrapper.get('[data-testid=task-row-t4]').trigger('click')
+    await b.wrapper.get('[data-testid=wi-row-8]').trigger('click')
     await flushPromises()
-    expect(b.wrapper.get('[data-testid=task-row-t4]').attributes('data-selected')).toBe('true')
+    expect(b.wrapper.get('[data-testid=wi-row-8]').attributes('data-selected')).toBe('true')
 
-    await b.wrapper.get('nav a[href="/work-items"]').trigger('click')
-    await vi.waitFor(() => expect(b.router.currentRoute.value.path).toBe('/work-items'))
-    await flushPromises()
-
-    await b.router.push('/tasks')
-    await flushPromises()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
     await flushPromises()
     expect(document.activeElement).toBe(b.wrapper.get('input[type=search]').element)
+
+    await b.wrapper.get('nav a[href="/ai"]').trigger('click')
+    await vi.waitFor(() => expect(b.router.currentRoute.value.path).toBe('/ai'))
     await b.done()
   })
 
@@ -219,7 +199,7 @@ describe('系统事件 seq 基线与 hello 对齐', () => {
     b.sock.emit(helloEnv(7, ALERT('from-hello')))
     await flushPromises()
     expect(b.wrapper.get('[data-testid=alert-reason]').text()).toBe('from-hello')
-    expect(b.wrapper.get('[data-testid=task-row-t1]').attributes('data-alert')).toBe('true')
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('true')
     await b.done()
   })
 
@@ -249,6 +229,7 @@ describe('系统事件 seq 基线与 hello 对齐', () => {
 describe('告警开关：只请求后端，不本地切换', () => {
   it('点击开关发出带 Bearer 的 POST，本地状态不变，直到 alert 事件到达', async () => {
     const b = await boot()
+    await openConnection(b)
     const sw = () => b.wrapper.get('[role=switch]')
     expect(sw().attributes('aria-checked')).toBe('false')
 
@@ -282,6 +263,7 @@ describe('告警开关：只请求后端，不本地切换', () => {
         : json({ status: 'ok', version: '9.9.9', pid: 1, uptime_s: 1, alert: false }),
     ) as unknown as typeof fetch
     const b = await boot({ fetchImpl })
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     expect(b.wrapper.get('[data-testid=alert-error]').text()).toContain('请求失败 (500)')

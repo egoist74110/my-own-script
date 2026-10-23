@@ -1,9 +1,9 @@
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeSocket, alertEvent, hello, resetSeq, env } from './helpers'
-import { boot, json } from './boot'
+import { boot, json, openConnection } from './boot'
 
-describe('E 方向壳：骨架与连接', () => {
+describe('B 方向壳：骨架与连接', () => {
   beforeEach(() => {
     FakeSocket.reset()
     resetSeq()
@@ -13,13 +13,13 @@ describe('E 方向壳：骨架与连接', () => {
     vi.useRealTimers()
   })
 
-  it('网格四区：侧栏、主区、检查器、状态栏；侧栏顶部有拖拽区且没有假红绿灯', async () => {
-    const b = await boot()
+  it('骨架：通高侧栏 + 主区；没有底部状态栏；侧栏顶部有拖拽区且没有假红绿灯', async () => {
+    const b = await boot({ path: '/work-items' })
     const shell = b.wrapper.get('[data-testid=app-shell]')
     expect(shell.find('aside[aria-label=侧栏]').exists()).toBe(true)
     expect(shell.find('main').exists()).toBe(true)
     expect(shell.find('[data-testid=inspector]').exists()).toBe(true)
-    expect(shell.find('footer').exists()).toBe(true)
+    expect(shell.find('footer').exists()).toBe(false)
     expect(shell.find('[data-tauri-drag-region]').exists()).toBe(true)
     expect(shell.html()).not.toMatch(/#ff5f57|#febc2e|#28c840/i)
     await b.done()
@@ -31,45 +31,73 @@ describe('E 方向壳：骨架与连接', () => {
     await b.done()
   })
 
-  it('导航：01..08 编号；任务/工单/AI 会话/设置可用，其余禁用并标切片号', async () => {
+  it('侧栏分组：工作（任务/工单/AI 会话）与基础设施（MCP/服务/VPN 禁用，无切片号）；设置在底部', async () => {
     const b = await boot()
-    const codes = b.wrapper.findAll('nav .item .code').map((c) => c.text())
-    expect(codes).toEqual(['01', '02', '03', '04', '05', '06', '07', '08'])
+    const groups = b.wrapper.findAll('nav[aria-label=分区] h2').map((h) => h.text())
+    expect(groups).toEqual(['工作', '基础设施'])
     const links = b.wrapper.findAll('nav a').map((a) => a.attributes('href'))
     expect(links).toEqual(['/tasks', '/work-items', '/ai', '/settings'])
     const disabled = b.wrapper.findAll('[aria-disabled=true]')
-    expect(disabled.map((d) => d.attributes('data-slice'))).toEqual(['S3', 'S6', 'S7', 'S8'])
+    expect(disabled.map((d) => d.text())).toEqual(['MCP', '服务', 'VPN'])
+    for (const d of disabled) {
+      expect(d.attributes('title')).toBe('尚未提供')
+      expect(d.attributes('tabindex')).toBeUndefined()
+      expect(d.text()).not.toMatch(/S\d/)
+    }
     expect(b.wrapper.get('nav a[aria-current=page]').text()).toContain('任务')
+    // 不做「已保存查询」「Pinned」，也不显示计数角标
+    expect(b.wrapper.get('aside[aria-label=侧栏]').text()).not.toMatch(/Pinned|已保存/)
     await b.done()
   })
 
-  it('侧栏底部有 Pinned 区', async () => {
-    const b = await boot()
-    expect(b.wrapper.get('.pinned').text()).toContain('Pinned')
-    expect(b.wrapper.findAll('.pinned a').length).toBeGreaterThan(0)
-    await b.done()
-  })
-
-  it('状态栏：后端真实状态 + pid + 心跳；VPN/TG/MCP/待处理为 mock', async () => {
+  it('连接状态行：只显示后端真实状态；弹出层给 pid 与心跳延迟；不显示 VPN/TG/MCP', async () => {
     const b = await boot()
     const conn = () => b.wrapper.get('[data-testid=connection]').text()
     expect(conn()).toContain('连接中')
     b.sock.emit(hello(777))
     await flushPromises()
     expect(conn()).toContain('在线')
-    expect(b.wrapper.get('[data-testid=connection-detail]').text()).toContain('PID 777')
+    await openConnection(b)
+    expect(b.wrapper.get('[data-testid=connection-pid]').text()).toBe('777')
     b.sock.emit(
       env('system.heartbeat', { uptime_s: 5 }, { ts: new Date(Date.now() - 30).toISOString() }),
     )
     await flushPromises()
     expect(b.store.latencyMs).toBeGreaterThanOrEqual(0)
-    expect(b.wrapper.get('[data-testid=connection-detail]').text()).toMatch(/MS/)
-    for (const k of ['vpn', 'tg', 'mcp', 'pending']) {
-      expect(b.wrapper.find(`[data-testid=status-${k}]`).exists()).toBe(true)
-    }
+    expect(b.wrapper.get('[data-testid=connection-latency]').text()).toMatch(/ms/)
+    const side = b.wrapper.get('aside[aria-label=侧栏]').text()
+    expect(side).not.toMatch(/VPN 已|TG|MCP \d/)
     b.sock.drop()
     await flushPromises()
     expect(conn()).toContain('重连中')
+    await b.done()
+  })
+
+  it('弹出层：Esc 关闭并回到触发按钮；点外部关闭', async () => {
+    const b = await boot()
+    await openConnection(b)
+    const trigger = b.wrapper.get('[data-testid=connection-trigger]')
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    await b.wrapper.get('[data-testid=connection-popover]').trigger('keydown', { key: 'Escape' })
+    expect(b.wrapper.find('[data-testid=connection-popover]').exists()).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
+    await openConnection(b)
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await flushPromises()
+    expect(b.wrapper.find('[data-testid=connection-popover]').exists()).toBe(false)
+    await b.done()
+  })
+
+  it('弹出层：焦点不在弹出层内时，文档级 Esc 也能关闭，焦点回到触发按钮', async () => {
+    const b = await boot()
+    await openConnection(b)
+    const trigger = b.wrapper.get('[data-testid=connection-trigger]')
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+    expect(b.wrapper.find('[data-testid=connection-popover]').exists()).toBe(false)
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(trigger.element)
     await b.done()
   })
 
@@ -77,6 +105,7 @@ describe('E 方向壳：骨架与连接', () => {
     const b = await boot()
     b.sock.emit(hello())
     await flushPromises()
+    await openConnection(b)
     await vi.waitFor(() =>
       expect(b.wrapper.get('[data-testid=health-version]').text()).toBe('9.9.9'),
     )
@@ -87,6 +116,7 @@ describe('E 方向壳：骨架与连接', () => {
     const b = await boot()
     b.sock.emit(hello())
     await flushPromises()
+    await openConnection(b)
     const sw = b.wrapper.get('[role=switch]')
     expect(sw.attributes('aria-checked')).toBe('false')
     await sw.trigger('click')
@@ -116,6 +146,7 @@ describe('E 方向壳：骨架与连接', () => {
     const b = await boot({ fetchImpl: failing })
     b.sock.emit(hello())
     await flushPromises()
+    await openConnection(b)
     await b.wrapper.get('[role=switch]').trigger('click')
     await flushPromises()
     expect(b.wrapper.get('[data-testid=alert-error]').text()).toContain('401')
@@ -123,17 +154,18 @@ describe('E 方向壳：骨架与连接', () => {
     await b.done()
   })
 
-  it('告警：横幅显示 reason（无 reason 给默认文案）、导航任务角标变 !、工作区无遮罩', async () => {
+  it('告警：横幅显示 reason（无 reason 给默认文案）、连接状态行变橙、无导航角标、工作区无遮罩', async () => {
     const b = await boot()
     b.sock.emit(hello())
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=nav-alert-badge]').exists()).toBe(false)
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('false')
     b.sock.emit(alertEvent(true, 'disk full'))
     await flushPromises()
     const banner = b.wrapper.get('[data-testid=alert-banner]')
     expect(banner.attributes('role')).toBe('alert')
     expect(banner.text()).toContain('disk full')
-    expect(b.wrapper.get('[data-testid=nav-alert-badge]').text()).toBe('!')
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('true')
+    expect(b.wrapper.find('[data-testid=nav-alert-badge]').exists()).toBe(false)
     // 无全屏遮罩：壳内没有 fixed/absolute 覆盖层拦截点击
     expect(b.wrapper.find('[data-testid=app-shell] .overlay').exists()).toBe(false)
 
@@ -144,7 +176,7 @@ describe('E 方向壳：骨架与连接', () => {
     b.sock.emit(alertEvent(false))
     await flushPromises()
     expect(b.wrapper.find('[data-testid=alert-banner]').exists()).toBe(false)
-    expect(b.wrapper.find('[data-testid=nav-alert-badge]').exists()).toBe(false)
+    expect(b.wrapper.get('.conn').attributes('data-alert')).toBe('false')
     await b.done()
   })
 
@@ -170,27 +202,29 @@ describe('E 方向壳：骨架与连接', () => {
     await b.done()
   })
 
-  it('检查器可收起/展开：按钮键盘可达，收起后主区占满', async () => {
-    const b = await boot()
+  it('检查器可收起/展开：顶栏按钮 aria-pressed、键盘可达，状态只把布尔值存 localStorage', async () => {
+    localStorage.clear()
+    const b = await boot({ path: '/ai' })
     const shell = b.wrapper.get('[data-testid=app-shell]')
     const btn = b.wrapper.get('[data-testid=inspector-toggle]')
     expect(btn.element.tagName).toBe('BUTTON')
     expect(btn.attributes('aria-label')).toBe('收起检查器')
-    expect(btn.attributes('aria-expanded')).toBe('true')
+    expect(btn.attributes('aria-pressed')).toBe('true')
     expect(shell.attributes('data-inspector')).toBe('open')
-    expect(
-      (b.wrapper.get('[data-testid=inspector]').element as HTMLElement).style.display,
-    ).not.toBe('none')
+    const panel = () => b.wrapper.get('[data-testid=inspector]').element as HTMLElement
+    expect(panel().style.display).not.toBe('none')
     await btn.trigger('click')
     expect(shell.attributes('data-inspector')).toBe('closed')
     expect(b.wrapper.get('[data-testid=inspector-toggle]').attributes('aria-label')).toBe(
       '展开检查器',
     )
-    expect((b.wrapper.get('[data-testid=inspector]').element as HTMLElement).style.display).toBe(
-      'none',
-    )
+    expect(b.wrapper.get('[data-testid=inspector-toggle]').attributes('aria-pressed')).toBe('false')
+    expect(panel().style.display).toBe('none')
+    expect(localStorage.getItem('toolbox.ui.inspector')).toBe('false')
+    expect(Object.keys(localStorage)).toEqual(['toolbox.ui.inspector'])
     await b.wrapper.get('[data-testid=inspector-toggle]').trigger('click')
     expect(shell.attributes('data-inspector')).toBe('open')
+    expect(localStorage.getItem('toolbox.ui.inspector')).toBe('true')
     await b.done()
   })
 

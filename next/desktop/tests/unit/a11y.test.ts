@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeSocket, resetSeq } from './helpers'
 import { boot } from './boot'
+import { createWiFake, summary } from './wi-fake'
+import { openWi } from './wi-helpers'
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'src', p), 'utf8')
 
@@ -21,7 +23,7 @@ describe('可访问性', () => {
       const b = await boot({ path })
       await flushPromises()
       const buttons = b.wrapper.findAll('button')
-      expect(buttons.length).toBeGreaterThan(5)
+      expect(buttons.length).toBeGreaterThan(path === '/tasks' ? 0 : 5)
       for (const btn of buttons) {
         const name = btn.attributes('aria-label') || btn.text().trim()
         expect(name, btn.html()).not.toBe('')
@@ -34,8 +36,10 @@ describe('可访问性', () => {
     })
   }
 
-  it('Tab 遍历顺序：导航 -> 工具栏 -> 表格行（tabindex=0）-> 状态栏按钮', async () => {
-    const b = await boot()
+  it('Tab 遍历顺序：侧栏导航 -> 列表搜索 -> 列表行 -> 顶栏检查器开关', async () => {
+    const fake = createWiFake()
+    fake.lists['proj:a|开发中'] = { items: [summary(1), summary(2)], truncated: false, omitted: 0 }
+    const b = await openWi(fake)
     const focusables = Array.from(
       document.body.querySelectorAll<HTMLElement>(
         'a[href], button, input, select, textarea, [tabindex="0"]',
@@ -44,13 +48,11 @@ describe('可访问性', () => {
     const idx = (sel: string) => focusables.findIndex((e) => e.matches(sel))
     const nav = idx('nav a[href="/tasks"]')
     const search = idx('input[type=search]')
-    const add = idx('[data-testid=add-task]')
-    const row = idx('tbody tr')
+    const row = idx('[data-testid=wi-row-1]')
     const toggle = idx('[data-testid=inspector-toggle]')
     expect(nav).toBeGreaterThanOrEqual(0)
     expect(nav).toBeLessThan(search)
-    expect(search).toBeLessThan(add)
-    expect(add).toBeLessThan(row)
+    expect(search).toBeLessThan(row)
     expect(row).toBeLessThan(toggle)
     // 禁用的导航项不进入 Tab 序列
     expect(document.querySelector('[aria-disabled=true][tabindex]')).toBeNull()
@@ -69,33 +71,37 @@ describe('可访问性', () => {
     await b.done()
   })
 
-  it('可点击目标 >= 32px：按钮、图标按钮、导航项、页签、输入框的样式约定', () => {
-    expect(src('components/AppButton.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    const ib = src('components/IconButton.vue')
-    expect(ib).toMatch(/width:\s*var\(--target-min\)/)
-    expect(ib).toMatch(/height:\s*var\(--target-min\)/)
-    expect(src('components/SidebarNav.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    expect(src('components/AppTabs.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    expect(src('components/SearchBox.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    expect(src('components/TextInput.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    expect(src('components/ApprovalBar.vue')).toMatch(/min-height:\s*var\(--target-min\)/)
-    expect(src('design/tokens.css')).toMatch(/--target-min:\s*32px/)
+  it('可点击目标 >= 28px：按钮、工具栏按钮、导航项、分段控件、输入框的样式约定', () => {
+    expect(src('components/Button.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    expect(src('components/Button.vue')).toMatch(/min-width:\s*var\(--target-min\)/)
+    const tb = src('components/ToolbarButton.vue')
+    expect(tb).toMatch(/width:\s*var\(--target-min\)/)
+    expect(tb).toMatch(/height:\s*var\(--ctl-h\)/)
+    expect(src('components/Sidebar.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    expect(src('components/SegmentedControl.vue')).toMatch(/min-width:\s*var\(--target-min\)/)
+    expect(src('components/SearchField.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    expect(src('components/TextField.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    expect(src('components/ApprovalBar.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    expect(src('design/tokens.css')).toMatch(/--target-min:\s*28px/)
+    expect(src('design/tokens.css')).toMatch(/--ctl-h:\s*28px/)
   })
 
-  it('动效约定：只在运行中/待审批/告警使用；页面里没有其他 animation', () => {
-    const files = [
-      'components/StageBar.vue',
-      'components/StatusDot.vue',
-      'components/ApprovalBar.vue',
-      'components/AlertBanner.vue',
-      'design/ui.css',
-    ]
+  it('动效约定：只有状态点运行中的脉冲与 Sheet 进出；prefers-reduced-motion 下全部关闭', () => {
+    const files = ['components/StatusDot.vue', 'components/StatusPill.vue', 'components/Sheet.vue']
     const used = files.flatMap((f) => (src(f).match(/animation:\s*([a-z-]+)/g) ?? []).map((m) => m))
-    expect(
-      used.filter((m) => !/none/.test(m)).every((m) => /flow|pulse|slidein|nudge/.test(m)),
-    ).toBe(true)
-    for (const f of ['features/tasks/TasksPage.vue', 'features/ai/AiSessionsPage.vue']) {
+    expect(used.length).toBeGreaterThan(0)
+    expect(used.every((m) => /pulse|sheet-in|sheet-out/.test(m))).toBe(true)
+    for (const f of [
+      'features/tasks/TasksPage.vue',
+      'features/ai/AiSessionsPage.vue',
+      'features/work-items/WorkItemsPage.vue',
+      'components/ApprovalBar.vue',
+      'components/Banner.vue',
+    ]) {
       expect(src(f)).not.toMatch(/animation:/)
     }
+    expect(src('design/ui.css')).toMatch(
+      /prefers-reduced-motion: reduce\)\s*{[^]*animation: none !important/,
+    )
   })
 })
