@@ -11,6 +11,12 @@ export interface RunSubscribedData {
 
 export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
+export interface TelegramStatusEventData {
+  state: components['schemas']['PollerView']['state']
+  since: string
+  last_error_category?: string | null
+}
+
 export interface EventEnvelope {
   seq: number
   topic: string
@@ -46,6 +52,7 @@ export interface EventClientOptions {
   onHeartbeat?: (latencyMs: number) => void
   onRunEvent?: (data: components['schemas']['RunEventData'], envelope: EventEnvelope) => void
   onRunSubscribed?: (data: RunSubscribedData, envelope: EventEnvelope) => void
+  onTelegramStatus?: (data: TelegramStatusEventData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -236,6 +243,9 @@ export class EventClient {
       if (!Number.isNaN(sent)) {
         this.opts.onHeartbeat?.(Math.max(0, this.opts.now() - sent))
       }
+    }
+    if (parsed.type === 'telegram.status') {
+      this.opts.onTelegramStatus?.(parsed.data as unknown as TelegramStatusEventData, parsed)
     }
     if (parsed.topic === 'run') {
       if (parsed.type === 'run.event') {

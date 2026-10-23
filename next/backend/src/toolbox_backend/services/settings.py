@@ -130,6 +130,7 @@ class SettingsService:
             config, state = Config(), "readonly_error"
         return SettingsResponse(
             revision=config.revision,
+            schema_version=config.schema_version,
             store_state=state,
             store_error=self.store.readonly_error,
             data_dir=str(self.store.data_dir),

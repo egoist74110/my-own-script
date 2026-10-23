@@ -2,17 +2,25 @@
 // 读：vue-query（键以 ['settings'] 开头，收到 settings.changed 或重连后整体失效）。
 // 写：普通 async 函数而非 useMutation —— mutation 缓存会保留 variables，而 PAT 不得进入任何缓存。
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { computed, inject, ref, watch, type InjectionKey } from 'vue'
+import { computed, inject, onScopeDispose, ref, watch, type InjectionKey } from 'vue'
 import { backendRuntimeKey } from '@/app/backend-runtime'
 import type { ApiClient } from '@/api/client'
 import { useBackendStore } from '@/stores/backend'
 import {
   ApiError,
   unwrap,
+  type ActivityItem,
   type AdoResponse,
   type CredentialStatus,
+  type GroupCreate,
+  type GroupPatch,
   type ImportPreview,
+  type MemberCreate,
+  type MemberPatch,
   type SettingsResponse,
+  type TaskView,
+  type TelegramStatusData,
+  type TelegramView,
 } from './api'
 
 export interface Notice {
@@ -82,6 +90,86 @@ export function useSettingsContext() {
     retry: false,
     queryFn: (): Promise<CredentialStatus[]> => unwrap(api().GET('/api/credentials')),
   })
+  const telegramTabActive = ref(false)
+  let latestWsPoller: TelegramStatusData | null = null
+  let wsEventSeq = 0
+
+  function isSinceNewer(a: string, b: string): boolean {
+    const ta = Date.parse(a)
+    const tb = Date.parse(b)
+    if (!isNaN(ta) && !isNaN(tb)) return ta > tb
+    return a > b
+  }
+
+  const telegram = useQuery({
+    queryKey: [...QK, 'telegram'],
+    enabled: computed(() => online.value && telegramTabActive.value),
+    retry: false,
+    queryFn: async (): Promise<TelegramView> => {
+      const startSeq = wsEventSeq
+      const fresh = await unwrap(api().GET('/api/telegram'))
+      const current = qc.getQueryData<TelegramView>([...QK, 'telegram'])
+      const candidate = latestWsPoller ?? current?.poller ?? null
+
+      if (candidate?.since && fresh?.poller?.since) {
+        // 如果在当前 GET 在途期间收到了 WS 事件，或当前已缓存/收到的状态时间晚于 GET 结果的时间，
+        // 则以更新的状态为准，不让陈旧的 GET 结果覆盖 poller 字段；其他非 poller 字段正常按 fresh 更新。
+        if (wsEventSeq > startSeq || isSinceNewer(candidate.since, fresh.poller.since)) {
+          return {
+            ...fresh,
+            poller: {
+              ...fresh.poller,
+              state: candidate.state,
+              since: candidate.since,
+              last_error_category:
+                candidate.last_error_category ?? fresh.poller.last_error_category,
+            },
+          }
+        }
+      }
+      latestWsPoller = null
+      return fresh
+    },
+  })
+  const tasks = useQuery({
+    queryKey: ['tasks', 'list'],
+    enabled: computed(() => online.value && telegramTabActive.value),
+    retry: false,
+    queryFn: async (): Promise<TaskView[]> => {
+      try {
+        const res = await unwrap(api().GET('/api/tasks'))
+        return Array.isArray(res?.items) ? res.items : []
+      } catch {
+        return []
+      }
+    },
+  })
+
+  if (runtime) {
+    const unbind = runtime.onEvent((ev) => {
+      if (ev.type === 'telegram.status' && ev.data) {
+        const d = ev.data as unknown as TelegramStatusData
+        wsEventSeq++
+        latestWsPoller = d
+        qc.setQueryData([...QK, 'telegram'], (old: TelegramView | undefined) => {
+          if (!old) return old
+          if (old.poller?.since && isSinceNewer(old.poller.since, d.since)) {
+            return old
+          }
+          return {
+            ...old,
+            poller: {
+              ...old.poller,
+              state: d.state,
+              since: d.since,
+              last_error_category: d.last_error_category ?? old.poller.last_error_category,
+            },
+          }
+        })
+      }
+    })
+    onScopeDispose(() => unbind())
+  }
 
   // settings.changed（任意窗口/进程的写入）让全部设置查询失效
   watch(
@@ -105,7 +193,13 @@ export function useSettingsContext() {
   }
   watch(() => overview.dataUpdatedAt.value, maybeReleaseFault)
   const writable = computed(() => overview.data.value?.store_state === 'ok' && !storeFault.value)
-  const revision = computed(() => ado.data.value?.revision ?? overview.data.value?.revision ?? null)
+  const revision = computed(
+    () =>
+      ado.data.value?.revision ??
+      overview.data.value?.revision ??
+      telegram.data.value?.revision ??
+      null,
+  )
   const loadError = computed(() =>
     overview.error.value || ado.error.value || credentials.error.value ? '读取设置失败' : null,
   )
@@ -374,12 +468,231 @@ export function useSettingsContext() {
           ),
         '已清理凭据条目',
       ),
+    putTelegramToken: (token: string, handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PUT('/api/telegram/token', {
+              body: { revision, token },
+            }),
+          ),
+        'Bot Token 已保存',
+        handle,
+      ),
+    importLegacyTelegramToken: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/token/import-legacy', {
+              body: { revision },
+            }),
+          ),
+        '已从旧应用导入 Bot Token',
+        handle,
+      ),
+    deleteTelegramToken: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/telegram/token', {
+              params: { query: { revision } },
+            }),
+          ),
+        'Bot Token 已删除',
+        handle,
+      ),
+    enableTelegram: (
+      ack_old_bot_stopped: boolean,
+      delete_webhook = false,
+      handle?: (e: ApiError) => boolean,
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/control/enable', {
+              body: { revision, ack_old_bot_stopped, delete_webhook },
+            }),
+          ),
+        '已启用 Telegram 长轮询',
+        handle,
+      ),
+    disableTelegram: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/control/disable', {
+              body: { revision },
+            }),
+          ),
+        '已停用 Telegram 长轮询',
+        handle,
+      ),
+    retryTelegram: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/control/retry', {
+              body: { revision },
+            }),
+          ),
+        '已重试接管',
+        handle,
+      ),
+    createBindCode: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/owner/bind-code', {
+              body: { revision },
+            }),
+          ),
+        undefined,
+        handle,
+      ),
+    unbindOwner: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/telegram/owner', {
+              params: { query: { revision } },
+            }),
+          ),
+        '所有者已解绑',
+        handle,
+      ),
+    patchTelegramSettings: (
+      notify: { include_details?: boolean | null; ui_runs_to_owner?: boolean | null },
+      handle?: (e: ApiError) => boolean,
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/telegram/settings', {
+              body: { revision, notify },
+            }),
+          ),
+        '通知设置已保存',
+        handle,
+      ),
+    createAclGroup: (group: Omit<GroupCreate, 'revision'>, handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/acl/groups', {
+              body: { ...group, revision },
+            }),
+          ),
+        '已新建权限组',
+        handle,
+      ),
+    patchAclGroup: (
+      id: string,
+      patch: Omit<GroupPatch, 'revision'>,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/telegram/acl/groups/{id}', {
+              params: { path: { id } },
+              body: { ...patch, revision },
+            }),
+          ),
+        '已保存权限组',
+        handle,
+        opts,
+      ),
+    deleteAclGroup: (id: string, handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/telegram/acl/groups/{id}', {
+              params: { path: { id }, query: { revision } },
+            }),
+          ),
+        '已删除权限组',
+        handle,
+      ),
+    createAclMember: (member: Omit<MemberCreate, 'revision'>, handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/acl/members', {
+              body: { ...member, revision },
+            }),
+          ),
+        '已添加成员',
+        handle,
+      ),
+    patchAclMember: (
+      id: string,
+      patch: Omit<MemberPatch, 'revision'>,
+      handle?: (e: ApiError) => boolean,
+      opts?: { revision?: number; onConflict?: () => boolean },
+    ) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PATCH('/api/telegram/acl/members/{id}', {
+              params: { path: { id } },
+              body: { ...patch, revision },
+            }),
+          ),
+        '已保存成员',
+        handle,
+        opts,
+      ),
+    deleteAclMember: (id: string, handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().DELETE('/api/telegram/acl/members/{id}', {
+              params: { path: { id }, query: { revision } },
+            }),
+          ),
+        '已删除成员',
+        handle,
+      ),
+    putLegacyWhitelist: (legacy_whitelist: string[], handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().PUT('/api/telegram/acl/legacy-whitelist', {
+              body: { revision, legacy_whitelist },
+            }),
+          ),
+        '旧白名单已保存',
+        handle,
+      ),
+    sendTestMessage: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/test-message', {
+              body: { revision },
+            }),
+          ),
+        '测试消息已发送',
+        handle,
+      ),
+    getTelegramActivity: async (limit = 50): Promise<ActivityItem[]> => {
+      const res = await unwrap(
+        api().GET('/api/telegram/activity', {
+          params: { query: { limit } },
+        }),
+      )
+      return res?.items ?? []
+    },
   }
 
   return {
     overview,
     ado,
     credentials,
+    telegram,
+    telegramTabActive,
+    tasks,
     writable,
     revision,
     loadError,

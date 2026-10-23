@@ -377,7 +377,7 @@ function openDeleteTask() {
   deleteSheetOpen.value = true
 }
 
-async function onConfirmDeleteTask() {
+async function onConfirmDeleteTask(detachAcl = false) {
   if (!selectedTask.value) return
   deleteSubmitting.value = true
   deleteError.value = null
@@ -386,7 +386,10 @@ async function onConfirmDeleteTask() {
       api().DELETE('/api/tasks/{task_id}', {
         params: {
           path: { task_id: selectedTask.value.id },
-          query: { revision: revision.value },
+          query: {
+            revision: revision.value,
+            ...(detachAcl ? { detach_acl: true } : {}),
+          },
         },
       }),
     )
@@ -682,7 +685,8 @@ async function moveTask(direction: -1 | 1) {
       :task="selectedTask"
       :submitting="deleteSubmitting"
       :error="deleteError"
-      @confirm="onConfirmDeleteTask"
+      @confirm="onConfirmDeleteTask(false)"
+      @confirm-detach="onConfirmDeleteTask(true)"
     />
   </div>
 </template>

@@ -4,6 +4,7 @@ import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import Sheet from '@/components/Sheet.vue'
 import StatusPill from '@/components/StatusPill.vue'
+import Tag from '@/components/Tag.vue'
 import StepList from './StepList.vue'
 import LogPanel from './LogPanel.vue'
 import {
@@ -114,6 +115,9 @@ function confirmCancel() {
       <div class="run-card-status">
         <StatusPill :state="mapStatusToPill(true, run.status)" />
         <span class="run-op-name">{{ operationLabel(run.operation) }}</span>
+        <Tag v-if="run.origin?.kind === 'telegram'" data-testid="run-origin-telegram">
+          由 Telegram 触发
+        </Tag>
         <span class="run-time-meta">
           {{ formatTime(run.started_at ?? run.created_at) }} 开始 · 已用
           {{ elapsedText }}

@@ -93,6 +93,7 @@ function startBackend() {
         TOOLBOX_DEV_FAKE_CREDENTIALS: fakeCredentials,
         TOOLBOX_DEV_FAKE_ADO: fakeAdo,
         TOOLBOX_DEV_TASK_ROOT: taskRootDir,
+        TOOLBOX_DEV_FAKE_TELEGRAM: '1',
       },
       stdio: ['pipe', 'pipe', 'inherit'],
     })

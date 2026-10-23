@@ -18,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 function triggerText(r: RunResponse): string {
+  if (r.origin?.kind === 'telegram') return '由 Telegram 触发'
   const snap = r.task_snapshot
   if (snap?.tg_command) return `TG · ${snap.tg_command}`
   return '本机'

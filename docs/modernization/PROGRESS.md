@@ -825,3 +825,21 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 施工第 1 轮：agy `--sandbox --model gemini-3.8-flash-high --effort high`，cwd 缓存会话 `e2d67d9a-9943-40fa-8656-f55dd36e7baf`，exit 0；actual model/effort=unknown（agy 无回执）。22 文件均在 write_scope；新增 `tests/unit/s4c-*` 3 文件 26 例；既有测试仅两处随新增分区更新（页签列表加“Telegram”、竖向页签计数 5→6），主控核对 diff。主控在施工树复跑 frozen install/typecheck/lint（0 error/8 既有 warning）/test **929 passed**/build/guard:dist/contracts:check 全 exit 0，`git diff --check` exit 0。
 - 独立测试：codex exec `gpt-6-luna` / high，session `01a167af-4003-71e2-b4ea-fba73e77cf27`（rollout turn_context 回执 gpt-6-luna/high），新增 `tests/independent/s4c-*` 4 文件 11 例：10 passed / **1 failed**——缺陷 S4C-001：`telegram.status` WS 事件晚于在途 GET 时被旧 GET 结果回滚（conflict→已停用），疑似 `useSettings.ts:94/115`。测试员自报未覆盖：502/503 文案、enable 请求体、九种状态与阈值、解绑 revision/Esc、ACL 重名/规范化/冲突草稿、任务删除查询参数、方向键/焦点陷阱、PAT/Bearer 全面扫描（部分由施工者单测覆盖，不计独立）。
 - 退回 agy 第 2 轮（同 `--conversation`）：修 S4C-001，不得改独立测试，新增自有回归。请求 `.local/dispatch/s4c/round2.md`。
+
+### S4-C 集成与 S4 端到端联调（2026-10-23）
+
+- S4-C 第 2 轮：agy 同 `--conversation e2d67d9a-…`，exit 0，actual unknown。修 S4C-001：`useSettings.ts` 引入 WS 事件序号与 `since` 比较，在途 GET 返回时若期间有更新的 WS 轮询状态则保留 poller 字段、其余字段照常更新；WS 自身晚到旧 `since` 也忽略。新增自有回归 1 例（`tests/unit/s4c-telegram-cards.test.ts`）。主控核对 `tests/independent/s4c-*` 4 文件 mtime 均早于第 2 轮请求（未被施工者修改）；独立用例 11/11 passed。S4C-001 **fixed**（修前失败由独立测试员在定向与全量两次运行中观察，主控未自行反向复现，记 unknown）。
+- 集成：worktree `next/desktop` 限定 binary patch（`.local/dispatch/s4c/integration.patch`，主目录 `next/desktop` 先核对与 `b64dd65` 一致），`git apply --check` 后应用。
+- **主控 dev:web 联调**（`pnpm dev:web`，假 ADO + 临时 git + 假 Telegram，1440×900，本会话启动并停止；临时 `.claude/launch.json` 用后删除；启动器临时目录已自动删除，1420 已释放）：
+  - 设置→Telegram：录入假 Token 后仅显示“已保存（手动录入）”，脚本检查 DOM/输入框/localStorage/sessionStorage/URL 均不含 Token；启用开关弹出切换步骤 Sheet（单独测试 Bot、删除旧 Keychain `my-own-script`/`telegram_bot_token`、勿关旧端开关、回退）+ 必选确认；确认后 Bot 用户名/ID 来自假 getMe，状态“轮询中”。
+  - 生成绑定码 → 注入 `/bind <码>` → “owner 绑定成功”，owner chat 6001；`/help` 菜单按钮为 22 字符随机令牌；陌生 chat 7777 零回复；10 分钟前的 `/status` 回复过期提示。
+  - TG 端：任务→“演示 · 同步构建发布”（停用任务不出现）→构建发布→计划摘要（仓库/分支/目标/definition/stage、停止不撤回提示）→同一“确认执行”按钮注入两次：**仅 1 个 run**（succeeded，origin=telegram），两次都回“已开始（运行 #b035b839）”，开始/成功通知各一条发给触发 chat。任务页运行卡片与历史显示“由 Telegram 触发”。
+  - 删除任务“演示 · 只发布失败”（被 API 新建的“测试组”引用）：Sheet 显示 409 引用组名与“同时从 1 个权限组移除并删除”，点击后发 `DELETE …?revision=6&detach_acl=true`，任务删除，组保留 can_run 且 task_ids 为空并给 warning“该组已无可运行任务”。
+- **联调发现并由主控修复**（均先写会失败的回归）：
+  - S4-LEAD-001：设置页显示“schema v1”——`SettingsResponse.schema_version` 默认 1 而 `services/settings.py` 未传实际值（S1 潜在缺陷，S4-A 升 v2 后暴露）。修复传入 `config.schema_version`；回归 `tests/test_s4_lead_fixes.py` 修前 1 failed → 修后 passed；契约无变化。
+  - S4-LEAD-002：Telegram 分区三个开关无可访问名称（合同 S4-C 键盘与可访问性项）。`TelegramTab.vue` 加 aria-label；回归 `tests/unit/s4-lead-switch-names.test.ts` 修前 1 failed → 修后 passed。
+- **记录、未修（后续另排）**：S3C-F1 选中已结束 run 时一次性约 40 个 `GET /api/runs/{id}` 请求突发（非持续轮询，5 秒内 0 新增）；S3C-F2 日志面板 innerText 出现行号重复（3…14 后又 3,4,5），截图中可视区未见重复，未确认；过期提示时间按 UTC 显示（`07:44`，用户本地为 16:44），建议改本地时区；删除冲突提示文案写“被其他配置或工单引用”，“工单”不准确。
+- 集成版本验收（前端，含主控两处修复）：frozen install、typecheck、lint（0 error/8 既有 warning）、test **942 passed / 65 文件**、build、guard:dist、contracts:check 全 exit 0；`git diff --check` exit 0。后端全量见下条。
+- 未测：真实 Telegram（测试 Bot）/Keychain/系统代理/Tauri；真实验收清单未授权未执行；主 Bot 切换按已决1 推迟到 S6–S8。worktree `.local/worktrees/{s4a,s4c}` 保留（删除前问用户）。
+- 集成版本后端（含 S4-LEAD-001 修复）：全量 pytest **876 passed**（254.51s，沙箱外），ruff exit 0，contracts --check exit 0。Rust 与根目录旧代码守卫 not_run（S4 未改 src-tauri/旧代码）。
+- 状态：**S4-A/S4-B/S4-C integrated**（本地提交，未 push）。S4 真实验收清单（测试 Bot）待用户另行授权；主 Bot 切换按已决1 推迟到 S6–S8。

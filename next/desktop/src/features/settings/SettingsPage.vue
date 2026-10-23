@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
-import { Database, Download, FolderGit2, KeyRound, SlidersHorizontal } from 'lucide-vue-next'
+import { Database, Download, FolderGit2, KeyRound, Send, SlidersHorizontal } from 'lucide-vue-next'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
@@ -9,6 +9,7 @@ import CredentialsTab from './CredentialsTab.vue'
 import GeneralTab from './GeneralTab.vue'
 import ImportTab from './ImportTab.vue'
 import LocalReposTab from './LocalReposTab.vue'
+import TelegramTab from './TelegramTab.vue'
 import { settingsContextKey, useSettingsContext } from './useSettings'
 import './settings.css'
 
@@ -23,7 +24,7 @@ function onTab(v: string) {
 }
 // 首次载入：已处理过导入（完成/跳过）时直接落在 ADO 连接；用户手动切过页签则不再干预
 watch(
-  () => ctx.overview.data.value?.import.state,
+  () => ctx.overview.data.value?.import?.state,
   (s) => {
     if (!picked && (s === 'completed' || s === 'declined')) tab.value = 'ado'
   },
@@ -53,6 +54,12 @@ const tabs = computed(() => [
     icon: KeyRound,
     iconColor: '#e07b00',
   },
+  {
+    value: 'telegram',
+    label: 'Telegram',
+    icon: Send,
+    iconColor: '#229ed9',
+  },
   { value: 'general', label: '常规', icon: SlidersHorizontal, iconColor: '#8e8e93' },
 ])
 const o = computed(() => ctx.overview.data.value ?? null)
@@ -63,6 +70,7 @@ const summary = computed(() =>
 const ASIDE: Record<string, string> = {
   import: '导入只发生一次：不同步、不回写旧配置；旧 Keychain 条目只读。',
   credentials: '凭据值永远不会显示在界面上，这里只有存在与否、来源和状态。',
+  telegram: 'Bot Token 保存在安全钥匙串中，长轮询与所有者绑定独立于旧应用。',
   general: '数据目录、旧配置目录与版本信息均为只读。',
 }
 const noticeKind = computed(() => {
@@ -131,6 +139,7 @@ const noticeKind = computed(() => {
           <AdoTab v-else-if="item.value === 'ado'" />
           <LocalReposTab v-else-if="item.value === 'repos'" />
           <CredentialsTab v-else-if="item.value === 'credentials'" />
+          <TelegramTab v-else-if="item.value === 'telegram'" />
           <GeneralTab v-else />
         </template>
       </SegmentedControl>

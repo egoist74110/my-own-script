@@ -12,6 +12,28 @@ export type Project = S['Project']
 export type LocalRepoView = S['LocalRepoView']
 export type CredentialStatus = S['CredentialStatus']
 export type ConnectionResult = S['ConnectionResult']
+export type TelegramView = S['TelegramView']
+export type BotView = S['BotView']
+export type Control = S['Control']
+export type OwnerView = S['OwnerView']
+export type Notify = S['Notify']
+export type PollerView = S['PollerView']
+export type ACLView = S['ACLView']
+export type ACLGroup = S['ACLGroup']
+export type ACLMember = S['ACLMember']
+export type ActivityResponse = S['ActivityResponse']
+export type ActivityItem = S['ActivityItem']
+export type BindCodeResponse = S['BindCodeResponse']
+export type GroupCreate = S['GroupCreate']
+export type GroupPatch = S['GroupPatch']
+export type MemberCreate = S['MemberCreate']
+export type MemberPatch = S['MemberPatch']
+export interface TelegramStatusData {
+  state: PollerView['state']
+  since: string
+  last_error_category?: string | null
+}
+export type TaskView = S['TaskView']
 
 export class ApiError extends Error {
   constructor(
@@ -36,7 +58,10 @@ function toApiError(status: number, body: unknown): ApiError {
   if (typeof detail === 'object' && detail !== null && !Array.isArray(detail)) {
     const d = detail as Record<string, unknown>
     const code = typeof d.code === 'string' ? d.code : 'unknown'
-    const message = typeof d.message === 'string' ? d.message : `请求失败（HTTP ${status}）`
+    const message =
+      typeof d.message === 'string' && d.message
+        ? d.message
+        : (TELEGRAM_ERROR_MESSAGES[code] ?? `请求失败（HTTP ${status}）`)
     return new ApiError(status, code, message, d)
   }
   return new ApiError(status, 'unknown', `请求失败（HTTP ${status}）`)
@@ -84,4 +109,47 @@ export const CATEGORY_TEXT: Record<ConnectionResult['category'], string> = {
   network: '网络不可达',
   bad_response: '响应格式异常',
   no_credential: '尚未保存 PAT',
+}
+
+export const TELEGRAM_ERROR_MESSAGES: Record<string, string> = {
+  validation_error: '输入格式不正确',
+  telegram_active: 'Telegram 正在运行中，无法修改配置，请先停用',
+  ack_required: '需要确认旧应用已停止轮询',
+  webhook_set: '检测到 Telegram 已设置 Webhook',
+  legacy_missing: '旧应用中未找到 Telegram Bot Token',
+  owner_not_bound: '尚未绑定所有者',
+  telegram_request_failed: 'Telegram 请求失败',
+  telegram_store_unavailable: 'Telegram 存储不可用（只读错误态）',
+  revision_conflict: '配置已被修改，请刷新后重试',
+  no_credential: '未配置 Bot Token',
+  credential_backend_error: '凭据存储异常',
+  store_unavailable: '配置存储不可用',
+  store_busy: '配置存储正忙',
+  busy: '系统正忙',
+  not_found: '条目不存在',
+}
+
+export const POLLER_STATE_LABEL: Record<PollerView['state'], string> = {
+  disabled: '已停用',
+  starting: '启动中',
+  polling: '轮询中',
+  backoff: '等待退避',
+  conflict: '轮询冲突',
+  token_invalid: 'Token 无效',
+  webhook_set: 'Webhook 已设置',
+  store_unavailable: '存储不可用',
+  stopping: '停止中',
+}
+
+export const POLLER_STATE_DESC: Partial<Record<PollerView['state'], string>> = {
+  conflict: '另一个程序（可能是旧应用）正在轮询这个 Bot',
+  token_invalid: 'Token 无效，请核对并重新录入',
+  webhook_set: '已在 Telegram 设置 Webhook，接管前需删除 Webhook',
+  store_unavailable: 'Telegram 存储处于只读错误态，无法启动轮询',
+}
+
+export const TELEGRAM_TOKEN_REGEX = /^\d{5,16}:[A-Za-z0-9_-]{30,64}$/
+
+export function isTelegramTokenValid(token: string): boolean {
+  return TELEGRAM_TOKEN_REGEX.test(token.trim())
 }

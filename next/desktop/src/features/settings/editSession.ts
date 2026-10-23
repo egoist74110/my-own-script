@@ -21,6 +21,12 @@ export function useEditSession<K extends string>(
     server: () => Fields<K> | null
     /** 新建时的草稿初值（缺省空串）。 */
     defaults?: () => Partial<Fields<K>>
+    /** 自定义 revision 获取器（缺省读取 ctx.ado.data.value?.revision）。 */
+    revision?: () => number | null
+    /** 自定义 isFetching 获取器（缺省读取 ctx.ado.isFetching.value）。 */
+    isFetching?: () => boolean
+    /** 自定义触发对齐的 watch 目标（缺省读取 ctx.ado.data.value）。 */
+    watchTarget?: () => unknown
   },
 ) {
   const keys = Object.keys(o.drafts) as K[]
@@ -31,7 +37,9 @@ export function useEditSession<K extends string>(
     revision: null,
   }
 
-  const serverRevision = () => ctx.ado.data.value?.revision ?? null
+  const serverRevision = () => (o.revision ? o.revision() : (ctx.ado.data.value?.revision ?? null))
+  const isFetching = () => (o.isFetching ? o.isFetching() : ctx.ado.isFetching.value)
+  const watchTarget = o.watchTarget ? o.watchTarget : () => ctx.ado.data.value
   const draftOf = (k: K) => o.drafts[k].value.trim()
   const sameAsBaseline = (srv: Fields<K>) => keys.every((k) => srv[k] === baseline.fields[k])
 
@@ -59,13 +67,13 @@ export function useEditSession<K extends string>(
     }) as Fields<K>
     baseline = { fields: { ...seed }, revision: serverRevision() }
     for (const k of keys) o.drafts[k].value = seed[k]
-    settling = ctx.busy.value || ctx.ado.isFetching.value
+    settling = ctx.busy.value || isFetching()
     return session
   }
 
-  watch(() => ctx.ado.data.value, reconcile)
+  watch(watchTarget, reconcile)
   watch(
-    () => ctx.busy.value || ctx.ado.isFetching.value,
+    () => ctx.busy.value || isFetching(),
     (working) => {
       if (working || !settling) return
       settling = false

@@ -63,7 +63,7 @@ describe('S1-B 导航与页签', () => {
     expect(link.text()).toContain('设置')
     expect(link.attributes('aria-current')).toBe('page')
     const tabs = b.wrapper.findAll('[role=tab]').map((t) => t.text().replace(/\d+$/, '').trim())
-    expect(tabs).toEqual(['导入', 'ADO 连接', '本地仓库', '凭据', '常规'])
+    expect(tabs).toEqual(['导入', 'ADO 连接', '本地仓库', '凭据', 'Telegram', '常规'])
     await b.done()
   })
 

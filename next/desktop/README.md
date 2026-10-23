@@ -5,18 +5,18 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 
 ## 命令（在 `next/desktop`）
 
-| 命令                             | 作用                                                                                                                                                                                                                                                      |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | 安装依赖（pnpm-lock.yaml 入库）                                                                                                                                                                                                                           |
-| `pnpm dev:web`                   | 拉起 `../backend`（`uv run python -m toolbox_backend --dev`，带 `TOOLBOX_DEV_FAKE_ADO` 指向 `../backend/tests/fixtures/fake-ado`，工单页读本地假 ADO，不连真实服务），解析 READY 行，把端口/token 以环境变量注入 vite（1420，strictPort），退出时回收后端 |
-| `pnpm dev`                       | 只启动 vite（Tauri `beforeDevCommand` 用；连接信息由 Tauri 命令 `backend_connection` 提供）                                                                                                                                                               |
-| `pnpm typecheck`                 | vue-tsc                                                                                                                                                                                                                                                   |
-| `pnpm lint`                      | ESLint（flat）+ Prettier 检查                                                                                                                                                                                                                             |
-| `pnpm test`                      | Vitest（jsdom，假 WebSocket / 假 fetch / 假定时器，不连任何真实服务）                                                                                                                                                                                     |
-| `pnpm build`                     | 类型检查 + vite build                                                                                                                                                                                                                                     |
-| `pnpm guard:dist`                | 产物禁词守卫（Rhine/Arknights/莱茵/fonts.googleapis 与残留 `--denied`）；**必须在 `pnpm build` 之后**单独运行，dist 不存在即失败                                                                                                                          |
-| `pnpm contracts:gen`             | `../contracts/openapi.json` -> `src/api/schema.d.ts`                                                                                                                                                                                                      |
-| `pnpm contracts:check`           | 重新生成并与入库文件比对                                                                                                                                                                                                                                  |
+| 命令                             | 作用                                                                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm install --frozen-lockfile` | 安装依赖（pnpm-lock.yaml 入库）                                                                                                                                                                                                                                                                        |
+| `pnpm dev:web`                   | 拉起 `../backend`（`uv run python -m toolbox_backend --dev`，带 `TOOLBOX_DEV_FAKE_ADO` 与 `TOOLBOX_DEV_FAKE_TELEGRAM=1`，工单页与 Telegram 均走本地假服务，不连真实外部服务），解析 READY 行，把端口/token 以环境变量注入 vite（1420，strictPort），退出时仅回收自身启动的 pid 与临时目录，不按名 kill |
+| `pnpm dev`                       | 只启动 vite（Tauri `beforeDevCommand` 用；连接信息由 Tauri 命令 `backend_connection` 提供）                                                                                                                                                                                                            |
+| `pnpm typecheck`                 | vue-tsc                                                                                                                                                                                                                                                                                                |
+| `pnpm lint`                      | ESLint（flat）+ Prettier 检查                                                                                                                                                                                                                                                                          |
+| `pnpm test`                      | Vitest（jsdom，假 WebSocket / 假 fetch / 假定时器，不连任何真实服务）                                                                                                                                                                                                                                  |
+| `pnpm build`                     | 类型检查 + vite build                                                                                                                                                                                                                                                                                  |
+| `pnpm guard:dist`                | 产物禁词守卫（Rhine/Arknights/莱茵/fonts.googleapis 与残留 `--denied`）；**必须在 `pnpm build` 之后**单独运行，dist 不存在即失败                                                                                                                                                                       |
+| `pnpm contracts:gen`             | `../contracts/openapi.json` -> `src/api/schema.d.ts`                                                                                                                                                                                                                                                   |
+| `pnpm contracts:check`           | 重新生成并与入库文件比对                                                                                                                                                                                                                                                                               |
 
 ## 连接与安全
 
@@ -84,3 +84,36 @@ mock 只在 `src/features/ai/mock/`。AI 页只调用 `useAiSessions()`（会话
 - 链接：点击一律拦截（`components/open-external.ts`），Tauri 内用 opener 插件，`pnpm dev:web` 下 `window.open(url,'_blank','noopener')`；只放行 http(s)（opener 的 capability scope 同样只含 `http://*`、`https://*`），WebView 自身永不导航。mailto 在两种环境下都不打开。
 - 检查器列出状态、优先级、指派、看板列、严重度、区域、迭代、标签；其下 AI 分析面板整体禁用（「即将推出」，S5 提供）。详情顶栏有项目、指派人、在浏览器打开与检查器开关。
 - 未在真实环境验证：Tauri 内 opener 与 blob 图片渲染、真实 ADO。
+
+## Dev 假 Telegram（S4-C）
+
+在 `pnpm dev:web` 模式下，启动器会自动注入环境变量 `TOOLBOX_DEV_FAKE_TELEGRAM=1`，后端在满足三重安全门禁（`--dev` + `TOOLBOX_CREDENTIALS=memory` + `TOOLBOX_DEV_FAKE_TELEGRAM=1`）时启用进程内假 Bot API，不向任何真实 Telegram 建立网络连接。
+
+### 模拟消息注入与回包检查
+
+在此模式下，后端会额外注册两个仅供本地调试的 API（生产与普通模式下为 404，需携带有效 Bearer Token）：
+
+1. **注入模拟消息与指令 (`POST /api/dev/telegram/inject`)**：
+   请求体格式示例：
+
+   ```json
+   {
+     "update": {
+       "update_id": 1,
+       "message": {
+         "chat": { "id": 6001, "type": "private" },
+         "from": { "id": 6001 },
+         "date": 1740000000,
+         "text": "/bind 123456"
+       }
+     }
+   }
+   ```
+
+   可在设置页生成绑定码后，注入 `/bind <码>` 完成 owner 绑定，亦可注入 `/help` 或 `/status` 模拟交互。
+
+2. **查看已发送假消息记录 (`GET /api/dev/telegram/sent`)**：
+   响应格式为 `{ "items": [{ "method": "sendMessage", "payload": { ... } }] }`，记录最近最多 500 条模拟发信。
+
+3. **安全生命周期回收**：
+   `scripts/dev-web.mjs` 仅跟踪自身 spawn 的后端与 vite 子进程句柄及其创建的两个临时目录（`toolbox-dev-web-*`、`toolbox-dev-task-root-*`）。退出时通过 SIGTERM -> SIGKILL 安全终止子进程并递归删除临时目录，绝不按进程名或端口号做破坏性 kill。
