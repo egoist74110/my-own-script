@@ -195,6 +195,213 @@ export interface paths {
         patch: operations["patch_project_api_ado_projects__id__patch"];
         trace?: never;
     };
+    "/api/ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Settings */
+        get: operations["settings_api_ai_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/jobs/{jid}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Job */
+        post: operations["cancel_job_api_ai_jobs__jid__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Profile Create */
+        post: operations["profile_create_api_ai_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/profiles/{pid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Profile Delete */
+        delete: operations["profile_delete_api_ai_profiles__pid__delete"];
+        options?: never;
+        head?: never;
+        /** Profile Patch */
+        patch: operations["profile_patch_api_ai_profiles__pid__patch"];
+        trace?: never;
+    };
+    "/api/ai/profiles/{pid}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check */
+        post: operations["check_api_ai_profiles__pid__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/profiles/{pid}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upgrade */
+        post: operations["upgrade_api_ai_profiles__pid__upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sessions */
+        get: operations["sessions_api_ai_sessions_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_ai_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session */
+        get: operations["session_api_ai_sessions__sid__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_ai_sessions__sid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close */
+        post: operations["close_api_ai_sessions__sid__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events */
+        get: operations["events_api_ai_sessions__sid__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Interrupt */
+        post: operations["interrupt_api_ai_sessions__sid__interrupt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Settings Patch */
+        patch: operations["settings_patch_api_ai_settings_patch"];
+        trace?: never;
+    };
     "/api/credentials": {
         parameters: {
             query?: never;
@@ -968,6 +1175,124 @@ export interface components {
             /** Members */
             members: (components["schemas"]["ACLMember"] | components["schemas"]["JsonValue"])[];
         };
+        /** AIAnalysis */
+        AIAnalysis: {
+            agy?: components["schemas"]["AgyAnalysis"];
+            claude?: components["schemas"]["ClaudeAnalysis"];
+            codex?: components["schemas"]["CodexAnalysis"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** AIDefaults */
+        AIDefaults: {
+            agy?: components["schemas"]["AgyDefaults"];
+            claude?: components["schemas"]["ClaudeDefaults"];
+            codex?: components["schemas"]["CodexDefaults"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** AIEventData */
+        AIEventData: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "init" | "assistant" | "thinking" | "tool_use" | "tool_result" | "turn_started" | "turn_completed" | "turn_failed" | "approval" | "notice" | "error" | "exit";
+            /** Payload */
+            payload: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Session Id */
+            session_id: string;
+            /** Session Seq */
+            session_seq: number;
+            /** Ts */
+            ts: string;
+        };
+        /** AIEventsResponse */
+        AIEventsResponse: {
+            /** Items */
+            items: components["schemas"]["AIEventData"][];
+            /** Last Seq */
+            last_seq: number;
+        };
+        /** AILimits */
+        AILimits: {
+            /**
+             * Headless
+             * @default 6
+             */
+            headless: number;
+            /**
+             * Per Cli
+             * @default 4
+             */
+            per_cli: number;
+            /**
+             * Prompt Bytes
+             * @default 32768
+             */
+            prompt_bytes: number;
+            /**
+             * Queue
+             * @default 10
+             */
+            queue: number;
+            /**
+             * Terminal
+             * @default 6
+             */
+            terminal: number;
+            /**
+             * Terminal Buffer Bytes
+             * @default 2097152
+             */
+            terminal_buffer_bytes: number;
+            /**
+             * Terminal Connections
+             * @default 2
+             */
+            terminal_connections: number;
+        };
+        /** AIOrigin */
+        AIOrigin: {
+            /**
+             * Kind
+             * @default ui
+             * @enum {string}
+             */
+            kind: "ui" | "telegram";
+        };
+        /** AISettingsPatch */
+        AISettingsPatch: {
+            analysis?: components["schemas"]["AIAnalysis"] | null;
+            defaults?: components["schemas"]["AIDefaults"] | null;
+            model_presets?: components["schemas"]["ModelPresets"] | null;
+            /** Revision */
+            revision: number;
+            /** Selected Profile Id */
+            selected_profile_id?: string | null;
+        };
+        /** AIView */
+        AIView: {
+            analysis: components["schemas"]["AIAnalysis"];
+            defaults: components["schemas"]["AIDefaults"];
+            limits?: components["schemas"]["AILimits"];
+            model_presets: components["schemas"]["ModelPresets"];
+            /** Profiles */
+            profiles: (components["schemas"]["ProfileView"] | components["schemas"]["JsonValue"])[];
+            /** Revision */
+            revision: number;
+            /** Selected Profile Id */
+            selected_profile_id: string;
+            /**
+             * Store State
+             * @enum {string}
+             */
+            store_state: "ready" | "unavailable";
+            /** Warnings */
+            warnings?: string[];
+        };
         /** ActiveRequest */
         ActiveRequest: {
             /** Library Id */
@@ -1032,6 +1357,30 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** AgyAnalysis */
+        AgyAnalysis: {
+            /**
+             * Mode
+             * @default sandbox
+             * @enum {string}
+             */
+            mode: "sandbox" | "auto";
+        } & {
+            [key: string]: unknown;
+        };
+        /** AgyDefaults */
+        AgyDefaults: {
+            /**
+             * Mode
+             * @default sandbox
+             * @enum {string}
+             */
+            mode: "sandbox" | "auto";
+            /** Model */
+            model?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AlertRequest */
         AlertRequest: {
             /** Active */
@@ -1084,6 +1433,15 @@ export interface components {
             /** Username */
             username: string | null;
         };
+        /** CheckResponse */
+        CheckResponse: {
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Ok */
+            ok: boolean;
+            /** Output */
+            output: string;
+        };
         /** CheckpointPayload */
         CheckpointPayload: {
             /** Data */
@@ -1135,6 +1493,62 @@ export interface components {
             items: components["schemas"]["ChildItem"][];
             /** Truncated */
             truncated: boolean;
+        };
+        /** ClaudeAnalysis */
+        ClaudeAnalysis: {
+            /**
+             * Permission
+             * @default plan
+             * @enum {string}
+             */
+            permission: "default" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions" | "plan";
+        } & {
+            [key: string]: unknown;
+        };
+        /** ClaudeDefaults */
+        ClaudeDefaults: {
+            /** Effort */
+            effort?: ("low" | "medium" | "high" | "xhigh" | "max") | null;
+            /** Model */
+            model?: string | null;
+            /**
+             * Permission
+             * @default auto
+             * @enum {string}
+             */
+            permission: "default" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions" | "plan";
+        } & {
+            [key: string]: unknown;
+        };
+        /** CodexAnalysis */
+        CodexAnalysis: {
+            /**
+             * Sandbox
+             * @default read-only
+             * @enum {string}
+             */
+            sandbox: "read-only" | "workspace-write" | "danger-full-access";
+        } & {
+            [key: string]: unknown;
+        };
+        /** CodexDefaults */
+        CodexDefaults: {
+            /**
+             * Effort
+             * @default medium
+             * @enum {string}
+             */
+            effort: "minimal" | "low" | "medium" | "high";
+            /** Model */
+            model?: string | null;
+            /**
+             * Sandbox
+             * @default workspace-write
+             * @enum {string}
+             */
+            sandbox: "read-only" | "workspace-write" | "danger-full-access";
+        } & {
+            [key: string]: unknown;
         };
         /** ColumnsResponse */
         ColumnsResponse: {
@@ -1584,6 +1998,11 @@ export interface components {
             /** Written Credentials */
             written_credentials?: string[];
         };
+        /** JobResponse */
+        JobResponse: {
+            /** Job Id */
+            job_id: string;
+        };
         /** JournalCheckpoint */
         JournalCheckpoint: {
             /** Api Version */
@@ -1789,6 +2208,17 @@ export interface components {
             /** Target */
             target: string;
         };
+        /** ModelPresets */
+        ModelPresets: {
+            /** Agy */
+            agy?: string[];
+            /** Claude */
+            claude?: string[];
+            /** Codex */
+            codex?: string[];
+        } & {
+            [key: string]: unknown;
+        };
         /** MutationResponse */
         MutationResponse: {
             /** Id */
@@ -1951,6 +2381,62 @@ export interface components {
             /** Targets */
             targets?: components["schemas"]["FrozenTarget"][];
         };
+        /** ProfileCreate */
+        ProfileCreate: {
+            /**
+             * Cli
+             * @default other
+             * @enum {string}
+             */
+            cli: "claude" | "codex" | "agy" | "other";
+            /** Command */
+            command: string;
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Upgrade Command
+             * @default
+             */
+            upgrade_command: string;
+        };
+        /** ProfilePatch */
+        ProfilePatch: {
+            /** Cli */
+            cli?: ("claude" | "codex" | "agy" | "other") | null;
+            /** Command */
+            command?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Revision */
+            revision: number;
+            /** Upgrade Command */
+            upgrade_command?: string | null;
+        };
+        /** ProfileView */
+        ProfileView: {
+            /**
+             * Builtin
+             * @default false
+             */
+            builtin: boolean;
+            /** @default other */
+            cli: components["schemas"]["JsonValue"];
+            /** @default  */
+            command: components["schemas"]["JsonValue"];
+            /** @default  */
+            id: components["schemas"]["JsonValue"];
+            /** @default  */
+            name: components["schemas"]["JsonValue"];
+            resolved: components["schemas"]["ResolvedCLI"];
+            /** @default  */
+            upgrade_command: components["schemas"]["JsonValue"];
+            /** Warnings */
+            warnings?: string[];
+        } & {
+            [key: string]: unknown;
+        };
         /** Project */
         Project: {
             /** Collection */
@@ -2009,6 +2495,29 @@ export interface components {
         RemoteProject: {
             /** Name */
             name: string;
+        };
+        /** RepoView */
+        RepoView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ResolvedCLI */
+        ResolvedCLI: {
+            /** Ok */
+            ok: boolean;
+            /** Path Hint */
+            path_hint?: string | null;
+            /** Version */
+            version?: string | null;
+        };
+        /** ResumeRequest */
+        ResumeRequest: {
+            /** External Id */
+            external_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
         };
         /** RevisionRequest */
         RevisionRequest: {
@@ -2106,6 +2615,110 @@ export interface components {
             task_snapshot: components["schemas"]["TaskSnapshot"];
             /** Updated At */
             updated_at: string;
+        };
+        /** SessionCreate */
+        SessionCreate: {
+            /**
+             * Ack High Risk
+             * @default false
+             */
+            ack_high_risk: boolean;
+            /** Effort */
+            effort?: string | null;
+            /** Initial Prompt */
+            initial_prompt?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "terminal" | "chat";
+            /** Model */
+            model?: string | null;
+            /** Permission */
+            permission?: string | null;
+            /** Profile Id */
+            profile_id: string;
+            /** Repo Id */
+            repo_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            resume?: components["schemas"]["ResumeRequest"] | null;
+        };
+        /** SessionList */
+        SessionList: {
+            /** Items */
+            items: components["schemas"]["SessionView"][];
+        };
+        /** SessionView */
+        SessionView: {
+            /** Cli */
+            cli: string;
+            /** Created At */
+            created_at: string;
+            /** Effort */
+            effort?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Ended Reason */
+            ended_reason?: string | null;
+            /** Exit Code */
+            exit_code?: number | null;
+            /**
+             * Has External Id
+             * @default false
+             */
+            has_external_id: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "terminal" | "chat";
+            /** Last Seq */
+            last_seq: number;
+            /** Model */
+            model?: string | null;
+            origin?: components["schemas"]["AIOrigin"];
+            /**
+             * Pending Approval
+             * @default false
+             */
+            pending_approval: boolean;
+            /** Permission */
+            permission?: string | null;
+            /** Profile */
+            profile: string;
+            /**
+             * Purpose
+             * @default general
+             * @enum {string}
+             */
+            purpose: "general" | "work_item_analysis";
+            /**
+             * Queue Len
+             * @default 0
+             */
+            queue_len: number;
+            repo: components["schemas"]["RepoView"];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "starting" | "idle" | "busy" | "awaiting_approval" | "closing" | "ended" | "failed";
+            /** Usage */
+            usage?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Warnings */
+            warnings?: string[];
+            /** Work Item Ref */
+            work_item_ref?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /** SettingsResponse */
         SettingsResponse: {
@@ -3193,6 +3806,474 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_api_ai_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIView"];
+                };
+            };
+        };
+    };
+    cancel_job_api_ai_jobs__jid__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_create_api_ai_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_delete_api_ai_profiles__pid__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_patch_api_ai_profiles__pid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfilePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_ai_profiles__pid__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upgrade_api_ai_profiles__pid__upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_api_ai_sessions_get: {
+        parameters: {
+            query?: {
+                state?: ("starting" | "idle" | "busy" | "awaiting_approval" | "closing" | "ended" | "failed") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_ai_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_api_ai_sessions__sid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_ai_sessions__sid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_api_ai_sessions__sid__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_api_ai_sessions__sid__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interrupt_api_ai_sessions__sid__interrupt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_patch_api_ai_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISettingsPatch"];
             };
         };
         responses: {

@@ -9,7 +9,7 @@ async def test_settings_reports_the_stored_schema_version(context):
     _, client, *_ = context
     assert (await execute(client)).status_code == 200
     body = (await client.get("/api/settings")).json()
-    assert CURRENT_SCHEMA_VERSION == 2
+    assert CURRENT_SCHEMA_VERSION == 3
     assert body["schema_version"] == CURRENT_SCHEMA_VERSION
 
 

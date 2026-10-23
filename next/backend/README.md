@@ -614,3 +614,141 @@ S4-B 用例：tests/test_s4b_execution.py、test_s4b_regressions.py、test_s4b_s
 tests/independent/s4b/；只用 tmp_path、内存凭据、MockTransport、假 ADO 和临时 bare Git。
 端口测试及 test_confirmed_telegram_run_uses_only_temporary_bare_git 在 codex 沙箱记 not_run，
 由主控沙箱外验收；后者已由主控确认整文件 5 passed，单用例连续 3 次 passed，不修改或跳过该用例。
+
+## S5-A：AI 开发后端基础
+
+本包提供终端会话；`kind=chat`、resume 输入返回 409 `unsupported_cli`，由 S5-B 接入。
+不启动 MCP server、不读取 AI CLI 会话目录或 AI Bot Keychain，不实现 AI Telegram 轮询。
+
+### 配置与迁移
+
+config schema v2→v3 从 `imported.ai` 规范化顶层 `ai`，S1 直接导入使用同一函数。
+`profiles` 含 id/name/command/upgrade_command/builtin/cli；补齐 codex、gemini（cli=agy）、
+claude_code。内置配置可编辑而不可删除。`selected_profile_id`、model_presets、defaults、analysis、
+bots 为类型化字段；未知字段继续保存。旧 profile 缺字段、重复 id 或命令无效时保留原值并警告，
+运行入口拒绝该项；不会因为一条无效 profile 而阻止打开设置。
+
+`targets/default_target_id/default_policy/project_overrides/require_policy_check_before_code_change/`
+`allow_direct_code_change` 留在 imported.ai。迁移的所有 Bot 槽位强制 enabled=false，用户名仅显示。
+默认 Claude auto/effort=null、Codex workspace-write/medium、agy sandbox；分析默认 Claude plan、
+Codex read-only、agy sandbox。迁移前原文快照为 `migrations/config-v2-<时间戳>.json`（0600），
+快照持久化后才原子替换配置；失败保原件、清除半文件，再启动不重复迁移。v3 不自动降级。
+
+### DTO、路由与事件
+
+HTTP DTO 位于 `api/ai_schemas.py`，由 Pydantic 生成 OpenAPI；错误不回显输入。
+
+| DTO | 用途 |
+| --- | --- |
+| AIView / ProfileView / ResolvedCLI / AILimits | revision、profile 解析状态（仅可执行文件名）、默认档、库状态、限额与警告 |
+| ProfileCreate / ProfilePatch / AISettingsPatch | profile CRUD、选择、模型预设与默认/分析档配置；写配置必须带 revision |
+| SessionCreate / ResumeRequest | UUID request_id、kind、profile_id、repo_id、模型/档位、初始提示词、高权限确认 |
+| SessionView / SessionList / RepoView / AIOrigin | 无 cwd 路径的会话投影、状态、结束原因、退出码、水位、资源警告 |
+| AIEventsResponse / AIEventData | 规范化事件，数据中的会话序号字段为 **session_seq** |
+| CheckResponse / JobResponse / AIJobData | 检测输出与退出码、升级 job、取消与进度 |
+| AIEvent / AISubscribedEvent / AISessionEvent / AIJobEvent | WS ai.event / ai.subscribed / ai.session / ai.job |
+
+所有 HTTP 路由沿用 S0 Host/CORS/Bearer/BodyLimit。无新的用户或权限主体。
+
+| 路由 | 行为 |
+| --- | --- |
+| GET /api/ai | 配置与 CLI 解析状态；库故障时配置仍可读，store_state=unavailable |
+| POST /api/ai/profiles；PATCH/DELETE /api/ai/profiles/{pid} | 配置增删改；DELETE 的 revision 在 query 中 |
+| PATCH /api/ai/settings | 带 revision 的配置修改 |
+| POST /api/ai/profiles/{pid}/check | 解析 argv[0] 后执行 --version，15 秒、脱敏输出≤4 KiB |
+| POST /api/ai/profiles/{pid}/upgrade | upgrade_command 经 shlex、无 shell、监督器执行；返回 job_id |
+| POST /api/ai/jobs/{jid}/cancel | 幂等取消升级；同时最多一个活动升级，最长600秒、脱敏输出≤256 KiB |
+| POST/GET /api/ai/sessions | 新建终端 / 列表（state、limit≤100）；request_id 重复返回原会话 |
+| GET/DELETE /api/ai/sessions/{sid} | 详情 / 仅终态可删除；删除同时清除内存终端缓冲 |
+| GET /api/ai/sessions/{sid}/events | after_seq 游标，默认200条、最多1000条 |
+| POST /api/ai/sessions/{sid}/interrupt | 终端写 Ctrl-C；已结束时返回当前状态 |
+| POST /api/ai/sessions/{sid}/close | 幂等关闭终端及其进程组 |
+| WS /ws/events | ai 主题订阅/取消订阅；每连接最多8个会话 |
+| WS /api/ai/terminals/{sid}/ws | 原始 PTY 字节回放与实时输出、输入和 resize |
+
+AI 检测/升级先解析可执行文件，再判断共享的每 CLI 进程上限；不存在的可执行返回
+cli_not_found，已解析但无空槽返回 ai_session_limit。检测/升级也登记 ai_processes，
+role=check/upgrade；结束时写 ended_at。升级在 worker 首次执行前取消也会归还预约槽。
+
+事件 envelope 只有 `seq/topic/type/ts/data`；seq 是进程全局序号。AIEventData 的
+`session_seq` 是持久的会话序号，与 S3 的 run_seq 对应。订阅帧为
+`{type:"subscribe",topic:"ai",session_id,after_seq}`，先登记订阅再读取数据库水位，回放至水位后
+发送 ai.subscribed，再补齐并发事件；客户端按 session_seq 去重和增量重拉。
+订阅队列有界，溢出沿用 S3 的 4408 断开语义，重连通过 after_seq 拉取，不阻塞 CLI 输出。
+
+终端 WS 校验 Origin 与首帧 `{type:"auth",token}`，随后发送
+`{type:"attach",after_offset:0}`。二进制输出为8字节大端起始 offset + 输出字节。
+保留窗口内回放与实时交接连续、去重；早于环形缓冲窗口的 offset 从当前保留起点返回。
+输入 `{type:"input",data:"<base64>"}`，resize `{type:"resize",rows,cols}`。
+终态 attach 只回放，后端重启后终端原始输出不可恢复。
+
+### 状态、安全与限额
+
+会话状态预留 `starting → idle ⇄ busy ⇄ awaiting_approval → closing → ended`，启动失败为 failed。
+S5-A 终端使用 starting/idle/closing/ended/failed；转换由单一会话任务负责。
+结束原因包括 user_closed、process_exited、interrupted_on_exit、backend_restart、start_failed。
+启动恢复把遗留活动会话置 ended/backend_restart；组首启动时间和可执行路径均匹配记录才 killpg，
+防 PID 复用误杀。清理未确认时登记 kill_failed，SessionView.warnings 对桌面可见。
+
+| 限额 | 数值 |
+| --- | --- |
+| 活动 PTY / 预留 headless | 各6 |
+| 每 CLI 进程（会话、检测、升级共享） | 4 |
+| 会话排队 / 单条提示词 | 10 / 32 KiB |
+| 单终端内存输出 / 单次读取 | 2 MiB / 64 KiB |
+| 单终端 WS / 单帧输入 / 输入速率 | 2 / 解码16 KiB / 256 KiB每秒 |
+| rows / cols | 5..300 / 20..500 |
+| 规范化事件 | 单条64 KiB、每会话5000条或8 MiB、14天保留；裁剪产生notice |
+
+错误码：409 ai_session_limit、ai_queue_full、cli_not_found、repo_missing、session_ended、
+builtin_profile、high_risk_ack_required、unsupported_cli、busy；503 ai_store_unavailable。
+沿用 validation_error(422)、revision_conflict(409)、not_found(404)、store_unavailable/store_busy。
+模型名用合同正则；档位用各 CLI 枚举；模型名及外部会话 id 不能以 `-` 开头。
+命令只做 shlex.split 后以 argv 执行，无 shell。工作目录仅由登记的 repo_id 解析，
+不存在或被替换成符号链接时拒绝，不回落到后端目录。
+
+子进程环境保留 PATH/MANPATH/INFOPATH/FPATH；删除 TOOLBOX_*、CI。名称按 `_` 切段，
+任一段为 TOKEN/TOKENS/SECRET/SECRETS/PASSWORD/PASSWD/PAT/COOKIE/COOKIES 时删除；
+整名含 API_KEY/APIKEY/ACCESS_KEY/PRIVATE_KEY/TOKEN/SECRET/PASSWORD 也删除。
+不注入任何凭据。生产 PATH 补全沿用旧端的五组目录；测试可注入 path_extras=[]。
+TERM=xterm-256color，PTY 另设 COLORTERM=truecolor。
+
+### 进程布局与资源关闭
+
+后端不 fork；通过 start_new_session=True 启动单线程 Python 监督器。启动 JSON 从 stdin 传入，
+不在 argv 暴露参数。监督器 fork 后，pipe 子进程 setpgid(0,0)，PTY 子进程 setsid+TIOCSCTTY，
+CLI pgid=CLI pid，与监督器分组。控制 EOF/stop/SIGTERM 触发 TERM CLI组→3秒→KILL→waitpid；
+直接子进程先退出也清理组内后代。主动 setsid 脱离该组的后代不在回收范围。
+
+| 资源 | 关闭点 | 对应用例 |
+| --- | --- | --- |
+| 监督器/CLI组 | SupervisedProcess.close；监督器 finally killpg/waitpid | supervisor runtime pipe/ignore-term；独立 supervisor 生命周期 |
+| 控制/状态 FD、启动 stdin/exec握手 FD | start异常/finally、close_control/close、监督器关闭与进程退出 | chdir失败、控制writer SIGKILL、exec守卫拒绝 |
+| PTY slave/master、asyncio reader/writer注册 | start后close_slave；SessionLifecycle finally调用PTYTerminal.close | controlling terminal/env、ring replay、resize/input、终态回放 |
+| 会话wait/command/初始提示词writer任务与排队 | _session finally cancel/gather、清空queue、移除_active | 幂等close、写入阻塞时close、并行shutdown、kill_failed |
+| WS连接、输出/输入任务、订阅 | handler finally cancel/gather、减连接数、close；hub.unsubscribe | terminal WS auth/reconnect/cap、ai回放水位 |
+| SQLite连接与锁FD | AIStore.close；初始化异常_close | corrupt/unknown-version/symlink、重启PID复用 |
+| 升级job/检测进程与预约 | _command finally close/finish_process；job done callback归还槽；shutdown取消 | check记录/脱敏、升级共享上限、启动前取消 |
+| pending审批 | 终态事务更新expired（本包只预建表，不接审批协议） | kill_failed与pending审批收尾 |
+
+退出时先拒绝新会话，并行处理所有会话与检查/升级，整体5秒预算；RunService先关闭，随后
+AISessionService，最后TelegramService。PTY原始输出不落数据库或日志，只保留内存回放。
+ai.sqlite3 使用0700目录、0600文件、拒绝符号链接、WAL、FULL、busy_timeout=5000，IO在线程。
+损坏/未知版本只使AI进入503只读错误态，不重置原件、不启动AI进程。
+
+### Dev 假 AI
+
+只允许 `--dev` + `TOOLBOX_CREDENTIALS=memory` + `TOOLBOX_DEV_FAKE_AI=1`，否则在bind前失败。
+profiles 运行命令映射到仓库 `tests/fixtures/fake_cli/fake.py`，不解析或调用真实AI客户端。
+先创建独立临时data-dir、空legacy-dir及本地临时仓库；通过本地仓库API登记repo_id后创建终端：
+
+```sh
+TOOLBOX_CREDENTIALS=memory TOOLBOX_DEV_FAKE_AI=1 \
+TOOLBOX_LEGACY_CONFIG_DIR=/tmp/toolbox-fake-ai-legacy \
+.venv/bin/python -m toolbox_backend --dev --data-dir /tmp/toolbox-fake-ai-data
+```
+
+开发启动器负责关闭stdin、等待退出并清理临时目录。测试沿用keyring/socket守卫并额外包装
+Popen、exec*、posix_spawn*：解析到替身目录以外的claude/codex/agy会失败并记违规。
+沙箱禁止端口bind或/bin/ps时，依赖它们的用例记not_run，由主控沙箱外验收；mock身份的
+进程组测试不等于真实ps身份核验通过。

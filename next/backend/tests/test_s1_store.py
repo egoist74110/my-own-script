@@ -196,7 +196,7 @@ async def test_registered_migration_backs_up_original_before_atomic_replace(tmp_
 
     store.checkpoint = checkpoint
     config = await store.initialize()
-    assert config.schema_version == 2 and config.revision == 4
+    assert config.schema_version == 3 and config.revision == 4
     assert config.ado.libraries[0].name == "Synthetic library"
     assert config.updated_at != "2026-10-21T00:00:00Z"
     assert stages == ["before_replace", "after_replace"]

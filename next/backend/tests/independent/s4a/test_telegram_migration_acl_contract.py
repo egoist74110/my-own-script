@@ -99,7 +99,7 @@ telegram_acl_members:
         assert _projection(first) == direct_projection
         config = await migrated.app.state.config_store.read()
         dumped = config.model_dump(mode="json", by_alias=True)
-        assert dumped["schema_version"] == 2
+        assert dumped["schema_version"] == 3
         assert "telegram" not in dumped["imported"]
         assert dumped["telegram"]["control"]["enabled"] is False
         assert dumped["telegram"]["owner"]["chat_id"] == "5001"

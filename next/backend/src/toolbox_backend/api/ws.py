@@ -105,6 +105,57 @@ async def _subscribe_run(ws, sub, frame):
         raise
 
 
+async def _subscribe_ai(ws, sub, frame):
+    from toolbox_backend.api.ai_schemas import (
+        AIEvent,
+        AIEventData,
+        AISubscribedData,
+        AISubscribedEvent,
+    )
+
+    sid, after = frame.get("session_id"), frame.get("after_seq")
+    if (
+        not isinstance(sid, str)
+        or len(sid) > 128
+        or type(after) is not int
+        or after < 0
+        or (sid not in sub.ai and len(sub.ai) >= 8)
+    ):
+        raise ValueError("invalid subscription")
+    hub, store = ws.app.state.hub, ws.app.state.ai_store
+    sub.ai[sid] = after
+    sub.ai_replaying[sid] = []
+    try:
+        row = await store.get(sid)
+        watermark = row["last_seq"]
+        if after > watermark:
+            raise ValueError("future cursor")
+        while after < watermark:
+            page = await store.events(sid, after, 1000)
+            if not page["items"]:
+                break
+            for event in page["items"]:
+                if event["session_seq"] > watermark:
+                    break
+                await _run_enqueue(hub, sub, AIEvent, AIEventData(**event))
+                after = event["session_seq"]
+                sub.ai[sid] = after
+        await _run_enqueue(
+            hub, sub, AISubscribedEvent, AISubscribedData(session_id=sid, last_seq=watermark)
+        )
+        pending = sub.ai_replaying[sid]
+        while pending:
+            event = pending.pop(0)
+            if event["session_seq"] > sub.ai[sid]:
+                await _run_enqueue(hub, sub, AIEvent, AIEventData(**event))
+                sub.ai[sid] = event["session_seq"]
+        del sub.ai_replaying[sid]
+    except BaseException:
+        sub.ai.pop(sid, None)
+        sub.ai_replaying.pop(sid, None)
+        raise
+
+
 async def _drain_incoming(ws: WebSocket, sub=None) -> None:
     while True:
         message = await ws.receive()
@@ -123,11 +174,18 @@ async def _drain_incoming(ws: WebSocket, sub=None) -> None:
             continue
         if (
             not isinstance(frame, dict)
-            or frame.get("topic") != "run"
+            or frame.get("topic") not in {"run", "ai"}
             or frame.get("type") not in {"subscribe", "unsubscribe"}
         ):
             continue
         try:
+            if frame.get("topic") == "ai":
+                if frame.get("type") == "subscribe":
+                    await _subscribe_ai(ws, sub, frame)
+                else:
+                    sub.ai.pop(frame.get("session_id"), None)
+                    sub.ai_replaying.pop(frame.get("session_id"), None)
+                continue
             if frame.get("type") == "subscribe" and frame.get("topic") == "run":
                 await _subscribe_run(ws, sub, frame)
             elif frame.get("type") == "unsubscribe" and frame.get("topic") == "run":

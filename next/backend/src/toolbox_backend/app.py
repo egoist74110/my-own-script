@@ -12,12 +12,14 @@ from toolbox_backend import __version__
 from toolbox_backend.adapters.ado_http import AdoHTTP
 from toolbox_backend.adapters.ado_read import AdoRead
 from toolbox_backend.adapters.ado_tasks import AdoTaskExecutor
+from toolbox_backend.adapters.ai_store import AIStore
 from toolbox_backend.adapters.config_store import ConfigStore, MigrationStep
 from toolbox_backend.adapters.credentials import CredentialStore, LegacyCredentialSource
 from toolbox_backend.adapters.run_store import RunStore
 from toolbox_backend.adapters.task_git import GitAdapter
 from toolbox_backend.adapters.telegram_store import TelegramStore
 from toolbox_backend.api import (
+    ai_routes,
     routes,
     settings_routes,
     task_routes,
@@ -29,6 +31,7 @@ from toolbox_backend.api.middleware import BearerAuth, BodyLimit, HostGuard
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.models import SettingsChangedData, SettingsChangedEvent
 from toolbox_backend.logging_setup import register_secret
+from toolbox_backend.services.ai_sessions import AISessionService
 from toolbox_backend.services.events import EventHub
 from toolbox_backend.services.runs import RunService
 from toolbox_backend.services.settings import SettingsService
@@ -80,6 +83,7 @@ def create_app(
         except SettingsError:
             pass  # Exposed via GET /api/settings; never reset corrupt/unsupported files.
         await app.state.run_service.initialize()
+        await app.state.ai_service.initialize()
         await app.state.telegram_service.initialize()
         beat = asyncio.create_task(app.state.system.heartbeat_loop(settings.heartbeat_interval_s))
         try:
@@ -90,7 +94,10 @@ def create_app(
             try:
                 await app.state.run_service.close()
             finally:
-                await app.state.telegram_service.close()
+                try:
+                    await app.state.ai_service.close()
+                finally:
+                    await app.state.telegram_service.close()
 
     app = FastAPI(
         title="TOOLBOX backend",
@@ -149,6 +156,19 @@ def create_app(
         if task_executor is not None
         else AdoTaskExecutor(app.state.work_items_service, app.state.tasks_service.git),
     )
+    fake_ai = os.environ.get("TOOLBOX_DEV_FAKE_AI")
+    if fake_ai is not None:
+        from toolbox_backend.adapters.credentials import MemoryCredentials
+
+        if (
+            fake_ai != "1"
+            or not settings.dev
+            or os.environ.get("TOOLBOX_CREDENTIALS") != "memory"
+            or not isinstance(credentials, MemoryCredentials)
+        ):
+            raise ValueError("TOOLBOX_DEV_FAKE_AI requires --dev and memory credentials")
+    app.state.ai_store = AIStore(settings.data_dir, hub.publish_ai)
+    app.state.ai_service = AISessionService(store, app.state.ai_store, hub, fake=fake_ai == "1")
     app.state.telegram_store = TelegramStore(settings.data_dir)
     fake = None
     if os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") is not None:
@@ -195,6 +215,7 @@ def create_app(
         app.state.telegram_service.on_run_event(event)
 
     app.state.run_store.on_event = run_event
+    app.include_router(ai_routes.router)
     app.include_router(telegram_routes.router)
     app.include_router(task_routes.router)
     app.include_router(work_item_routes.router)

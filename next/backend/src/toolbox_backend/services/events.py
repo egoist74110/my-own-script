@@ -24,6 +24,8 @@ class Subscriber:
         self.queue = SubscriberQueue(maxsize)
         # Set when the queue overflowed; the connection handler must then close with 4408.
         self.overflowed = asyncio.Event()
+        self.ai: dict[str, int] = {}
+        self.ai_replaying: dict[str, list[dict]] = {}
         self.runs: dict[str, int] = {}
         self.replaying: dict[str, list[dict]] = {}
 
@@ -73,6 +75,23 @@ class EventHub:
             else:
                 sub.runs[rid] = seq
                 self.enqueue(sub, RunEvent, RunEventData(**event))
+
+    def publish_ai(self, event):
+        from toolbox_backend.api.ai_schemas import AIEvent, AIEventData
+        sid, seq = event["session_id"], event["session_seq"]
+        for sub in tuple(self._subscribers):
+            if sid not in sub.ai or seq <= sub.ai[sid]:
+                continue
+            if sid in sub.ai_replaying:
+                pending = sub.ai_replaying[sid]
+                if len(pending) >= 256:
+                    sub.overflowed.set()
+                    self._subscribers.discard(sub)
+                else:
+                    pending.append(event)
+            else:
+                sub.ai[sid] = seq
+                self.enqueue(sub, AIEvent, AIEventData(**event))
 
     def _fan_out(self, payload: str) -> None:
         for sub in tuple(self._subscribers):

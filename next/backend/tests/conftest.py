@@ -196,3 +196,13 @@ def wait_until(predicate, timeout: float, interval: float = 0.05) -> bool:
             return True
         time.sleep(interval)
     return predicate()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def ai_cli_isolation():
+    from tests.guards import install_ai_cli_guard
+    restore = install_ai_cli_guard()
+    try:
+        yield
+    finally:
+        restore()

@@ -64,3 +64,65 @@ def install_socket_guard():
         )
 
     return restore
+
+
+def install_ai_cli_guard():
+    """A real AI executable is never a valid test subprocess, including Python children."""
+    import shutil
+    import subprocess
+
+    original = subprocess.Popen
+    allowed = (Path(__file__).resolve().parent / "fixtures/fake_cli").resolve()
+
+    def check(executable, env=None):
+        if isinstance(executable, (str, bytes, os.PathLike)):
+            executable = os.fsdecode(executable)
+            if Path(executable).name in {"claude", "codex", "agy"}:
+                environment = os.environ if env is None else env
+                found = shutil.which(executable, path=environment.get("PATH", "")) or executable
+                if not Path(found).resolve().is_relative_to(allowed):
+                    violation("subprocess.real_ai_cli")
+
+    class GuardedPopen(original):
+        def __init__(self, args, *positional, **kwargs):
+            argv = args if isinstance(args, (list, tuple)) else [args]
+            executable = kwargs.get("executable") or argv[0]
+            check(executable, kwargs.get("env"))
+            super().__init__(args, *positional, **kwargs)
+
+    subprocess.Popen = GuardedPopen
+    originals = {}
+
+    def wrap(fn, name):
+        def guarded(executable, *args, **kwargs):
+            env = kwargs.get("env")
+            if env is None and (name.endswith("e") or name.startswith("posix_spawn")):
+                if args and isinstance(args[-1], dict):
+                    env = args[-1]
+            check(executable, env)
+            return fn(executable, *args, **kwargs)
+
+        return guarded
+
+    for name in (
+        "execv",
+        "execve",
+        "execvp",
+        "execvpe",
+        "execl",
+        "execle",
+        "execlp",
+        "execlpe",
+        "posix_spawn",
+        "posix_spawnp",
+    ):
+        if hasattr(os, name):
+            originals[name] = getattr(os, name)
+            setattr(os, name, wrap(originals[name], name))
+
+    def restore():
+        subprocess.Popen = original
+        for name, fn in originals.items():
+            setattr(os, name, fn)
+
+    return restore

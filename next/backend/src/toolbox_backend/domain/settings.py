@@ -16,6 +16,7 @@ from pydantic import (
     model_validator,
 )
 
+from toolbox_backend.domain.ai import AIConfig
 from toolbox_backend.domain.telegram import TelegramConfig
 
 
@@ -229,7 +230,8 @@ class CredentialMeta(StrictModel):
 
 class Config(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
+    ai: AIConfig = Field(default_factory=AIConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     revision: int = Field(default=0, ge=0)
     updated_at: str | None = None

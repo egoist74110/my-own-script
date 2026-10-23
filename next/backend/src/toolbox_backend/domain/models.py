@@ -95,6 +95,13 @@ class TelegramStatusEvent(_Envelope):
     data: TelegramStatusData
 
 
+from toolbox_backend.api.ai_schemas import (  # noqa: E402
+    AIEvent,
+    AIJobEvent,
+    AISessionEvent,
+    AISubscribedEvent,
+)
+
 Event = Annotated[
     SystemHelloEvent
     | SystemHeartbeatEvent
@@ -102,6 +109,10 @@ Event = Annotated[
     | SettingsChangedEvent
     | RunEvent
     | RunSubscribedEvent
-    | TelegramStatusEvent,
+    | TelegramStatusEvent
+    | AIEvent
+    | AIJobEvent
+    | AISessionEvent
+    | AISubscribedEvent,
     Field(discriminator="type"),
 ]

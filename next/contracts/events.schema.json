@@ -1,5 +1,299 @@
 {
   "$defs": {
+    "AIEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/AIEventData"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "ai",
+          "default": "ai",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "ai.event",
+          "default": "ai.event",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AIEvent",
+      "type": "object"
+    },
+    "AIEventData": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "init",
+            "assistant",
+            "thinking",
+            "tool_use",
+            "tool_result",
+            "turn_started",
+            "turn_completed",
+            "turn_failed",
+            "approval",
+            "notice",
+            "error",
+            "exit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Payload",
+          "type": "object"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "session_seq": {
+          "minimum": 1,
+          "title": "Session Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "session_seq",
+        "ts",
+        "kind",
+        "payload"
+      ],
+      "title": "AIEventData",
+      "type": "object"
+    },
+    "AIJobData": {
+      "properties": {
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "output": {
+          "default": "",
+          "title": "Output",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "state"
+      ],
+      "title": "AIJobData",
+      "type": "object"
+    },
+    "AIJobEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/AIJobData"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "ai",
+          "default": "ai",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "ai.job",
+          "default": "ai.job",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AIJobEvent",
+      "type": "object"
+    },
+    "AISessionData": {
+      "properties": {
+        "ended_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ended Reason"
+        },
+        "last_seq": {
+          "title": "Last Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "starting",
+            "idle",
+            "busy",
+            "awaiting_approval",
+            "closing",
+            "ended",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "state",
+        "last_seq"
+      ],
+      "title": "AISessionData",
+      "type": "object"
+    },
+    "AISessionEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/AISessionData"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "ai",
+          "default": "ai",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "ai.session",
+          "default": "ai.session",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AISessionEvent",
+      "type": "object"
+    },
+    "AISubscribedData": {
+      "properties": {
+        "last_seq": {
+          "title": "Last Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "last_seq"
+      ],
+      "title": "AISubscribedData",
+      "type": "object"
+    },
+    "AISubscribedEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/AISubscribedData"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "ai",
+          "default": "ai",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "ai.subscribed",
+          "default": "ai.subscribed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "AISubscribedEvent",
+      "type": "object"
+    },
     "AlertState": {
       "properties": {
         "active": {
@@ -699,6 +993,7 @@
       "title": "JournalCheckpoint",
       "type": "object"
     },
+    "JsonValue": {},
     "LogPayload": {
       "properties": {
         "text": {
@@ -1244,6 +1539,10 @@
   },
   "discriminator": {
     "mapping": {
+      "ai.event": "#/$defs/AIEvent",
+      "ai.job": "#/$defs/AIJobEvent",
+      "ai.session": "#/$defs/AISessionEvent",
+      "ai.subscribed": "#/$defs/AISubscribedEvent",
       "run.event": "#/$defs/RunEvent",
       "run.subscribed": "#/$defs/RunSubscribedEvent",
       "settings.changed": "#/$defs/SettingsChangedEvent",
@@ -1275,6 +1574,18 @@
     },
     {
       "$ref": "#/$defs/TelegramStatusEvent"
+    },
+    {
+      "$ref": "#/$defs/AIEvent"
+    },
+    {
+      "$ref": "#/$defs/AIJobEvent"
+    },
+    {
+      "$ref": "#/$defs/AISessionEvent"
+    },
+    {
+      "$ref": "#/$defs/AISubscribedEvent"
     }
   ],
   "title": "ToolboxEvent"

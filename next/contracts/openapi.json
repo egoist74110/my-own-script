@@ -148,6 +148,286 @@
         "title": "ACLView",
         "type": "object"
       },
+      "AIAnalysis": {
+        "additionalProperties": true,
+        "properties": {
+          "agy": {
+            "$ref": "#/components/schemas/AgyAnalysis"
+          },
+          "claude": {
+            "$ref": "#/components/schemas/ClaudeAnalysis"
+          },
+          "codex": {
+            "$ref": "#/components/schemas/CodexAnalysis"
+          }
+        },
+        "title": "AIAnalysis",
+        "type": "object"
+      },
+      "AIDefaults": {
+        "additionalProperties": true,
+        "properties": {
+          "agy": {
+            "$ref": "#/components/schemas/AgyDefaults"
+          },
+          "claude": {
+            "$ref": "#/components/schemas/ClaudeDefaults"
+          },
+          "codex": {
+            "$ref": "#/components/schemas/CodexDefaults"
+          }
+        },
+        "title": "AIDefaults",
+        "type": "object"
+      },
+      "AIEventData": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "init",
+              "assistant",
+              "thinking",
+              "tool_use",
+              "tool_result",
+              "turn_started",
+              "turn_completed",
+              "turn_failed",
+              "approval",
+              "notice",
+              "error",
+              "exit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Payload",
+            "type": "object"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "session_seq": {
+            "minimum": 1.0,
+            "title": "Session Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "session_seq",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "AIEventData",
+        "type": "object"
+      },
+      "AIEventsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AIEventData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "last_seq"
+        ],
+        "title": "AIEventsResponse",
+        "type": "object"
+      },
+      "AILimits": {
+        "properties": {
+          "headless": {
+            "default": 6,
+            "title": "Headless",
+            "type": "integer"
+          },
+          "per_cli": {
+            "default": 4,
+            "title": "Per Cli",
+            "type": "integer"
+          },
+          "prompt_bytes": {
+            "default": 32768,
+            "title": "Prompt Bytes",
+            "type": "integer"
+          },
+          "queue": {
+            "default": 10,
+            "title": "Queue",
+            "type": "integer"
+          },
+          "terminal": {
+            "default": 6,
+            "title": "Terminal",
+            "type": "integer"
+          },
+          "terminal_buffer_bytes": {
+            "default": 2097152,
+            "title": "Terminal Buffer Bytes",
+            "type": "integer"
+          },
+          "terminal_connections": {
+            "default": 2,
+            "title": "Terminal Connections",
+            "type": "integer"
+          }
+        },
+        "title": "AILimits",
+        "type": "object"
+      },
+      "AIOrigin": {
+        "properties": {
+          "kind": {
+            "default": "ui",
+            "enum": [
+              "ui",
+              "telegram"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "AIOrigin",
+        "type": "object"
+      },
+      "AISettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaults": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIDefaults"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_presets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelPresets"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selected_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Profile Id"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "AISettingsPatch",
+        "type": "object"
+      },
+      "AIView": {
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/AIAnalysis"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/AIDefaults"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/AILimits"
+          },
+          "model_presets": {
+            "$ref": "#/components/schemas/ModelPresets"
+          },
+          "profiles": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProfileView"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonValue"
+                }
+              ]
+            },
+            "title": "Profiles",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selected_profile_id": {
+            "title": "Selected Profile Id",
+            "type": "string"
+          },
+          "store_state": {
+            "enum": [
+              "ready",
+              "unavailable"
+            ],
+            "title": "Store State",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision",
+          "profiles",
+          "selected_profile_id",
+          "defaults",
+          "analysis",
+          "model_presets",
+          "store_state"
+        ],
+        "title": "AIView",
+        "type": "object"
+      },
       "ActiveRequest": {
         "additionalProperties": false,
         "properties": {
@@ -374,6 +654,49 @@
         "title": "AdoResponse",
         "type": "object"
       },
+      "AgyAnalysis": {
+        "additionalProperties": true,
+        "properties": {
+          "mode": {
+            "default": "sandbox",
+            "enum": [
+              "sandbox",
+              "auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "AgyAnalysis",
+        "type": "object"
+      },
+      "AgyDefaults": {
+        "additionalProperties": true,
+        "properties": {
+          "mode": {
+            "default": "sandbox",
+            "enum": [
+              "sandbox",
+              "auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "title": "AgyDefaults",
+        "type": "object"
+      },
       "AlertRequest": {
         "properties": {
           "active": {
@@ -550,6 +873,35 @@
           "username"
         ],
         "title": "BotView",
+        "type": "object"
+      },
+      "CheckResponse": {
+        "properties": {
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "output": {
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "output"
+        ],
+        "title": "CheckResponse",
         "type": "object"
       },
       "CheckpointPayload": {
@@ -760,6 +1112,131 @@
           "truncated"
         ],
         "title": "ChildrenResponse",
+        "type": "object"
+      },
+      "ClaudeAnalysis": {
+        "additionalProperties": true,
+        "properties": {
+          "permission": {
+            "default": "plan",
+            "enum": [
+              "default",
+              "acceptEdits",
+              "auto",
+              "dontAsk",
+              "bypassPermissions",
+              "plan"
+            ],
+            "title": "Permission",
+            "type": "string"
+          }
+        },
+        "title": "ClaudeAnalysis",
+        "type": "object"
+      },
+      "ClaudeDefaults": {
+        "additionalProperties": true,
+        "properties": {
+          "effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "permission": {
+            "default": "auto",
+            "enum": [
+              "default",
+              "acceptEdits",
+              "auto",
+              "dontAsk",
+              "bypassPermissions",
+              "plan"
+            ],
+            "title": "Permission",
+            "type": "string"
+          }
+        },
+        "title": "ClaudeDefaults",
+        "type": "object"
+      },
+      "CodexAnalysis": {
+        "additionalProperties": true,
+        "properties": {
+          "sandbox": {
+            "default": "read-only",
+            "enum": [
+              "read-only",
+              "workspace-write",
+              "danger-full-access"
+            ],
+            "title": "Sandbox",
+            "type": "string"
+          }
+        },
+        "title": "CodexAnalysis",
+        "type": "object"
+      },
+      "CodexDefaults": {
+        "additionalProperties": true,
+        "properties": {
+          "effort": {
+            "default": "medium",
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "sandbox": {
+            "default": "workspace-write",
+            "enum": [
+              "read-only",
+              "workspace-write",
+              "danger-full-access"
+            ],
+            "title": "Sandbox",
+            "type": "string"
+          }
+        },
+        "title": "CodexDefaults",
         "type": "object"
       },
       "ColumnsResponse": {
@@ -2236,6 +2713,19 @@
         "title": "ImportState",
         "type": "object"
       },
+      "JobResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobResponse",
+        "type": "object"
+      },
       "JournalCheckpoint": {
         "additionalProperties": false,
         "properties": {
@@ -3017,6 +3507,34 @@
         "title": "MergeInput",
         "type": "object"
       },
+      "ModelPresets": {
+        "additionalProperties": true,
+        "properties": {
+          "agy": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Agy",
+            "type": "array"
+          },
+          "claude": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claude",
+            "type": "array"
+          },
+          "codex": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Codex",
+            "type": "array"
+          }
+        },
+        "title": "ModelPresets",
+        "type": "object"
+      },
       "MutationResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3486,6 +4004,167 @@
         "title": "PreparedSnapshot",
         "type": "object"
       },
+      "ProfileCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cli": {
+            "default": "other",
+            "enum": [
+              "claude",
+              "codex",
+              "agy",
+              "other"
+            ],
+            "title": "Cli",
+            "type": "string"
+          },
+          "command": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Command",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "upgrade_command": {
+            "default": "",
+            "maxLength": 512,
+            "title": "Upgrade Command",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "name",
+          "command"
+        ],
+        "title": "ProfileCreate",
+        "type": "object"
+      },
+      "ProfilePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "cli": {
+            "anyOf": [
+              {
+                "enum": [
+                  "claude",
+                  "codex",
+                  "agy",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cli"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "upgrade_command": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upgrade Command"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "ProfilePatch",
+        "type": "object"
+      },
+      "ProfileView": {
+        "additionalProperties": true,
+        "properties": {
+          "builtin": {
+            "default": false,
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "cli": {
+            "$ref": "#/components/schemas/JsonValue",
+            "default": "other"
+          },
+          "command": {
+            "$ref": "#/components/schemas/JsonValue",
+            "default": ""
+          },
+          "id": {
+            "$ref": "#/components/schemas/JsonValue",
+            "default": ""
+          },
+          "name": {
+            "$ref": "#/components/schemas/JsonValue",
+            "default": ""
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedCLI"
+          },
+          "upgrade_command": {
+            "$ref": "#/components/schemas/JsonValue",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "resolved"
+        ],
+        "title": "ProfileView",
+        "type": "object"
+      },
       "Project": {
         "additionalProperties": false,
         "properties": {
@@ -3649,6 +4328,90 @@
           "name"
         ],
         "title": "RemoteProject",
+        "type": "object"
+      },
+      "RepoView": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RepoView",
+        "type": "object"
+      },
+      "ResolvedCLI": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "path_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path Hint"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ResolvedCLI",
+        "type": "object"
+      },
+      "ResumeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:\\-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "pattern": "^ais_[a-f0-9]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "title": "ResumeRequest",
         "type": "object"
       },
       "RevisionRequest": {
@@ -3969,6 +4732,302 @@
           "effects"
         ],
         "title": "RunResponse",
+        "type": "object"
+      },
+      "SessionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_high_risk": {
+            "default": false,
+            "title": "Ack High Risk",
+            "type": "boolean"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "initial_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Prompt"
+          },
+          "kind": {
+            "enum": [
+              "terminal",
+              "chat"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "permission": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission"
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "repo_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "request_id",
+          "kind",
+          "profile_id",
+          "repo_id"
+        ],
+        "title": "SessionCreate",
+        "type": "object"
+      },
+      "SessionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SessionList",
+        "type": "object"
+      },
+      "SessionView": {
+        "properties": {
+          "cli": {
+            "title": "Cli",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "ended_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended Reason"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "has_external_id": {
+            "default": false,
+            "title": "Has External Id",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "terminal",
+              "chat"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AIOrigin"
+          },
+          "pending_approval": {
+            "default": false,
+            "title": "Pending Approval",
+            "type": "boolean"
+          },
+          "permission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "general",
+            "enum": [
+              "general",
+              "work_item_analysis"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "queue_len": {
+            "default": 0,
+            "title": "Queue Len",
+            "type": "integer"
+          },
+          "repo": {
+            "$ref": "#/components/schemas/RepoView"
+          },
+          "state": {
+            "enum": [
+              "starting",
+              "idle",
+              "busy",
+              "awaiting_approval",
+              "closing",
+              "ended",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "usage": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Usage",
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "work_item_ref": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Ref"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "cli",
+          "profile",
+          "repo",
+          "state",
+          "created_at",
+          "last_seq"
+        ],
+        "title": "SessionView",
         "type": "object"
       },
       "SettingsResponse": {
@@ -6604,6 +7663,625 @@
           }
         },
         "summary": "Patch Project"
+      }
+    },
+    "/api/ai": {
+      "get": {
+        "operationId": "settings_api_ai_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/ai/jobs/{jid}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_ai_jobs__jid__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "title": "Jid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job"
+      }
+    },
+    "/api/ai/profiles": {
+      "post": {
+        "operationId": "profile_create_api_ai_profiles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profile Create"
+      }
+    },
+    "/api/ai/profiles/{pid}": {
+      "delete": {
+        "operationId": "profile_delete_api_ai_profiles__pid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profile Delete"
+      },
+      "patch": {
+        "operationId": "profile_patch_api_ai_profiles__pid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profile Patch"
+      }
+    },
+    "/api/ai/profiles/{pid}/check": {
+      "post": {
+        "operationId": "check_api_ai_profiles__pid__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check"
+      }
+    },
+    "/api/ai/profiles/{pid}/upgrade": {
+      "post": {
+        "operationId": "upgrade_api_ai_profiles__pid__upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upgrade"
+      }
+    },
+    "/api/ai/sessions": {
+      "get": {
+        "operationId": "sessions_api_ai_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "starting",
+                    "idle",
+                    "busy",
+                    "awaiting_approval",
+                    "closing",
+                    "ended",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sessions"
+      },
+      "post": {
+        "operationId": "create_api_ai_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create"
+      }
+    },
+    "/api/ai/sessions/{sid}": {
+      "delete": {
+        "operationId": "delete_api_ai_sessions__sid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete"
+      },
+      "get": {
+        "operationId": "session_api_ai_sessions__sid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Session"
+      }
+    },
+    "/api/ai/sessions/{sid}/close": {
+      "post": {
+        "operationId": "close_api_ai_sessions__sid__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close"
+      }
+    },
+    "/api/ai/sessions/{sid}/events": {
+      "get": {
+        "operationId": "events_api_ai_sessions__sid__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIEventsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events"
+      }
+    },
+    "/api/ai/sessions/{sid}/interrupt": {
+      "post": {
+        "operationId": "interrupt_api_ai_sessions__sid__interrupt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Interrupt"
+      }
+    },
+    "/api/ai/settings": {
+      "patch": {
+        "operationId": "settings_patch_api_ai_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AISettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings Patch"
       }
     },
     "/api/credentials": {

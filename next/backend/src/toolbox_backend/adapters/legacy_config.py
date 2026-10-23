@@ -205,6 +205,9 @@ class LegacyConfig:
             from toolbox_backend.domain.telegram import migrate_telegram
 
             config.telegram = migrate_telegram(telegram)
+            from toolbox_backend.domain.ai import normalize_ai
+
+            config.ai, ai_remaining = normalize_ai(ui.get("ai", {}))
             config.imported = Imported.model_validate(
                 {
                     "work_items": {
@@ -212,7 +215,7 @@ class LegacyConfig:
                         for k, v in ui.items()
                         if k.startswith("work_items_")
                     },
-                    "ai": ui.get("ai", {}),
+                    "ai": ai_remaining,
                     "lark": parsed.get("lark_settings.yaml", {}),
                     "figma": parsed.get("figma_settings.yaml", {}),
                     "extra": {
