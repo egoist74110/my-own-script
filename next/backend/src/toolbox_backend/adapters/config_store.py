@@ -21,7 +21,7 @@ from toolbox_backend.logging_setup import contains_secret
 
 T = TypeVar("T")
 MigrationStep = Callable[[dict], dict]
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def stamp() -> str:
@@ -80,7 +80,9 @@ class ConfigStore:
         self.before_commit = None
         # v1 is the first production version. Only explicitly registered, pure steps
         # may upgrade an older version; no guessed v0 data shape or implicit reset.
-        self.migrations = dict(migrations or {})
+        from toolbox_backend.domain.telegram import config_v1_to_v2
+
+        self.migrations = {1: config_v1_to_v2, **(migrations or {})}
         self.readonly_error: str | None = None
         # Fault injection only: no runtime/environment hook.
         self.checkpoint: Callable[[str], None] = lambda _: None
@@ -127,10 +129,12 @@ class ConfigStore:
         return await asyncio.to_thread(self._read)
 
     def _backup(self, original: bytes, version: int) -> None:
-        fd, filename = tempfile.mkstemp(
-            prefix=f"config.json.bak-v{version}-{stamp().replace(':', '-')}-",
-            dir=self.data_dir,
+        target = self.data_dir / "migrations" if version == 1 else self.data_dir
+        private_dir(target)
+        prefix = f"config-v1-{stamp().replace(':', '-')}" if version == 1 else (
+            f"config.json.bak-v{version}-{stamp().replace(':', '-')}-"
         )
+        fd, filename = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=target)
         complete = False
         try:
             with os.fdopen(fd, "wb") as stream:
@@ -139,12 +143,16 @@ class ConfigStore:
                 stream.flush()
                 os.fsync(stream.fileno())
             complete = True
+            sync_dir(target)
             sync_dir(self.data_dir)
         finally:
             if not complete:
                 os.unlink(filename)
 
     def _initialize(self) -> Config:
+        from toolbox_backend.domain.telegram import config_v1_to_v2
+
+        migrations = {1: config_v1_to_v2, **self.migrations}
         try:
             # No infrastructure files for an empty/current/unsupported store. Migration
             # is explicit startup work; ordinary read() never upgrades or writes.
@@ -152,7 +160,7 @@ class ConfigStore:
             version = raw.get("schema_version") if isinstance(raw, dict) else None
             if type(version) is not int or not 0 <= version < CURRENT_SCHEMA_VERSION:
                 return self._read()
-            if any(v not in self.migrations for v in range(version, CURRENT_SCHEMA_VERSION)):
+            if any(v not in migrations for v in range(version, CURRENT_SCHEMA_VERSION)):
                 return self._read()
             with self._file_lock():
                 # Another process may have migrated while this one waited for flock.
@@ -165,7 +173,7 @@ class ConfigStore:
                     raise ValueError
                 candidate = copy.deepcopy(raw)
                 for current in range(version, CURRENT_SCHEMA_VERSION):
-                    candidate = self.migrations[current](candidate)
+                    candidate = migrations[current](candidate)
                     if (
                         not isinstance(candidate, dict)
                         or type(candidate.get("schema_version")) is not int

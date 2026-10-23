@@ -202,9 +202,11 @@ class LegacyConfig:
                 for group in groups:
                     if isinstance(group, dict) and isinstance(group.get("task_ids"), list):
                         group["task_ids"] = [mapping.get(str(t), str(t)) for t in group["task_ids"]]
+            from toolbox_backend.domain.telegram import migrate_telegram
+
+            config.telegram = migrate_telegram(telegram)
             config.imported = Imported.model_validate(
                 {
-                    "telegram": telegram,
                     "work_items": {
                         k.removeprefix("work_items_"): v
                         for k, v in ui.items()

@@ -87,7 +87,7 @@ class MutationResponse(StrictModel):
 
 
 class CredentialStatus(StrictModel):
-    kind: Literal["ado_pat"] = "ado_pat"
+    kind: Literal["ado_pat", "telegram_bot"] = "ado_pat"
     account: str
     ref: str
     ref_name: str | None

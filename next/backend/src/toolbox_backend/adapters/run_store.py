@@ -103,7 +103,7 @@ class RunStore:
                 self._db.row_factory = sqlite3.Row
                 db = self._db
                 version = db.execute("PRAGMA user_version").fetchone()[0]
-                if version not in (0, 1):
+                if version not in (0, 1, 2):
                     db.close()
                     self._db = sqlite3.connect(
                         self.path.as_uri() + "?mode=ro",
@@ -124,7 +124,20 @@ class RunStore:
                     try:
                         for statement in SCHEMA:
                             db.execute(statement)
-                        db.execute("PRAGMA user_version=1")
+                        db.execute("ALTER TABLE runs ADD COLUMN origin_json TEXT NOT NULL "
+                                   "DEFAULT '{\"kind\":\"ui\"}'")
+                        db.execute("PRAGMA user_version=2")
+                        db.commit()
+                    except BaseException:
+                        db.rollback()
+                        raise
+                if version == 1:
+                    db.execute("BEGIN IMMEDIATE")
+                    try:
+                        self.checkpoint("before_origin_migration")
+                        db.execute("ALTER TABLE runs ADD COLUMN origin_json TEXT NOT NULL "
+                                   "DEFAULT '{\"kind\":\"ui\"}'")
+                        db.execute("PRAGMA user_version=2")
                         db.commit()
                     except BaseException:
                         db.rollback()
@@ -209,6 +222,7 @@ class RunStore:
             raise SettingsError("not_found", "运行不存在", 404)
         result = dict(row)
         result["store_error"] = self.readonly_error
+        result["origin"] = json.loads(result.pop("origin_json", '{"kind":"ui"}'))
         result["task_snapshot"] = json.loads(result.pop("task_snapshot_json"))
         result["steps"] = []
         for step in (
@@ -248,7 +262,13 @@ class RunStore:
         resources,
         deadline_at,
         steps=(),
+        origin=None,
     ):
+        from toolbox_backend.domain.telegram import RunOrigin
+
+        origin = RunOrigin.model_validate(origin or {"kind": "ui"}).model_dump(exclude_none=True)
+        if contains_secret(json.dumps(origin)):
+            raise SettingsError("validation_error", "运行来源包含凭据值", 422)
         if contains_secret(json.dumps(snapshot, ensure_ascii=False)):
             raise SettingsError("validation_error", "运行快照包含凭据值", 422)
         with self.transaction() as (db, events):
@@ -274,8 +294,8 @@ class RunStore:
             db.execute(
                 """INSERT INTO runs
                 (run_id,task_id,operation,status,created_at,updated_at,config_revision,
-                 task_snapshot_json,request_id,request_hash,deadline_at)
-                VALUES (?,?,?,'queued',?,?,?,?,?,?,?)""",
+                 task_snapshot_json,request_id,request_hash,deadline_at,origin_json)
+                VALUES (?,?,?,'queued',?,?,?,?,?,?,?,?)""",
                 (
                     rid,
                     task_id,
@@ -287,6 +307,7 @@ class RunStore:
                     request_id,
                     request_hash,
                     deadline_at,
+                    json.dumps(origin),
                 ),
             )
             db.executemany(

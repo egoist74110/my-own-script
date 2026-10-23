@@ -1,4 +1,4 @@
-# toolbox-backend (S0 / S1 / S2 / S3-B)
+# toolbox-backend (S0 / S1 / S2 / S3 / S4-A)
 
 TOOLBOX next 的本地后端进程：FastAPI + uvicorn，Python >= 3.14，uv 管理依赖（`uv.lock` 入库）。
 接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1、S2 及「S1-A 主控裁决」。
@@ -55,17 +55,18 @@ fixture 全部为虚构数据：101/102 两张工单、同源 PNG、跨源图片
 
 ## store 与凭据
 
-- 新 store 为 `<data-dir>/config.json`，schema v1；目录 0700，文件、锁及导入快照 0600。
+- 新 store 为 `<data-dir>/config.json`，schema v2；目录 0700，文件、锁及导入快照 0600。
   新 Keychain service 为 `toolbox-next`，account 为 `ado_pat:<library_id>`。
   旧 service `my-own-script` 只有只读适配器，S1 只读取 ADO PAT。
 - 普通读取不创建文件、不迁移。文件不存在时返回内存中的空配置（revision 0）。
   写入在线程中执行：进程内锁（最多等待 5 秒）→ flock（最多等待 5 秒）→ 重读 → 比较 revision → 副本变更与完整校验
   → 同目录临时文件 flush/fsync → `os.replace` → fsync 目录 → 释放锁 → `settings.changed {revision}`。
   每次成功提交 revision +1；旧 revision 返回 409 `revision_conflict`。replace 是提交点，替换后的异常会核验已提交内容。
-- 启动时显式调用 `ConfigStore.initialize()`。v1 是首个生产版本，生产迁移注册表为空。
+- 启动时显式调用 `ConfigStore.initialize()`；生产注册 v1→v2 的 Telegram 迁移。
   测试或后续版本可注入 `{from_version: step_fn}`；每个纯函数接收独立字典，返回 schema_version +1 的字典。
   迁移持有同一进程锁和 flock，重读后校验完整迁移结果，先把原文字节写为
-  `config.json.bak-v<旧版本>-<时间戳>...` 并 fsync，再原子替换；迁移提交 revision +1。
+  `migrations/config-v1-<时间戳>*.json`（v1）并 fsync，再原子替换；迁移提交 revision +1。
+  测试注入的 v0 迁移仍用 `config.json.bak-v0-*`。
   替换前失败保留原件及已经完成的备份；未完成的备份和临时文件会清理。
 - 未注册的低版本、高版本、JSON/模型损坏、迁移失败均暴露只读错误态；不自动重置原件。
   设置接口显示错误及数据目录，写接口返回 503 `store_unavailable`。
@@ -384,3 +385,111 @@ asc 游标用于 desc、desc 游标用于 asc、非法 order/游标均返回 422
 一次参数化 SQL 批量取得所有任务的最新摘要与活动 id，不逐任务查询或加载全部 run 详情。
 运行库不可用、已关闭或只读时，last_run 为 null，沿用运行库不可用 warnings 降级，任务配置仍可读取。
 所有读取沿用既有 S0 Bearer/Host/CORS 边界；没有新增身份或 ACL 语义。
+
+
+## S4-A Telegram 基础
+
+Bot Token 仅存新 Keychain service `toolbox-next` / account `telegram_bot_token`，元数据
+kind=`telegram_bot`，与 S1 凭据页共用索引。PUT 仅写入，格式为数字 5–16 位、冒号、
+30–64 位字母数字或下划线/连字符；不测试候选 Token。显式 import-legacy 只读取旧
+`my-own-script` / `telegram_bot_token`，不改旧条目，不访问 `ai_bot_token:*`。
+启用时不能改删 Token；旧 Token 缺失为 **404 legacy_missing**。
+
+配置 schema v1→v2 和 S1 直接导入共用规范化函数：`imported.telegram` 被移到类型化顶层
+`telegram` 并移除旧键；control/owner/notify/ACL 内未知字段保留；成员补 UUID4 id。
+生成的成员 UUID 每次独立迁移不同，除此之外两条路径的规范化结果一致。
+迁移一律 enabled=false，不读取凭据、不联网；先写 0600 的迁移前原文快照，再原子替换。
+失败不落半文件，再启动不重复迁移。旧 ACL 无效/重复/超限条目保留并警告，不授予权限。
+删除任务默认保留 409 task_referenced；`detach_acl=true` 在同一次配置更新中解除所有引用，
+不改组权限位、不删成员；空组附“该组已无可运行任务”警告。
+
+`telegram.sqlite3` user_version=1，含 tg_bots/tg_updates/tg_actions/tg_outbox；
+runs.sqlite3 单事务迁移到 user_version=2，origin_json 与 run 创建同事务。
+旧 run 默认 `{kind:ui}`；内部 Telegram 来源包含 bot/chat/user 和动作身份，但 HTTP RunResponse
+只显示 `origin.kind`。HTTP StartRequest 拒绝 origin。未知高版本/损坏/符号链接不重置；
+Telegram 库故障返回只读错误态，其余设置/任务功能继续使用原有服务。
+**回退旧后端会拒绝 config v2 / runs v2，不自动降级或删除数据；人工恢复须用迁移快照。**
+
+TelegramService 是生命周期唯一所有者。enable 必填 ack_old_bot_stopped，先 getMe、
+getWebhookInfo；已有 webhook 不自动删除，只有显式 delete_webhook 才调用 deleteWebhook，
+且 drop_pending_updates=false。首次 getUpdates(offset=-1,timeout=0) 丢弃积压，之后
+轮询 timeout=25/limit=100；每条 update 在同一事务登记并推进 offset，再交给两个处理 worker
+（队列 64、同 chat 串行）。登记后崩溃不重放指令，用户需重发；同批单条失败不阻塞其余条目。
+超过 5 分钟的已授权指令只回复一次过期。首次基线 409 后保留已确认的 enabled 状态，
+HTTP 返回 502 telegram_request_failed/category=conflict；GET 状态可见 conflict，可单次 retry。
+
+轮询状态：disabled → starting → polling ⇄ backoff；409 立即 conflict 并停止，不删 webhook、
+不自动重试；401/404 为 token_invalid；已有 webhook 为 webhook_set；库错误为 store_unavailable。
+retry 仅 conflict/backoff，做一次 timeout=0 探测；429 遵守 retry_after，网络退避
+1/2/5/10/30/60 秒（抖动，上限 60）。disable/shutdown 取消长轮询与发送，等待在途处理最多
+5 秒后取消，统一关闭客户端/数据库；已提交的 S3 run 不被 Telegram 停用取消。
+
+Bot API 唯一客户端固定 `https://api.telegram.org`，不跟随重定向；仅这个客户端 trust_env=True，
+遵循环境/macOS 代理。独立并发为轮询 1、发送 2、媒体 1；响应限额分别为 1 MiB/64 KiB。
+错误固定 category：network/timeout/http_4xx/http_5xx/conflict/unauthorized/rate_limited/bad_response，
+description 脱敏、去 URL、最多 200 字；不会保留 httpx 的 URL 异常上下文。
+
+ACL 顺序：私聊 owner → chat_id 成员 → 私聊 username 成员（首次绑定 user_id，之后只认
+user_id）→ 旧白名单（status）→ none。空 owner 不自动绑定，只认设置页签发的 6 位码 /bind；
+码仅在内存、10 分钟、同时一个、错 5 次作废。none 零回复；非 owner status 只列组内任务
+或自己触发的运行。/help、/start、/menu 使用服务端一次性菜单令牌（TTL 5 分钟，
+每 bot 活动≤256、每 chat≤16）；伪造/过期/跨主体令牌无效果。/status 与 /bind 可用，
+执行类与 /wi 回复“暂未开放”，服务/VPN/MCP/AI 回复“该功能尚未迁移到新应用”；完整执行留 S4-B。
+
+发件箱只在 control.enabled 时接收运行通知，入箱与停用协调；UI 通知给 owner（可关闭），
+Telegram 通知给触发 chat 并绑定原 bot。run/status 去重；同一状态不重复；重启扫描 enabled_at
+之后持久状态事件补齐提交后入箱前的崩溃缺口。默认摘要不含 stderr/日志/URL/远端 id；
+include_details 加分支、目标数/名称、完成步骤、已知构建/Release 标识；网页链接仅由冻结来源
+与当前同来源配置重建并经 S2 within 校验，不复制远端 URL、不编造未知 Release 名。
+正文统一脱敏，命中已登记凭据则用固定隐藏文本替换。纯文本、每块最多 4000 字，无 parse_mode。
+成功清空正文；连接建立失败/429 最多尝试 5 次、累计等待不超过 10 分钟；读超时/断链/5xx
+为 unknown 不重发，400/403 为 failed。重启 sending→unknown，pending 按 next_attempt_at 续发；
+pending 最多 500，优先回复，超限丢最旧通知；没有可丢通知时拒绝新入箱 busy。
+
+### S4-A DTO 与接口
+
+字段的确定类型以 `../contracts/openapi.json`、`events.schema.json` 为准，全部由 Pydantic 生成。
+
+| DTO | 用途 |
+| --- | --- |
+| TelegramView / Control / BotView / CredentialView / OwnerView / Notify / PollerView / ACLView | revision、开关、凭据有无/来源、bot 身份、owner、通知、轮询和保留旧条目的 ACL 警告 |
+| RevisionRequest / TokenRequest / EnableRequest / TelegramSettingsRequest / NotifyPatch | 带 revision 的配置/Token/接管/通知输入；Token 为 SecretStr |
+| GroupCreate / GroupPatch / MemberCreate / MemberPatch / WhitelistRequest | ACL CRUD 输入，服务端生成新 id，成员 user_id 不由 HTTP 指定 |
+| BindCodeResponse / ActivityResponse / ActivityItem | 一次性绑定码、无正文的处理记录（默认 50、最多 200） |
+| TelegramStatusData / TelegramStatusEvent | WS telegram.status，复用 system envelope，不新增订阅主题 |
+| OriginView | RunResponse.origin.kind，只读来源 |
+| TelegramErrorResponse / TelegramErrorDetail | 固定错误码/category，不回显输入/Token/webhook URL |
+| InjectRequest / FakeSentResponse / FakeSentItem | 仅 dev 假 Bot 路由 |
+
+路由均经过既有 Host/CORS/Bearer/BodyLimit：GET /api/telegram；PUT/DELETE /token、
+POST /token/import-legacy；POST /control/enable、/disable、/retry；POST /owner/bind-code、
+DELETE /owner；PATCH /settings；POST/PATCH/DELETE /acl/groups[/{id}] 与 /acl/members[/{id}]；
+PUT /acl/legacy-whitelist；POST /test-message；GET /activity。以上省略前缀 /api/telegram。
+DELETE 使用 query revision；POST/PATCH/PUT 使用 DTO 中的 revision，test-message/bind-code 也带 revision。
+任务删除新增 query detach_acl。ACL 组删除级联其成员，不更改其他组。
+新增错误码：409 telegram_active/ack_required/webhook_set/owner_not_bound；404 legacy_missing；
+502 telegram_request_failed（category 如上）；503 telegram_store_unavailable。沿用
+validation_error/revision_conflict/no_credential/credential_backend_error/store_unavailable/store_busy/busy/not_found。
+
+### Dev 假 Telegram
+
+只能在 --dev + TOOLBOX_CREDENTIALS=memory + TOOLBOX_DEV_FAKE_TELEGRAM=1 下开启，
+否则在监听前启动失败。使用进程内 httpx.MockTransport，无真实 Telegram 连接；此模式不自动
+读取/播种真实配置或 Token。示例（先自行创建独立的临时 data-dir 与空 legacy-dir）：
+
+```sh
+TOOLBOX_CREDENTIALS=memory TOOLBOX_DEV_FAKE_TELEGRAM=1 \
+TOOLBOX_LEGACY_CONFIG_DIR=/tmp/toolbox-fake-legacy \
+.venv/bin/python -m toolbox_backend --dev --data-dir /tmp/toolbox-fake-telegram
+```
+
+用 Token PUT 录入明显假值 `123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef`，再带确认 enable。
+设置页生成 bind-code 后，POST /api/dev/telegram/inject，输入 `{update:{update_id:1,message:{
+chat:{id:6001,type:"private"},from:{id:6001},date:<当前Unix秒>,text:"/bind <绑定码>"}}}`；
+随后注入 /help 或 /status。GET /api/dev/telegram/sent 返回 `{items:[{method,payload}]}`。
+仅此模式注册这两个路由，正常模式两者均 404；它们同样需要 S0 Bearer/Host 校验。
+发送记录最多 500 条。开发启动器负责关闭 stdin、等待退出并删除其临时目录；不要使用真实配置目录。
+
+S4-A 新用例位于 tests/test_s4a_*.py 与 tests/independent/s4a/，只用 tmp_path、MemoryCredentials、
+MockTransport 和既有 keyring/socket 守卫。真实 Bot、系统代理、Keychain 与端口 HTTP/WS
+需主控或用户另行验收；沙箱内的无端口通过不等于这些环境已验证。

@@ -60,7 +60,8 @@ async def test_wp13_tasks_flows_shapes_and_acl_flow_mapping(
         if expected_rule == "migrated_from_flows":
             task = config.tasks.items[0]
             assert task.legacy_flow_id == "old_flow"
-            assert config.imported.telegram["acl_groups"][0]["task_ids"] == [task.id]
+            assert config.telegram.acl_groups[0].task_ids == [task.id]
+            assert "telegram" not in config.imported.model_dump()
             assert config.tasks.legacy_flows[0]["id"] == "old_flow"
         elif raw.startswith("tasks: []"):
             assert config.tasks.items == []

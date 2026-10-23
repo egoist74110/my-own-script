@@ -16,6 +16,8 @@ from pydantic import (
     model_validator,
 )
 
+from toolbox_backend.domain.telegram import TelegramConfig
+
 
 def identifier(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9:_.\-]{1,128}", value):
@@ -199,7 +201,6 @@ class Tasks(StrictModel):
 
 
 class Imported(StrictModel):
-    telegram: dict[str, JsonValue] = Field(default_factory=dict)
     work_items: dict[str, JsonValue] = Field(default_factory=dict)
     ai: dict[str, JsonValue] = Field(default_factory=dict)
     lark: dict[str, JsonValue] = Field(default_factory=dict)
@@ -219,7 +220,7 @@ class ImportState(StrictModel):
 
 
 class CredentialMeta(StrictModel):
-    kind: Literal["ado_pat"] = "ado_pat"
+    kind: Literal["ado_pat", "telegram_bot"] = "ado_pat"
     ref: Id
     source: Literal["imported", "manual"]
     updated_at: str
@@ -228,7 +229,8 @@ class CredentialMeta(StrictModel):
 
 class Config(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     revision: int = Field(default=0, ge=0)
     updated_at: str | None = None
     ado: Ado = Field(default_factory=Ado)
@@ -239,6 +241,9 @@ class Config(StrictModel):
 
     @model_validator(mode="after")
     def credential_accounts(self):
-        if any(key != f"ado_pat:{meta.ref}" for key, meta in self.credentials.items()):
+        if any(
+            key != ("telegram_bot_token" if meta.kind == "telegram_bot" else f"ado_pat:{meta.ref}")
+            for key, meta in self.credentials.items()
+        ):
             raise ValueError("invalid credential account")
         return self

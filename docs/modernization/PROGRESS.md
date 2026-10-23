@@ -787,3 +787,15 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 状态：S4-A **dispatched / running**；S4-B、S4-C not_dispatched。
 - 第 1 轮（2026-10-23）：exit 0，交回 **partial**。rollout turn_context 回执施工 `gpt-6.1-sol` / medium、workspace-write、network_access=false；测试子agent `/root/s4a_tests` rollout `01a16744-a8da-7d01-97d2-6b51b9645859` 回执 `gpt-6-luna` / high（本地运行时回执）。交付：`logging_setup.py` 脱敏扩展（bot URL/认证头/URL 编码/代理 userinfo/异常链）、`adapters/telegram_http.py`、施工回归 7 例（修前 6+1 failed）、独立 13 例；主控复跑 20 passed、ruff exit 0。其余目标未实现；施工者按规则停下列出 5 处既有断言冲突（schema 版本 1、读取 `imported.telegram`）。测试子agent曾试图 apply_patch 到主控目录（失败未落盘，主控确认主目录干净）。
 - 主控裁定：5 处冲突是已确认合同（config v2、移除 imported.telegram）的计划内变化，允许仅改这 5 处并保留原意（逐条列出）；要求导入路径与 v1→v2 迁移结果一致。`codex exec resume` 同会话续接第 2 轮，请求 `.local/dispatch/s4a/resume1-request.md`。
+
+### S4-A 集成（2026-10-23）
+
+- 第 2 轮：`codex exec resume 01a16743-…` 同会话，rollout turn_context 回执 `gpt-6.1-sol` / medium（本地运行时回执）；exit 0，施工者报告整包完成。测试子agent `/root/s4a_tests`（`gpt-6-luna` / high 回执）累计新增独立用例 32 例（`tests/independent/s4a/`）；本包新增用例共 87。请求/输出 `.local/dispatch/s4a/resume1-*`。
+- 结果：config schema v2 类型化 `telegram`（v1→v2 迁移与直接导入共用规范化，强制停用，移除 `imported.telegram`，快照+原子写）；Bot Token 凭据（kind=telegram_bot，手动/旧端只读导入/删除）；`adapters/telegram_http.py`（固定域名、不跟随重定向、限额、独立并发、跟随系统代理、固定错误类别）；`telegram.sqlite3`（tg_bots/tg_updates/tg_actions/tg_outbox）与 runs v2 `origin_json`；TelegramService（enable/disable/retry、首次基线、先登记后处理、409 停止零 deleteWebhook、退避、过期指令、关闭清理）；ACL 解析与 `/bind`、username→user_id 绑定；发件箱通知与重启补发；统一脱敏；19 个 HTTP 操作、WS `telegram.status`、`DELETE /api/tasks/{id}?detach_acl=true`、新错误码；dev 假 Telegram（`TOOLBOX_DEV_FAKE_TELEGRAM=1` 须 --dev+memory，inject/sent 路由仅该模式注册）。执行类指令回复“暂未开放”，留 S4-B。
+- 既有测试改动：仅主控裁定的 5 处（schema 1→2 两处、`imported.telegram`→类型化 `telegram` 三处），主控逐行核对 diff 与裁定一致。
+- **主控修前复现**：集成树中临时把 `logging_setup.py` 换回 `b70afb0` 版本，`tests/test_s4a_redaction.py` **6 failed / 1 passed**；恢复后 7 passed（与施工树逐字节一致）。其余修前证据为施工/测试者记录，主控未逐项反向复现（unknown）。
+- 集成：worktree `next/backend`、`next/contracts` 限定 binary patch（`.local/dispatch/s4a/integration.patch`），`git apply --check` 后应用；主控去掉两处独立测试文件 EOF 多余空行（diff --check）。主控 `pnpm contracts:gen` 重新生成 `next/desktop/src/api/schema.d.ts`。
+- 集成版本验收：后端全量 pytest **827 passed**（240.42s，沙箱外含端口；施工树沙箱外另跑 827 passed），ruff exit 0，contracts --check exit 0；前端 frozen install/typecheck/lint（0 error / 8 warning，既有）/test **903 passed / 57 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。Rust 与根目录旧代码守卫：not_run（本包未改 src-tauri/旧代码）。
+- 主控核查备注（留 S4-B 处理）：①无 can_run 的组成员菜单仍显示“任务”入口（当前只回复暂未开放），S4-B 开放执行时按权限收紧；②轮询循环只捕获 TelegramError，本地 DB 等其他异常可能使轮询任务静默结束而状态不更新，S4-B 需补兜底与回归。
+- 未测：真实 Telegram/Keychain/系统代理/Tauri；dev:web 假 Telegram 端到端留 S4-C 联调。施工 worktree `.local/worktrees/s4a` 保留（删除前问用户）。
+- 状态：**S4-A integrated**（本地提交，未 push）；S4-B、S4-C not_dispatched。

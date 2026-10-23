@@ -220,17 +220,30 @@ class TasksService:
         config = await self.store.update(body.revision, mutate)
         return MutationResponse(revision=config.revision, id=ident)
 
-    async def delete(self, tid, revision):
+    async def delete(self, tid, revision, detach_acl=False):
         def mutate(c):
             find_task(c, tid)
-            groups = c.imported.telegram.get("acl_groups", [])
+            from toolbox_backend.domain.telegram import as_dict
+
+            groups = [as_dict(g) for g in c.telegram.acl_groups]
             referenced = [
                 g.get("name", "")
                 for g in groups
-                if isinstance(g, dict) and tid in g.get("task_ids", [])
+                if isinstance(g, dict)
+                and isinstance(g.get("task_ids"), list)
+                and tid in g["task_ids"]
             ]
-            if referenced:
+            if referenced and not detach_acl:
                 raise SettingsError("task_referenced", "任务被 ACL 引用", groups=referenced)
+            if detach_acl:
+                for group in c.telegram.acl_groups:
+                    raw = as_dict(group)
+                    if isinstance(raw, dict) and isinstance(raw.get("task_ids"), list):
+                        remaining = [t for t in raw["task_ids"] if t != tid]
+                        if isinstance(group, dict):
+                            group["task_ids"] = remaining
+                        else:
+                            group.task_ids = remaining
             c.tasks.items = [t for t in c.tasks.items if t.id != tid]
 
         config = await self.store.update(revision, mutate)

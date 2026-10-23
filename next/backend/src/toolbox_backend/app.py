@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import os
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
@@ -15,7 +16,15 @@ from toolbox_backend.adapters.config_store import ConfigStore, MigrationStep
 from toolbox_backend.adapters.credentials import CredentialStore, LegacyCredentialSource
 from toolbox_backend.adapters.run_store import RunStore
 from toolbox_backend.adapters.task_git import GitAdapter
-from toolbox_backend.api import routes, settings_routes, task_routes, work_item_routes, ws
+from toolbox_backend.adapters.telegram_store import TelegramStore
+from toolbox_backend.api import (
+    routes,
+    settings_routes,
+    task_routes,
+    telegram_routes,
+    work_item_routes,
+    ws,
+)
 from toolbox_backend.api.middleware import BearerAuth, BodyLimit, HostGuard
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.models import SettingsChangedData, SettingsChangedEvent
@@ -25,6 +34,7 @@ from toolbox_backend.services.runs import RunService
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
 from toolbox_backend.services.tasks import TasksService
+from toolbox_backend.services.telegram import TelegramService
 from toolbox_backend.services.work_items import WorkItemsService
 from toolbox_backend.settings import Settings
 
@@ -50,6 +60,7 @@ def create_app(
     ado_read: AdoRead | None = None,
     task_executor=None,
     task_git: GitAdapter | None = None,
+    telegram_transport=None,
 ) -> FastAPI:
     register_secret(settings.token)
 
@@ -69,13 +80,17 @@ def create_app(
         except SettingsError:
             pass  # Exposed via GET /api/settings; never reset corrupt/unsupported files.
         await app.state.run_service.initialize()
+        await app.state.telegram_service.initialize()
         beat = asyncio.create_task(app.state.system.heartbeat_loop(settings.heartbeat_interval_s))
         try:
             yield
         finally:
             beat.cancel()
             await asyncio.gather(beat, return_exceptions=True)
-            await app.state.run_service.close()
+            try:
+                await app.state.run_service.close()
+            finally:
+                await app.state.telegram_service.close()
 
     app = FastAPI(
         title="TOOLBOX backend",
@@ -134,6 +149,43 @@ def create_app(
         if task_executor is not None
         else AdoTaskExecutor(app.state.work_items_service, app.state.tasks_service.git),
     )
+    app.state.telegram_store = TelegramStore(settings.data_dir)
+    fake = None
+    if os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") is not None:
+        from toolbox_backend.adapters.credentials import MemoryCredentials
+        from toolbox_backend.adapters.fake_telegram import FakeTelegram
+        if (os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") != "1" or not settings.dev
+                or os.environ.get("TOOLBOX_CREDENTIALS") != "memory"
+                or not isinstance(credentials, MemoryCredentials)):
+            raise ValueError("TOOLBOX_DEV_FAKE_TELEGRAM requires --dev and memory credentials")
+        fake = FakeTelegram()
+        telegram_transport = fake.transport
+        from toolbox_backend.api.settings_schemas import MutationResponse
+        from toolbox_backend.api.telegram_schemas import (
+            FakeSentResponse,
+            InjectRequest,
+        )
+
+        @app.post("/api/dev/telegram/inject", response_model=MutationResponse)
+        async def inject(body: InjectRequest):
+            fake.inject(body.update)
+            config = await store.read()
+            return MutationResponse(revision=config.revision)
+
+        @app.get("/api/dev/telegram/sent", response_model=FakeSentResponse)
+        async def sent():
+            return {"items": fake.sent}
+
+    app.state.telegram_service = TelegramService(
+        app.state.settings_service, app.state.telegram_store, app.state.run_service, hub,
+        transport=telegram_transport,
+    )
+    prior_event = app.state.run_store.on_event
+    def run_event(event):
+        prior_event(event)
+        app.state.telegram_service.on_run_event(event)
+    app.state.run_store.on_event = run_event
+    app.include_router(telegram_routes.router)
     app.include_router(task_routes.router)
     app.include_router(work_item_routes.router)
     app.include_router(routes.router)

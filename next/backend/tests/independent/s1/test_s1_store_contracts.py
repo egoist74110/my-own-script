@@ -139,7 +139,7 @@ async def test_registered_migration_keeps_backup_before_replacement(tmp_path):
 
     store.checkpoint = inspect_before_replace
     migrated = await store.initialize()
-    assert migrated.schema_version == 1 and migrated.revision == 5
+    assert migrated.schema_version == 2 and migrated.revision == 5
     assert store.path.read_bytes() != original
     assert len(list(store.data_dir.glob("config.json.bak-v0-*"))) == 1
 

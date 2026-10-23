@@ -138,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
                     "TOOLBOX_DEV_FAKE_ADO requires --dev and TOOLBOX_CREDENTIALS=memory"
                 )
         task_root(args.dev)
+        if os.environ.get("TOOLBOX_DEV_FAKE_TELEGRAM") is not None:
+            if not (args.dev and os.environ.get("TOOLBOX_CREDENTIALS") == "memory"
+                    and os.environ["TOOLBOX_DEV_FAKE_TELEGRAM"] == "1"):
+                raise ValueError("TOOLBOX_DEV_FAKE_TELEGRAM requires --dev and memory credentials")
         sock = bind_socket()
         port = sock.getsockname()[1]
         heartbeat = float(os.environ.get(HEARTBEAT_ENV, "5"))

@@ -48,8 +48,10 @@ async def patch_task(task_id: str, body: TaskPatch, request: Request):
 
 
 @router.delete("/api/tasks/{task_id}", response_model=MutationResponse)
-async def delete_task(task_id: str, request: Request, revision: int = Query(ge=0)):
-    return await request.app.state.tasks_service.delete(task_id, revision)
+async def delete_task(
+    task_id: str, request: Request, revision: int = Query(ge=0), detach_acl: bool = False
+):
+    return await request.app.state.tasks_service.delete(task_id, revision, detach_acl)
 
 
 @router.post("/api/tasks/{task_id}/preflight", response_model=PlanResponse)

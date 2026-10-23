@@ -68,7 +68,7 @@ async def test_delete_is_blocked_while_imported_acl_group_references_task(s3actx
     revision = created.json()["revision"]
 
     def add_acl_reference(config):
-        config.imported.telegram["acl_groups"] = [
+        config.telegram.acl_groups = [
             {"name": "Release operators", "task_ids": [task_id]}
         ]
 

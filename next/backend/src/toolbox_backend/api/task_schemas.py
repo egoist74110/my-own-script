@@ -182,7 +182,12 @@ class TaskSnapshot(TaskFields):
     prepared: PreparedSnapshot | None = None
 
 
+class OriginView(BaseModel):
+    kind: Literal["ui", "telegram"] = "ui"
+
+
 class RunResponse(BaseModel):
+    origin: OriginView = Field(default_factory=OriginView)
     store_error: str | None = None
     run_id: str
     task_id: str

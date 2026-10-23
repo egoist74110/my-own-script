@@ -145,7 +145,8 @@ async def test_preview_is_zero_write_then_import_keeps_rules_and_secrets_private
         task = config.tasks.items[0]
         assert task.git_flow.build_branch == "main"
         assert task.targets[0].build_id == "42"
-        assert config.imported.telegram["acl_groups"][0]["task_ids"] == [task.id]
+        assert config.telegram.acl_groups[0].task_ids == [task.id]
+        assert "telegram" not in config.imported.model_dump()
         assert config.imported.extra["ui_settings"]["unknown_ui_key"] == {"nested": "preserved"}
         assert config.tasks.legacy_flows[0]["id"] == "sync_merge_build_release"
         assert new.values["ado_pat:lib:sample"] == PAT

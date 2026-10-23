@@ -1163,6 +1163,83 @@
       ],
       "title": "SystemHelloEvent",
       "type": "object"
+    },
+    "TelegramStatusData": {
+      "properties": {
+        "last_error_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Category"
+        },
+        "since": {
+          "title": "Since",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "disabled",
+            "starting",
+            "polling",
+            "backoff",
+            "conflict",
+            "token_invalid",
+            "webhook_set",
+            "store_unavailable",
+            "stopping"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "since"
+      ],
+      "title": "TelegramStatusData",
+      "type": "object"
+    },
+    "TelegramStatusEvent": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/TelegramStatusData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "system",
+          "default": "system",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "telegram.status",
+          "default": "telegram.status",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "TelegramStatusEvent",
+      "type": "object"
     }
   },
   "discriminator": {
@@ -1172,7 +1249,8 @@
       "settings.changed": "#/$defs/SettingsChangedEvent",
       "system.alert": "#/$defs/SystemAlertEvent",
       "system.heartbeat": "#/$defs/SystemHeartbeatEvent",
-      "system.hello": "#/$defs/SystemHelloEvent"
+      "system.hello": "#/$defs/SystemHelloEvent",
+      "telegram.status": "#/$defs/TelegramStatusEvent"
     },
     "propertyName": "type"
   },
@@ -1194,6 +1272,9 @@
     },
     {
       "$ref": "#/$defs/RunSubscribedEvent"
+    },
+    {
+      "$ref": "#/$defs/TelegramStatusEvent"
     }
   ],
   "title": "ToolboxEvent"

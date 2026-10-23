@@ -3,9 +3,21 @@
 import base64
 import json
 import logging
+import re
 import sys
+from urllib.parse import quote
 
 _known_secrets: set[str] = set()
+_BOT_URL_RE = re.compile(r"/bot\d+(?::|%3[Aa])[A-Za-z0-9_\-]+(?=/|\b|$)")
+_AUTH_HEADER_RE = re.compile(
+    r"""(?ix)
+    (?P<k>["']?(?:proxy-)?authorization["']?\s*[:=]\s*["']?|
+    ["']?x-[a-z0-9-]*(?:token|secret|key)["']?\s*[:=]\s*["']?)
+    (?:[A-Za-z][A-Za-z0-9_-]*\s+(?=[^\s"',;}\]]))?
+    [^\s"',;}\]]+
+    """
+)
+_USERINFO_RE = re.compile(r"(https?://)[^/\s@]+@", re.I)
 
 
 def register_secret(value: str) -> None:
@@ -14,6 +26,10 @@ def register_secret(value: str) -> None:
         _known_secrets.add(json.dumps(value, ensure_ascii=False)[1:-1])
         _known_secrets.add(json.dumps(value, ensure_ascii=True)[1:-1])
         _known_secrets.add(base64.b64encode((":" + value).encode()).decode())
+        for safe in ("", "-_"):
+            encoded = quote(value, safe=safe)
+            _known_secrets.add(encoded)
+            _known_secrets.add(re.sub(r"%[0-9A-F]{2}", lambda m: m[0].lower(), encoded))
 
 
 def contains_secret(text: str) -> bool:
@@ -21,7 +37,25 @@ def contains_secret(text: str) -> bool:
 
 
 def redact_exception(value: object) -> str:
-    text = str(value)
+    parts, seen = [], set()
+    current = value
+    for _ in range(6):
+        if id(current) in seen:
+            break
+        seen.add(id(current))
+        try:
+            parts.append(str(current))
+        except Exception:
+            parts.append("<unprintable>")
+        if not isinstance(current, BaseException):
+            break
+        current = current.__cause__ or current.__context__
+        if current is None:
+            break
+    text = " | ".join(parts)
+    text = _BOT_URL_RE.sub("/bot***", text)
+    text = _AUTH_HEADER_RE.sub(lambda m: m["k"] + "***", text)
+    text = _USERINFO_RE.sub(r"\1***@", text)
     for secret in sorted(_known_secrets, key=len, reverse=True):
         text = text.replace(secret, "***")
     return text

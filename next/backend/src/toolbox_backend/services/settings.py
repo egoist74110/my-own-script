@@ -156,10 +156,13 @@ class SettingsService:
                 present, state = None, "unreadable"
             if not meta and key in config.import_.written_credentials:
                 state = "orphan"
-            if meta and (meta.state == "pending_delete" or lid not in libs):
+            if meta and (
+                meta.state == "pending_delete" or (meta.kind == "ado_pat" and lid not in libs)
+            ):
                 state = "pending_delete" if meta.state == "pending_delete" else "orphan"
             result.append(
                 CredentialStatus(
+                    kind=meta.kind if meta else "ado_pat",
                     account=key,
                     ref=lid,
                     ref_name=libs[lid].name if lid in libs else None,
@@ -345,13 +348,21 @@ class SettingsService:
                         plan.config.tasks,
                         plan.config.imported,
                     )
+                    c.telegram = plan.config.telegram
                     c.credentials = {
-                        key: CredentialMeta(
-                            ref=key.removeprefix("ado_pat:"),
-                            source="imported",
-                            updated_at=stamp(),
-                        )
-                        for key in written
+                        **{
+                            key: meta
+                            for key, meta in c.credentials.items()
+                            if meta.kind != "ado_pat"
+                        },
+                        **{
+                            key: CredentialMeta(
+                                ref=key.removeprefix("ado_pat:"),
+                                source="imported",
+                                updated_at=stamp(),
+                            )
+                            for key in written
+                        },
                     }
                     c.import_.state = "completed"
                     c.import_.written_credentials = written
@@ -607,6 +618,8 @@ class SettingsService:
 
     async def delete_orphan(self, key, revision):
         def operation(tx):
+            if key == "telegram_bot_token":
+                raise SettingsError("in_use", "请通过 Telegram 设置管理 Bot 凭据")
             meta = tx.config.credentials.get(key)
             if not meta and key in tx.config.import_.written_credentials:
                 warnings = self._remove_credential(tx, key)

@@ -87,12 +87,21 @@ class RunSubscribedEvent(BaseModel):
     data: RunSubscribedData
 
 
+from toolbox_backend.api.telegram_schemas import TelegramStatusData  # noqa: E402
+
+
+class TelegramStatusEvent(_Envelope):
+    type: Literal["telegram.status"] = "telegram.status"
+    data: TelegramStatusData
+
+
 Event = Annotated[
     SystemHelloEvent
     | SystemHeartbeatEvent
     | SystemAlertEvent
     | SettingsChangedEvent
     | RunEvent
-    | RunSubscribedEvent,
+    | RunSubscribedEvent
+    | TelegramStatusEvent,
     Field(discriminator="type"),
 ]

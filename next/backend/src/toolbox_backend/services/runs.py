@@ -225,7 +225,7 @@ class RunService:
             warnings=prepared.warnings,
         )
 
-    async def start(self, tid, body):
+    async def start(self, tid, body, *, origin=None):
         self.supported()
         if self.closing:
             raise SettingsError("busy", "后端正在关闭", 503)
@@ -233,6 +233,10 @@ class RunService:
         digest = hashlib.sha256(
             json.dumps({"task_id": tid, **body.model_dump(mode="json")}, sort_keys=True).encode()
         ).hexdigest()
+        if origin is not None:
+            digest = hashlib.sha256(
+                (digest + json.dumps(origin, sort_keys=True)).encode()
+            ).hexdigest()
         prior = await self.store.lookup(rid)
         if prior:
             if prior["request_hash"] != digest:
@@ -252,6 +256,7 @@ class RunService:
                 (),
                 dict(
                     task_id=tid,
+                    origin=origin,
                     operation=plan["operation"],
                     request_id=rid,
                     request_hash=digest,
