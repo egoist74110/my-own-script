@@ -398,7 +398,9 @@ class RunStore:
     async def events(self, rid, after_seq=0, limit=200):
         return await self.call(self._events, rid, after_seq, limit)
 
-    def _list(self, task_id=None, status=None, cursor=None, limit=50):
+    def _list(self, task_id=None, status=None, cursor=None, limit=50, order="asc"):
+        if order not in {"asc", "desc"}:
+            raise SettingsError("validation_error", "排序方向无效", 422)
         clauses, args = [], []
         if task_id:
             clauses.append("task_id=?")
@@ -408,12 +410,25 @@ class RunStore:
             args.append(status)
         if cursor:
             try:
-                created, rid = json.loads(cursor)
+                decoded = json.loads(cursor)
+                if not isinstance(decoded, list):
+                    raise ValueError
+                if len(decoded) == 2:
+                    cursor_order = "asc"  # Preserve existing ascending cursors.
+                    created, rid = decoded
+                elif len(decoded) == 3:
+                    cursor_order, created, rid = decoded
+                else:
+                    raise ValueError
+                if cursor_order != order:
+                    raise ValueError
                 if not isinstance(created, str) or not isinstance(rid, str):
                     raise ValueError
             except ValueError, TypeError:
                 raise SettingsError("validation_error", "游标无效", 422) from None
-            clauses.append("(created_at,run_id)>(?,?)")
+            clauses.append(
+                "(created_at,run_id)>(?,?)" if order == "asc" else "(created_at,run_id)<(?,?)"
+            )
             args.extend((created, rid))
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = (
@@ -421,7 +436,11 @@ class RunStore:
             .execute(
                 "SELECT run_id,created_at FROM runs"
                 + where
-                + " ORDER BY created_at,run_id LIMIT ?",
+                + (
+                    " ORDER BY created_at,run_id LIMIT ?"
+                    if order == "asc"
+                    else " ORDER BY created_at DESC,run_id DESC LIMIT ?"
+                ),
                 (*args, limit + 1),
             )
             .fetchall()
@@ -429,13 +448,49 @@ class RunStore:
         items = [self._get(row["run_id"]) for row in rows[:limit]]
         return dict(
             items=items,
-            cursor=json.dumps([items[-1]["created_at"], items[-1]["run_id"]])
+            cursor=json.dumps(
+                ([] if order == "asc" else ["desc"])
+                + [items[-1]["created_at"], items[-1]["run_id"]]
+            )
             if len(rows) > limit
             else None,
         )
 
     async def list(self, **kwargs):
         return await self.call(self._list, **kwargs)
+
+    def task_summaries(self):
+        """One read for all tasks' latest run and active ids; no snapshots/effects N+1."""
+        return self._call(self._task_summaries, (), {})
+
+    def _task_summaries(self):
+        if self.readonly_error:
+            raise unavailable()
+        rows = (
+            self._require()
+            .execute(
+                """WITH ranked AS (
+                SELECT task_id,run_id,status,operation,created_at,finished_at,
+                       row_number() OVER (
+                           PARTITION BY task_id ORDER BY created_at DESC,run_id DESC
+                       ) AS position
+                FROM runs
+            ) SELECT task_id,run_id,status,operation,created_at,finished_at,position
+              FROM ranked WHERE position=1 OR status IN (?,?,?,?)""",
+                ACTIVE,
+            )
+            .fetchall()
+        )
+        active, latest = {}, {}
+        for row in rows:
+            if row["status"] in ACTIVE:
+                active[row["task_id"]] = row["run_id"]
+            if row["position"] == 1:
+                latest[row["task_id"]] = {
+                    key: row[key]
+                    for key in ("run_id", "status", "operation", "created_at", "finished_at")
+                }
+        return active, latest
 
     def _recover(self, run_ids=None, reason_code="backend_restart"):
         previous_error = self.readonly_error

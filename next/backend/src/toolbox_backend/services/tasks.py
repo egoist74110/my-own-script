@@ -126,7 +126,14 @@ class TasksService:
             if source.get(kind + "_id") == ident:
                 raise SettingsError("resource_active", "项目或库存在活动运行")
 
-    def dto(self, task, config):
+    def _run_summaries(self):
+        try:
+            active, latest = self.runs.task_summaries()
+            return active, latest, False
+        except SettingsError:
+            return {}, {}, True
+
+    def dto(self, task, config, run_summaries=None):
         fields = task.model_dump()
         warnings = []
         try:
@@ -139,16 +146,15 @@ class TasksService:
                 warnings.append("未设置构建分支")
         except ValidationError, SettingsError:
             warnings.append("存量任务字段无效；执行前须修正")
-        try:
-            active = self.runs.active_snapshots()
-        except SettingsError:
-            active = []
+        active, latest, unavailable = (
+            self._run_summaries() if run_summaries is None else run_summaries
+        )
+        if unavailable:
             warnings.append("运行库不可用，活动状态未知；暂不可修改任务或来源")
         fields["warnings"] = warnings
         fields["validation"] = {"valid": not warnings}
-        fields["active_run_id"] = next(
-            (r["run_id"] for r in active if r["task_id"] == task.id), None
-        )
+        fields["active_run_id"] = active.get(task.id)
+        fields["last_run"] = latest.get(task.id)
         return fields
 
     async def get(self, tid=None):
@@ -157,11 +163,13 @@ class TasksService:
 
     def _get(self, config, tid):
         if tid:
-            return dict(revision=config.revision, item=self.dto(find_task(config, tid), config))
+            task = find_task(config, tid)
+            return dict(revision=config.revision, item=self.dto(task, config))
+        run_summaries = self._run_summaries()
         return dict(
             revision=config.revision,
             items=[
-                self.dto(t, config)
+                self.dto(t, config, run_summaries)
                 for t in sorted(config.tasks.items, key=lambda t: (t.sort_order, t.id))
             ],
         )

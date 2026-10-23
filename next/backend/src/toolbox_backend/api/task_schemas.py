@@ -111,10 +111,19 @@ class TaskValidation(BaseModel):
     valid: bool
 
 
+class LastRunSummary(BaseModel):
+    run_id: str
+    status: RunStatus
+    operation: Operation
+    created_at: str
+    finished_at: str | None
+
+
 class TaskView(DynamicTask):
     warnings: list[str]
     validation: TaskValidation
     active_run_id: str | None
+    last_run: LastRunSummary | None
 
 
 class TaskListResponse(BaseModel):

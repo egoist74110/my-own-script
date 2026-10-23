@@ -305,7 +305,8 @@ HTTP 形状见 `../contracts/openapi.json`，WS 形状见 `../contracts/events.s
 | TaskFields | enabled、sort_order、tg_command、tg_desc、name、project_id?、local_repo_path、repo_id?、repo_name?、git_flow:FlowInput、agent_queue_id?、agent_queue_name?、targets:TargetInput[] |
 | FlowInput / MergeInput | build_branch、update_branches、merges（每项 source/target）、push_branches；均保留数组顺序 |
 | TargetInput | name、enabled、build_kind?、build_id?、build_name?、release_id?、release_name?、release_stage_ids、release_stage_names |
-| TaskValidation / TaskView | valid；TaskView 为任务已知字段及未知保留字段，另有 warnings、validation、active_run_id? |
+| LastRunSummary | run_id、status（七态枚举）、operation（三操作）、created_at、finished_at?；该任务按 created_at/run_id 最新的一次运行，包含活动运行 |
+| TaskValidation / TaskView | valid；TaskView 为任务已知字段及未知保留字段，另有 warnings、validation、active_run_id?、last_run?:LastRunSummary；无运行或运行库不可用时为 null |
 | TaskListResponse / TaskResponse | revision + items:TaskView[] / item:TaskView |
 | StartResponse | run_id |
 | StepView | run_id、step_no、kind、target_index?、status、started_at?、finished_at?、checkpoint（动态 JSON） |
@@ -368,3 +369,18 @@ remote_running、remote_unknown、local_failed、interrupted、timeout、cancell
 离线验证覆盖 S3-B `tests/test_s3b_*.py` 与 `tests/independent/s3b/`。
 真实自建 ADO 对 Release manualEnvironments、Pipeline 显式 Build link、部署 attempt 的返回兼容性，
 以及真实 SSH/Keychain/回环端口/Tauri 需主控或用户另行验收；内存假服务通过不代表真实服务器已验证。
+
+### S3 运行读取扩展（2026-10-23 已批准）
+
+`GET /api/runs` 新增 `order=asc|desc`，默认 asc，保留原有 created_at/run_id 旧到新顺序；
+desc 使用两字段同时降序，新到旧翻页。task_id/status 过滤与 limit（默认50、最大100）规则不变。
+游标与方向绑定：asc 继续输出原两字段 JSON 数组 `[created_at, run_id]`；
+desc 输出 `["desc", created_at, run_id]`，下一页使用严格小于该二元组的记录。
+asc 游标用于 desc、desc 游标用于 asc、非法 order/游标均返回 422 `validation_error`。
+同一 created_at 以 run_id 决定顺序，避免同时间记录翻页重复或遗漏。
+
+任务列表与单任务详情均返回 `last_run: LastRunSummary | null`，以创建时间而非完成时间判断最近一次，
+同时间按 run_id 降序；包含 queued/running/cancelling/unknown。配置任务无运行时为 null。
+一次参数化 SQL 批量取得所有任务的最新摘要与活动 id，不逐任务查询或加载全部 run 详情。
+运行库不可用、已关闭或只读时，last_run 为 null，沿用运行库不可用 warnings 降级，任务配置仍可读取。
+所有读取沿用既有 S0 Bearer/Host/CORS 边界；没有新增身份或 ACL 语义。

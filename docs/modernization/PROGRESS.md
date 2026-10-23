@@ -741,3 +741,10 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成版本验收：后端全量 pytest **729 passed**（181.95s，含端口用例，沙箱外），ruff exit 0，contracts --check exit 0；前端 `pnpm install --frozen-lockfile --offline`、typecheck、lint、test **847 passed / 43 文件**、build、guard:dist、contracts:check 全部 exit 0；`git diff --check` exit 0。施工树全量另跑 729 passed。
 - **接口冻结**：以本提交的 `next/contracts/openapi.json`、`events.schema.json`、`next/desktop/src/api/schema.d.ts` 与 `next/backend/tests/fixtures/fake-ado/tasks.json` 为 S3-C 输入；S3-C 不得改契约/后端，缺字段停下交主控。
 - 未测：真实 ADO（自建服务器版本/Pipeline↔Build 关联/manualEnvironments/审批门禁）、真实 SSH push、Keychain、Tauri。施工 worktree `.local/worktrees/s3b` 保留。
+
+### S3 接口扩展：runs order=desc 与 TaskView.last_run（2026-10-23）
+
+- 起因：S3-C 第二轮 dev:web 实测，冻结接口无“每任务最近运行”且运行列表仅旧到新，前端只能捏造行状态（无运行默认“成功”）与时间。**用户批准（原话“同意扩展接口：GET /api/runs 增加 order=desc（新到旧，游标同步支持），TaskView 增加 last_run 摘要（run_id、status、operation、created_at、finished_at）。仍由原 S3-B codex 会话实现并补测试，主控重新生成契约并冻结，再让 agy 第三轮接入。”）**
+- 施工：`codex exec resume 01a16677-1c84-7eb3-9f24-11f0dbc7197e`（同会话，gpt-6.1-sol / medium，workspace-write 沿用）；未派测试子agent（扩展小，主控验收）。方案：asc 默认保持原两字段游标；desc 游标 `["desc", created_at, run_id]`，方向混用/非法 order 422；`LastRunSummary` DTO，一次参数化 SQL 批量取各任务最新运行（含活动中），运行库不可用时 last_run=null + warnings，任务接口仍 200。既有 `test_s3_faults.py` 仅把注入点从 `active_snapshots` 改为 `task_summaries`，断言不变。请求/输出/交接 `.local/dispatch/s3b/ext-*`。
+- **主控修前复现**：集成树 `6dc0de0` 只加新测试 `tests/test_s3b_run_read_extensions.py`：**9 failed / 2 passed**（与施工报告一致）；应用实现补丁后通过。
+- 集成版本验收：后端全量 **740 passed**（182.20s，沙箱外含端口），ruff、contracts --check exit 0；前端 frozen install/typecheck/lint/test **847 passed**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。契约与 `schema.d.ts` 以本提交**重新冻结**为 S3-C 输入。

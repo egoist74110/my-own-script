@@ -284,7 +284,7 @@ async def test_unavailable_run_database_does_not_hide_task_config_or_unrelated_s
     def unavailable():
         raise SettingsError("run_store_unavailable", "injected", 503)
 
-    monkeypatch.setattr(app.state.run_store, "active_snapshots", unavailable)
+    monkeypatch.setattr(app.state.run_store, "task_summaries", unavailable)
     tasks = await client.get("/api/tasks")
     assert tasks.status_code == 200, tasks.text
     assert tasks.json()["items"][0]["warnings"]

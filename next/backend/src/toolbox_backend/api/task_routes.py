@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Query, Request, Response
 
 from toolbox_backend.api.settings_schemas import MutationResponse
@@ -67,9 +69,10 @@ async def runs(
     status: RunStatus | None = None,
     cursor: str | None = Query(default=None, max_length=512),
     limit: int = Query(default=50, ge=1, le=100),
+    order: Literal["asc", "desc"] = "asc",
 ) -> dict:
     return await request.app.state.run_store.list(
-        task_id=task_id, status=status, cursor=cursor, limit=limit
+        task_id=task_id, status=status, cursor=cursor, limit=limit, order=order
     )
 
 

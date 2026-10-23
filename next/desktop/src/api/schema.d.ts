@@ -1188,6 +1188,25 @@ export interface components {
             target_index?: number | null;
         };
         JsonValue: unknown;
+        /** LastRunSummary */
+        LastRunSummary: {
+            /** Created At */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "sync_build_release" | "deploy_only" | "rollback";
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown";
+        };
         /** LibraryCreate */
         LibraryCreate: {
             /** Base Url */
@@ -1856,6 +1875,7 @@ export interface components {
             git_flow?: components["schemas"]["GitFlow"];
             /** Id */
             id: string;
+            last_run: components["schemas"]["LastRunSummary"] | null;
             /**
              * Local Repo Path
              * @default
@@ -2650,6 +2670,7 @@ export interface operations {
                 status?: ("queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown") | null;
                 cursor?: string | null;
                 limit?: number;
+                order?: "asc" | "desc";
             };
             header?: never;
             path?: never;

@@ -2059,6 +2059,60 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LastRunSummary": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "operation": {
+            "enum": [
+              "sync_build_release",
+              "deploy_only",
+              "rollback"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "cancelled",
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "operation",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "LastRunSummary",
+        "type": "object"
+      },
       "LibraryCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4128,6 +4182,16 @@
             "title": "Id",
             "type": "string"
           },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastRunSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "local_repo_path": {
             "default": "",
             "title": "Local Repo Path",
@@ -4208,7 +4272,8 @@
           "id",
           "warnings",
           "validation",
-          "active_run_id"
+          "active_run_id",
+          "last_run"
         ],
         "title": "TaskView",
         "type": "object"
@@ -5704,6 +5769,20 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
             }
           }
         ],
