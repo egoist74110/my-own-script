@@ -761,3 +761,14 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 未测：真实 Tauri 渲染与 Overlay 拖拽、真实 ADO/SSH/Keychain、真实 WS 断网重连、Playwright e2e；S3 真实验收清单未授权未执行。
 - cleanup：主控 dev:web 两次均由本会话启动并停止，1420 已释放，dev 临时 data-dir/TASK_ROOT 已删除；worktree `s3a`、`s3b`、`s3c`、`r1` 保留（删除前需问用户）。
 - 状态：**S3-A/S3-B/S3-C integrated**（本地提交，未 push）。
+
+## 2026-10-23：S4 Telegram（合同草案，待确认）
+
+- 主控：Claude Code 会话（由 S3 主控会话派生，role: lead），requested Opus 5.5 / medium；actual model/effort=unknown（无提供方回执），session_id=unknown。本轮只写合同，**未派工**、未委派任何施工/测试会话。
+- 输入：`rewrite/next @ e3e4314`，开始时工作区干净；旧目录 `main @ 885d186` 只读（该目录有用户未提交改动，均不在 Telegram 相关文件，未触碰）。主控亲自核对 `app_main.py`、`tg_control.py`、`notifier_telegram.py`、`redact.py`、`secrets.py`、`store.py`、`models.py`、`tg_work_items_bridge.py`、`tg_work_items_inline.py`、`tg_help_inline.py`、`ui/acl_dialogs.py`、`ui/telegram_acl_mixin.py`、`ui/telegram_card.py`、`ui/tasks_tab.py`（TG 回调/通知段），以及新端 `legacy_config.py`、`domain/settings.py`、`services/tasks.py`、`logging_setup.py`、`adapters/credentials.py`、`config_store.py`、`run_store.py`、`app.py`。
+- 关键事实（详见 WORK_PACKAGES「S4 旧应用事实核实」）：旧端 4 条轮询线程共用 `telegram_control_enabled`（关它会停掉 AI 机器人）；409 时 deleteWebhook 后继续轮询，不让出；offset 整批处理完才保存，中途异常导致整批重投、已执行指令再触发；积压指令照常执行；owner 为空时第一个私聊者自动成为 owner；callback_data 携带 task_id、回滚确认不重查 ACL；通知失败摘要含 git stderr 首行且正文未脱敏；`/wi` 把 ADO 异常原文回给 TG；新端尚无 Bot Token、脱敏器缺 bot URL/认证头/URL 编码规则。
+- 合同追加在 WORK_PACKAGES「S4」（revision 8）：架构五问、config schema v2 `telegram` 段与迁移、Bot Token 凭据与旧端只读导入、`telegram.sqlite3` 与 runs v2 `origin_json`、长轮询生命周期与 409 让出、所有权切换步骤与回退、ACL 解析与 S3 执行衔接（确认时重查、动作令牌、uuid5 幂等键）、`detach_acl` 解除 `task_referenced`、发件箱通知、`/wi` 只读、统一脱敏、HTTP/WS、安全核对表、S4-A/B（后端）/S4-C（前端）分包、验收命令与真实验收清单（另行授权）。
+- 加载技能：AI prompt root 下 backend-architecture-review、backend-security-review、data-consistency-review、backend-business-safety（按其要求写入五问/安全/一致性/生命周期合同）。
+- **八项待决**（推荐与影响见合同「S4 待决」）：1 主 Bot 切换时机与方式；2 TG 执行是否加确认；3 owner 绑定；4 username 成员与旧白名单；5 删除被 ACL 引用的任务；6 `/wi` 图片转发；7 停机积压指令；8 Telegram 是否走系统代理。尚无用户已决。
+- 状态：S4-A/S4-B/S4-C **not_dispatched**；交叉审计按用户 2026-10-23 决定不做。
+- 安全范围：未读真实配置/凭据/offset 文件、未连真实 Telegram/ADO；旧目录源码未改；未新建 worktree/进程/临时目录，无需清理；`.local/worktrees/{s3a,s3b,s3c,r1}` 保留。本轮只改 WORK_PACKAGES 与 PROGRESS，未运行功能测试（无代码改动）。
