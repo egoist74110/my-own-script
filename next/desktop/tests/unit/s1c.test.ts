@@ -1,6 +1,14 @@
 // S1-C：S0/S0.5 前端遗留修复（CR-S05-001..005、S0B-007、S0B-008）。
 import { flushPromises, mount } from '@vue/test-utils'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -159,14 +167,20 @@ describe('CR-S05-003：SegmentedControl tabpanel 关联', () => {
   // 页面级：当前页签 aria-controls 解析到的元素可见，包含当前真实内容，并由当前页签标注
   const pageCases: [string, string, string, string][] = [
     ['/work-items', '看板列', 'wi-row-48213', '新建'],
-    ['/ai', '按 AI 筛选', 'session-s1', 'Claude'],
+    ['/ai', '按 AI 筛选', 'sessions-offline-state', 'Claude'],
   ]
   for (const [path, label, testid, other] of pageCases) {
     it(`${path}：「${label}」当前页签的 aria-controls 指向可见、含真实内容的 tabpanel（切换后仍成立）`, async () => {
-      const b = await boot({ path, ...(path === '/work-items' ? { fetchImpl: wiFetch() } : {}) })
-      b.sock.emit(hello())
-      await flushPromises()
-      await flushPromises()
+      const b = await boot({
+        path,
+        fetchImpl: path === '/work-items' ? wiFetch() : undefined,
+      })
+      if (path === '/work-items') {
+        b.sock.emit(hello())
+        for (let i = 0; i < 5; i++) await flushPromises()
+      } else {
+        await flushPromises()
+      }
       const list = b.wrapper.get(`[role=tablist][aria-label="${label}"]`)
       const check = () => {
         const current = list.get('[role=tab][aria-selected=true]')
@@ -214,73 +228,27 @@ describe('CR-S05-003：SegmentedControl tabpanel 关联', () => {
   })
 })
 
-describe('CR-S05-004：AI 会话对话内容在 mock 层', () => {
-  it('页面源码不含对话文案；mock 提供，并经 useAiSessions() 取', async () => {
+describe('CR-S05-004：移除 AI 会话 mock 路径并对接真实接口', () => {
+  it('页面源码不含虚构对话文案与 mock 引用；mock 目录已删除', async () => {
     const page = src('features/ai/AiSessionsPage.vue')
-    for (const text of ['usePermissions', '工单 #48213', 'queryKey', 'READ']) {
+    for (const text of ['usePermissions', '工单 #48213', 'pnpm vitest run', 'isMock']) {
       expect(page).not.toContain(text)
     }
-    const mock = src('features/ai/mock/sessions.ts')
-    expect(mock).toContain('usePermissions')
-    expect(mock).toContain('export function useAiSessions')
+    expect(existsSync(join(process.cwd(), 'src/features/ai/mock'))).toBe(false)
     const b = await boot({ path: '/ai' })
-    expect(b.wrapper.get('.flow').text()).toContain('usePermissions')
-    expect(b.wrapper.get('.flow').text()).toContain('分析工单')
-    await b.done()
-  })
-  it('每个会话有自己的对话，不再都显示 s1 的内容', async () => {
-    const b = await boot({ path: '/ai' })
-    await b.wrapper.get('[data-testid=session-s2]').trigger('click')
-    const flow = b.wrapper.get('.flow').text()
-    expect(flow).toContain('网关各层的超时配置')
-    expect(flow).not.toContain('usePermissions')
+    // 不显示 mock 虚构对话流
+    expect(b.wrapper.find('.flow').exists()).toBe(false)
+    expect(b.wrapper.text()).not.toContain('usePermissions')
+    expect(b.wrapper.text()).not.toContain('分析工单 #48213')
     await b.done()
   })
 })
 
-describe('CR-S05-005：sent 与审批记录按会话 id 隔离', () => {
-  const sessionBtn = (b: Awaited<ReturnType<typeof boot>>, id: string) =>
-    b.wrapper.get(`[data-testid=session-${id}]`)
-  async function sendMsg(b: Awaited<ReturnType<typeof boot>>, text: string) {
-    await b.wrapper.get('textarea').setValue(text)
-    await b.wrapper.get('form').trigger('submit')
-    await flushPromises()
-  }
-
-  it('发送的消息只属于当前会话，切走不残留，切回仍在', async () => {
+describe('CR-S05-005：无虚构审批记录残留', () => {
+  it('页面默认不呈现虚构 decision-log 或 mock approval-bar', async () => {
     const b = await boot({ path: '/ai' })
-    await sendMsg(b, '只给 s1 的追问')
-    expect(b.wrapper.get('.flow').text()).toContain('只给 s1 的追问')
-    await sessionBtn(b, 's2').trigger('click')
-    expect(b.wrapper.get('.flow').text()).not.toContain('只给 s1 的追问')
-    await sendMsg(b, '只给 s2 的追问')
-    await sessionBtn(b, 's1').trigger('click')
-    expect(b.wrapper.get('.flow').text()).toContain('只给 s1 的追问')
-    expect(b.wrapper.get('.flow').text()).not.toContain('只给 s2 的追问')
-    await b.done()
-  })
-
-  it('审批记录只属于 s1；切到别的会话不显示，切回仍在；审批条不再出现', async () => {
-    const b = await boot({ path: '/ai' })
-    await b.wrapper.get('[data-act=once]').trigger('click')
-    expect(b.wrapper.findAll('[data-testid=decision-log]')).toHaveLength(1)
-    await sessionBtn(b, 's2').trigger('click')
     expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
     expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
-    await sessionBtn(b, 's1').trigger('click')
-    expect(b.wrapper.findAll('[data-testid=decision-log]')).toHaveLength(1)
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
-    await b.done()
-  })
-
-  it('在非审批会话按 Y 不产生任何记录', async () => {
-    const b = await boot({ path: '/ai' })
-    await sessionBtn(b, 's3').trigger('click')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))
-    await flushPromises()
-    await sessionBtn(b, 's1').trigger('click')
-    expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(true)
     await b.done()
   })
 })

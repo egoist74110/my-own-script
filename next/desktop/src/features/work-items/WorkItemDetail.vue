@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import SafeHtml from '@/components/SafeHtml.vue'
+import Sheet from '@/components/Sheet.vue'
 import { createMediaCache, mediaCacheKey } from '@/components/media'
 import { openExternal } from '@/components/open-external'
+import {
+  createWorkItemAiAnalysis,
+  fetchWorkItemAiPrompt,
+  toApiError,
+  type ProfileView,
+  type RepoView,
+} from '@/features/ai/api'
+import { formatAiError } from '@/features/ai/terminal-protocol'
 import AttachmentsPane from './AttachmentsPane.vue'
 import ChildrenPane from './ChildrenPane.vue'
 import CommentsPane from './CommentsPane.vue'
@@ -14,7 +24,7 @@ import ErrorNotice from './ErrorNotice.vue'
 import HistoryPane from './HistoryPane.vue'
 import { badShape, unwrap, type HtmlField, type WorkItemDetail } from './api'
 import { formatDate, kindColor } from './format'
-import { QUERY_DEFAULTS, projectKey, useWiApi } from './queries'
+import { QUERY_DEFAULTS, WI_KEY, projectKey, useWiApi } from './queries'
 import './panes.css'
 
 /**
@@ -50,9 +60,9 @@ const tab = ref('desc')
 const tabs = computed(() => [
   { value: 'desc', label: '描述' },
   { value: 'comments', label: '评论' },
-  { value: 'children', label: '子项', count: d.value?.child_ids.length },
+  { value: 'children', label: '子项', count: d.value?.child_ids?.length },
   { value: 'history', label: '历史' },
-  { value: 'files', label: '附件', count: d.value?.attachments.length },
+  { value: 'files', label: '附件', count: d.value?.attachments?.length },
 ])
 
 const sections = computed(() => {
@@ -90,6 +100,123 @@ async function refreshDetail() {
   await qc.invalidateQueries({ queryKey: projectKey(props.projectId) })
   media.forgetFailed()
 }
+
+const router = useRouter()
+
+// 查询 ADO 仓库列表与 AI 配置（仅在 online 状态下）
+const adoQ = useQuery({
+  ...QUERY_DEFAULTS,
+  queryKey: [...WI_KEY, 'ado'],
+  enabled: online,
+  queryFn: async ({ signal }) => {
+    return unwrap(api().GET('/api/ado', { signal }))
+  },
+})
+
+const aiQ = useQuery({
+  ...QUERY_DEFAULTS,
+  queryKey: ['ai', 'overview'],
+  enabled: online,
+  queryFn: async ({ signal }) => {
+    const res = await api().GET('/api/ai', { signal })
+    return res.data ?? null
+  },
+})
+
+const localRepos = computed<RepoView[]>(() => (adoQ.data.value?.local_repos as RepoView[]) ?? [])
+const profiles = computed<ProfileView[]>(() => {
+  const pList = aiQ.data.value?.profiles ?? []
+  return (pList as ProfileView[]).filter((p) => typeof p === 'object' && p !== null && 'id' in p)
+})
+const availableProfiles = computed(() => profiles.value.filter((p) => p.resolved?.ok))
+const canAnalyze = computed(() => localRepos.value.length > 0 && availableProfiles.value.length > 0)
+
+// AI 分析弹窗状态
+const analysisSheetOpen = ref(false)
+const selectedRepoId = ref('')
+const selectedProfileId = ref('')
+const analysisAckHighRisk = ref(false)
+const analysisSubmitting = ref(false)
+const analysisError = ref<string | null>(null)
+
+const selectedProfile = computed(() =>
+  availableProfiles.value.find((p) => String(p.id) === selectedProfileId.value),
+)
+const isHighRiskProfile = computed(() => {
+  const p = selectedProfile.value
+  if (!p) return false
+  return String(p.cli) === 'agy'
+})
+
+watch(analysisSheetOpen, (isOpen) => {
+  if (isOpen) {
+    analysisError.value = null
+    analysisAckHighRisk.value = false
+    analysisSubmitting.value = false
+    if (!selectedRepoId.value && localRepos.value.length > 0) {
+      selectedRepoId.value = localRepos.value[0]!.id
+    }
+    if (!selectedProfileId.value && availableProfiles.value.length > 0) {
+      selectedProfileId.value = String(availableProfiles.value[0]!.id)
+    }
+  }
+})
+
+async function startAnalysis() {
+  if (analysisSubmitting.value || !selectedRepoId.value || !selectedProfileId.value) return
+  if (isHighRiskProfile.value && !analysisAckHighRisk.value) {
+    analysisError.value = formatAiError('high_risk_ack_required')
+    return
+  }
+
+  analysisSubmitting.value = true
+  analysisError.value = null
+  try {
+    const session = await createWorkItemAiAnalysis(api(), props.id, {
+      request_id: crypto.randomUUID(),
+      project_id: props.projectId,
+      repo_id: selectedRepoId.value,
+      profile_id: selectedProfileId.value,
+      ack_high_risk: analysisAckHighRisk.value,
+    })
+    analysisSheetOpen.value = false
+    void router.push({
+      path: '/ai',
+      query: session?.id ? { session: session.id } : undefined,
+    })
+  } catch (err: unknown) {
+    const apiErr = err instanceof Error && 'code' in err ? err : toApiError(500, err)
+    analysisError.value = formatAiError((apiErr as { code?: string }).code, '启动 AI 分析失败')
+  } finally {
+    analysisSubmitting.value = false
+  }
+}
+
+// 复制提示词状态
+const copyToast = ref<string | null>(null)
+const promptWarnings = ref<string[]>([])
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopyPrompt() {
+  copyToast.value = null
+  promptWarnings.value = []
+  try {
+    const res = await fetchWorkItemAiPrompt(api(), props.id, props.projectId, 'claude')
+    if (res.prompt) {
+      await navigator.clipboard.writeText(res.prompt)
+      copyToast.value = '提示词已复制到剪贴板'
+      if (res.warnings && res.warnings.length > 0) {
+        promptWarnings.value = res.warnings
+      }
+      if (copyTimer) clearTimeout(copyTimer)
+      copyTimer = setTimeout(() => {
+        copyToast.value = null
+      }, 3000)
+    }
+  } catch {
+    copyToast.value = '复制提示词失败'
+  }
+}
 </script>
 
 <template>
@@ -125,9 +252,51 @@ async function refreshDetail() {
               </button></span
             >
           </template>
+
+          <span class="grow"></span>
+          <div class="wi-ai-btn-group">
+            <Button
+              size="sm"
+              variant="default"
+              data-testid="copy-prompt-btn"
+              @click="handleCopyPrompt"
+            >
+              复制提示词
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              data-testid="ai-analysis-btn"
+              :disabled="!canAnalyze"
+              :title="canAnalyze ? '' : '需配置本地仓库且有可用 AI CLI'"
+              @click="analysisSheetOpen = true"
+            >
+              AI 分析
+            </Button>
+          </div>
         </div>
         <h2>{{ d.title }}</h2>
         <div class="meta">{{ metaLine }}</div>
+
+        <!-- 复制提示词 Toast 提示与 Warnings -->
+        <Banner
+          v-if="copyToast"
+          kind="info"
+          role="status"
+          class="mt-2"
+          data-testid="copy-prompt-toast"
+        >
+          {{ copyToast }}
+        </Banner>
+        <Banner
+          v-if="promptWarnings.length > 0"
+          kind="warn"
+          role="alert"
+          class="mt-2"
+          data-testid="prompt-warnings"
+        >
+          <span>提示词警示：{{ promptWarnings.join(', ') }}</span>
+        </Banner>
       </header>
       <Banner
         v-if="media.expired.value > 0"
@@ -179,6 +348,88 @@ async function refreshDetail() {
         </template>
       </SegmentedControl>
     </template>
+
+    <!-- 工单 AI 分析 Sheet -->
+    <Sheet
+      v-model:open="analysisSheetOpen"
+      :title="`工单 AI 分析 (#${props.id})`"
+      description="在指定的本地代码仓库中通过 AI CLI 对该工单进行代码分析。"
+    >
+      <form class="ai-analysis-form" data-testid="ai-analysis-form" @submit.prevent="startAnalysis">
+        <Banner v-if="analysisError" kind="error" class="mb-3" data-testid="analysis-error-banner">
+          {{ analysisError }}
+        </Banner>
+
+        <div class="field-row mb-3">
+          <label for="analysis-repo-select" class="field-label">工作目录（本地仓库）</label>
+          <select
+            id="analysis-repo-select"
+            v-model="selectedRepoId"
+            class="b-select"
+            data-testid="analysis-repo-select"
+            :disabled="analysisSubmitting"
+          >
+            <option v-for="r in localRepos" :key="r.id" :value="r.id">
+              {{ r.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="field-row mb-3">
+          <label for="analysis-profile-select" class="field-label">AI CLI 配置</label>
+          <select
+            id="analysis-profile-select"
+            v-model="selectedProfileId"
+            class="b-select"
+            data-testid="analysis-profile-select"
+            :disabled="analysisSubmitting"
+          >
+            <option v-for="p in availableProfiles" :key="String(p.id)" :value="String(p.id)">
+              {{ String(p.name) }} ({{ String(p.cli) }})
+            </option>
+          </select>
+        </div>
+
+        <!-- 高权限二次确认 -->
+        <div
+          v-if="isHighRiskProfile"
+          class="high-risk-box mb-3"
+          data-testid="analysis-high-risk-box"
+        >
+          <Banner kind="warn" class="mb-2">
+            所选 AI CLI 包含高风险或全自动权限，需二次确认。
+          </Banner>
+          <label class="flex items-center gap-2 text-xs cursor-pointer font-medium">
+            <input
+              v-model="analysisAckHighRisk"
+              type="checkbox"
+              data-testid="analysis-high-risk-ack"
+              :disabled="analysisSubmitting"
+            />
+            <span>我已知晓并确认以高权限执行此工单分析</span>
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-2 mt-4">
+          <Button
+            type="button"
+            variant="default"
+            :disabled="analysisSubmitting"
+            @click="analysisSheetOpen = false"
+          >
+            取消
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            data-testid="confirm-analysis-btn"
+            :disabled="analysisSubmitting || !selectedRepoId || !selectedProfileId"
+          >
+            {{ analysisSubmitting ? '正在启动…' : '开始分析' }}
+          </Button>
+        </div>
+      </form>
+    </Sheet>
   </div>
 </template>
 
@@ -268,5 +519,38 @@ h2 {
 }
 .bar.tall {
   height: 22px;
+}
+.grow {
+  flex: 1;
+}
+.wi-ai-btn-group {
+  display: flex;
+  gap: 6px;
+}
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.b-select {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--r-ctl, 6px);
+  border: 1px solid var(--line);
+  background: var(--card-bg, #fff);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.high-risk-box {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
 }
 </style>

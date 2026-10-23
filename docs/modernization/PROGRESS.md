@@ -971,3 +971,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 独立测试：Claude Haiku 5.5 / medium（原生子 agent，actual unknown），任务为迁移上述 22 例 + 新增 `tests/independent/s5d2-*`。
 - S5-D2 独立测试结果（Claude Haiku 5.5 / medium，actual unknown）：22 例旧 mock 用例迁移为按 DTO 的假后端用例（逐条替代说明在测试员报告；e-controls「按 N/按 A」删去本地“已拒绝”文案断言、改断言请求体，主控接受——状态由后端推送驱动）；新增 `tests/independent/s5d2-{chat,work-items,telegram-bots}.test.ts` 30 例。全量 1110：**7 failed**，缺陷 S5D2-T01 连按 Y 两次 POST、T02 检查器上下文%/改动统计、T03 倒计时归零按钮不禁用、T04 approval_settled 文案不符、T05 已决审批重放复活、T06 工单页残留“S5 提供”占位、T07 工单分析跳转未选中新会话。测试员自报两次写 `/private/tmp`（已删除）。
 - **主控裁决 S5D2-T02**：R1 的上下文百分比与改动统计需求撤销（合同：上下文只在 CLI 提供数据时显示、不估算）；合同要求的 chat 右栏（工具/仓库/工单/开始时间/来源/usage/本会话已允许）缺失，属缺陷。主控按合同改写 `tests/independent/s1c-ui.test.ts` 该用例（断言 `ai-chat-inspector` 随会话切换且无估算百分比），确认修前因缺少该检查器失败。agy 第 3 轮修 T01–T07（`.local/dispatch/s5d/round5.md`）。
+
+### S5-D2 集成（2026-10-24）
+
+- agy 第 3 轮（同 `--conversation 6520b039-…`，actual unknown）exit 0：修 S5D2-T01（审批重入保护）、T02（新增 chat 检查器 `ai-chat-inspector`，按合同字段，无估算百分比）、T03（倒计时归零禁用并显示已过期）、T04（文案“已由另一端处理”）、T05（已决审批不因重放复活）、T06（删除工单页 S5 占位）、T07（跳转 `/ai` 选中新会话），各补 `tests/unit` 回归。主控核对：`tests/independent/` 7 个相关文件 mtime 均早于第 3 轮请求（s1c-ui 最后一次为主控 T02 改写）；AI 页无 mock 残留。T01–T07 **fixed**（修前失败由独立测试员与主控（T02）观察，其余未逐项反向复现，记 unknown）。
+- 施工树主控复跑：frozen install/typecheck/lint/test **1117 passed / 79 文件**/build/guard:dist/contracts:check 全 exit 0。
+- 集成：worktree `next/desktop` 相对 `7dee0ca` 的限定 binary patch（`.local/dispatch/s5d/integration-d2.patch`，28 文件，含删除 `src/features/ai/mock/`），主目录 `next/` 自 `7dee0ca` 无改动，`git apply --check` 后应用。
+- 集成版本验收：前端 frozen install/typecheck/lint/test **1117 passed / 79 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；后端未改（1100 passed）。
+- 状态：**S5-D2 integrated**（本地提交，未 push）。S5 全部施工包（A/B/C/D1/D2）已集成；下一步 S5 集成验收（主控）。

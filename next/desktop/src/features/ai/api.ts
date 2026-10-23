@@ -22,6 +22,22 @@ export type AgyAnalysis = components['schemas']['AgyAnalysis']
 export type ClaudeAnalysis = components['schemas']['ClaudeAnalysis']
 export type CodexAnalysis = components['schemas']['CodexAnalysis']
 export type ModelPresets = components['schemas']['ModelPresets']
+export type AgyModels = components['schemas']['AgyModels']
+export type ResumeCandidates = components['schemas']['ResumeCandidates']
+export type ResumeCandidate = components['schemas']['ResumeCandidate']
+export type AIEventsResponse = components['schemas']['AIEventsResponse']
+export type AIEventData = components['schemas']['AIEventData']
+export type SendMessage = components['schemas']['SendMessage']
+export type SendResult = components['schemas']['SendResult']
+export type ApprovalDecision = components['schemas']['ApprovalDecision']
+export type ApprovalResult = components['schemas']['ApprovalResult']
+export type ResumeSession = components['schemas']['ResumeSession']
+export type AnalysisRequest = components['schemas']['AnalysisRequest']
+export type PromptResponse = components['schemas']['PromptResponse']
+export type AIBotsView = components['schemas']['AIBotsView']
+export type AIBotView = components['schemas']['AIBotView']
+export type AIBotControlView = components['schemas']['AIBotControlView']
+export type AIBotEnableRequest = components['schemas']['AIBotEnableRequest']
 
 export class ApiError extends Error {
   constructor(
@@ -204,6 +220,194 @@ export async function patchAiSettings(
 ): Promise<MutationResponse> {
   return unwrap(
     api.PATCH('/api/ai/settings', {
+      body,
+    }),
+  )
+}
+
+export async function fetchAiAgyModels(api: ApiClient): Promise<AgyModels> {
+  return unwrap(api.GET('/api/ai/agy-models'))
+}
+
+export async function fetchResumeCandidates(
+  api: ApiClient,
+  repoId: string,
+  query?: string,
+): Promise<ResumeCandidates> {
+  return unwrap(
+    api.GET('/api/ai/resume-candidates', {
+      params: { query: { repo_id: repoId, cli: 'claude', ...(query ? { query } : {}) } },
+    }),
+  )
+}
+
+export async function fetchAiSessionEvents(
+  api: ApiClient,
+  sessionId: string,
+  afterSeq = 0,
+  limit = 200,
+): Promise<AIEventsResponse> {
+  return unwrap(
+    api.GET('/api/ai/sessions/{sid}/events', {
+      params: {
+        path: { sid: sessionId },
+        query: { after_seq: afterSeq, limit },
+      },
+    }),
+  )
+}
+
+export async function sendAiMessage(
+  api: ApiClient,
+  sessionId: string,
+  body: SendMessage,
+): Promise<SendResult> {
+  return unwrap(
+    api.POST('/api/ai/sessions/{sid}/messages', {
+      params: { path: { sid: sessionId } },
+      body,
+    }),
+  )
+}
+
+export async function decideAiApproval(
+  api: ApiClient,
+  sessionId: string,
+  approvalId: string,
+  decision: ApprovalDecision,
+): Promise<ApprovalResult> {
+  return unwrap(
+    api.POST('/api/ai/sessions/{sid}/approvals/{aid}', {
+      params: {
+        path: { sid: sessionId, aid: approvalId },
+      },
+      body: decision,
+    }),
+  )
+}
+
+export async function resumeAiSession(
+  api: ApiClient,
+  sessionId: string,
+  body: ResumeSession,
+): Promise<SessionView> {
+  return unwrap(
+    api.POST('/api/ai/sessions/{sid}/resume', {
+      params: { path: { sid: sessionId } },
+      body,
+    }),
+  )
+}
+
+export async function fetchTelegramAiBots(api: ApiClient): Promise<AIBotsView> {
+  return unwrap(api.GET('/api/telegram/ai-bots'))
+}
+
+export async function putTelegramAiBotToken(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  token: string,
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.PUT('/api/telegram/ai-bots/{ai_id}/token', {
+      params: { path: { ai_id: aiId } },
+      body: { token, revision },
+    }),
+  )
+}
+
+export async function deleteTelegramAiBotToken(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.DELETE('/api/telegram/ai-bots/{ai_id}/token', {
+      params: {
+        path: { ai_id: aiId },
+        query: { revision },
+      },
+    }),
+  )
+}
+
+export async function importLegacyTelegramAiBotToken(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.POST('/api/telegram/ai-bots/{ai_id}/token/import-legacy', {
+      params: { path: { ai_id: aiId } },
+      body: { revision },
+    }),
+  )
+}
+
+export async function enableTelegramAiBot(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  body: AIBotEnableRequest,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.POST('/api/telegram/ai-bots/{ai_id}/control/enable', {
+      params: { path: { ai_id: aiId } },
+      body,
+    }),
+  )
+}
+
+export async function disableTelegramAiBot(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.POST('/api/telegram/ai-bots/{ai_id}/control/disable', {
+      params: { path: { ai_id: aiId } },
+      body: { revision },
+    }),
+  )
+}
+
+export async function retryTelegramAiBot(
+  api: ApiClient,
+  aiId: 'claude_code' | 'codex' | 'gemini',
+  revision: number,
+): Promise<MutationResponse> {
+  return unwrap(
+    api.POST('/api/telegram/ai-bots/{ai_id}/control/retry', {
+      params: { path: { ai_id: aiId } },
+      body: { revision },
+    }),
+  )
+}
+
+export async function fetchWorkItemAiPrompt(
+  api: ApiClient,
+  id: number,
+  projectId: string,
+  cli: 'claude' | 'codex' | 'agy' = 'claude',
+): Promise<PromptResponse> {
+  return unwrap(
+    api.GET('/api/work-items/{id}/ai-prompt', {
+      params: {
+        path: { id },
+        query: { project_id: projectId, cli },
+      },
+    }),
+  )
+}
+
+export async function createWorkItemAiAnalysis(
+  api: ApiClient,
+  id: number,
+  body: AnalysisRequest,
+): Promise<SessionView> {
+  return unwrap(
+    api.POST('/api/work-items/{id}/ai-analysis', {
+      params: { path: { id } },
       body,
     }),
   )

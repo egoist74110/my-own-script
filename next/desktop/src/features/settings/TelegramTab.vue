@@ -12,6 +12,7 @@ import {
   type ACLMember,
   type ActivityItem,
 } from './api'
+import TelegramAiBotsCard from './TelegramAiBotsCard.vue'
 import TelegramEnableSheet from './TelegramEnableSheet.vue'
 import TelegramGroupDeleteSheet from './TelegramGroupDeleteSheet.vue'
 import TelegramGroupEditSheet from './TelegramGroupEditSheet.vue'
@@ -577,6 +578,9 @@ onUnmounted(() => {
         }}
       </p>
     </section>
+
+    <!-- 2b. AI 专属机器人卡片组 -->
+    <TelegramAiBotsCard :busy="ctx.busy.value" :writable="ctx.writable.value" />
 
     <!-- 3. Owner 卡片 -->
     <section class="st-section" aria-label="所有者设置" data-testid="owner-card">

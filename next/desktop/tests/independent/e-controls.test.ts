@@ -4,7 +4,146 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ApprovalBar from '@/components/ApprovalBar.vue'
 import SearchField from '@/components/SearchField.vue'
 import { boot, openConnection } from '../unit/boot'
-import { FakeSocket, resetSeq } from '../unit/helpers'
+import { FakeSocket, env, hello, resetSeq } from '../unit/helpers'
+
+// ── S5D2 独立夹具：按正式 DTO（contracts/openapi.json）构造的假 AI 后端，只在本文件内使用 ──
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+type Fx = Record<string, any>
+interface FakeReq {
+  method: string
+  path: string
+  search: URLSearchParams
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+  body: any
+}
+const fxJson = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+export function fxSession(over: Fx): Fx {
+  return {
+    kind: 'chat',
+    cli: 'claude',
+    profile: 'prof-1',
+    repo: { id: 'repo-1', name: 'my-own-script' },
+    state: 'idle',
+    created_at: '2026-10-24T09:00:00Z',
+    last_seq: 0,
+    pending_approval: false,
+    queue_len: 0,
+    warnings: [],
+    ...over,
+  }
+}
+
+export function fxEvent(
+  sid: string,
+  seq: number,
+  kind: string,
+  payload: Fx,
+  ts = '2026-10-24T09:00:00Z',
+): Fx {
+  return { session_id: sid, session_seq: seq, ts, kind, payload }
+}
+
+export function fxApprovalPending(
+  sid: string,
+  seq: number,
+  aid = 'ap-1',
+  summary = 'pnpm vitest run',
+): Fx {
+  return fxEvent(sid, seq, 'approval', {
+    approval_id: aid,
+    state: 'pending',
+    tool: 'Bash',
+    summary,
+  })
+}
+
+/** 假后端：GET 会话/事件、POST 审批/消息；记录全部请求；可注入覆盖响应。 */
+export class FakeAi {
+  reqs: FakeReq[] = []
+  settled = new Set<string>()
+  override?: (r: FakeReq) => Response | undefined
+  private events = new Map<string, Fx[]>()
+  constructor(
+    public sessions: Fx[],
+    events: Record<string, Fx[]>,
+  ) {
+    for (const [sid, list] of Object.entries(events)) this.events.set(sid, [...list])
+  }
+  fetch = ((req: Request) => this.route(req)) as unknown as typeof fetch
+  appendEvent(sid: string, kind: string, payload: Fx): Fx {
+    const list = this.events.get(sid) ?? []
+    const ev = fxEvent(sid, (list.at(-1)?.session_seq ?? 0) + 1, kind, payload)
+    list.push(ev)
+    this.events.set(sid, list)
+    return ev
+  }
+  posts(suffix: string): FakeReq[] {
+    return this.reqs.filter((r) => r.method === 'POST' && r.path.endsWith(suffix))
+  }
+  private async route(req: Request): Promise<Response> {
+    const u = new URL(req.url)
+    const p = u.pathname
+    const body =
+      req.method === 'GET'
+        ? undefined
+        : await req
+            .clone()
+            .json()
+            .catch(() => undefined)
+    const r: FakeReq = { method: req.method, path: p, search: u.searchParams, body }
+    this.reqs.push(r)
+    const o = this.override?.(r)
+    if (o) return o
+    if (p === '/health')
+      return fxJson({ status: 'ok', version: '0.0.0-s5d2', pid: 4242, uptime_s: 1, alert: false })
+    if (p === '/api/system/alert') return fxJson({ active: false, reason: null, changed_at: 't' })
+    if (p === '/api/ai')
+      return fxJson({
+        revision: 1,
+        profiles: [],
+        selected_profile_id: null,
+        defaults: {},
+        analysis: {},
+        model_presets: {},
+        store_state: 'ready',
+      })
+    if (p === '/api/ado') return fxJson({ local_repos: [{ id: 'repo-1', name: 'my-own-script' }] })
+    if (p === '/api/ai/sessions' && req.method === 'GET') return fxJson({ items: this.sessions })
+    let m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/events$/)
+    if (m && req.method === 'GET') {
+      const sid = m[1]!
+      const after = Number(u.searchParams.get('after_seq') ?? 0)
+      const all = this.events.get(sid) ?? []
+      return fxJson({
+        items: all.filter((e) => e.session_seq > after),
+        last_seq: all.at(-1)?.session_seq ?? 0,
+      })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+    if (m && req.method === 'POST') {
+      const [, sid, aid] = m as unknown as [string, string, string]
+      const pending = (this.events.get(sid) ?? []).find(
+        (e) => e.kind === 'approval' && e.payload.approval_id === aid,
+      )
+      if (!pending) return fxJson({ code: 'approval_not_found', detail: 'fake' }, 404)
+      if (this.settled.has(aid)) return fxJson({ code: 'approval_settled', detail: 'fake' }, 409)
+      this.settled.add(aid)
+      const state = body?.decision === 'deny' ? 'denied' : 'allowed'
+      this.appendEvent(sid, 'approval', { ...pending.payload, state, decision: body?.decision })
+      return fxJson({ approval_id: aid, state })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/messages$/)
+    if (m && req.method === 'POST') return fxJson({ status: 'sent', position: 0 })
+    return fxJson({ code: 'not_found', detail: 'fake' }, 404)
+  }
+}
+
+/** 向后端 WS 推送一条 ai 主题事件（模拟后端推送，不是页面内部状态）。 */
+export function pushAi(sock: FakeSocket, type: string, data: Fx) {
+  sock.emit(env(type, data, { topic: 'ai' }))
+}
 
 beforeEach(() => {
   FakeSocket.reset()
@@ -126,67 +265,99 @@ describe('审批条 ApprovalBar：Y / A / N 快捷键', () => {
 })
 
 describe('/ai 页审批集成', () => {
-  it('按 Y：审批条消失，出现决定记录，会话变「运行中」', async () => {
-    const b = await boot({ path: '/ai' })
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(true)
+  // S5D2 迁移：审批/状态由假后端驱动；断言 POST 请求体与 WS 推送后的展示，不断言本地 mock 记录
+  const fixture = () =>
+    new FakeAi(
+      [
+        fxSession({ id: 's1', state: 'awaiting_approval', pending_approval: true, last_seq: 2 }),
+        fxSession({ id: 's2', cli: 'codex', state: 'idle', last_seq: 0 }),
+      ],
+      {
+        s1: [fxEvent('s1', 1, 'assistant', { text: '准备运行测试' }), fxApprovalPending('s1', 2)],
+        s2: [],
+      },
+    )
+  async function openAi(fake = fixture()) {
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
+    await flushPromises()
+    for (let i = 0; i < 3; i++) await flushPromises()
+    return { ...b, fake }
+  }
+  const focusChat = (w: { get: (s: string) => { element: Element } }) =>
+    (w.get('[data-testid=chat-view]').element as HTMLElement).focus()
+
+  it('按 Y：发出 allow_once，审批卡消失；后端推送 busy 后列表显示运行中', async () => {
+    const b = await openAi()
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(true)
+    focusChat(b.wrapper)
     press('y')
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
-    const log = b.wrapper.get('[data-testid=decision-log]')
-    expect(log.attributes('data-decision')).toBe('once')
-    expect(log.text()).toContain('已允许一次')
-    expect(log.text()).toContain('pnpm vitest run')
+    const posts = b.fake.posts('/approvals/ap-1')
+    expect(posts).toHaveLength(1)
+    expect(posts[0]!.body).toEqual({ decision: 'allow_once' })
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(false)
+    pushAi(b.sock, 'ai.session', {
+      session_id: 's1',
+      state: 'busy',
+      ended_reason: null,
+      last_seq: 3,
+    })
+    await flushPromises()
     expect(b.wrapper.get('[data-testid=session-s1]').text()).toContain('运行中')
     await b.done()
   })
 
-  it('按 N：会话变「已拒绝」；按 A：记录「本会话总是允许」', async () => {
-    const deny = await boot({ path: '/ai' })
+  it('按 N：发出 deny；按 A：发出 allow_session', async () => {
+    const deny = await openAi()
+    focusChat(deny.wrapper)
     press('N')
     await flushPromises()
-    expect(deny.wrapper.get('[data-testid=decision-log]').attributes('data-decision')).toBe('deny')
-    expect(deny.wrapper.get('[data-testid=session-s1]').text()).toContain('已拒绝')
+    expect(deny.fake.posts('/approvals/ap-1')[0]!.body).toEqual({ decision: 'deny' })
     await deny.done()
 
-    const always = await boot({ path: '/ai' })
+    const always = await openAi()
+    focusChat(always.wrapper)
     press('a')
     await flushPromises()
-    expect(always.wrapper.get('[data-testid=decision-log]').text()).toContain('本会话总是允许')
+    expect(always.fake.posts('/approvals/ap-1')[0]!.body).toEqual({ decision: 'allow_session' })
     await always.done()
   })
 
-  it('同一步内连按两次 Y 只记录一次决定', async () => {
-    const b = await boot({ path: '/ai' })
+  it('同一步内连按两次 Y 只发出一次决定', async () => {
+    const b = await openAi()
+    focusChat(b.wrapper)
     press('y')
     press('y')
     await flushPromises()
-    expect(b.wrapper.findAll('[data-testid=decision-log]')).toHaveLength(1)
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(1)
     press('y')
     await flushPromises()
-    expect(b.wrapper.findAll('[data-testid=decision-log]')).toHaveLength(1)
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(1)
     await b.done()
   })
 
-  it('切到其他会话后按 Y 不触发（审批条已不在页面）', async () => {
-    const b = await boot({ path: '/ai' })
+  it('切到其他会话后按 Y 不发出请求（审批已不属于当前会话）', async () => {
+    const b = await openAi()
+    focusChat(b.wrapper)
     await b.wrapper.get('[data-testid=session-s2]').trigger('click')
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(false)
     press('y')
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(0)
     await b.done()
   })
 
-  it('输入框（多行消息框）聚焦时按 Y 只是打字，不做决定', async () => {
-    const b = await boot({ path: '/ai' })
-    const ta = b.wrapper.get('textarea')
+  it('输入框（多行消息框）聚焦时按 Y 只是打字，不发出审批', async () => {
+    const b = await openAi()
+    const ta = b.wrapper.get('[data-testid=composer-textarea]')
     ;(ta.element as HTMLTextAreaElement).focus()
     await ta.trigger('keydown', { key: 'y' })
     await ta.setValue('y')
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(true)
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(0)
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(true)
     await b.done()
   })
 
@@ -318,14 +489,27 @@ describe('Tabs（Reka）：点击与键盘', () => {
   })
 
   it('AI 页筛选 Tabs 键盘切换会改变会话列表', async () => {
-    const b = await boot({ path: '/ai' })
+    // S5D2 迁移：会话列表由假后端 GET /api/ai/sessions 提供（claude s1/s3，codex s2）
+    const fake = new FakeAi(
+      [
+        fxSession({ id: 's1', cli: 'claude', state: 'idle' }),
+        fxSession({ id: 's2', cli: 'codex', state: 'idle' }),
+        fxSession({ id: 's3', cli: 'claude', state: 'idle' }),
+      ],
+      { s1: [], s2: [], s3: [] },
+    )
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
     await flushPromises()
     const ai = b.wrapper.findAll('[role=tablist] [role=tab]')
     expect(ai.map((t) => t.text())).toEqual(['全部', 'Claude', 'Codex', 'agy'])
+    expect(b.wrapper.findAll('[data-testid^=session-]')).toHaveLength(3)
     ;(ai[0]!.element as HTMLElement).focus()
     await ai[0]!.trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
-    expect(b.wrapper.findAll('[data-testid^=session-]')).toHaveLength(3)
+    expect(
+      b.wrapper.findAll('[data-testid^=session-]').map((e) => e.attributes('data-testid')),
+    ).toEqual(['session-s1', 'session-s3'])
     await b.done()
   })
 })
@@ -333,7 +517,18 @@ describe('Tabs（Reka）：点击与键盘', () => {
 describe('检查器收起 / 展开', () => {
   it('按钮 aria-label 与 aria-pressed 随状态变化；收起后内容仍在 DOM 但容器隐藏', async () => {
     localStorage.clear()
-    const b = await boot({ path: '/ai' })
+    // S5D2 迁移：检查器内容只在选中终端会话时出现（ai-terminal-inspector），用终端会话夹具验证“收起后仍在 DOM”
+    const fake = new FakeAi(
+      [fxSession({ id: 'term1', kind: 'terminal', cli: 'claude', state: 'idle' })],
+      {
+        term1: [],
+      },
+    )
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
+    await flushPromises()
+    await b.wrapper.get('[data-testid=session-term1]').trigger('click')
+    await flushPromises()
     const toggle = () => b.wrapper.get('[data-testid=inspector-toggle]')
     const panel = () => b.wrapper.get('[data-testid=inspector]').element as HTMLElement
     expect(toggle().attributes('aria-label')).toBe('收起检查器')
@@ -346,7 +541,7 @@ describe('检查器收起 / 展开', () => {
     expect(toggle().attributes('aria-pressed')).toBe('false')
     expect(panel().style.display).toBe('none')
     expect(b.wrapper.get('[data-testid=app-shell]').attributes('data-inspector')).toBe('closed')
-    expect(b.wrapper.find('[data-testid=ai-inspector]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=ai-terminal-inspector]').exists()).toBe(true)
 
     await toggle().trigger('click')
     await flushPromises()

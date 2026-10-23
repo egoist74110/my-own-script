@@ -1,7 +1,8 @@
-import { flushPromises } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import ApprovalBar from '@/components/ApprovalBar.vue'
 import { FakeSocket, resetSeq } from './helpers'
 import { boot } from './boot'
 import { createWiFake, summary } from './wi-fake'
@@ -60,15 +61,18 @@ describe('可访问性', () => {
   })
 
   it('审批条在 Tab 序列里：三个按钮可聚焦', async () => {
-    const b = await boot({ path: '/ai' })
-    const bar = b.wrapper.get('[data-testid=approval-bar]')
+    const w = mount(ApprovalBar, {
+      props: { command: 'pnpm test' },
+      attachTo: document.body,
+    })
+    const bar = w.get('[data-testid=approval-bar]')
     const btns = bar.findAll('button')
     expect(btns).toHaveLength(3)
     for (const x of btns) {
       ;(x.element as HTMLElement).focus()
       expect(document.activeElement).toBe(x.element)
     }
-    await b.done()
+    w.unmount()
   })
 
   it('可点击目标 >= 28px：按钮、工具栏按钮、导航项、分段控件、输入框的样式约定', () => {

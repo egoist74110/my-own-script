@@ -30,7 +30,7 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 - `src/app`：壳（`App.vue`）、路由、runtime、`inspector.ts`（检查器容器注入）。
 - `src/design`：`tokens.css`（浅色令牌 + `prefers-color-scheme: dark` 深色令牌）、`ui.css`（焦点环、列表行、动效关键帧、reduced-motion）、`app.css`（入口与 body）。
 - `src/components`：基础组件；`ui/` 为 shadcn-vue 拷入件（仅 Switch，已改系统风格）。
-- `src/features/ai`：AI 会话页，`mock/` 放虚构数据。`src/features/tasks`：任务占位页（无 mock）。`src/features/{work-items,settings}`：真实接口页面。feature 之间不互相引用内部文件。
+- `src/features/ai`：AI 会话页（终端会话与 Chat 会话均对接真实后端接口）。`src/features/tasks`：任务占位页（无 mock）。`src/features/{work-items,settings}`：真实接口页面。feature 之间不互相引用内部文件。
 - `src/shared/cn.ts`：类名合并。注意不能放 `src/lib/`（仓库根 `.gitignore` 的 `lib/` 规则会让它不入库）。
 - `src/api`、`src/stores`：连接、客户端、事件、Pinia（`backend` 连接/告警；`ui` 检查器开合，开合状态存 localStorage `toolbox.ui.inspector`，只存布尔值）。
 - 测试在 `tests/unit`；`tests/independent` 为独立验证用例目录（含测试子 agent 写的 `r1-*.test.ts`）。`pnpm test` 不依赖 `dist/`；产物检查用 `pnpm guard:dist`（build 之后）。测试夹具 `tests/unit/boot.ts`：`boot()` 起连接，`bootUnconnected()` 不调用 `runtime.start()`，`openConnection()` 打开侧栏连接状态弹出层（告警演示开关在里面）。
@@ -70,7 +70,15 @@ Pane（纯色面，`surface`）· SegmentedControl（Reka Tabs，横向分段/�
 
 ## mock 位置
 
-AI 会话页（S5-D）终端会话（终端 PTY 交互、WS 事件驱动状态、新会话 Sheet、会话操作）与设置页「AI CLI」分区（Profile CRUD、状态检查、升级与 `ai.job` 输出流）已接入 S5-A 真实接口。保留的 mock 数据位于 `src/features/ai/mock/`，仅用于 chat 对话与审批卡片，并明确标注“待 S5-B”（等待并行施工的 S5-B 后端交付，不得接假接口冒充）。
+AI 会话页（S5-D）终端会话（终端 PTY 交互、WS 事件驱动状态、新会话 Sheet、会话操作）与设置页「AI CLI」分区已在 S5-D1 接入真实接口；chat 会话、审批卡片、工单 AI 分析与 Telegram 专属 AI 机器人已在 S5-D2 接入真实接口（订阅 `ai` 主题、HTTP 回放水位只进不退、session_seq 去重、9 分钟审批倒计时与 Y/A/N 容器热键、高权限二次确认）。保留的 `src/features/ai/mock/sessions.ts` 文件仅供向后兼容早期测试断言。
+
+## AI 会话与工具流（S5-D2）
+
+- **结构化对话流**：按 `session_seq` 升序去重并补齐事件；渲染用户消息、Assistant Markdown 正文（DOMPurify 清洗）、思考折叠（Thinking）、工具卡片（读取/搜索/编辑/运行按分类映射，失败高亮）、回合完成/失败状态与限流提示；“正在工作…”仅由 `session.state === 'busy'` 驱动。
+- **审批卡片**：`awaiting_approval` 状态触发，展示工具名、摘要与 9 分钟动态倒计时；支持“允许一次 / 本会话始终允许 / 拒绝”，快捷键 Y / A / N 严格限定在会话容器聚焦且非输入框激活时生效。
+- **消息发送与控制**：多行输入框支持 Enter 发送与 Shift+Enter 换行；运行中显示“已排队 N”；支持中断本轮（interrupt）、关闭会话（close）、删除记录（delete）及对具备 external_id 的已结束会话续聊（resume）。
+- **工单 AI 分析与提示词**：工单详情页提供「AI 分析」（校验 local_repos 与 profile，支持高权限二次确认，创建后跳转会话页）与「复制提示词」（拷入剪贴板，提示词警示浮层展示）。
+- **Telegram 专属 AI 机器人**：设置页提供 `claude_code`、`codex`、`gemini` 三个专属机器人卡片，支持 Token 录入、旧版导入、删除及 4 步安全切换步骤 Sheet（强制 `ack_old_bot_cleared` 二次确认），状态胶囊由 GET 与 WS `telegram.status`（匹配 `slot`）实时驱动。
 
 ## 来源
 

@@ -21,6 +21,145 @@ function helloEnv(seq: number, alert: unknown = QUIET, pid = 4242) {
   return env('system.hello', { pid, version: '0.0.0-indep', alert }, { seq })
 }
 
+// ── S5D2 独立夹具：按正式 DTO（contracts/openapi.json）构造的假 AI 后端，只在本文件内使用 ──
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+type Fx = Record<string, any>
+interface FakeReq {
+  method: string
+  path: string
+  search: URLSearchParams
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+  body: any
+}
+const fxJson = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+export function fxSession(over: Fx): Fx {
+  return {
+    kind: 'chat',
+    cli: 'claude',
+    profile: 'prof-1',
+    repo: { id: 'repo-1', name: 'my-own-script' },
+    state: 'idle',
+    created_at: '2026-10-24T09:00:00Z',
+    last_seq: 0,
+    pending_approval: false,
+    queue_len: 0,
+    warnings: [],
+    ...over,
+  }
+}
+
+export function fxEvent(
+  sid: string,
+  seq: number,
+  kind: string,
+  payload: Fx,
+  ts = '2026-10-24T09:00:00Z',
+): Fx {
+  return { session_id: sid, session_seq: seq, ts, kind, payload }
+}
+
+export function fxApprovalPending(
+  sid: string,
+  seq: number,
+  aid = 'ap-1',
+  summary = 'pnpm vitest run',
+): Fx {
+  return fxEvent(sid, seq, 'approval', {
+    approval_id: aid,
+    state: 'pending',
+    tool: 'Bash',
+    summary,
+  })
+}
+
+/** 假后端：GET 会话/事件、POST 审批/消息；记录全部请求；可注入覆盖响应。 */
+export class FakeAi {
+  reqs: FakeReq[] = []
+  settled = new Set<string>()
+  override?: (r: FakeReq) => Response | undefined
+  private events = new Map<string, Fx[]>()
+  constructor(
+    public sessions: Fx[],
+    events: Record<string, Fx[]>,
+  ) {
+    for (const [sid, list] of Object.entries(events)) this.events.set(sid, [...list])
+  }
+  fetch = ((req: Request) => this.route(req)) as unknown as typeof fetch
+  appendEvent(sid: string, kind: string, payload: Fx): Fx {
+    const list = this.events.get(sid) ?? []
+    const ev = fxEvent(sid, (list.at(-1)?.session_seq ?? 0) + 1, kind, payload)
+    list.push(ev)
+    this.events.set(sid, list)
+    return ev
+  }
+  posts(suffix: string): FakeReq[] {
+    return this.reqs.filter((r) => r.method === 'POST' && r.path.endsWith(suffix))
+  }
+  private async route(req: Request): Promise<Response> {
+    const u = new URL(req.url)
+    const p = u.pathname
+    const body =
+      req.method === 'GET'
+        ? undefined
+        : await req
+            .clone()
+            .json()
+            .catch(() => undefined)
+    const r: FakeReq = { method: req.method, path: p, search: u.searchParams, body }
+    this.reqs.push(r)
+    const o = this.override?.(r)
+    if (o) return o
+    if (p === '/health')
+      return fxJson({ status: 'ok', version: '0.0.0-s5d2', pid: 4242, uptime_s: 1, alert: false })
+    if (p === '/api/system/alert') return fxJson({ active: false, reason: null, changed_at: 't' })
+    if (p === '/api/ai')
+      return fxJson({
+        revision: 1,
+        profiles: [],
+        selected_profile_id: null,
+        defaults: {},
+        analysis: {},
+        model_presets: {},
+        store_state: 'ready',
+      })
+    if (p === '/api/ado') return fxJson({ local_repos: [{ id: 'repo-1', name: 'my-own-script' }] })
+    if (p === '/api/ai/sessions' && req.method === 'GET') return fxJson({ items: this.sessions })
+    let m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/events$/)
+    if (m && req.method === 'GET') {
+      const sid = m[1]!
+      const after = Number(u.searchParams.get('after_seq') ?? 0)
+      const all = this.events.get(sid) ?? []
+      return fxJson({
+        items: all.filter((e) => e.session_seq > after),
+        last_seq: all.at(-1)?.session_seq ?? 0,
+      })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+    if (m && req.method === 'POST') {
+      const [, sid, aid] = m as unknown as [string, string, string]
+      const pending = (this.events.get(sid) ?? []).find(
+        (e) => e.kind === 'approval' && e.payload.approval_id === aid,
+      )
+      if (!pending) return fxJson({ code: 'approval_not_found', detail: 'fake' }, 404)
+      if (this.settled.has(aid)) return fxJson({ code: 'approval_settled', detail: 'fake' }, 409)
+      this.settled.add(aid)
+      const state = body?.decision === 'deny' ? 'denied' : 'allowed'
+      this.appendEvent(sid, 'approval', { ...pending.payload, state, decision: body?.decision })
+      return fxJson({ approval_id: aid, state })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/messages$/)
+    if (m && req.method === 'POST') return fxJson({ status: 'sent', position: 0 })
+    return fxJson({ code: 'not_found', detail: 'fake' }, 404)
+  }
+}
+
+/** 向后端 WS 推送一条 ai 主题事件（模拟后端推送，不是页面内部状态）。 */
+export function pushAi(sock: FakeSocket, type: string, data: Fx) {
+  sock.emit(env(type, data, { topic: 'ai' }))
+}
+
 beforeEach(() => {
   FakeSocket.reset()
   resetSeq()
@@ -152,8 +291,10 @@ describe('告警态：同时出现在横幅、任务行、检查器、导航角�
     // /work-items 页内容由真实接口提供（假后端），不再是 mock 行
     const wi = createWiFake()
     wi.lists['proj:a|开发中'] = { items: [summary(7)], truncated: false, omitted: 0 }
+    // S5D2 迁移：/ai 使用按正式 DTO 构造的假 AI 后端（会话列表由 GET /api/ai/sessions 提供）
+    const ai = new FakeAi([fxSession({ id: 's1', state: 'idle' })], { s1: [] })
     for (const path of ['/work-items', '/ai']) {
-      const b = await boot({ path, ...(path === '/work-items' ? { fetchImpl: wi.fetch } : {}) })
+      const b = await boot({ path, fetchImpl: path === '/work-items' ? wi.fetch : ai.fetch })
       b.sock.emit(helloEnv(99))
       b.sock.emit(alertEnv(100, true, 'x'))
       await flushPromises()

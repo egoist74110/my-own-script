@@ -354,7 +354,7 @@ const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
             </template>
           </dl>
         </template>
-        <div class="ai" data-testid="wi-ai" aria-disabled="true">
+        <div v-if="!selectedDetail" class="ai" data-testid="wi-ai" aria-disabled="true">
           <strong>AI 分析</strong>
           <p class="note">
             即将推出：AI 分析（MCP 分析、复制提示词、AI 会话）将在 S5 提供，当前不可用。

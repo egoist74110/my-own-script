@@ -14,6 +14,7 @@ export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offlin
 export interface TelegramStatusEventData {
   state: components['schemas']['PollerView']['state']
   since: string
+  slot?: string
   last_error_category?: string | null
 }
 
@@ -34,6 +35,26 @@ export interface AIJobData {
 export interface AISubscribedData {
   session_id: string
   last_seq: number
+}
+
+export interface AIEventData {
+  session_id: string
+  session_seq: number
+  ts: string
+  kind:
+    | 'init'
+    | 'assistant'
+    | 'thinking'
+    | 'tool_use'
+    | 'tool_result'
+    | 'turn_started'
+    | 'turn_completed'
+    | 'turn_failed'
+    | 'approval'
+    | 'notice'
+    | 'error'
+    | 'exit'
+  payload: Record<string, unknown>
 }
 
 export interface EventEnvelope {
@@ -75,6 +96,7 @@ export interface EventClientOptions {
   onAiSession?: (data: AISessionData, envelope: EventEnvelope) => void
   onAiJob?: (data: AIJobData, envelope: EventEnvelope) => void
   onAiSubscribed?: (data: AISubscribedData, envelope: EventEnvelope) => void
+  onAiEvent?: (data: AIEventData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -302,6 +324,8 @@ export class EventClient {
         this.opts.onAiJob?.(parsed.data as unknown as AIJobData, parsed)
       } else if (parsed.type === 'ai.subscribed') {
         this.opts.onAiSubscribed?.(parsed.data as unknown as AISubscribedData, parsed)
+      } else if (parsed.type === 'ai.event') {
+        this.opts.onAiEvent?.(parsed.data as unknown as AIEventData, parsed)
       }
     }
     this.opts.onEvent?.(parsed)

@@ -14,11 +14,19 @@ const backendDir = fileURLToPath(new URL('../../backend', import.meta.url))
 const dataDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-web-'))
 const taskRootDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-task-root-'))
 const aiRepoDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-ai-repo-'))
+const sampleRepoDir = '/tmp/example-never-accessed'
 try {
   spawnSync('git', ['init', '-b', 'main', aiRepoDir], { stdio: 'ignore' })
   spawnSync('git', ['config', 'user.name', 'Toolbox Dev'], { cwd: aiRepoDir, stdio: 'ignore' })
   spawnSync('git', ['config', 'user.email', 'dev@example.test'], {
     cwd: aiRepoDir,
+    stdio: 'ignore',
+  })
+  spawnSync('mkdir', ['-p', sampleRepoDir], { stdio: 'ignore' })
+  spawnSync('git', ['init', '-b', 'main', sampleRepoDir], { stdio: 'ignore' })
+  spawnSync('git', ['config', 'user.name', 'Toolbox Dev'], { cwd: sampleRepoDir, stdio: 'ignore' })
+  spawnSync('git', ['config', 'user.email', 'dev@example.test'], {
+    cwd: sampleRepoDir,
     stdio: 'ignore',
   })
 } catch {
@@ -111,6 +119,7 @@ function startBackend() {
         TOOLBOX_DEV_TASK_ROOT: taskRootDir,
         TOOLBOX_DEV_FAKE_TELEGRAM: '1',
         TOOLBOX_DEV_FAKE_AI: '1',
+        FAKE_AI_PYTHON: join(backendDir, '.venv', 'bin', 'python'),
       },
       stdio: ['pipe', 'pipe', 'inherit'],
     })

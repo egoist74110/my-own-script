@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, Plus, Square, Terminal, Trash2, XCircle } from 'lucide-vue-next'
-import ApprovalBar from '@/components/ApprovalBar.vue'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import Inspector from '@/components/Inspector.vue'
@@ -11,18 +10,23 @@ import SearchField from '@/components/SearchField.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import Sheet from '@/components/Sheet.vue'
 import StatusPill from '@/components/StatusPill.vue'
-import TextField from '@/components/TextField.vue'
 import ToolbarButton from '@/components/ToolbarButton.vue'
 import type { PillState } from '@/components/pill'
 import { tabTriggerId } from '@/components/tabs'
 import { backendRuntimeKey } from '@/app/backend-runtime'
 import { closeAiSession, deleteAiSession, interruptAiSession, type SessionView } from './api'
-import { useAiSessions, type SessionState as MockSessionState } from './mock/sessions'
+import ChatView from './ChatView.vue'
 import NewSessionSheet from './NewSessionSheet.vue'
 import { formatAiError, formatEndedReason, formatSessionState } from './terminal-protocol'
 import TerminalView from './TerminalView.vue'
 import { useAiSessionsData } from './useAiSessionsData'
 
+let route: ReturnType<typeof useRoute> | undefined
+try {
+  route = useRoute()
+} catch {
+  route = undefined
+}
 const router = useRouter()
 const runtime = inject(backendRuntimeKey)
 
@@ -36,23 +40,16 @@ const {
   invalidateSessions,
 } = useAiSessionsData(runtime)
 
-// R1 mock 数据保留（供 chat 会话与审批卡）
-const {
-  sessions: mockSessions,
-  filters,
-  messages,
-  approvals,
-  pending,
-  context,
-  tools,
-  send,
-  decide,
-} = useAiSessions()
+const AI_FILTERS = [
+  { value: 'all', label: '全部' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'agy', label: 'agy' },
+]
 
 const filter = ref('all')
-const selectedId = ref('s1')
+const selectedId = ref('')
 const query = ref('')
-const draft = ref('')
 
 const isNewSheetOpen = ref(false)
 const isCloseSheetOpen = ref(false)
@@ -70,7 +67,6 @@ export interface DisplaySession {
   stateText: string
   pillState: PillState | null
   isTerminal: boolean
-  isMock: boolean
   endedReason?: string | null
   exitCode?: number | null
   warnings?: string[]
@@ -105,7 +101,6 @@ function mapPill(state: string): PillState | null {
   }
 }
 
-// 合并真实会话与 mock 会话
 const hasRealData = computed(() => {
   return sessionsQuery.isSuccess.value && Array.isArray(sessionsQuery.data.value?.items)
 })
@@ -116,72 +111,46 @@ const sessionsErrorCode = computed(() => {
 })
 
 const allSessions = computed<DisplaySession[]>(() => {
-  // S5D-T01: GET 失败时不得显示 mock 会话冒充真实数据
-  if (sessionsQuery.isError.value) {
+  // 离线或 GET 失败或未返回 items 时返回空列表，绝不显示 mock 虚构数据
+  if (!online.value || sessionsQuery.isError.value || !hasRealData.value) {
     return []
   }
 
-  if (hasRealData.value) {
-    const items = sessionsQuery.data.value?.items ?? []
-    return items.map((s) => {
-      const override = sessionStateOverrides.value[s.id]
-      const sSeq = typeof s.last_seq === 'number' ? s.last_seq : -1
-      const oSeq = override && typeof override.last_seq === 'number' ? override.last_seq : -1
+  const items = sessionsQuery.data.value?.items ?? []
+  return items.map((s) => {
+    const override = sessionStateOverrides.value[s.id]
+    const sSeq = typeof s.last_seq === 'number' ? s.last_seq : -1
+    const oSeq = override && typeof override.last_seq === 'number' ? override.last_seq : -1
 
-      // S5D-T03: 对账 last_seq。只有当 WS 事件水位严格高于 GET 快照时才使用覆盖层；否则使用较新的 GET 快照
-      const useOverride = Boolean(override && oSeq > sSeq)
-      const effectiveState = useOverride
-        ? (override?.state ?? s.state)
-        : (s.state ?? override?.state)
-      const effectiveReason = useOverride
-        ? (override?.ended_reason ?? s.ended_reason)
-        : (s.ended_reason ?? override?.ended_reason)
-      const effectiveExitCode = useOverride
-        ? (override?.exit_code ?? s.exit_code)
-        : (s.exit_code ?? override?.exit_code)
-      return {
-        id: s.id,
-        kind: s.cli,
-        abbr: abbrForCli(s.cli),
-        title: `${s.repo?.name || '未知仓库'} (终端)`,
-        repo: s.repo?.name || '',
-        state: effectiveState,
-        stateText: formatSessionState(effectiveState),
-        pillState: mapPill(effectiveState),
-        isTerminal: s.kind === 'terminal',
-        isMock: false,
-        endedReason: effectiveReason,
-        exitCode: effectiveExitCode,
-        warnings: s.warnings,
-        createdAt: s.created_at,
-        rawReal: s,
-      }
-    })
-  }
-
-  // 降级使用 mock 会话（仅供未接真接口/未返回 items 的旧测试与演示）
-  if (!online.value || sessionsQuery.data.value?.items === undefined) {
-    const MOCK_PILL: Record<MockSessionState, PillState | null> = {
-      approve: 'verify',
-      run: 'running',
-      done: 'success',
-      old: null,
-    }
-    return mockSessions.value.map((s) => ({
+    // S5D-T03: 对账 last_seq。只有当 WS 事件水位严格高于 GET 快照时才使用覆盖层；否则使用较新的 GET 快照
+    const useOverride = Boolean(override && oSeq > sSeq)
+    const effectiveState = useOverride ? (override?.state ?? s.state) : (s.state ?? override?.state)
+    const effectiveReason = useOverride
+      ? (override?.ended_reason ?? s.ended_reason)
+      : (s.ended_reason ?? override?.ended_reason)
+    const effectiveExitCode = useOverride
+      ? (override?.exit_code ?? s.exit_code)
+      : (s.exit_code ?? override?.exit_code)
+    return {
       id: s.id,
-      kind: s.kind,
-      abbr: s.abbr,
-      title: s.title,
-      repo: s.repo,
-      state: s.state,
-      stateText: s.note,
-      pillState: MOCK_PILL[s.state],
-      isTerminal: false,
-      isMock: true,
-    }))
-  }
-
-  return []
+      kind: s.cli,
+      abbr: abbrForCli(s.cli),
+      title:
+        s.kind === 'chat'
+          ? `${s.repo?.name || '未知仓库'} (对话)`
+          : `${s.repo?.name || '未知仓库'} (终端)`,
+      repo: s.repo?.name || '',
+      state: effectiveState,
+      stateText: formatSessionState(effectiveState),
+      pillState: mapPill(effectiveState),
+      isTerminal: s.kind === 'terminal',
+      endedReason: effectiveReason,
+      exitCode: effectiveExitCode,
+      warnings: s.warnings,
+      createdAt: s.created_at,
+      rawReal: s,
+    }
+  })
 })
 
 // 根据筛选器与搜索词过滤
@@ -193,12 +162,27 @@ const list = computed(() =>
   }),
 )
 
-// 仅在真实会话加载且当前选中的 ID 为初始占位值时，选中第一个真实会话
+watch(
+  () => route?.query?.session,
+  (sid) => {
+    if (typeof sid === 'string' && sid) {
+      selectedId.value = sid
+    }
+  },
+  { immediate: true },
+)
+
 watch(
   allSessions,
   (sessions) => {
-    if (sessions.length > 0 && selectedId.value === 's1' && !sessions.some((s) => s.id === 's1')) {
-      selectedId.value = sessions[0]!.id
+    if (sessions.length === 0) return
+    const querySid = typeof route?.query?.session === 'string' ? route.query.session : ''
+    if (!selectedId.value || !sessions.some((s) => s.id === selectedId.value)) {
+      if (querySid && sessions.some((s) => s.id === querySid)) {
+        selectedId.value = querySid
+      } else {
+        selectedId.value = sessions[0]!.id
+      }
     }
   },
   { immediate: true },
@@ -276,26 +260,30 @@ function handleSessionCreated(newSession: SessionView) {
   selectedId.value = newSession.id
 }
 
+function handleSessionUpdated(updated: SessionView) {
+  sessionStateOverrides.value[updated.id] = {
+    ...sessionStateOverrides.value[updated.id],
+    state: updated.state,
+    ended_reason: updated.ended_reason,
+    last_seq: updated.last_seq,
+  }
+  invalidateSessions()
+}
+
+function handleSessionDeleted() {
+  if (selected.value) {
+    delete sessionStateOverrides.value[selected.value.id]
+  }
+  invalidateSessions()
+  const remaining = allSessions.value.filter((s) => s.id !== selected.value?.id)
+  if (remaining.length > 0) {
+    selectedId.value = remaining[0]!.id
+  }
+}
+
 function handleJumpToRepos() {
   isNewSheetOpen.value = false
   void router.push('/settings')
-}
-
-// Mock Chat 逻辑保留
-const msgs = computed(() => messages(selectedId.value))
-const decided = computed(() => approvals(selectedId.value))
-const pendingCmd = computed(() => pending(selectedId.value))
-const ctxInfo = computed(() => context(selectedId.value))
-const toolStats = computed(() => tools(selectedId.value))
-const DECISION = { once: '已允许一次', always: '本会话总是允许', deny: '已拒绝' } as const
-const allowed = computed(() =>
-  decided.value.filter((a) => a.decision === 'always').map((a) => a.command),
-)
-
-function submit() {
-  if (!draft.value.trim()) return
-  send(selectedId.value, draft.value)
-  draft.value = ''
 }
 </script>
 
@@ -315,7 +303,7 @@ function submit() {
         <SearchField v-model="query" label="搜索会话" placeholder="搜索会话" />
         <SegmentedControl
           v-model="filter"
-          :items="filters"
+          :items="AI_FILTERS"
           label="按 AI 筛选"
           panel-id="ai-sessions-panel"
           fill
@@ -328,8 +316,22 @@ function submit() {
         :aria-labelledby="tabTriggerId('ai-sessions-panel', filter)"
         class="slist"
       >
-        <!-- 错误态（含重试） -->
-        <div v-if="sessionsQuery.isError.value" class="p-4" data-testid="sessions-error-state">
+        <!-- 后端离线态 -->
+        <div v-if="!online" class="empty-state" data-testid="sessions-offline-state">
+          <AlertTriangle :size="36" class="text-neutral-400 mb-2" aria-hidden="true" />
+          <h2 class="empty-title">后端未连接</h2>
+          <p class="empty-desc">后端服务未连接，请检查服务是否正在运行。</p>
+        </div>
+
+        <!-- 错误态（数据未返回 items 或 GET 出错，含重试） -->
+        <div
+          v-else-if="
+            sessionsQuery.isError.value ||
+            (!sessionsQuery.isPending.value && sessionsQuery.data.value?.items === undefined)
+          "
+          class="p-4"
+          data-testid="sessions-error-state"
+        >
           <Banner kind="error" class="mb-3">
             {{ formatAiError(sessionsErrorCode, '获取 AI 会话列表失败') }}
           </Banner>
@@ -396,8 +398,16 @@ function submit() {
       </div>
     </section>
 
-    <!-- 中栏：终端视图 或 对话流 -->
-    <section v-if="selected" aria-label="对话" class="chat">
+    <!-- 真实 Chat 会话视图 -->
+    <ChatView
+      v-if="selected && !selected.isTerminal && selected.rawReal"
+      :session="selected.rawReal"
+      @update-session="handleSessionUpdated"
+      @deleted="handleSessionDeleted"
+    />
+
+    <!-- 中栏：终端视图 -->
+    <section v-else-if="selected && selected.isTerminal" aria-label="终端" class="chat">
       <!-- 顶部操作栏 -->
       <header class="topbar" data-tauri-drag-region>
         <span class="badge" :data-kind="selected.kind" aria-hidden="true">{{ selected.abbr }}</span>
@@ -406,53 +416,36 @@ function submit() {
         <span class="grow"></span>
 
         <!-- 终端会话专有操作 -->
-        <template v-if="selected.isTerminal">
-          <StatusPill
-            v-if="selected.pillState"
-            :state="selected.pillState"
-            :title="selected.stateText"
-          />
-          <ToolbarButton
-            label="中断 (Ctrl-C)"
-            data-testid="interrupt-btn"
-            :disabled="
-              actionInProgress || selected.state === 'ended' || selected.state === 'failed'
-            "
-            @click="handleInterrupt"
-          >
-            <Square :size="14" aria-hidden="true" />
-          </ToolbarButton>
-          <ToolbarButton
-            label="关闭终端"
-            data-testid="close-btn"
-            :disabled="
-              actionInProgress || selected.state === 'ended' || selected.state === 'failed'
-            "
-            @click="isCloseSheetOpen = true"
-          >
-            <XCircle :size="15" aria-hidden="true" />
-          </ToolbarButton>
-          <ToolbarButton
-            v-if="selected.state === 'ended' || selected.state === 'failed'"
-            label="删除会话"
-            data-testid="delete-btn"
-            :disabled="actionInProgress"
-            @click="isDeleteSheetOpen = true"
-          >
-            <Trash2 :size="15" class="text-red-500" aria-hidden="true" />
-          </ToolbarButton>
-        </template>
-
-        <!-- Chat 专属操作与标注 -->
-        <template v-else>
-          <span class="chip warn-chip" title="结构化会话将在 S5-B 接入">待 S5-B</span>
-          <span class="chip">逐条审批</span>
-          <ToolbarButton label="中断"><Square :size="14" aria-hidden="true" /></ToolbarButton>
-          <ToolbarButton label="在终端打开"
-            ><Terminal :size="16" aria-hidden="true"
-          /></ToolbarButton>
-        </template>
-
+        <StatusPill
+          v-if="selected.pillState"
+          :state="selected.pillState"
+          :title="selected.stateText"
+        />
+        <ToolbarButton
+          label="中断 (Ctrl-C)"
+          data-testid="interrupt-btn"
+          :disabled="actionInProgress || selected.state === 'ended' || selected.state === 'failed'"
+          @click="handleInterrupt"
+        >
+          <Square :size="14" aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="关闭终端"
+          data-testid="close-btn"
+          :disabled="actionInProgress || selected.state === 'ended' || selected.state === 'failed'"
+          @click="isCloseSheetOpen = true"
+        >
+          <XCircle :size="15" aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          v-if="selected.state === 'ended' || selected.state === 'failed'"
+          label="删除会话"
+          data-testid="delete-btn"
+          :disabled="actionInProgress"
+          @click="isDeleteSheetOpen = true"
+        >
+          <Trash2 :size="15" class="text-red-500" aria-hidden="true" />
+        </ToolbarButton>
         <InspectorToggle />
       </header>
 
@@ -463,84 +456,48 @@ function submit() {
 
       <!-- 终端视图 -->
       <TerminalView
-        v-if="selected.isTerminal"
         :session-id="selected.id"
         :session-state="selected.state"
         :exit-code="selected.exitCode"
         :ended-reason="selected.endedReason"
       />
-
-      <!-- Mock 对话流（待 S5-B） -->
-      <template v-else>
-        <div class="mock-notice-bar">
-          <span>提示：当前为 Chat 会话预览（待 S5-B 接口接入，目前使用本地 Mock 数据）。</span>
-        </div>
-        <div class="flow">
-          <div
-            v-for="(m, i) in msgs"
-            :key="`${selectedId}-${i}`"
-            class="msg"
-            :data-role="m.role"
-            data-testid="message"
-          >
-            <span class="who">{{ m.who }}</span>
-            <div v-if="m.role === 'ai'" class="bubble ai-b">
-              <div v-if="m.tools?.length" class="tools">
-                <div v-for="t in m.tools" :key="t.k + t.a" class="tool">
-                  <span class="tick" aria-hidden="true">✓</span>
-                  <b class="tk">{{ t.k }}</b>
-                  <span class="mono ta">{{ t.a }}</span>
-                  <span class="mono sub">{{ t.r }}</span>
-                </div>
-              </div>
-              <p>
-                <template v-for="(part, j) in m.body" :key="j">
-                  <code v-if="typeof part !== 'string'" class="mono">{{ part.code }}</code>
-                  <template v-else>{{ part }}</template>
-                </template>
-              </p>
-            </div>
-            <div v-else class="bubble you-b">
-              <p>
-                <template v-for="(part, j) in m.body" :key="j">
-                  {{ typeof part === 'string' ? part : part.code }}
-                </template>
-              </p>
-            </div>
-          </div>
-          <p
-            v-for="(a, i) in decided"
-            :key="i"
-            class="decided mono"
-            :data-decision="a.decision"
-            data-testid="decision-log"
-          >
-            {{ DECISION[a.decision] }}：{{ a.command }}
-          </p>
-          <ApprovalBar
-            v-if="pendingCmd"
-            :command="pendingCmd"
-            @decide="(d) => decide(selectedId, d)"
-          />
-        </div>
-
-        <form class="composer" @submit.prevent="submit">
-          <TextField
-            v-model="draft"
-            class="grow"
-            label="给 AI 的消息"
-            placeholder="继续追问 · / 命令 · @ 引用文件"
-            multiline
-          />
-          <Button type="submit" variant="primary">发送</Button>
-        </form>
-      </template>
     </section>
 
-    <!-- 右栏：检查器 -->
-    <Inspector v-if="selected" label="会话检查器">
-      <!-- 终端会话专有右栏信息：工具、仓库、开始时间、状态；隐藏 chat 专属指标 -->
-      <div v-if="selected.isTerminal" class="ctx" data-testid="ai-terminal-inspector">
+    <!-- 中栏：未选择或离线/错误态 -->
+    <div v-else class="empty-main" data-testid="empty-main-view">
+      <header class="topbar" data-tauri-drag-region>
+        <strong class="ct">AI 会话</strong>
+        <span class="grow"></span>
+        <InspectorToggle />
+      </header>
+      <div v-if="!online" class="empty-state" data-testid="main-offline-state">
+        <AlertTriangle :size="48" class="text-neutral-400 mb-3" aria-hidden="true" />
+        <h2 class="empty-title">后端未连接</h2>
+        <p class="empty-desc">后端服务未连接，请检查服务是否正在运行。</p>
+      </div>
+      <div
+        v-else-if="
+          sessionsQuery.isError.value ||
+          (!sessionsQuery.isPending.value && sessionsQuery.data.value?.items === undefined)
+        "
+        class="empty-state"
+        data-testid="main-error-state"
+      >
+        <AlertTriangle :size="48" class="text-neutral-400 mb-3" aria-hidden="true" />
+        <h2 class="empty-title">获取会话失败</h2>
+        <p class="empty-desc">无法加载 AI 会话列表，请点击左侧重试。</p>
+      </div>
+      <div v-else class="empty-state" data-testid="main-empty-state">
+        <Terminal :size="48" class="text-neutral-400 mb-3" aria-hidden="true" />
+        <h2 class="empty-title">未选择会话</h2>
+        <p class="empty-desc">在左侧选择一个会话，或新建会话开始使用。</p>
+        <Button variant="primary" class="mt-3" @click="isNewSheetOpen = true">新会话…</Button>
+      </div>
+    </div>
+
+    <!-- 右栏：会话检查器（终端与对话会话详情，切换不残留） -->
+    <Inspector label="会话检查器">
+      <div v-if="selected && selected.isTerminal" class="ctx" data-testid="ai-terminal-inspector">
         <div class="ctx-block">
           <span class="lbl">终端会话信息</span>
           <dl>
@@ -569,58 +526,64 @@ function submit() {
           </dl>
         </div>
       </div>
-
-      <!-- Mock Chat 检查器 -->
-      <div v-else-if="ctxInfo" class="ctx" data-testid="ai-inspector">
+      <div v-else-if="selected" class="ctx" data-testid="ai-chat-inspector">
         <div class="ctx-block">
-          <div class="ctx-head">
-            <span class="lbl">上下文用量</span><span class="pct">{{ ctxInfo.pct }}%</span>
-          </div>
-          <div
-            class="meter"
-            role="meter"
-            aria-label="上下文占用"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-valuenow="ctxInfo.pct"
-          >
-            <span :style="{ width: `${ctxInfo.pct}%` }"></span>
-          </div>
+          <span class="lbl">对话会话信息</span>
           <dl>
-            <template v-for="r in ctxInfo.rows" :key="r.k">
-              <dt>{{ r.k }}</dt>
-              <dd class="mono">{{ r.v }}</dd>
+            <dt>工具</dt>
+            <dd class="mono">{{ selected.rawReal?.cli || selected.kind }}</dd>
+            <dt>仓库</dt>
+            <dd class="mono">{{ selected.rawReal?.repo?.name || selected.repo }}</dd>
+            <template v-if="(selected.rawReal as any)?.branch">
+              <dt>分支</dt>
+              <dd class="mono">{{ (selected.rawReal as any).branch }}</dd>
             </template>
-          </dl>
-        </div>
-        <div class="ctx-block">
-          <span class="lbl">目录 · 分支 · 关联工单</span>
-          <dl>
-            <dt>目录</dt>
-            <dd class="mono">~/code/{{ selected.repo }}</dd>
-            <dt>分支</dt>
-            <dd class="mono">main</dd>
-            <dt>关联工单</dt>
-            <dd class="mono">{{ selected.title.match(/#\d+/)?.[0] ?? '—' }}</dd>
-          </dl>
-        </div>
-        <div class="ctx-block">
-          <span class="lbl">工具调用统计</span>
-          <dl>
-            <template v-for="t in toolStats" :key="t.k + t.a">
-              <dt>{{ t.k }}</dt>
-              <dd class="mono">{{ t.r }}</dd>
+            <template v-if="selected.rawReal?.purpose === 'work_item_analysis'">
+              <dt>工单</dt>
+              <dd class="mono">
+                #{{ (selected.rawReal?.work_item_ref as any)?.id ?? '-' }}
+                <span
+                  v-if="(selected.rawReal?.work_item_ref as any)?.project_id"
+                  class="text-xs text-neutral-500"
+                >
+                  ({{ (selected.rawReal?.work_item_ref as any)?.project_id }})
+                </span>
+              </dd>
             </template>
+            <dt v-if="selected.createdAt">开始时间</dt>
+            <dd v-if="selected.createdAt" class="mono">
+              {{ new Date(selected.createdAt).toLocaleTimeString() }}
+            </dd>
+            <dt>来源</dt>
+            <dd class="mono">
+              {{ selected.rawReal?.origin?.kind === 'telegram' ? 'Telegram' : '桌面应用' }}
+            </dd>
+            <dt>状态</dt>
+            <dd class="mono">{{ selected.stateText }}</dd>
+            <template
+              v-if="selected.rawReal?.usage && Object.keys(selected.rawReal.usage).length > 0"
+            >
+              <dt>Token 消耗</dt>
+              <dd class="mono">
+                <span v-for="(v, k) in selected.rawReal.usage" :key="k" class="mr-2">
+                  {{ k }}: {{ v }}
+                </span>
+              </dd>
+            </template>
+            <dt>本会话已允许</dt>
+            <dd class="mono">
+              <template v-if="(selected.rawReal as any)?.allowed_commands?.length">
+                {{ (selected.rawReal as any).allowed_commands.join(', ') }}
+              </template>
+              <template v-else-if="(selected.rawReal as any)?.allowed_rules?.length">
+                {{ (selected.rawReal as any).allowed_rules.join(', ') }}
+              </template>
+              <template v-else> 无 </template>
+            </dd>
           </dl>
-        </div>
-        <div class="ctx-block">
-          <span class="lbl">已允许命令</span>
-          <p v-if="!allowed.length" class="none">本会话尚未允许任何命令</p>
-          <ul v-else class="allowed">
-            <li v-for="c in allowed" :key="c" class="mono">{{ c }}</li>
-          </ul>
         </div>
       </div>
+      <div v-else class="ctx p-4 text-neutral-400 text-xs">未选择会话</div>
     </Inspector>
 
     <!-- 新建会话 Sheet -->
@@ -629,6 +592,7 @@ function submit() {
       :profiles="profiles"
       :local-repos="localRepos"
       :default-profile-id="aiOverviewQuery.data.value?.selected_profile_id"
+      :model-presets="aiOverviewQuery.data.value?.model_presets"
       @created="handleSessionCreated"
       @jump-to-repos="handleJumpToRepos"
     />
@@ -742,6 +706,17 @@ h1 {
   padding: 40px 24px;
   text-align: center;
 }
+.empty-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-window);
+}
+.empty-main .empty-state {
+  flex: 1;
+}
 .empty-title {
   margin: 4px 0 0;
   font-size: 15px;
@@ -815,103 +790,6 @@ h1 {
   font-size: 12px;
   color: var(--text-muted);
 }
-.chip {
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  border: 1px solid var(--line);
-}
-.warn-chip {
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
-  border-color: rgba(245, 158, 11, 0.3);
-}
-.mock-notice-bar {
-  padding: 6px 16px;
-  background: rgba(245, 158, 11, 0.08);
-  border-bottom: 1px solid rgba(245, 158, 11, 0.2);
-  font-size: 12px;
-  color: #b45309;
-}
-.flow {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.msg {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.msg[data-role='user'] {
-  align-items: flex-end;
-}
-.who {
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-.bubble {
-  max-width: 80%;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.you-b {
-  background: var(--accent);
-  color: #fff;
-  border-bottom-right-radius: 2px;
-}
-.ai-b {
-  background: var(--bg-panel);
-  color: var(--text);
-  border-bottom-left-radius: 2px;
-}
-.tools {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 6px;
-  padding: 6px;
-  background: var(--bg-window);
-  border-radius: 6px;
-  font-size: 12px;
-}
-.tool {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.tick {
-  color: #16a34a;
-}
-.tk {
-  font-weight: 600;
-}
-.ta {
-  color: var(--text-muted);
-}
-.decided {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 4px 8px;
-  background: var(--bg-panel);
-  border-radius: 4px;
-}
-.composer {
-  flex: none;
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-  padding: 12px 16px;
-  border-top: 1px solid var(--line);
-}
 .ctx {
   padding: 16px;
   display: flex;
@@ -924,29 +802,10 @@ h1 {
   flex-direction: column;
   gap: 8px;
 }
-.ctx-head {
-  display: flex;
-  justify-content: space-between;
-}
 .lbl {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-muted);
-}
-.pct {
-  font-size: 12px;
-  font-weight: 700;
-}
-.meter {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--bg-panel);
-  overflow: hidden;
-}
-.meter span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
 }
 dl {
   margin: 0;
@@ -960,18 +819,5 @@ dt {
 dd {
   margin: 0;
   word-break: break-all;
-}
-.allowed {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.none {
-  color: var(--text-muted);
-  font-size: 12px;
-  margin: 0;
 }
 </style>

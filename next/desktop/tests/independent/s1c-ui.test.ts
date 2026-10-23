@@ -5,8 +5,147 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import { tabTriggerId } from '@/components/tabs'
-import { FakeSocket, resetSeq } from '../unit/helpers'
+import { FakeSocket, env, hello, resetSeq } from '../unit/helpers'
 import { boot, bootUnconnected, json, openConnection } from '../unit/boot'
+
+// ── S5D2 独立夹具：按正式 DTO（contracts/openapi.json）构造的假 AI 后端，只在本文件内使用 ──
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+type Fx = Record<string, any>
+interface FakeReq {
+  method: string
+  path: string
+  search: URLSearchParams
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具按 DTO 动态构造
+  body: any
+}
+const fxJson = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+export function fxSession(over: Fx): Fx {
+  return {
+    kind: 'chat',
+    cli: 'claude',
+    profile: 'prof-1',
+    repo: { id: 'repo-1', name: 'my-own-script' },
+    state: 'idle',
+    created_at: '2026-10-24T09:00:00Z',
+    last_seq: 0,
+    pending_approval: false,
+    queue_len: 0,
+    warnings: [],
+    ...over,
+  }
+}
+
+export function fxEvent(
+  sid: string,
+  seq: number,
+  kind: string,
+  payload: Fx,
+  ts = '2026-10-24T09:00:00Z',
+): Fx {
+  return { session_id: sid, session_seq: seq, ts, kind, payload }
+}
+
+export function fxApprovalPending(
+  sid: string,
+  seq: number,
+  aid = 'ap-1',
+  summary = 'pnpm vitest run',
+): Fx {
+  return fxEvent(sid, seq, 'approval', {
+    approval_id: aid,
+    state: 'pending',
+    tool: 'Bash',
+    summary,
+  })
+}
+
+/** 假后端：GET 会话/事件、POST 审批/消息；记录全部请求；可注入覆盖响应。 */
+export class FakeAi {
+  reqs: FakeReq[] = []
+  settled = new Set<string>()
+  override?: (r: FakeReq) => Response | undefined
+  private events = new Map<string, Fx[]>()
+  constructor(
+    public sessions: Fx[],
+    events: Record<string, Fx[]>,
+  ) {
+    for (const [sid, list] of Object.entries(events)) this.events.set(sid, [...list])
+  }
+  fetch = ((req: Request) => this.route(req)) as unknown as typeof fetch
+  appendEvent(sid: string, kind: string, payload: Fx): Fx {
+    const list = this.events.get(sid) ?? []
+    const ev = fxEvent(sid, (list.at(-1)?.session_seq ?? 0) + 1, kind, payload)
+    list.push(ev)
+    this.events.set(sid, list)
+    return ev
+  }
+  posts(suffix: string): FakeReq[] {
+    return this.reqs.filter((r) => r.method === 'POST' && r.path.endsWith(suffix))
+  }
+  private async route(req: Request): Promise<Response> {
+    const u = new URL(req.url)
+    const p = u.pathname
+    const body =
+      req.method === 'GET'
+        ? undefined
+        : await req
+            .clone()
+            .json()
+            .catch(() => undefined)
+    const r: FakeReq = { method: req.method, path: p, search: u.searchParams, body }
+    this.reqs.push(r)
+    const o = this.override?.(r)
+    if (o) return o
+    if (p === '/health')
+      return fxJson({ status: 'ok', version: '0.0.0-s5d2', pid: 4242, uptime_s: 1, alert: false })
+    if (p === '/api/system/alert') return fxJson({ active: false, reason: null, changed_at: 't' })
+    if (p === '/api/ai')
+      return fxJson({
+        revision: 1,
+        profiles: [],
+        selected_profile_id: null,
+        defaults: {},
+        analysis: {},
+        model_presets: {},
+        store_state: 'ready',
+      })
+    if (p === '/api/ado') return fxJson({ local_repos: [{ id: 'repo-1', name: 'my-own-script' }] })
+    if (p === '/api/ai/sessions' && req.method === 'GET') return fxJson({ items: this.sessions })
+    let m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/events$/)
+    if (m && req.method === 'GET') {
+      const sid = m[1]!
+      const after = Number(u.searchParams.get('after_seq') ?? 0)
+      const all = this.events.get(sid) ?? []
+      return fxJson({
+        items: all.filter((e) => e.session_seq > after),
+        last_seq: all.at(-1)?.session_seq ?? 0,
+      })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/approvals\/([^/]+)$/)
+    if (m && req.method === 'POST') {
+      const [, sid, aid] = m as unknown as [string, string, string]
+      const pending = (this.events.get(sid) ?? []).find(
+        (e) => e.kind === 'approval' && e.payload.approval_id === aid,
+      )
+      if (!pending) return fxJson({ code: 'approval_not_found', detail: 'fake' }, 404)
+      if (this.settled.has(aid)) return fxJson({ code: 'approval_settled', detail: 'fake' }, 409)
+      this.settled.add(aid)
+      const state = body?.decision === 'deny' ? 'denied' : 'allowed'
+      this.appendEvent(sid, 'approval', { ...pending.payload, state, decision: body?.decision })
+      return fxJson({ approval_id: aid, state })
+    }
+    m = p.match(/^\/api\/ai\/sessions\/([^/]+)\/messages$/)
+    if (m && req.method === 'POST') return fxJson({ status: 'sent', position: 0 })
+    return fxJson({ code: 'not_found', detail: 'fake' }, 404)
+  }
+}
+
+/** 向后端 WS 推送一条 ai 主题事件（模拟后端推送，不是页面内部状态）。 */
+export function pushAi(sock: FakeSocket, type: string, data: Fx) {
+  sock.emit(env(type, data, { topic: 'ai' }))
+}
 
 beforeEach(() => {
   FakeSocket.reset()
@@ -292,83 +431,155 @@ describe('告警开关故障态与可达性（独立）', () => {
   })
 })
 
+const press = (key: string) =>
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+
 describe('AI 会话隔离（独立）', () => {
-  type Wrap = Awaited<ReturnType<typeof boot>>['wrapper']
+  // S5D2 迁移：会话、事件、审批、消息全部由按正式 DTO 构造的假后端提供，断言请求体与真实 DOM
+  const fixture = () =>
+    new FakeAi(
+      [
+        fxSession({
+          id: 's1',
+          cli: 'claude',
+          state: 'awaiting_approval',
+          pending_approval: true,
+          last_seq: 2,
+        }),
+        fxSession({ id: 's2', cli: 'codex', state: 'idle' }),
+        fxSession({ id: 's3', cli: 'claude', state: 'idle' }),
+        fxSession({ id: 's5', cli: 'codex', state: 'idle' }),
+      ],
+      {
+        s1: [fxEvent('s1', 1, 'assistant', { text: '准备运行测试' }), fxApprovalPending('s1', 2)],
+        s2: [],
+        s3: [],
+        s5: [],
+      },
+    )
+  async function openAi(fake = fixture()) {
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
+    await flushPromises()
+    for (let i = 0; i < 3; i++) await flushPromises()
+    return { ...b, fake }
+  }
+  type Wrap = Awaited<ReturnType<typeof openAi>>['wrapper']
   const sessBtn = (w: Wrap, id: string) => w.get(`[data-testid=session-${id}]`)
-  const submit = async (w: Wrap, text: string) => {
-    await w.get('textarea').setValue(text)
-    await w.get('form').trigger('submit')
+  const focusChat = (w: Wrap) => (w.get('[data-testid=chat-view]').element as HTMLElement).focus()
+  const sendText = async (w: Wrap, text: string) => {
+    await w.get('[data-testid=composer-textarea]').setValue(text)
+    await w.get('[data-testid=composer-textarea]').trigger('keydown', { key: 'Enter' })
     await flushPromises()
   }
 
   it('纯空白消息不发送，也不产生消息条目', async () => {
-    const b = await boot({ path: '/ai' })
-    const before = b.wrapper.findAll('[data-testid=message]').length
-    await submit(b.wrapper, '   \n\t ')
-    expect(b.wrapper.findAll('[data-testid=message]').length).toBe(before)
+    const b = await openAi()
+    const before = b.wrapper.findAll('[data-testid=user-message]').length
+    await sendText(b.wrapper, '   \n\t ')
+    expect(b.fake.posts('/messages')).toHaveLength(0)
+    expect(b.wrapper.findAll('[data-testid=user-message]').length).toBe(before)
     await b.done()
   })
 
-  it('发送带首尾空白的消息：存入的内容已 trim', async () => {
-    const b = await boot({ path: '/ai' })
-    await submit(b.wrapper, '  追问内容  ')
-    const last = b.wrapper.findAll('[data-testid=message]').at(-1)!
-    expect(last.text()).toBe('You追问内容')
+  it('发送带首尾空白的消息：请求体中的 text 已 trim', async () => {
+    const b = await openAi()
+    await sendText(b.wrapper, '  追问内容  ')
+    const posts = b.fake.posts('/messages')
+    expect(posts).toHaveLength(1)
+    expect(posts[0]!.path).toBe('/api/ai/sessions/s1/messages')
+    expect(posts[0]!.body.text).toBe('追问内容')
+    expect(typeof posts[0]!.body.request_id).toBe('string')
     await b.done()
   })
 
-  it('s1 审批后在 s2/s3 发送，再切回 s1：审批记录与消息都只在 s1 中', async () => {
-    const b = await boot({ path: '/ai' })
-    await b.wrapper.get('[data-act=always]').trigger('click')
+  it('s1 审批后在 s2/s3 发送，再切回 s1：审批与消息都只属于各自会话', async () => {
+    const b = await openAi()
+    focusChat(b.wrapper)
+    press('a')
     await flushPromises()
-    expect(b.wrapper.get('[data-testid=decision-log]').attributes('data-decision')).toBe('always')
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(1)
+    expect(b.fake.posts('/approvals/ap-1')[0]!.path).toBe('/api/ai/sessions/s1/approvals/ap-1')
     await sessBtn(b.wrapper, 's2').trigger('click')
-    await submit(b.wrapper, '发给 s2')
+    await sendText(b.wrapper, '发给 s2')
     await sessBtn(b.wrapper, 's3').trigger('click')
-    await submit(b.wrapper, '发给 s3')
-    expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
+    await sendText(b.wrapper, '发给 s3')
+    expect(b.fake.posts('/messages').map((r) => r.path)).toEqual([
+      '/api/ai/sessions/s2/messages',
+      '/api/ai/sessions/s3/messages',
+    ])
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(1)
     await sessBtn(b.wrapper, 's1').trigger('click')
-    expect(b.wrapper.findAll('[data-testid=decision-log]')).toHaveLength(1)
-    expect(b.wrapper.get('.flow').text()).not.toContain('发给 s2')
-    expect(b.wrapper.get('.flow').text()).not.toContain('发给 s3')
+    await flushPromises()
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(false)
+    expect(b.wrapper.get('[data-testid=chat-flow]').text()).not.toContain('发给 s2')
+    expect(b.wrapper.get('[data-testid=chat-flow]').text()).not.toContain('发给 s3')
     await b.done()
   })
 
-  it('N 键拒绝：记录 deny，会话状态变为已完成（done），审批条消失', async () => {
-    const b = await boot({ path: '/ai' })
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }))
+  it('N 键拒绝：发出 deny，审批卡消失；后端推送 idle 后列表显示空闲', async () => {
+    const b = await openAi()
+    focusChat(b.wrapper)
+    press('n')
     await flushPromises()
-    expect(b.wrapper.get('[data-testid=decision-log]').attributes('data-decision')).toBe('deny')
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
-    expect(b.wrapper.get('[data-testid=session-s1]').text()).toContain('已拒绝')
+    expect(b.fake.posts('/approvals/ap-1')[0]!.body).toEqual({ decision: 'deny' })
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(false)
+    pushAi(b.sock, 'ai.session', {
+      session_id: 's1',
+      state: 'idle',
+      ended_reason: null,
+      last_seq: 3,
+    })
+    await flushPromises()
+    expect(b.wrapper.get('[data-testid=session-s1]').text()).toContain('空闲')
     await b.done()
   })
 
   it('输入框聚焦时按 Y 不审批（不应误触审批）', async () => {
-    const b = await boot({ path: '/ai' })
-    const ta = b.wrapper.get('textarea').element as HTMLTextAreaElement
+    const b = await openAi()
+    const ta = b.wrapper.get('[data-testid=composer-textarea]').element as HTMLTextAreaElement
     ta.focus()
     ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=decision-log]').exists()).toBe(false)
-    expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(true)
+    expect(b.fake.posts('/approvals/ap-1')).toHaveLength(0)
+    expect(b.wrapper.find('[data-testid=approval-card]').exists()).toBe(true)
     await b.done()
   })
 
-  it('每个会话的工具统计与上下文随会话切换而变化（不残留 s1 的数据）', async () => {
-    const b = await boot({ path: '/ai' })
-    expect(b.wrapper.get('[data-testid=ai-inspector]').text()).toContain('41%')
-    expect(b.wrapper.get('[data-testid=ai-inspector]').text()).toContain('EDIT')
+  it('每个会话的工具卡片随会话切换而变化（不残留 s1 的工具）', async () => {
+    const fake = new FakeAi(
+      [
+        fxSession({ id: 's1', state: 'idle' }),
+        fxSession({ id: 's2', cli: 'codex', state: 'idle' }),
+      ],
+      {
+        s1: [
+          fxEvent('s1', 1, 'turn_started', { message: '改一下' }),
+          fxEvent('s1', 2, 'tool_use', { tool: 'Edit', tool_use_id: 't1', summary: 'src/a.ts' }),
+          fxEvent('s1', 3, 'turn_completed', {}),
+        ],
+        s2: [
+          fxEvent('s2', 1, 'turn_started', { message: '另一个问题' }),
+          fxEvent('s2', 2, 'tool_use', { tool: 'Read', tool_use_id: 't2', summary: 'b.md' }),
+          fxEvent('s2', 3, 'turn_completed', {}),
+        ],
+      },
+    )
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
+    await flushPromises()
+    for (let i = 0; i < 3; i++) await flushPromises()
+    expect(b.wrapper.find('[data-testid=tool-card-t1]').exists()).toBe(true)
     await sessBtn(b.wrapper, 's2').trigger('click')
-    const insp = b.wrapper.get('[data-testid=ai-inspector]').text()
-    expect(insp).toContain('23%')
-    expect(insp).not.toContain('EDIT')
-    expect(insp).not.toContain('+2 −1')
+    await flushPromises()
+    expect(b.wrapper.find('[data-testid=tool-card-t2]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=tool-card-t1]').exists()).toBe(false)
+    expect(b.wrapper.get('[data-testid=chat-flow]').text()).not.toContain('src/a.ts')
     await b.done()
   })
 
   it('筛选：按 Codex 过滤后列表只含 Codex 会话', async () => {
-    const b = await boot({ path: '/ai' })
+    const b = await openAi()
     const codexTab = b.wrapper.findAll('[role=tab]').find((t) => t.text().startsWith('Codex'))!
     await codexTab.trigger('mousedown')
     await flushPromises()
@@ -378,23 +589,54 @@ describe('AI 会话隔离（独立）', () => {
   })
 
   it('特征化：选中的会话被筛选掉后，列表不再高亮它，但对话区仍绑定该会话（待产品确认）', async () => {
-    const b = await boot({ path: '/ai' })
+    const b = await openAi()
     expect(b.wrapper.get('[data-testid=session-s1]').attributes('data-selected')).toBe('true')
     const codexTab = b.wrapper.findAll('[role=tab]').find((t) => t.text().startsWith('Codex'))!
     await codexTab.trigger('mousedown')
     await flushPromises()
     expect(b.wrapper.find('[data-testid=session-s1]').exists()).toBe(false)
     expect(b.wrapper.findAll('[data-selected=true]')).toHaveLength(0)
-    expect(b.wrapper.get('.chat strong').text()).toBe('#48213 权限缓存未刷新')
+    // 对话区仍绑定 s1：其待决审批卡仍在
+    expect(b.wrapper.get('[data-testid=approval-card]').text()).toContain('pnpm vitest run')
     await b.done()
   })
 
   it('搜索无匹配：列表为空，不抛错，对话区仍保留', async () => {
-    const b = await boot({ path: '/ai' })
-    await b.wrapper.get('input[type=search], input').setValue('不存在的关键字xyz')
+    const b = await openAi()
+    await b.wrapper.get('.filters input').setValue('不存在的关键字xyz')
     await flushPromises()
     expect(b.wrapper.findAll('[data-testid^=session-]')).toHaveLength(0)
-    expect(b.wrapper.find('.chat').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=chat-view]').exists()).toBe(true)
+    await b.done()
+  })
+
+  // 主控裁决 S5D2-T02（2026-10-24）：R1 mock 的上下文百分比与改动统计撤销（合同：上下文只在 CLI
+  // 提供数据时显示、不估算）；保留原意“检查器内容随会话切换、不残留上一个会话”，按合同右栏字段断言。
+  it('每个会话的检查器内容随会话切换而变化（不残留 s1 的数据，不显示估算的上下文百分比）', async () => {
+    const fake = new FakeAi(
+      [
+        fxSession({ id: 's1', state: 'idle', repo: { id: 'repo-1', name: 'my-own-script' } }),
+        fxSession({
+          id: 's2',
+          cli: 'codex',
+          state: 'idle',
+          repo: { id: 'repo-2', name: 'web-portal' },
+        }),
+      ],
+      {},
+    )
+    const b = await boot({ path: '/ai', fetchImpl: fake.fetch })
+    b.sock.emit(hello())
+    for (let i = 0; i < 3; i++) await flushPromises()
+    let insp = b.wrapper.get('[data-testid=ai-chat-inspector]').text()
+    expect(insp).toContain('my-own-script')
+    expect(insp).not.toMatch(/\d+%/)
+    await sessBtn(b.wrapper, 's2').trigger('click')
+    await flushPromises()
+    insp = b.wrapper.get('[data-testid=ai-chat-inspector]').text()
+    expect(insp).toContain('web-portal')
+    expect(insp).not.toContain('my-own-script')
+    expect(insp).not.toMatch(/\d+%/)
     await b.done()
   })
 })

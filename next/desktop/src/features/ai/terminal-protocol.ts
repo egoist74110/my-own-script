@@ -179,6 +179,18 @@ export const AI_ERROR_MESSAGES: Record<string, string> = {
   not_found: '未找到请求的资源',
   validation_error: '输入参数格式不正确',
   conflict: '资源冲突，请稍后重试',
+  session_ended: '会话已结束',
+  ai_queue_full: '消息队列已满（最多 10 条），请等待当前处理完成',
+  approval_settled: '已由另一端处理',
+  approval_expired: '该审批已超时（有效期 9 分钟）',
+  session_active: '该会话仍在运行中，无法续聊',
+  resume_unavailable: '该会话无外部会话标识，无法续聊',
+  bot_in_use: '此 Telegram Bot 已被其他槽位占用',
+  telegram_active: 'Telegram 正在运行中，无法修改 Token，请先停用',
+  legacy_missing: '旧应用中未找到对应的 Bot Token',
+  ack_old_bot_cleared_required: '必须确认已在旧应用中清空对应 Bot Token',
+  ack_required: '必须确认旧应用已停止轮询',
+  webhook_set: '检测到已设置 Webhook',
 }
 
 export function formatAiError(code?: string | null, fallback = '操作失败'): string {
