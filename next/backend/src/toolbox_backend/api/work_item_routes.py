@@ -4,6 +4,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Path, Request
 from fastapi.responses import Response
 
+from toolbox_backend.api.ai_schemas import AnalysisRequest, PromptResponse, SessionView
 from toolbox_backend.api.work_item_schemas import (
     ChildrenResponse,
     ColumnsResponse,
@@ -75,3 +76,15 @@ async def updates(request: Request, id: WorkId, project_id: Id):
 @router.get("/{id}/children", response_model=ChildrenResponse)
 async def children(request: Request, id: WorkId, project_id: Id):
     return await service(request).children(project_id, id)
+
+
+@router.post("/{id}/ai-analysis", response_model=SessionView)
+async def ai_analysis(request: Request, id: WorkId, body: AnalysisRequest):
+    return await request.app.state.ai_service.analyze(service(request), id, body)
+
+
+@router.get("/{id}/ai-prompt", response_model=PromptResponse)
+async def ai_prompt(
+    request: Request, id: WorkId, project_id: Id, cli: Literal["claude", "codex", "agy"]
+):
+    return await request.app.state.ai_service.prompt(service(request), id, project_id, cli)

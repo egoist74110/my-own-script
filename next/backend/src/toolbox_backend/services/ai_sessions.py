@@ -5,10 +5,13 @@ import contextlib
 import json
 import logging
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import ValidationError
 
+from toolbox_backend.adapters import claude_history
 from toolbox_backend.adapters.ai_process import SupervisedProcess, resolve_argv
 from toolbox_backend.adapters.ai_store import TERMINAL, AIStore
 from toolbox_backend.adapters.config_store import stamp
@@ -18,11 +21,21 @@ from toolbox_backend.api.ai_schemas import (
     AIJobEvent,
     AISessionData,
     AISessionEvent,
+    SessionCreate,
     SessionView,
 )
-from toolbox_backend.domain.ai import BUILTINS, AIProfile, validate_model, validate_profile
+from toolbox_backend.domain.ai import (
+    AGY_EFFORTS,
+    BUILTINS,
+    CLAUDE_PERMISSIONS,
+    AIProfile,
+    validate_model,
+    validate_profile,
+)
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.logging_setup import redact_exception
+from toolbox_backend.services import ai_prompt
+from toolbox_backend.services.ai_chat import ChatSession
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +109,14 @@ class AISessionService:
         self._job_task = None
         self._aux = {}
         self._checks = set()
+        # Timing knobs (seconds); tests shrink them on the instance.
+        self.approval_ttl_s = 540
+        self.claude_idle_s = 4 * 3600
+        self.codex_turn_s = 30 * 60
+        self.agy_print_timeout_s = 600
+        self.agy_watchdog_extra_s = 60
+        self.interrupt_grace_s = 10
+        self.stop_grace_s = 1.0
 
     async def initialize(self):
         await self.store.initialize()
@@ -108,19 +129,25 @@ class AISessionService:
     def _resolve(self, command):
         return resolve_argv(command, path_extras=self.path_extras)
 
-    def _profile(self, ai, pid):
+    def _profile(self, ai, pid, chat=False):
         profile = find_profile(ai, pid)
         if self.fake:
             import shlex
             import sys
 
-            fixture = Path(__file__).resolve().parents[3] / "tests/fixtures/fake_cli/fake.py"
-            profile = profile.model_copy(
-                update={
-                    "command": shlex.join([sys.executable, str(fixture), "--echo"]),
-                    "upgrade_command": shlex.join([sys.executable, str(fixture), "--version"]),
-                }
-            )
+            directory = Path(__file__).resolve().parents[3] / "tests/fixtures/fake_cli"
+            fixture = directory / "fake.py"
+            update = {
+                "command": shlex.join([sys.executable, str(fixture), "--echo"]),
+                "upgrade_command": shlex.join([sys.executable, str(fixture), "--version"]),
+            }
+            if chat and profile.cli in ("claude", "codex", "agy"):
+                # Headless chat fakes are shell trampolines that need an interpreter.
+                import os
+
+                os.environ.setdefault("FAKE_AI_PYTHON", sys.executable)
+                update["command"] = str(directory / profile.cli)
+            profile = profile.model_copy(update=update)
         return profile
 
     async def settings(self):
@@ -363,15 +390,17 @@ class AISessionService:
             if body.permission is not None
             else getattr(default, {"claude": "permission", "codex": "sandbox", "agy": "mode"}[cli])
         )
+        if cli == "claude" and permission == "default":
+            permission = "manual"  # legacy value; the real CLI has no "default" mode
         allowed_effort = {
             "claude": {None, "low", "medium", "high", "xhigh", "max"},
             "codex": {"minimal", "low", "medium", "high"},
-            "agy": {None},
+            "agy": {None, *AGY_EFFORTS},
         }
         allowed_permission = {
-            "claude": {"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"},
+            "claude": set(CLAUDE_PERMISSIONS),
             "codex": {"read-only", "workspace-write", "danger-full-access"},
-            "agy": {"sandbox", "auto"},
+            "agy": {"sandbox", "plan", "auto"},
         }
         if effort not in allowed_effort[cli] or permission not in allowed_permission[cli]:
             raise invalid()
@@ -383,21 +412,26 @@ class AISessionService:
             raise SettingsError("high_risk_ack_required", "高权限会话需要再次确认", 409)
         return model, effort, permission
 
-    async def create(self, body):
+    async def create(self, body, *, purpose="general", work_item_ref=None, warnings=()):
         self.require()
         async with self._lock:
             self.require()
             previous = await self.store.get(request_id=str(body.request_id))
             if previous:
                 return await self.view(previous)
-            if body.kind != "terminal" or body.resume is not None:
-                raise SettingsError("unsupported_cli", "结构化会话将在 S5-B 接入", 409)
             config = await self.config.read()
-            profile = self._profile(config.ai, body.profile_id)
+            chat = body.kind == "chat"
+            profile = self._profile(config.ai, body.profile_id, chat)
+            if chat and profile.cli == "other":
+                raise SettingsError("unsupported_cli", "该 AI 配置不支持结构化会话", 409)
+            if not chat and body.resume is not None:
+                raise SettingsError("unsupported_cli", "终端会话不支持续聊", 409)
+            old = await self._resume_source(body, profile) if body.resume else None
             repo, cwd = self._repo(config, body.repo_id)
             model, effort, permission = self._options(profile.cli, body, config)
+            kind = "chat" if chat else "terminal"
             if (
-                len(self._active) >= 6
+                sum(a["kind"] == kind for a in self._active.values()) >= 6
                 or sum(a["cli"] == profile.cli for a in self._active.values())
                 + self._aux.get(profile.cli, 0)
                 >= 4
@@ -405,9 +439,14 @@ class AISessionService:
                 raise SettingsError("ai_session_limit", "AI 会话达到上限", 409)
             argv = self._resolve(profile.command)
             sid = "ais_" + secrets.token_hex(16)
+            external_id = old["external_id"] if old else None
+            if body.resume and body.resume.external_id:
+                external_id = body.resume.external_id
+            if chat and profile.cli == "claude" and external_id is None:
+                external_id = str(uuid4())  # backend-chosen --session-id
             values = dict(
                 id=sid,
-                kind="terminal",
+                kind=kind,
                 cli=profile.cli,
                 profile_id=profile.id,
                 repo_id=repo.id,
@@ -415,10 +454,10 @@ class AISessionService:
                 model=model,
                 effort=effort,
                 permission=permission,
-                purpose="general",
-                work_item_ref_json=None,
-                external_id=None,
-                resume_of=None,
+                purpose=purpose,
+                work_item_ref_json=json.dumps(work_item_ref) if work_item_ref else None,
+                external_id=external_id,
+                resume_of=old["id"] if old else None,
                 origin_json='{"kind":"ui"}',
                 state="starting",
                 created_at=stamp(),
@@ -426,12 +465,167 @@ class AISessionService:
                 request_id=str(body.request_id),
             )
             await self.store.create(values)
+            for name in warnings:
+                await self.store.add_warning(sid, name)
             ready = asyncio.get_running_loop().create_future()
-            active = dict(cli=profile.cli, queue=asyncio.Queue(maxsize=10), ready=ready)
-            self._active[sid] = active
-            active["task"] = asyncio.create_task(self._session(sid, argv, cwd, body, active))
+            if chat:
+                session = ChatSession(
+                    self,
+                    sid,
+                    cli=profile.cli,
+                    exe=argv[0],
+                    cwd=cwd,
+                    permission=permission,
+                    model=model,
+                    effort=effort,
+                    external_id=external_id,
+                    resume=body.resume is not None,
+                    prompts=[body.initial_prompt] if body.initial_prompt else (),
+                )
+                active = dict(
+                    cli=profile.cli, kind=kind, queue=session.inbox, ready=ready, chat=session
+                )
+                self._active[sid] = active
+                active["task"] = asyncio.create_task(self._chat_session(sid, session, active))
+            else:
+                active = dict(
+                    cli=profile.cli, kind=kind, queue=asyncio.Queue(maxsize=10), ready=ready
+                )
+                self._active[sid] = active
+                active["task"] = asyncio.create_task(self._session(sid, argv, cwd, body, active))
         await asyncio.shield(ready)
         return await self.get(sid)
+
+    async def _resume_source(self, body, profile):
+        """Validate a resume request; returns the ended source row, or None for a raw id."""
+        resume = body.resume
+        if resume.external_id:
+            if profile.cli != "claude":
+                raise invalid()
+            return None
+        old = await self.store.get(resume.session_id)
+        if old["state"] not in TERMINAL:
+            raise SettingsError("session_active", "会话仍在运行，不能续聊", 409)
+        if old["cli"] != profile.cli or old["kind"] != "chat" or old["repo_id"] != body.repo_id:
+            raise invalid()
+        if not old["external_id"]:
+            raise SettingsError("resume_unavailable", "该会话没有可续聊的标识", 409)
+        return old
+
+    async def resume(self, sid, body):
+        old = await self.store.get(sid)
+        if old["state"] not in TERMINAL:
+            raise SettingsError("session_active", "会话仍在运行，不能续聊", 409)
+        if not old["external_id"] or old["kind"] != "chat":
+            raise SettingsError("resume_unavailable", "该会话没有可续聊的标识", 409)
+        create = SessionCreate(
+            request_id=body.request_id,
+            kind="chat",
+            profile_id=old["profile_id"],
+            repo_id=old["repo_id"],
+            model=old["model"],
+            effort=old["effort"],
+            permission=old["permission"],  # Codex keeps the first turn's sandbox
+            resume=dict(session_id=sid),
+            ack_high_risk=body.ack_high_risk,
+        )
+        return await self.create(create)
+
+    async def send(self, sid, body):
+        self.require()
+        row = await self.store.get(sid)
+        active = self._active.get(sid)
+        if row["kind"] != "chat":
+            raise SettingsError("unsupported_cli", "终端会话请使用终端通道", 409)
+        if active is None or "chat" not in active:
+            raise SettingsError("session_ended", "会话已结束", 409)
+        return active["chat"].submit(str(body.request_id), body.text)
+
+    async def decide(self, sid, aid, body):
+        self.require()
+        row = await self.store.get_approval(sid, aid)
+        active = self._active.get(sid)
+        if row["state"] != "pending":
+            code = "approval_expired" if row["state"] == "expired" else "approval_settled"
+            raise SettingsError(code, "审批已处理", 409)
+        state = "denied" if body.decision == "deny" else "allowed"
+        scope = "session" if body.decision == "allow_session" else "once"
+        won = await self.store.settle_approval(
+            sid, aid, state, scope, {"kind": "ui"}, datetime.now(UTC).isoformat()
+        )
+        if not won:
+            row = await self.store.get_approval(sid, aid)
+            if row["state"] == "pending":  # past its deadline but the timer has not fired yet
+                await self.store.settle_approval(
+                    sid, aid, "expired", None, {"kind": "system"}, datetime.now(UTC).isoformat()
+                )
+                row["state"] = "expired"
+            code = "approval_expired" if row["state"] == "expired" else "approval_settled"
+            raise SettingsError(code, "审批已处理", 409)
+        if active is not None and "chat" in active:
+            active["chat"].decided(aid, body.decision, {"kind": "ui"})
+        return dict(approval_id=aid, state=state)
+
+    async def resume_candidates(self, repo_id, cli, query):
+        config = await self.config.read()
+        _, cwd = self._repo(config, repo_id)
+        return dict(items=await asyncio.to_thread(claude_history.list_sessions, cwd, query))
+
+    async def analyze(self, work_items, ident, body):
+        self.require()
+        project, library, _ = await work_items.snapshot(body.project_id, require_pat=False)
+        config = await self.config.read()
+        profile = self._profile(config.ai, body.profile_id, True)
+        if profile.cli not in ("claude", "codex", "agy"):
+            raise invalid()
+        permission = getattr(
+            getattr(config.ai.analysis, profile.cli),
+            {"claude": "permission", "codex": "sandbox", "agy": "mode"}[profile.cli],
+        )
+        new_only = ai_prompt.is_new_only(project.id)
+        prompt = ai_prompt.build_prompt(
+            cli=profile.cli,
+            work_item_id=ident,
+            library_name=library.name,
+            project_name=project.project,
+            prefix=ai_prompt.tool_prefix(profile.cli, self._prefix(config, profile.cli)),
+            new_only=new_only,
+        )
+        create = SessionCreate(
+            request_id=body.request_id,
+            kind="chat",
+            profile_id=profile.id,
+            repo_id=body.repo_id,
+            permission=permission,
+            ack_high_risk=body.ack_high_risk,
+            initial_prompt=prompt,
+        )
+        return await self.create(
+            create,
+            purpose="work_item_analysis",
+            work_item_ref={"id": ident, "project_id": project.id},
+            warnings=("legacy_mcp_may_not_resolve_project",) if new_only else (),
+        )
+
+    @staticmethod
+    def _prefix(config, cli):
+        return getattr(config.ai.mcp_tool_prefix, cli, "") if cli != "claude" else ""
+
+    async def prompt(self, work_items, ident, project_id, cli):
+        project, library, _ = await work_items.snapshot(project_id, require_pat=False)
+        config = await self.config.read()
+        new_only = ai_prompt.is_new_only(project.id)
+        text = ai_prompt.build_prompt(
+            cli=cli,
+            work_item_id=ident,
+            library_name=library.name,
+            project_name=project.project,
+            prefix=ai_prompt.tool_prefix(cli, self._prefix(config, cli)),
+            new_only=new_only,
+        )
+        return dict(
+            prompt=text, warnings=[ai_prompt.NEW_ONLY_WARNING] if new_only else []
+        )
 
     async def _state(self, sid, state, reason=None, exit_code=None):
         await self.store.transition(sid, state, reason, exit_code)
@@ -518,9 +712,42 @@ class AISessionService:
                 if not active["ready"].done():
                     active["ready"].set_result(None)
 
+    async def _chat_session(self, sid, chat, active):
+        reason, state, code = "process_exited", "ended", None
+        lifecycle = None
+        try:
+            async with SessionLifecycle(None) as lifecycle:
+                await chat.start(lifecycle)
+                if not active["ready"].done():
+                    active["ready"].set_result(None)
+                try:
+                    reason, code = await chat.loop()
+                finally:
+                    if chat.cli == "claude":
+                        await chat.stop_input()
+        except asyncio.CancelledError:
+            reason = "interrupted_on_exit"
+            with contextlib.suppress(Exception):
+                await chat._expire_all("interrupted")
+        except OSError, RuntimeError, SettingsError, ValueError:
+            state, reason = "failed", "start_failed"
+        finally:
+            await asyncio.shield(chat.finalize())
+            try:
+                if lifecycle and lifecycle.kill_failed:
+                    await self.store.record_cleanup_failure(sid)
+                await self._state(sid, state, reason, code)
+            except SettingsError:
+                logger.error("ai session finalization store_unavailable")
+            finally:
+                self._active.pop(sid, None)
+                if not active["ready"].done():
+                    active["ready"].set_result(None)
+
     async def view(self, row):
         config = await self.config.read()
         repo = next((r for r in config.ado.local_repos if r.id == row["repo_id"]), None)
+        chat = (self._active.get(row["id"]) or {}).get("chat")
         return SessionView(
             id=row["id"],
             kind=row["kind"],
@@ -537,11 +764,14 @@ class AISessionService:
             exit_code=row["exit_code"],
             origin={"kind": json.loads(row["origin_json"])["kind"]},
             has_external_id=bool(row["external_id"]),
+            queue_len=chat.queue_len if chat else 0,
+            pending_approval=chat.pending_approval if chat else False,
             usage=json.loads(row["usage_json"] or "{}"),
             created_at=row["created_at"],
             ended_at=row["ended_at"],
             last_seq=row["last_seq"],
-            warnings=["kill_failed"] if await self.store.cleanup_failed(row["id"]) else [],
+            warnings=(["kill_failed"] if await self.store.cleanup_failed(row["id"]) else [])
+            + await self.store.warnings(row["id"]),
         )
 
     async def get(self, sid):

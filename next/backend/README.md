@@ -752,3 +752,91 @@ TOOLBOX_LEGACY_CONFIG_DIR=/tmp/toolbox-fake-ai-legacy \
 Popen、exec*、posix_spawn*：解析到替身目录以外的claude/codex/agy会失败并记违规。
 沙箱禁止端口bind或/bin/ps时，依赖它们的用例记not_run，由主控沙箱外验收；mock身份的
 进程组测试不等于真实ps身份核验通过。
+
+## S5-B：headless 会话（Claude / Codex / agy）
+
+`kind=chat` 会话由 `services/ai_chat.py::ChatSession` 驱动，协议适配器在 `adapters/ai_cli/{claude,codex,agy}.py`
+（纯 argv/协议/事件归一化）。每会话一个任务独占状态转换；HTTP 只投递命令（`inbox`）或同步入队，
+读取任务只写事件、把控制事实（result/审批请求/退出）交给会话任务，读取不被下游阻塞。
+监督器新增 stdio 模式（payload `stdio`：把 stdin/stdout/stderr 三个管道 dup2 到 CLI），其余语义不变。
+
+### 协议与状态
+
+- Claude：常驻进程 `--print --verbose --input-format stream-json --output-format stream-json
+  --permission-mode <p> --permission-prompt-tool stdio [--model] [--effort]`，新会话 `--session-id <后端 uuid>`
+  （即 external_id），续聊 `--resume <id>`；提示词只经 stdin；中断为 control_request(interrupt)，10 秒无
+  result 则记 interrupted 并吞掉迟到的 result；未知事件/字段忽略；空闲 4 小时自动结束（ended_reason=`limit`）。
+- Codex：每回合一进程 `exec --json --skip-git-repo-check -C <cwd> [-m] [-c model_reasoning_effort=E] -s <沙箱> -`
+  （无 `--full-auto`；danger 档用 `--dangerously-bypass-approvals-and-sandbox` 代替 `-s`），续聊
+  `exec resume <thread_id> --json --skip-git-repo-check [-m] [-c] -`（不传 `-s/-C`，仅首轮 danger 才再传 bypass）；
+  提示词经 stdin；thread_id 取自 `thread.started`；每回合 30 分钟超时。
+- agy：每回合 `--print --input-format stream-json --output-format stream-json --print-timeout=<n>s`
+  + `--sandbox`（sandbox）/`--sandbox --mode plan`（plan）/`--dangerously-skip-permissions`（auto）、`--model`、
+  `--effort`、`--conversation <id>`；conversation_id 取首个事件；总是传 `--print-timeout`（默认 600 秒，
+  看门狗另加 60 秒）；stderr 含 `[agy] print timeout` 或缺少最终 agent_response DONE 一律 `turn_failed(timeout)`。
+  stdin 输入失败（无事件且非零退出）自动退回 `--print=<prompt>`，并给会话加 warning
+  `prompt_visible_to_other_processes`。
+- 会话状态 `starting → idle ⇄ busy ⇄ awaiting_approval → closing → ended`（启动失败 failed）；回合以
+  `turn_started` 开始，只有一个终态事件：`turn_completed` 或 `turn_failed`（payload `status` 为
+  completed/failed/interrupted，`category` 为 timeout/exit/cli_error/process_exited/start_failed/interrupted）。
+  排队 ≤10、提示词 ≤32 KiB；interrupt 同时清空排队；会话内 `request_id` 重复返回同一结果。
+- 事件 payload：init `{cli,external_id}`、assistant/thinking `{text}`、tool_use `{tool,tool_use_id,summary}`、
+  tool_result `{tool_use_id,is_error,text}`、approval `{approval_id,tool,summary,state,scope?}`、
+  error `{category(stderr|bad_json|line_too_long|cli_error|process_exited),text?}`；stderr/坏 JSON/超长行
+  共用每秒 ≤20 条限流，超出合并为 `notice{reason:"suppressed",count}`；单行 >4 MiB 丢弃；stderr 环形 64 KiB 脱敏。
+- usage 汇总到 `usage_json`：`{turns,cost_usd,input_tokens,output_tokens}`。
+
+### 审批（Claude）
+
+`control_request can_use_tool` → `ai_approvals(pending)`（摘要 ≤500 字脱敏，入参只存 SHA-256，原始入参仅在内存
+等待决定）+ 事件 `approval` + 会话 `awaiting_approval`。`POST /api/ai/sessions/{id}/approvals/{aid}`
+`{decision: allow_once|allow_session|deny}`：原子 `pending→allowed|denied`，再回 control_response
+（deny `{behavior:"deny",message}`；allow `{behavior:"allow",updatedInput:<原始入参>}`）。9 分钟（`approval_ttl_s`）
+到期自动 deny（expired）；interrupt/close/进程退出时 pending → expired 并回 deny。第二个决定 409
+`approval_settled`/`approval_expired`；超过截止时间的决定即使计时器未触发也不生效。
+“本会话始终允许”只存内存规则（工具名；Bash 为命令首词），含 `; & | \` < > $( ${` 或换行的命令不匹配，仍逐条审批。
+待决审批 >8 自动拒绝。
+
+### 续聊与候选
+
+`POST /api/ai/sessions/{id}/resume {request_id, ack_high_risk?}`（已结束且有 external_id；`resume_of`；Codex
+沿用首轮沙箱，首轮为 danger 需 ack）。`POST /api/ai/sessions` 的 `resume:{session_id}` 同义，
+`resume:{external_id}` 仅 Claude。`GET /api/ai/resume-candidates?repo_id=&cli=claude&query=` 只读
+`$HOME/.claude/projects/<编码后的仓库 realpath>/` 下 ≤50 个 jsonl、每个头 ≤80 行，拒绝符号链接/越界/非常规文件，
+返回 `{session_id,title(≤48),updated_at}`。
+
+### 工单 AI 分析
+
+`GET /api/work-items/{id}/ai-prompt?project_id=&cli=` → `{prompt,warnings}`；`POST /api/work-items/{id}/ai-analysis
+{request_id,project_id,repo_id,profile_id,ack_high_risk?}` → SessionView（purpose=work_item_analysis，档位取
+`ai.analysis.<cli>`，提示词作为首条消息，request_id 幂等，不写回“当前仓库”）。提示词只含整数工单号与 library/project
+名称（单行清洗），不含工单正文；Claude 前缀固定 `mcp__ado-work-items__`，Codex/agy 取新增配置
+`ai.mcp_tool_prefix.{codex,agy}`（默认 `mcp__adoWorkItems__` / `mcp__ado-work-items__`，`[A-Za-z0-9_.:-]{1,64}`；
+属 config v3 的增量字段）。id 形如 `proj:<uuid>` 的项目视为新端独有，提示词加警示并给会话 warning
+`legacy_mcp_may_not_resolve_project`。
+
+### 配置枚举修订
+
+Claude permission：`acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`，输入或已存的 `default` 规范化为
+`manual`（pydantic 前置校验，迁移与读取都生效）；agy mode：`sandbox|plan|auto`，`analysis.agy.mode` 新默认 `plan`
+（已存值不变），agy 增加可选 `effort low|medium|high|xhigh|max`。高权限档（bypassPermissions、danger-full-access、
+agy auto）需 `ack_high_risk:true`。
+
+### 新增 DTO / 路由 / 错误码
+
+DTO：SendMessage、SendResult、ResumeSession、ApprovalDecision、ApprovalResult、ResumeCandidate(s)、
+AnalysisRequest、PromptResponse；AISettingsPatch/AIView 增 `mcp_tool_prefix`。错误码（409）：`session_ended`、
+`ai_queue_full`、`approval_settled`、`approval_expired`、`session_active`（续聊仍在运行的会话）、
+`resume_unavailable`（无 external_id）；沿用 `cli_not_found/repo_missing/high_risk_ack_required/unsupported_cli`
+（现仅 cli=other 的 chat 触发）。
+
+### 未核对真实 CLI 的事项
+
+Claude `behavior:"allow"` 的 control_response 形状；Codex `--json` 事件结构、thread_id 来源与 effort 枚举；agy
+`--input-format stream-json` 的 stdin 行格式（已有 argv 退路）及 init/step_update/result 载荷是否嵌套在事件名下
+（两种都解析）；Codex/agy 的 MCP 工具名前缀写法。替身只证明适配逻辑，不证明真实 CLI 行为。
+
+### 测试
+
+`tests/test_s5b_*.py`、`tests/independent/s5b/`；替身 `tests/fixtures/fake_cli/{claude,codex,agy}`（sh 蹦床，
+读 `FAKE_AI_PYTHON`）与 `ai_fake.py`（行为由提示词关键字控制，`FAKE_AI_LOG` 记录 argv/stdin）。

@@ -914,3 +914,15 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - S5-D1：worktree `.local/worktrees/s5d`（detached `267f355`，前端 frozen offline install、后端 uv offline sync）；主控联网 `pnpm add -E @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0`（发布于 2025-12-22），frozen offline 复装通过。施工 agy `--sandbox --model gemini-3.8-flash-high --effort high --print=<请求>`（不用 dangerously），请求/输出 `.local/dispatch/s5d/`；独立测试待交付后由主控另派。actual model/effort=unknown（agy 无回执）。
 - S5-B：codex 额度用尽（2026-10-24 01:46 恢复），按 prefs 回退到 **Claude Sonnet 5.5 / medium**，通道 Claude Code 原生子 agent（后台），worktree `.local/worktrees/s5b`（detached `267f355`）；测试员指定 Claude Haiku 5.5 / medium（子 agent 不能派则由主控另派）。actual model/effort=unknown（原生子 agent 无提供方回执，记 requested）。请求含协议核对结论（Claude `--permission-prompt-tool stdio`/`--session-id`、Codex `-s` 与 stdin、agy stream-json/`--mode plan`/超时判定）与配置枚举修订。
 - 状态：S5-B、S5-D1 **dispatched / running**；S5-C、S5-D2 not_dispatched；Codex 最小会话核对待额度恢复。
+
+### S5-B 集成（2026-10-23）
+
+- 施工：Claude Sonnet 5.5 / medium，Claude Code 原生子 agent（后台，单轮完成，约 25 分钟），actual model/effort=unknown（无提供方回执）。子 agent 自派测试员 Claude Haiku 5.5 / medium，新增独立用例 22（`tests/independent/s5b/`），actual unknown。施工者报告 complete：1037 passed（新增 60：自写 38 + 独立 22）、ruff/contracts/diff-check 全通过、not_run 无。
+- 结果：三个协议适配器 `adapters/ai_cli/{claude,codex,agy}.py`（Claude `--permission-prompt-tool stdio`+`--session-id`/`--resume`、提示词 stdin；Codex `-s` 档、首轮 danger 才在续聊传 bypass、提示词 stdin `-`；agy stream-json、`sandbox|plan|auto` 模式、总传 `--print-timeout` 并按 stderr 标记判超时、首事件取 conversation_id）；`services/ai_chat.py` chat 会话（排队/中断/回合状态）；Claude 审批（原子 settle、9 分钟过期、会话内允许规则不放行含管道符命令、入参只存哈希）；续聊与 `resume-candidates`（`adapters/claude_history.py`）；`services/ai_prompt.py` 工单提示词与 `ai-analysis`/`ai-prompt` 接口；配置枚举修订（Claude `default→manual` 规范化、agy `plan`、agy effort、`ai.mcp_tool_prefix`）；README「S5-B」。
+- 既有测试改动 1 处：`tests/test_s5a_kernel.py::test_chat_is_placeholder_and_high_risk_ack` 改为用 cli=other 的 profile 断言 409 unsupported_cli（S5-A 占位按合同被替换，原意保留），主控核对 diff 接受。
+- **主控接受的合同外细节**（记录，不另返工）：新增 409 `session_active`（续聊未结束会话）、`resume_unavailable`（无 external_id）；`ai-prompt` 响应多 `warnings`；Claude 空闲 4 小时结束 ended_reason=`limit`；单会话待决审批 >8 自动拒绝；“新端独有项目”按 id 前缀 `proj:` 启发式判定；interrupt 同时清空排队（沿用旧端）。
+- 未核对（README 已标注）：Claude `behavior:"allow"` 回包形状、Codex `--json` 事件结构/thread_id/effort、agy `--input-format stream-json` 行格式（失败自动退回 argv 并 warning）、Codex/agy MCP 工具名前缀写法。施工者未保存修前失败摘要文件（新功能开发中发现的 4 处缺陷当场修复，报告中逐条列出）。
+- 主控核查：后端 `shell=True`/`os.fork(` 仅监督器；dangerously 参数仅 agy auto 与 Codex danger 档；施工树沙箱外全量 **1037 passed**（293.02s），无遗留替身进程；改动仅 `next/backend`、`next/contracts`，替身 `fake_cli/{claude,codex,agy}` 保留可执行位。
+- 集成：限定 binary patch（`.local/dispatch/s5b/integration.patch`，31 文件），主目录该范围自 `267f355` 无改动，`git apply --check` 后应用；主控 `pnpm contracts:gen` 重新生成 `schema.d.ts`。
+- 集成版本验收：后端全量 **1037 passed**（263.48s，沙箱外），ruff/contracts --check exit 0；前端 typecheck/lint/test **944 passed**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。
+- 状态：**S5-B integrated**（本地提交，未 push）。S5-D1 仍在施工（基于 S5-A 契约，集成时按新 schema 复核）。worktree `.local/worktrees/s5b` 保留。

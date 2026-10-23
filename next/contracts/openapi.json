@@ -331,6 +331,16 @@
               }
             ]
           },
+          "mcp_tool_prefix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpToolPrefix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "model_presets": {
             "anyOf": [
               {
@@ -374,6 +384,9 @@
           },
           "limits": {
             "$ref": "#/components/schemas/AILimits"
+          },
+          "mcp_tool_prefix": {
+            "$ref": "#/components/schemas/McpToolPrefix"
           },
           "model_presets": {
             "$ref": "#/components/schemas/ModelPresets"
@@ -658,9 +671,10 @@
         "additionalProperties": true,
         "properties": {
           "mode": {
-            "default": "sandbox",
+            "default": "plan",
             "enum": [
               "sandbox",
+              "plan",
               "auto"
             ],
             "title": "Mode",
@@ -673,10 +687,29 @@
       "AgyDefaults": {
         "additionalProperties": true,
         "properties": {
+          "effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
           "mode": {
             "default": "sandbox",
             "enum": [
               "sandbox",
+              "plan",
               "auto"
             ],
             "title": "Mode",
@@ -749,6 +782,88 @@
           "changed_at"
         ],
         "title": "AlertState",
+        "type": "object"
+      },
+      "AnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_high_risk": {
+            "default": false,
+            "title": "Ack High Risk",
+            "type": "boolean"
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "repo_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "repo_id",
+          "profile_id"
+        ],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
+      "ApprovalDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "allow_once",
+              "allow_session",
+              "deny"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ApprovalDecision",
+        "type": "object"
+      },
+      "ApprovalResult": {
+        "properties": {
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "allowed",
+              "denied"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "state"
+        ],
+        "title": "ApprovalResult",
         "type": "object"
       },
       "ArtifactDefinition": {
@@ -1120,11 +1235,11 @@
           "permission": {
             "default": "plan",
             "enum": [
-              "default",
               "acceptEdits",
               "auto",
-              "dontAsk",
               "bypassPermissions",
+              "manual",
+              "dontAsk",
               "plan"
             ],
             "title": "Permission",
@@ -1169,11 +1284,11 @@
           "permission": {
             "default": "auto",
             "enum": [
-              "default",
               "acceptEdits",
               "auto",
-              "dontAsk",
               "bypassPermissions",
+              "manual",
+              "dontAsk",
               "plan"
             ],
             "title": "Permission",
@@ -3376,6 +3491,26 @@
         "title": "LogPayload",
         "type": "object"
       },
+      "McpToolPrefix": {
+        "additionalProperties": true,
+        "description": "Registered MCP tool-name prefixes for the work-item analysis prompt (S5-B increment).\n\nClaude always uses mcp__ado-work-items__; Codex/agy default to the old registrations.",
+        "properties": {
+          "agy": {
+            "default": "mcp__ado-work-items__",
+            "pattern": "^[A-Za-z0-9_.:\\-]{1,64}$",
+            "title": "Agy",
+            "type": "string"
+          },
+          "codex": {
+            "default": "mcp__adoWorkItems__",
+            "pattern": "^[A-Za-z0-9_.:\\-]{1,64}$",
+            "title": "Codex",
+            "type": "string"
+          }
+        },
+        "title": "McpToolPrefix",
+        "type": "object"
+      },
       "MemberCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4272,6 +4407,26 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "PromptResponse": {
+        "properties": {
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "PromptResponse",
+        "type": "object"
+      },
       "ReceiptPayload": {
         "properties": {
           "owned": {
@@ -4383,6 +4538,46 @@
         "title": "ResolvedCLI",
         "type": "object"
       },
+      "ResumeCandidate": {
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 48,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "title",
+          "updated_at"
+        ],
+        "title": "ResumeCandidate",
+        "type": "object"
+      },
+      "ResumeCandidates": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeCandidate"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ResumeCandidates",
+        "type": "object"
+      },
       "ResumeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4412,6 +4607,26 @@
           }
         },
         "title": "ResumeRequest",
+        "type": "object"
+      },
+      "ResumeSession": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_high_risk": {
+            "default": false,
+            "title": "Ack High Risk",
+            "type": "boolean"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "ResumeSession",
         "type": "object"
       },
       "RevisionRequest": {
@@ -4732,6 +4947,50 @@
           "effects"
         ],
         "title": "RunResponse",
+        "type": "object"
+      },
+      "SendMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "text"
+        ],
+        "title": "SendMessage",
+        "type": "object"
+      },
+      "SendResult": {
+        "properties": {
+          "position": {
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "sent",
+              "queued"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "position"
+        ],
+        "title": "SendResult",
         "type": "object"
       },
       "SessionCreate": {
@@ -7934,6 +8193,69 @@
         "summary": "Upgrade"
       }
     },
+    "/api/ai/resume-candidates": {
+      "get": {
+        "operationId": "resume_candidates_api_ai_resume_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Repo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cli",
+            "required": false,
+            "schema": {
+              "const": "claude",
+              "default": "claude",
+              "title": "Cli",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Query",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeCandidates"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Candidates"
+      }
+    },
     "/api/ai/sessions": {
       "get": {
         "operationId": "sessions_api_ai_sessions_get",
@@ -8106,6 +8428,64 @@
         "summary": "Session"
       }
     },
+    "/api/ai/sessions/{sid}/approvals/{aid}": {
+      "post": {
+        "operationId": "approve_api_ai_sessions__sid__approvals__aid__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "aid",
+            "required": true,
+            "schema": {
+              "title": "Aid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve"
+      }
+    },
     "/api/ai/sessions/{sid}/close": {
       "post": {
         "operationId": "close_api_ai_sessions__sid__close_post",
@@ -8244,6 +8624,104 @@
           }
         },
         "summary": "Interrupt"
+      }
+    },
+    "/api/ai/sessions/{sid}/messages": {
+      "post": {
+        "operationId": "send_api_ai_sessions__sid__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send"
+      }
+    },
+    "/api/ai/sessions/{sid}/resume": {
+      "post": {
+        "operationId": "resume_api_ai_sessions__sid__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume"
       }
     },
     "/api/ai/settings": {
@@ -10996,6 +11474,221 @@
           }
         },
         "summary": "Detail"
+      }
+    },
+    "/api/work-items/{id}/ai-analysis": {
+      "post": {
+        "operationId": "ai_analysis_api_work_items__id__ai_analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Analysis"
+      }
+    },
+    "/api/work-items/{id}/ai-prompt": {
+      "get": {
+        "operationId": "ai_prompt_api_work_items__id__ai_prompt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cli",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude",
+                "codex",
+                "agy"
+              ],
+              "title": "Cli",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Prompt"
       }
     },
     "/api/work-items/{id}/children": {

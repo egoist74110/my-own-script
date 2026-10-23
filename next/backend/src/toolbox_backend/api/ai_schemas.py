@@ -11,6 +11,7 @@ from toolbox_backend.domain.ai import (
     AIAnalysis,
     AIDefaults,
     AIProfile,
+    McpToolPrefix,
     ModelPresets,
     validate_model,
 )
@@ -41,6 +42,7 @@ class AISettingsPatch(RevisionRequest):
     model_presets: ModelPresets | None = None
     defaults: AIDefaults | None = None
     analysis: AIAnalysis | None = None
+    mcp_tool_prefix: McpToolPrefix | None = None
 
     @model_validator(mode="after")
     def models(self):
@@ -82,6 +84,7 @@ class AIView(BaseModel):
     selected_profile_id: str
     defaults: AIDefaults
     analysis: AIAnalysis
+    mcp_tool_prefix: McpToolPrefix = Field(default_factory=McpToolPrefix)
     model_presets: ModelPresets
     store_state: Literal["ready", "unavailable"]
     limits: AILimits = Field(default_factory=AILimits)
@@ -116,6 +119,59 @@ class SessionCreate(StrictModel):
         if self.initial_prompt and len(self.initial_prompt.encode()) > 32768:
             raise ValueError("prompt too long")
         return self
+
+
+class SendMessage(StrictModel):
+    request_id: UUID
+    text: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def size(self):
+        if len(self.text.encode()) > 32768 or not self.text.strip():
+            raise ValueError("invalid prompt")
+        return self
+
+
+class SendResult(BaseModel):
+    status: Literal["sent", "queued"]
+    position: int = Field(ge=0)
+
+
+class ResumeSession(StrictModel):
+    request_id: UUID
+    ack_high_risk: bool = False
+
+
+class ApprovalDecision(StrictModel):
+    decision: Literal["allow_once", "allow_session", "deny"]
+
+
+class ApprovalResult(BaseModel):
+    approval_id: str
+    state: Literal["allowed", "denied"]
+
+
+class ResumeCandidate(BaseModel):
+    session_id: str
+    title: str = Field(max_length=48)
+    updated_at: str
+
+
+class ResumeCandidates(BaseModel):
+    items: list[ResumeCandidate]
+
+
+class AnalysisRequest(StrictModel):
+    request_id: UUID
+    project_id: str = Field(min_length=1, max_length=128)
+    repo_id: str = Field(min_length=1, max_length=128)
+    profile_id: str = Field(min_length=1, max_length=128)
+    ack_high_risk: bool = False
+
+
+class PromptResponse(BaseModel):
+    prompt: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class RepoView(BaseModel):

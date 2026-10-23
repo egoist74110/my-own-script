@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import struct
+from typing import Literal
 
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 
@@ -11,10 +12,16 @@ from toolbox_backend.api.ai_schemas import (
     AIEventsResponse,
     AISettingsPatch,
     AIView,
+    ApprovalDecision,
+    ApprovalResult,
     CheckResponse,
     JobResponse,
     ProfileCreate,
     ProfilePatch,
+    ResumeCandidates,
+    ResumeSession,
+    SendMessage,
+    SendResult,
     SessionCreate,
     SessionList,
     SessionState,
@@ -65,6 +72,31 @@ async def upgrade(pid: str, request: Request):
 @router.post("/api/ai/jobs/{jid}/cancel", response_model=JobResponse)
 async def cancel_job(jid: str, request: Request):
     return await request.app.state.ai_service.cancel_job(jid)
+
+
+@router.get("/api/ai/resume-candidates", response_model=ResumeCandidates)
+async def resume_candidates(
+    request: Request,
+    repo_id: str = Query(min_length=1, max_length=128),
+    cli: Literal["claude"] = "claude",
+    query: str = Query(default="", max_length=64),
+):
+    return await request.app.state.ai_service.resume_candidates(repo_id, cli, query)
+
+
+@router.post("/api/ai/sessions/{sid}/messages", response_model=SendResult)
+async def send(sid: str, body: SendMessage, request: Request):
+    return await request.app.state.ai_service.send(sid, body)
+
+
+@router.post("/api/ai/sessions/{sid}/resume", response_model=SessionView)
+async def resume(sid: str, body: ResumeSession, request: Request):
+    return await request.app.state.ai_service.resume(sid, body)
+
+
+@router.post("/api/ai/sessions/{sid}/approvals/{aid}", response_model=ApprovalResult)
+async def approve(sid: str, aid: str, body: ApprovalDecision, request: Request):
+    return await request.app.state.ai_service.decide(sid, aid, body)
 
 
 @router.post("/api/ai/sessions", response_model=SessionView)

@@ -196,6 +196,13 @@ class AIStore:
         )
         db.execute("UPDATE ai_sessions SET last_seq=? WHERE id=?", (seq, sid))
         # Bound persisted events without putting raw terminal bytes in this journal.
+        count, total = db.execute(
+            "SELECT COUNT(*),COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) "
+            "FROM ai_events WHERE session_id=?",
+            (sid,),
+        ).fetchone()
+        if count <= 4999 and total <= 8 * 1024 * 1024 - 1024:
+            return [event]
         rows = db.execute(
             "SELECT seq,length(CAST(payload_json AS BLOB)) FROM ai_events "
             "WHERE session_id=? ORDER BY seq DESC",
@@ -301,6 +308,148 @@ class AIStore:
             for item in event:
                 self.on_event(item)
 
+    async def append_event(self, sid, kind, payload):
+        """Persist one normalized event (redacted, bounded) and fan it out. Returns its seq."""
+
+        def save():
+            with self.transaction() as db:
+                if not db.execute("SELECT 1 FROM ai_sessions WHERE id=?", (sid,)).fetchone():
+                    raise SettingsError("not_found", "会话不存在", 404)
+                return self._event(db, sid, kind, payload)
+
+        events = await self.call(save)
+        if self.on_event:
+            for item in events:
+                self.on_event(item)
+        return events[0]["session_seq"]
+
+    async def set_external_id(self, sid, external_id):
+        def save():
+            with self.transaction() as db:
+                db.execute("UPDATE ai_sessions SET external_id=? WHERE id=?", (external_id, sid))
+
+        await self.call(save)
+
+    async def update_usage(self, sid, usage):
+        def save():
+            with self.transaction() as db:
+                db.execute(
+                    "UPDATE ai_sessions SET usage_json=? WHERE id=?",
+                    (json.dumps(usage, ensure_ascii=False), sid),
+                )
+
+        await self.call(save)
+
+    async def add_warning(self, sid, name):
+        def save():
+            with self.transaction() as db:
+                db.execute(
+                    "INSERT OR REPLACE INTO ai_meta VALUES(?,?)", (f"warn:{sid}:{name}", stamp())
+                )
+
+        await self.call(save)
+
+    async def warnings(self, sid):
+        def read():
+            prefix = f"warn:{sid}:"
+            return [
+                r[0][len(prefix) :]
+                for r in self.require().execute(
+                    "SELECT key FROM ai_meta WHERE substr(key,1,?)=? ORDER BY key",
+                    (len(prefix), prefix),
+                )
+            ]
+
+        return await self.call(read)
+
+    async def create_approval(self, row):
+        def save():
+            with self.transaction() as db:
+                db.execute(
+                    "INSERT INTO ai_approvals(id,session_id,tool_name,summary,input_digest,state,"
+                    "requested_at,expires_at,decided_at,decided_by_json,scope) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    tuple(
+                        row.get(k)
+                        for k in (
+                            "id",
+                            "session_id",
+                            "tool_name",
+                            "summary",
+                            "input_digest",
+                            "state",
+                            "requested_at",
+                            "expires_at",
+                            "decided_at",
+                            "decided_by_json",
+                            "scope",
+                        )
+                    ),
+                )
+
+        await self.call(save)
+
+    async def get_approval(self, sid, aid):
+        def read():
+            row = (
+                self.require()
+                .execute("SELECT * FROM ai_approvals WHERE id=? AND session_id=?", (aid, sid))
+                .fetchone()
+            )
+            if row is None:
+                raise SettingsError("not_found", "审批不存在", 404)
+            return dict(row)
+
+        return await self.call(read)
+
+    async def settle_approval(self, sid, aid, state, scope, by, now):
+        """Atomic pending -> allowed|denied|expired. True only for the single winner.
+
+        A decision arriving after expires_at never wins (the timer may simply be late)."""
+
+        def save():
+            with self.transaction() as db:
+                cursor = db.execute(
+                    "UPDATE ai_approvals SET state=?,scope=?,decided_at=?,decided_by_json=? "
+                    "WHERE id=? AND session_id=? AND state='pending' "
+                    "AND (?='expired' OR expires_at>?)",
+                    (state, scope, stamp(), json.dumps(by), aid, sid, state, now),
+                )
+                return cursor.rowcount == 1
+
+        return await self.call(save)
+
+    async def expire_pending(self, sid):
+        """Mark every pending approval of a session expired; returns the ids that changed."""
+
+        def save():
+            with self.transaction() as db:
+                ids = [
+                    r[0]
+                    for r in db.execute(
+                        "SELECT id FROM ai_approvals WHERE session_id=? AND state='pending'",
+                        (sid,),
+                    )
+                ]
+                db.execute(
+                    "UPDATE ai_approvals SET state='expired',decided_at=? "
+                    "WHERE session_id=? AND state='pending'",
+                    (stamp(), sid),
+                )
+                return ids
+
+        return await self.call(save)
+
+    async def pending_approvals(self, sid):
+        return await self.call(
+            lambda: [
+                dict(r)
+                for r in self.require().execute(
+                    "SELECT * FROM ai_approvals WHERE session_id=? AND state='pending'", (sid,)
+                )
+            ]
+        )
+
     async def process(self, sid, identity, role="cli"):
         # Explicit columns prevent schema drift or mismatched placeholders.
         def write():
@@ -386,6 +535,9 @@ class AIStore:
                     raise SettingsError("session_ended", "仅可删除已结束会话", 409)
                 db.execute("DELETE FROM ai_sessions WHERE id=?", (sid,))
                 db.execute("DELETE FROM ai_meta WHERE key=?", ("kill_failed:" + sid,))
+                db.execute(
+                    "DELETE FROM ai_meta WHERE substr(key,1,?)=?", (len(sid) + 6, f"warn:{sid}:")
+                )
 
         await self.call(save)
 

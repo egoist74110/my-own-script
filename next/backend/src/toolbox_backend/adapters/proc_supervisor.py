@@ -44,6 +44,8 @@ def main():
     try:
         os.chdir(payload["cwd"])  # Failure never falls back to the backend cwd.
         slave = payload.get("slave")
+        stdio = payload.get("stdio")  # {"stdin","stdout","stderr"} fds from the backend (pipe mode)
+        stdio_fds = tuple(stdio.values()) if stdio else ()
         # Fork is restricted to this single-thread interpreter. The CLI leads its own
         # group (and its own session for PTY), allowing the supervisor to KILL then reap.
         exec_r, exec_w = os.pipe()
@@ -61,6 +63,12 @@ def main():
                 if slave is not None:
                     for fd in (0, 1, 2):
                         os.dup2(slave, fd)
+                elif stdio:
+                    for target, name in enumerate(("stdin", "stdout", "stderr")):
+                        os.dup2(stdio[name], target)
+                    for fd in stdio_fds:
+                        if fd > 2:
+                            os.close(fd)
                 else:
                     fd = os.open(os.devnull, os.O_RDONLY)
                     os.dup2(fd, 0)
@@ -74,6 +82,11 @@ def main():
                 os.write(exec_w, b"failed")
                 os._exit(127)
         os.close(exec_w)
+        for fd in stdio_fds:
+            # The CLI owns the child ends now; holding them here would defeat EOF delivery.
+            if fd > 2:
+                with contextlib.suppress(OSError):
+                    os.close(fd)
         try:
             if os.read(exec_r, 16):
                 raise RuntimeError("start_failed")

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${FAKE_AI_PYTHON:-python3}" "$(dirname "$0")/ai_fake.py" agy "$@"

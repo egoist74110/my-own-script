@@ -90,14 +90,22 @@ class SupervisedProcess:
     def __init__(self, proc, control, status):
         self.proc, self.control, self.status = proc, control, status
         self.identity = None
+        # Headless pipes (stdio mode only): CLI stdin writer and stdout/stderr readers.
+        self.stdin = self.stdout = self.stderr = None
+        self._transports = []
 
     @classmethod
-    async def start(cls, argv, cwd, *, slave=None, path_extras=None):
+    async def start(cls, argv, cwd, *, slave=None, stdio=False, path_extras=None):
         control_r = control_w = status_r = status_w = -1
+        io_fds = {}  # name -> fd for every descriptor this call has opened and not yet handed off
         proc = None
         try:
             control_r, control_w = os.pipe()
             status_r, status_w = os.pipe()
+            if stdio:
+                io_fds["in_r"], io_fds["in_w"] = os.pipe()
+                io_fds["out_r"], io_fds["out_w"] = os.pipe()
+                io_fds["err_r"], io_fds["err_w"] = os.pipe()
             # Boot payload is read from stdin before PTY stdio is installed.
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -106,7 +114,16 @@ class SupervisedProcess:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE if slave is None else asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.STDOUT,
-                pass_fds=tuple(fd for fd in (control_r, status_w, slave) if fd is not None),
+                pass_fds=tuple(
+                    fd
+                    for fd in (
+                        control_r,
+                        status_w,
+                        slave,
+                        *(io_fds.get(k) for k in ("in_r", "out_w", "err_w")),
+                    )
+                    if fd is not None
+                ),
                 start_new_session=True,
             )
             payload = dict(
@@ -116,6 +133,11 @@ class SupervisedProcess:
                 control=control_r,
                 status=status_w,
                 slave=slave,
+                stdio=(
+                    dict(stdin=io_fds["in_r"], stdout=io_fds["out_w"], stderr=io_fds["err_w"])
+                    if stdio
+                    else None
+                ),
             )
             proc.stdin.write(json.dumps(payload).encode() + b"\n")
             await proc.stdin.drain()
@@ -125,6 +147,9 @@ class SupervisedProcess:
             control_r = -1
             os.close(status_w)
             status_w = -1
+            for name in ("in_r", "out_w", "err_w"):  # child ends belong to the CLI now
+                if name in io_fds:
+                    os.close(io_fds.pop(name))
 
             # A fixed status pipe is independent of CLI output and contains no secrets.
             async def ready():
@@ -152,11 +177,16 @@ class SupervisedProcess:
                     + ":"
                     + str(owner.identity.get("errno"))
                 )
+            if stdio:
+                await owner._attach_stdio(io_fds)
             return owner
         except BaseException:
-            for fd in (control_w, status_r):
+            for fd in (control_w, status_r, *io_fds.values()):
                 if fd >= 0:
                     os.close(fd)
+            io_fds.clear()  # never close an fd twice: the finally block also walks io_fds
+            if "owner" in locals() and owner is not None:
+                owner.close_stdio()
             if proc:
                 # Drain discarded startup output so a full pipe cannot prevent reaping.
                 async def reap():
@@ -168,9 +198,49 @@ class SupervisedProcess:
                 await asyncio.wait_for(reap(), 4.8)
             raise
         finally:
-            for fd in (control_r, status_w):
+            for fd in (
+                control_r,
+                status_w,
+                *(io_fds.get(k, -1) for k in ("in_r", "out_w", "err_w")),
+            ):
                 if fd >= 0:
                     os.close(fd)
+
+    async def _attach_stdio(self, io_fds):
+        """Wrap the three parent ends as asyncio streams; each fd is consumed exactly once."""
+        loop = asyncio.get_running_loop()
+        try:
+            for name in ("out", "err"):
+                reader = asyncio.StreamReader(limit=1 << 20)
+                fd = io_fds.pop(name + "_r")
+                transport, _ = await loop.connect_read_pipe(
+                    lambda r=reader: asyncio.StreamReaderProtocol(r), os.fdopen(fd, "rb", 0)
+                )
+                self._transports.append(transport)
+                setattr(self, "stdout" if name == "out" else "stderr", reader)
+            fd = io_fds.pop("in_w")
+            transport, protocol = await loop.connect_write_pipe(
+                lambda: asyncio.streams.FlowControlMixin(loop=loop), os.fdopen(fd, "wb", 0)
+            )
+            self._transports.append(transport)
+            self.stdin = asyncio.StreamWriter(transport, protocol, None, loop)
+        except BaseException:
+            self.close_stdio()
+            raise
+
+    def close_stdio(self):
+        # Closing a transport closes its fd; safe to call repeatedly.
+        for transport in self._transports:
+            transport.close()
+        self._transports.clear()
+        self.stdin = None
+
+    async def close_stdin(self):
+        """Deliver EOF to the CLI; the transport flushes buffered bytes before closing the fd."""
+        writer, self.stdin = self.stdin, None
+        if writer is not None:
+            writer.close()
+            await asyncio.sleep(0)
 
     def stop(self):
         if self.control is not None:
@@ -198,6 +268,7 @@ class SupervisedProcess:
             if drain:
                 await asyncio.wait_for(drain, 0.2)
         finally:
+            self.close_stdio()
             if drain and not drain.done():
                 drain.cancel()
                 await asyncio.gather(drain, return_exceptions=True)

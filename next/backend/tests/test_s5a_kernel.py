@@ -163,8 +163,14 @@ async def test_repository_boundary(kernel, tmp_path, change):
 @pytest.mark.asyncio
 async def test_chat_is_placeholder_and_high_risk_ack(kernel):
     _, client, _ = kernel
+    # S5-B: structured chat is implemented for claude/codex/agy; only "other" keeps the 409.
+    revision = (await client.get("/api/ai")).json()["revision"]
+    created = await client.post(
+        "/api/ai/profiles",
+        json=dict(revision=revision, name="other", command=shlex.join([sys.executable, str(FAKE)])),
+    )
     body = payload()
-    body["kind"] = "chat"
+    body.update(kind="chat", profile_id=created.json()["id"])
     response = await client.post("/api/ai/sessions", json=body)
     assert response.status_code == 409 and response.json()["detail"]["code"] == "unsupported_cli"
     response = await client.post("/api/ai/sessions", json=payload(permission="danger-full-access"))

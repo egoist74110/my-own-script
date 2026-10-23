@@ -298,6 +298,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/resume-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resume Candidates */
+        get: operations["resume_candidates_api_ai_resume_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/sessions": {
         parameters: {
             query?: never;
@@ -329,6 +346,23 @@ export interface paths {
         post?: never;
         /** Delete */
         delete: operations["delete_api_ai_sessions__sid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/approvals/{aid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve */
+        post: operations["approve_api_ai_sessions__sid__approvals__aid__post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -379,6 +413,40 @@ export interface paths {
         put?: never;
         /** Interrupt */
         post: operations["interrupt_api_ai_sessions__sid__interrupt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send */
+        post: operations["send_api_ai_sessions__sid__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/sessions/{sid}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_ai_sessions__sid__resume_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1037,6 +1105,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-items/{id}/ai-analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Analysis */
+        post: operations["ai_analysis_api_work_items__id__ai_analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-items/{id}/ai-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Prompt */
+        get: operations["ai_prompt_api_work_items__id__ai_prompt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-items/{id}/children": {
         parameters: {
             query?: never;
@@ -1267,6 +1369,7 @@ export interface components {
         AISettingsPatch: {
             analysis?: components["schemas"]["AIAnalysis"] | null;
             defaults?: components["schemas"]["AIDefaults"] | null;
+            mcp_tool_prefix?: components["schemas"]["McpToolPrefix"] | null;
             model_presets?: components["schemas"]["ModelPresets"] | null;
             /** Revision */
             revision: number;
@@ -1278,6 +1381,7 @@ export interface components {
             analysis: components["schemas"]["AIAnalysis"];
             defaults: components["schemas"]["AIDefaults"];
             limits?: components["schemas"]["AILimits"];
+            mcp_tool_prefix?: components["schemas"]["McpToolPrefix"];
             model_presets: components["schemas"]["ModelPresets"];
             /** Profiles */
             profiles: (components["schemas"]["ProfileView"] | components["schemas"]["JsonValue"])[];
@@ -1361,21 +1465,23 @@ export interface components {
         AgyAnalysis: {
             /**
              * Mode
-             * @default sandbox
+             * @default plan
              * @enum {string}
              */
-            mode: "sandbox" | "auto";
+            mode: "sandbox" | "plan" | "auto";
         } & {
             [key: string]: unknown;
         };
         /** AgyDefaults */
         AgyDefaults: {
+            /** Effort */
+            effort?: ("low" | "medium" | "high" | "xhigh" | "max") | null;
             /**
              * Mode
              * @default sandbox
              * @enum {string}
              */
-            mode: "sandbox" | "auto";
+            mode: "sandbox" | "plan" | "auto";
             /** Model */
             model?: string | null;
         } & {
@@ -1399,6 +1505,43 @@ export interface components {
             changed_at: string;
             /** Reason */
             reason?: string | null;
+        };
+        /** AnalysisRequest */
+        AnalysisRequest: {
+            /**
+             * Ack High Risk
+             * @default false
+             */
+            ack_high_risk: boolean;
+            /** Profile Id */
+            profile_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Repo Id */
+            repo_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** ApprovalDecision */
+        ApprovalDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow_once" | "allow_session" | "deny";
+        };
+        /** ApprovalResult */
+        ApprovalResult: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "allowed" | "denied";
         };
         /** ArtifactDefinition */
         ArtifactDefinition: {
@@ -1501,7 +1644,7 @@ export interface components {
              * @default plan
              * @enum {string}
              */
-            permission: "default" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions" | "plan";
+            permission: "acceptEdits" | "auto" | "bypassPermissions" | "manual" | "dontAsk" | "plan";
         } & {
             [key: string]: unknown;
         };
@@ -1516,7 +1659,7 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            permission: "default" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions" | "plan";
+            permission: "acceptEdits" | "auto" | "bypassPermissions" | "manual" | "dontAsk" | "plan";
         } & {
             [key: string]: unknown;
         };
@@ -2172,6 +2315,26 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * McpToolPrefix
+         * @description Registered MCP tool-name prefixes for the work-item analysis prompt (S5-B increment).
+         *
+         *     Claude always uses mcp__ado-work-items__; Codex/agy default to the old registrations.
+         */
+        McpToolPrefix: {
+            /**
+             * Agy
+             * @default mcp__ado-work-items__
+             */
+            agy: string;
+            /**
+             * Codex
+             * @default mcp__adoWorkItems__
+             */
+            codex: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** MemberCreate */
         MemberCreate: {
             /** Chat Id */
@@ -2470,6 +2633,13 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** PromptResponse */
+        PromptResponse: {
+            /** Prompt */
+            prompt: string;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** ReceiptPayload */
         ReceiptPayload: {
             /**
@@ -2512,12 +2682,39 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** ResumeCandidate */
+        ResumeCandidate: {
+            /** Session Id */
+            session_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ResumeCandidates */
+        ResumeCandidates: {
+            /** Items */
+            items: components["schemas"]["ResumeCandidate"][];
+        };
         /** ResumeRequest */
         ResumeRequest: {
             /** External Id */
             external_id?: string | null;
             /** Session Id */
             session_id?: string | null;
+        };
+        /** ResumeSession */
+        ResumeSession: {
+            /**
+             * Ack High Risk
+             * @default false
+             */
+            ack_high_risk: boolean;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** RevisionRequest */
         RevisionRequest: {
@@ -2615,6 +2812,26 @@ export interface components {
             task_snapshot: components["schemas"]["TaskSnapshot"];
             /** Updated At */
             updated_at: string;
+        };
+        /** SendMessage */
+        SendMessage: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Text */
+            text: string;
+        };
+        /** SendResult */
+        SendResult: {
+            /** Position */
+            position: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "queued";
         };
         /** SessionCreate */
         SessionCreate: {
@@ -4043,6 +4260,39 @@ export interface operations {
             };
         };
     };
+    resume_candidates_api_ai_resume_candidates_get: {
+        parameters: {
+            query: {
+                repo_id: string;
+                cli?: "claude";
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeCandidates"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sessions_api_ai_sessions_get: {
         parameters: {
             query?: {
@@ -4168,6 +4418,42 @@ export interface operations {
             };
         };
     };
+    approve_api_ai_sessions__sid__approvals__aid__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+                aid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     close_api_ai_sessions__sid__close_post: {
         parameters: {
             query?: never;
@@ -4243,6 +4529,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_api_ai_sessions__sid__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_ai_sessions__sid__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeSession"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6446,6 +6802,165 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_analysis_api_work_items__id__ai_analysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionView"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_prompt_api_work_items__id__ai_prompt_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                cli: "claude" | "codex" | "agy";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
                 };
             };
             /** @description Not Found */

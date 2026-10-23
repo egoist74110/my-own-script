@@ -4,9 +4,9 @@ import copy
 import re
 import shlex
 import unicodedata
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue
 
 BUILTINS = {
     "codex": ("Codex", "codex", "npm install -g @openai/codex@latest", "codex"),
@@ -68,10 +68,22 @@ def validate_profile(profile: AIProfile) -> None:
         profile_argv(profile.upgrade_command)
 
 
+def _legacy_permission(value):
+    # The real CLI has no "default" mode (protocol check 2026-10-23); legacy values mean manual.
+    return "manual" if value == "default" else value
+
+
+ClaudePermission = Annotated[
+    Literal["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"],
+    BeforeValidator(_legacy_permission),
+]
+CLAUDE_PERMISSIONS = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+AGY_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+AgyMode = Literal["sandbox", "plan", "auto"]
+
+
 class ClaudeDefaults(Extensible):
-    permission: Literal[
-        "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"
-    ] = "auto"
+    permission: ClaudePermission = "auto"
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     model: str | None = None
 
@@ -83,7 +95,8 @@ class CodexDefaults(Extensible):
 
 
 class AgyDefaults(Extensible):
-    mode: Literal["sandbox", "auto"] = "sandbox"
+    mode: AgyMode = "sandbox"
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     model: str | None = None
 
 
@@ -94,9 +107,7 @@ class AIDefaults(Extensible):
 
 
 class ClaudeAnalysis(Extensible):
-    permission: Literal[
-        "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"
-    ] = "plan"
+    permission: ClaudePermission = "plan"
 
 
 class CodexAnalysis(Extensible):
@@ -104,7 +115,7 @@ class CodexAnalysis(Extensible):
 
 
 class AgyAnalysis(Extensible):
-    mode: Literal["sandbox", "auto"] = "sandbox"
+    mode: AgyMode = "plan"
 
 
 class AIAnalysis(Extensible):
@@ -117,6 +128,19 @@ class ModelPresets(Extensible):
     claude: list[str] = Field(default_factory=list)
     codex: list[str] = Field(default_factory=list)
     agy: list[str] = Field(default_factory=list)
+
+
+PREFIX_PATTERN = r"[A-Za-z0-9_.:\-]{1,64}"
+
+
+class McpToolPrefix(Extensible):
+    """Registered MCP tool-name prefixes for the work-item analysis prompt (S5-B increment).
+
+    Claude always uses mcp__ado-work-items__; Codex/agy default to the old registrations.
+    """
+
+    codex: Annotated[str, Field(pattern=f"^{PREFIX_PATTERN}$")] = "mcp__adoWorkItems__"
+    agy: Annotated[str, Field(pattern=f"^{PREFIX_PATTERN}$")] = "mcp__ado-work-items__"
 
 
 class AIBot(Extensible):
@@ -145,6 +169,7 @@ class AIConfig(Extensible):
     model_presets: ModelPresets = Field(default_factory=ModelPresets)
     defaults: AIDefaults = Field(default_factory=AIDefaults)
     analysis: AIAnalysis = Field(default_factory=AIAnalysis)
+    mcp_tool_prefix: McpToolPrefix = Field(default_factory=McpToolPrefix)
     bots: AIBots = Field(default_factory=AIBots)
 
 
