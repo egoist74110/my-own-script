@@ -799,3 +799,10 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 主控核查备注（留 S4-B 处理）：①无 can_run 的组成员菜单仍显示“任务”入口（当前只回复暂未开放），S4-B 开放执行时按权限收紧；②轮询循环只捕获 TelegramError，本地 DB 等其他异常可能使轮询任务静默结束而状态不更新，S4-B 需补兜底与回归。
 - 未测：真实 Telegram/Keychain/系统代理/Tauri；dev:web 假 Telegram 端到端留 S4-C 联调。施工 worktree `.local/worktrees/s4a` 保留（删除前问用户）。
 - 状态：**S4-A integrated**（本地提交，未 push）；S4-B、S4-C not_dispatched。
+
+### S4-B / S4-C 并行派工（2026-10-23）
+
+- 用户原话“派工 S4-B（同 codex 会话续接）和 S4-C（agy gemini-3.8-flash-high，--sandbox），并行。”主控 actual unknown。输入均为 `b64dd65`（S4-A 集成，契约冻结）。
+- S4-B：`codex exec resume 01a16743-a089-74d1-8d42-a2a6201bb517`（`-m gpt-6.1-sol -c model_reasoning_effort=medium`，沙箱沿用 workspace-write、不联网），沿用 worktree `.local/worktrees/s4a`：主控先把施工者第 2 轮工作树留档为本地 WIP 提交 `17444d9`，再 detached 切到 `b64dd65`（工作区干净）。测试子agent gpt-6-luna/high 仅写 `tests/independent/s4b/`。请求明确**不得改动契约**（与 S4-C 并行），并包含 S4-A 主控核查备注两项。请求/输出 `.local/dispatch/s4b/`。
+- S4-C：agy `--sandbox --model gemini-3.8-flash-high --effort high --print=<请求>`（不用 `--dangerously-skip-permissions`），worktree `.local/worktrees/s4c`（detached `b64dd65`，前端 frozen offline install、后端 uv offline sync）。首次启动把 `--sandbox` 写在 `--print` 之后被 agy 当作提示词（未执行、未改文件），改为 `--print=` 形式重发。独立测试待 agy 交付后由主控另派 codex gpt-6-luna/high（`tests/independent/s4c-*`）。请求/输出 `.local/dispatch/s4c/`；会话 id 完成后按 cwd 从 agy 缓存取，actual model/effort=unknown。
+- 状态：S4-B、S4-C **dispatched / running**。
