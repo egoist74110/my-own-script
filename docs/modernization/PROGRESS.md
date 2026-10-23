@@ -926,3 +926,8 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成：限定 binary patch（`.local/dispatch/s5b/integration.patch`，31 文件），主目录该范围自 `267f355` 无改动，`git apply --check` 后应用；主控 `pnpm contracts:gen` 重新生成 `schema.d.ts`。
 - 集成版本验收：后端全量 **1037 passed**（263.48s，沙箱外），ruff/contracts --check exit 0；前端 typecheck/lint/test **944 passed**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。
 - 状态：**S5-B integrated**（本地提交，未 push）。S5-D1 仍在施工（基于 S5-A 契约，集成时按新 schema 复核）。worktree `.local/worktrees/s5b` 保留。
+
+### S5-C 派工（2026-10-23）
+
+- 按用户“直接派下一个有额度的模型”的指示，S5-B 集成后立即派 S5-C；codex 仍无额度，施工 Claude Sonnet 5.5 / medium（Claude Code 原生子 agent，后台），测试员 Claude Haiku 5.5 / medium（子 agent 自派，仅 `tests/independent/s5c/`）；actual unknown。worktree `.local/worktrees/s5c`（detached `bb4b4a3`），后端 uv offline sync、contracts --check exit 0。
+- 状态：S5-C **dispatched / running**；S5-D1 仍在施工；S5-D2 待 S5-C 契约冻结。
