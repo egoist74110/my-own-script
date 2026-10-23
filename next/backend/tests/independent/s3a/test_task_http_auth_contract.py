@@ -38,16 +38,20 @@ async def test_task_and_run_routes_reject_invalid_bearer_before_touching_storage
     assert not s3actx.data_dir.exists()
 
 
-async def test_start_is_rejected_as_unsupported_until_s3b_executor_exists(s3actx):
-    response = await s3actx.client.post(
-        "/api/tasks/task:unsupported/runs",
-        json={
-            "plan_id": "00000000-0000-4000-8000-000000000001",
-            "request_id": "00000000-0000-4000-8000-000000000002",
-            "ack_old_app_idle": True,
-        },
-    )
-
-    assert response.status_code == 409, response.text
-    assert response.json()["detail"]["code"] == "unsupported_task"
-    assert not (s3actx.data_dir / "runs.sqlite3").exists()
+async def test_start_with_unknown_plan_is_rejected_without_creating_a_run(s3actx):
+    # User-approved ruling 2026-10-23: the S3-A "unsupported until S3-B" gate expired when
+    # S3-B opened production start. Keep the no-side-effect intent on an initialized app.
+    async with s3actx.app.router.lifespan_context(s3actx.app):
+        response = await s3actx.client.post(
+            "/api/tasks/task:unsupported/runs",
+            json={
+                "plan_id": "00000000-0000-4000-8000-000000000001",
+                "request_id": "00000000-0000-4000-8000-000000000002",
+                "ack_old_app_idle": True,
+            },
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"]["code"] == "plan_expired"
+        listing = await s3actx.client.get("/api/runs")
+        assert listing.status_code == 200, listing.text
+        assert listing.json()["items"] == []

@@ -86,3 +86,99 @@ class TaskExecutor(Protocol):
     async def reconcile(self, context) -> ExecutionOutcome:
         """Read only. Never create/cancel/deploy/push, including repeated calls."""
         ...
+
+
+class PlanStep(BaseModel):
+    kind: Literal["git", "build", "release", "rollback"]
+    target_index: int | None = None
+
+
+class TaskSummary(BaseModel):
+    id: str
+    name: str
+
+
+class PlanTarget(BaseModel):
+    target_index: int
+    name: str
+    definition_id: int
+    release_definition_id: int
+    stage_ids: list[int]
+    build_id: int | None = None
+    commit: str | None = None
+    release_id: int | None = None
+    created_at: str | None = None
+
+
+class DefinitionIdentity(BaseModel):
+    id: str | int
+    name: str | None = None
+
+
+class ArtifactDefinition(BaseModel):
+    project: DefinitionIdentity
+    definition: DefinitionIdentity
+
+
+class ReleaseArtifact(BaseModel):
+    alias: str
+    type: Literal["Build"]
+    definitionReference: ArtifactDefinition
+
+
+class FrozenTarget(PlanTarget):
+    api_kind: Literal["build", "pipeline"]
+    api_version: Literal["6.0", "7.0"]
+    artifact: ReleaseArtifact
+    manual_environments: list[str]
+    release_stage_ids: list[str] = Field(default_factory=list)
+    release_stage_names: list[str] = Field(default_factory=list)
+    history_ids: list[int] | None = None
+    environment_ids: list[int] | None = None
+    deployment_attempts: dict[str, int] | None = None
+
+
+class PreparedSnapshot(BaseModel):
+    targets: list[FrozenTarget] = Field(default_factory=list)
+    commit: str | None = None
+
+
+class SourceSnapshot(BaseModel):
+    project_id: str
+    library_id: str
+    base_url: str
+    collection: str
+    project: str
+
+
+class StatePayload(BaseModel):
+    status: Literal[
+        "queued", "running", "cancelling", "cancelled", "succeeded", "failed", "unknown"
+    ]
+    reason_code: str | None = None
+    updated_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    summary: str | None = None
+    recovery_state: Literal["none", "pending", "reconciled", "manual_required"] | None = None
+    stop_reason: Literal["user", "timeout", "shutdown"] | None = None
+
+
+class LogPayload(BaseModel):
+    text: str
+
+
+class ReceiptPayload(BaseModel):
+    remote_id: str | None = None
+    owned: bool = False
+
+
+class StepFinishedPayload(BaseModel):
+    status: Literal["succeeded", "failed", "skipped", "unknown"]
+
+
+class CheckpointPayload(BaseModel):
+    step_no: int
+    kind: Literal["checkpoint", "intent", "receipt", "step_finished"]
+    # Checkpoint data is deliberately extensible across adapter versions.
+    data: JournalCheckpoint | EffectIntent | ReceiptPayload | StepFinishedPayload

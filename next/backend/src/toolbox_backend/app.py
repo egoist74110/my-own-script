@@ -10,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 from toolbox_backend import __version__
 from toolbox_backend.adapters.ado_http import AdoHTTP
 from toolbox_backend.adapters.ado_read import AdoRead
+from toolbox_backend.adapters.ado_tasks import AdoTaskExecutor
 from toolbox_backend.adapters.config_store import ConfigStore, MigrationStep
 from toolbox_backend.adapters.credentials import CredentialStore, LegacyCredentialSource
 from toolbox_backend.adapters.run_store import RunStore
@@ -126,7 +127,13 @@ def create_app(
     )
     store.before_commit = app.state.tasks_service.guard
     app.state.settings_service.guard_resource = app.state.tasks_service.guard_resource
-    app.state.run_service = RunService(app.state.tasks_service, app.state.run_store, task_executor)
+    app.state.run_service = RunService(
+        app.state.tasks_service,
+        app.state.run_store,
+        task_executor
+        if task_executor is not None
+        else AdoTaskExecutor(app.state.work_items_service, app.state.tasks_service.git),
+    )
     app.include_router(task_routes.router)
     app.include_router(work_item_routes.router)
     app.include_router(routes.router)

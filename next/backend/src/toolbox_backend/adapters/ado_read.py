@@ -22,6 +22,7 @@ class AdoFailure(Exception):
     def __init__(self, category, message, status=None):
         super().__init__(message)
         self.category, self.message, self.status = category, message, status
+        self.version_unsupported = False
 
 
 def safe_origin(url: str) -> str:
@@ -161,6 +162,29 @@ class AdoRead:
                                 raise AdoFailure("redirect", "媒体重定向次数超限", status)
                             url, params = target, None
                             continue
+                        if status in {400, 404} and method == "GET":
+                            # Inspect only a bounded structured error code, never emit its body.
+                            error_body = bytearray()
+                            for chunk in response.iter_bytes():
+                                if clock() >= deadline:
+                                    raise httpx.ReadTimeout("total deadline")
+                                if len(error_body) + len(chunk) > limit:
+                                    raise AdoFailure("too_large", "远端响应超过大小限制", status)
+                                error_body.extend(chunk)
+                            try:
+                                error = json.loads(error_body)
+                                explicit = isinstance(error, dict) and error.get("typeKey") in {
+                                    "VssVersionNotSupportedException",
+                                    "UnsupportedApiVersionException",
+                                    "ApiVersionNotSupportedException",
+                                }
+                            except (ValueError, RecursionError):
+                                explicit = False
+                            try:
+                                _status(response, url)
+                            except AdoFailure as exc:
+                                exc.version_unsupported = explicit
+                                raise
                         _status(response, url)
                         try:
                             length = int(response.headers.get("content-length", "0"))

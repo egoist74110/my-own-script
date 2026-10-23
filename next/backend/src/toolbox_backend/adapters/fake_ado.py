@@ -7,6 +7,8 @@ from pathlib import Path
 
 import httpx
 
+from toolbox_backend.adapters.fake_task_ado import FakeTaskADO
+
 FAKE_ADO_ENV = "TOOLBOX_DEV_FAKE_ADO"
 
 
@@ -20,7 +22,12 @@ def fake_transport(dev: bool) -> httpx.MockTransport | None:
     with (Path(directory) / "fixture.json").open(encoding="utf-8") as stream:
         fixture = json.load(stream)
 
+    tasks = FakeTaskADO()
+
     def handler(request):
+        response = tasks(request)
+        if response is not None:
+            return response
         path = request.url.path
         if path.endswith("/_apis/projects"):
             return httpx.Response(200, json={"value": fixture["projects"]})
@@ -53,4 +60,6 @@ def fake_transport(dev: bool) -> httpx.MockTransport | None:
         except ValueError, IndexError:
             return httpx.Response(404)
 
-    return httpx.MockTransport(handler)
+    transport = httpx.MockTransport(handler)
+    transport.task_service = tasks
+    return transport

@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from toolbox_backend.domain.task_execution import CheckpointPayload, LogPayload, StatePayload
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -61,7 +63,7 @@ class RunEventData(BaseModel):
     run_id: str
     run_seq: int = Field(ge=1)
     type: Literal["state", "log", "checkpoint"]
-    payload: dict
+    payload: StatePayload | LogPayload | CheckpointPayload
 
 
 class RunEvent(BaseModel):

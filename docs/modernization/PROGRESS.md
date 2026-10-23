@@ -674,7 +674,7 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 
 | finding_id | 主控核实与处置 |
 | --- | --- |
-| CR-S3A-001 | **deferred，S3-B接入前落实**：纯本地异常/总超时的failed/cancelled分类需结合阶段与远端观察。不能仅凭effects为空判定安全终态：复用的owned=false构建仍可能运行。生产executor尚未接入，入口关闭。 |
+| CR-S3A-001 | **fixed（S3-B，2026-10-23；主控修前复现）**；原记录：**deferred，S3-B接入前落实**：纯本地异常/总超时的failed/cancelled分类需结合阶段与远端观察。不能仅凭effects为空判定安全终态：复用的owned=false构建仍可能运行。生产executor尚未接入，入口关闭。 |
 | CR-S3A-002 | **fixed（2026-10-23，原会话续接；见「S3-A 收尾」）**；原记录：**deferred，原S3-A施工会话恢复后优先修**：收尾的DB/CAS失败可使worker退出而持久状态仍running/cancelling；需登记失联worker/诊断及同进程只读恢复。DB真正不可写时不能伪造unknown已落盘。当前保留预约，重启recover；不宣称此项闭环。 |
 | CR-S3A-003 | **fixed（主控）**：关闭时逐worker容错，finally发停止信号，最外层finally关闭DB/锁。新增cancel journal抛错回归，修前失败。 |
 | CR-S3A-004 | **fixed（主控）**：checkpoint UPDATE检查rowcount，不存在步骤404并事务回滚，不发假checkpoint事件。新增回归修前DID NOT RAISE。 |
@@ -729,3 +729,15 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 上轮 30 条失败命令：施工者逐条对应到修复项（表见 `.local/dispatch/s3a/resume2-stdout.jsonl` 最终回复），**未逐项反向复现，状态 unknown**；其中 3 条为检索/探测非回归。主控不宣称该 30 项逐项复现闭环。
 - 集成版本验收（`next/backend`）：首次全量 pytest **648 passed / 1 failed**（`tests/independent/test_fault_lifecycle.py::test_sigterm_during_startup_window_does_not_hang[0.15]`，S0 启动窗口计时用例，与本改动无关；单独重跑 5 轮 25/25 passed，判为负载下计时抖动，记 flaky）；ruff exit 0；contracts --check exit 0；`git diff --check` exit 0。第二次全量 **649 passed**（170.51s，exit 0）。
 - 状态：CR-S3A-002 fixed；CR-S3A-001 仍 deferred 至 S3-B；CR-S3A-006 rejected 维持。S3-A **integrated**（生产 start/preflight 仍 unsupported_task，等 S3-B）。未测：端口外真实 SSH/ADO/Keychain/Tauri。施工 worktree `.local/worktrees/s3a` 保留（删除前问用户）。
+
+### S3-B 集成与接口冻结（2026-10-23）
+
+- 施工：codex exec 新会话 `01a16677-1c84-7eb3-9f24-11f0dbc7197e`，`-m gpt-6.1-sol -c model_reasoning_effort=medium -s workspace-write`；本地 rollout turn_context 记录 gpt-6.1-sol / medium / workspace-write / network_access=false（本地运行时回执）。输入 `b65460e`，worktree `.local/worktrees/s3b`。exit 0，交回 partial（一条旧断言待裁定、端口用例 not_run）。请求/输出/交接 `.local/dispatch/s3b/`（`handoff/` 含补丁、19 文件 SHA-256 清单、17 项修前证据、验证记录）。
+- 测试子agent：`/root/s3b_tests`，requested gpt-6-luna / high，rollout `01a16677-f86d-…` turn_context 记录 gpt-6-luna / high；新增 `tests/independent/s3b/` 31 例，施工者复跑 31 passed。交叉审计：用户已取消，not_dispatched。
+- 结果：真实 `AdoTaskExecutor`（sync_build_release/deploy_only/rollback），共享 ado_read 出站底座与 6 许可；Release 版本 GET 协商冻结、写不重发；复用身份全元组、固定 commit、owned 仅来自 intent+回执；单 artifact 绑定、manualEnvironments、新 attempt 区分；生产 start/preflight 开放。PlanResponse 等全部具体 DTO，契约重生成。dev 假数据：`TOOLBOX_DEV_TASK_ROOT`（须 --dev + memory + FAKE_ADO 三重门），后端建临时 bare+clone，播种四任务（同步成功/只发布失败/回滚需核实/已停用），有状态 MockTransport。
+- **CR-S3A-001 主控修前复现**：在施工树临时把 `runs.py` 两处 `_failure_outcome` 还原为无条件 unknown，`tests/independent/s3b/test_runservice_uncertain_outcomes.py` **2 failed / 2 passed**（local_exception→实际 unknown 预期 failed；timeout→实际 unknown 预期 cancelled）；恢复后 4 passed。规则：effects 非空或任一步骤 checkpoint 含 build_id/pipeline_run_id/release_id 即保持 unknown，否则 failed/cancelled 并释放预约。其余 16 项修前证据为施工/测试者记录，主控未逐项反向复现（unknown）。
+- **用户裁定（2026-10-23 原话“同意：把 test_start_is_rejected_as_unsupported_until_s3b_executor_exists 改写为初始化后的未知 plan 返回 409 plan_expired 且不产生 run”）**：主控改写 `tests/independent/s3a/test_task_http_auth_contract.py` 该用例为 `test_start_with_unknown_plan_is_rejected_without_creating_a_run`（lifespan 初始化后 start 未知 plan → 409 plan_expired，`/api/runs` 为空）；同文件认证用例不动。（首次改写被 auto mode 分类器拦截，取得用户同意后执行。）
+- 集成：施工树 `next/backend`、`next/contracts` 限定 binary patch（20 文件，+5631/−483，含上述测试改写），`git apply --check` 后应用于 `b65460e`；施工树改动均在 write_scope 内。主控 `pnpm contracts:gen` 生成 `next/desktop/src/api/schema.d.ts`（+342/−21）。
+- 集成版本验收：后端全量 pytest **729 passed**（181.95s，含端口用例，沙箱外），ruff exit 0，contracts --check exit 0；前端 `pnpm install --frozen-lockfile --offline`、typecheck、lint、test **847 passed / 43 文件**、build、guard:dist、contracts:check 全部 exit 0；`git diff --check` exit 0。施工树全量另跑 729 passed。
+- **接口冻结**：以本提交的 `next/contracts/openapi.json`、`events.schema.json`、`next/desktop/src/api/schema.d.ts` 与 `next/backend/tests/fixtures/fake-ado/tasks.json` 为 S3-C 输入；S3-C 不得改契约/后端，缺字段停下交主控。
+- 未测：真实 ADO（自建服务器版本/Pipeline↔Build 关联/manualEnvironments/审批门禁）、真实 SSH push、Keychain、Tauri。施工 worktree `.local/worktrees/s3b` 保留。

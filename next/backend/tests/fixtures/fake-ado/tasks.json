@@ -1,0 +1,8 @@
+{
+  "tasks": [
+    {"id": "task:demo-sync", "name": "演示 · 同步构建发布", "definition": 11, "enabled": true},
+    {"id": "task:demo-deploy", "name": "演示 · 只发布失败", "definition": 12, "enabled": true},
+    {"id": "task:demo-rollback", "name": "演示 · 回滚需核实", "definition": 13, "enabled": true},
+    {"id": "task:demo-disabled", "name": "演示 · 已停用", "definition": 11, "enabled": false}
+  ]
+}

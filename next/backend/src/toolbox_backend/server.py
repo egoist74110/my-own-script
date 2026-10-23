@@ -23,6 +23,7 @@ from toolbox_backend.adapters.credentials import (
     MemoryCredentials,
     seed_fake_credentials,
 )
+from toolbox_backend.adapters.dev_tasks import git_for_root, seed, task_root
 from toolbox_backend.adapters.fake_ado import fake_transport
 from toolbox_backend.adapters.stdin import watch_stdin_eof
 from toolbox_backend.app import create_app
@@ -74,14 +75,19 @@ async def serve(settings: Settings, sock: socket.socket) -> int:
         assert isinstance(credentials, MemoryCredentials) and isinstance(legacy, MemoryCredentials)
         seed_fake_credentials(Path(fake_file), legacy=legacy, current=credentials)
     transport = fake_transport(settings.dev)
+    root = task_root(settings.dev)
+    app = create_app(
+        settings,
+        credentials=credentials,
+        legacy_credentials=legacy,
+        ado_http=AdoHTTP(transport),
+        ado_read=AdoRead(transport),
+        task_git=git_for_root(settings.data_dir, root) if root else None,
+    )
+    if root:
+        await seed(app, root)
     config = uvicorn.Config(
-        create_app(
-            settings,
-            credentials=credentials,
-            legacy_credentials=legacy,
-            ado_http=AdoHTTP(transport),
-            ado_read=AdoRead(transport),
-        ),
+        app,
         log_config=None,
         ws="websockets-sansio",
         timeout_graceful_shutdown=3,
@@ -131,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "TOOLBOX_DEV_FAKE_ADO requires --dev and TOOLBOX_CREDENTIALS=memory"
                 )
+        task_root(args.dev)
         sock = bind_socket()
         port = sock.getsockname()[1]
         heartbeat = float(os.environ.get(HEARTBEAT_ENV, "5"))

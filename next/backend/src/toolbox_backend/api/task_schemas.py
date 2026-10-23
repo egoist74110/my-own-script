@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field, JsonValue, field_validator
 
 from toolbox_backend.domain.models import RunEventData
 from toolbox_backend.domain.settings import DynamicTask, StrictModel
+from toolbox_backend.domain.task_execution import (
+    EffectIntent,
+    PlanStep,
+    PlanTarget,
+    PreparedSnapshot,
+    SourceSnapshot,
+    TaskSummary,
+)
 
 Operation = Literal["sync_build_release", "deploy_only", "rollback"]
 RunStatus = Literal[
@@ -123,9 +131,9 @@ class PlanResponse(BaseModel):
     plan_id: UUID
     expires_at: str
     revision: int
-    task_summary: dict[str, JsonValue]
-    steps: list[dict[str, JsonValue]]
-    targets: list[dict[str, JsonValue]]
+    task_summary: TaskSummary
+    steps: list[PlanStep]
+    targets: list[PlanTarget]
     warnings: list[str]
 
 
@@ -150,13 +158,19 @@ class EffectView(BaseModel):
     step_no: int
     kind: Literal["git_push", "build_create", "build_cancel", "release_create", "env_deploy"]
     intent_key: str
-    intent: dict[str, JsonValue]
+    intent: EffectIntent
     state: Literal["intent", "confirmed", "rejected", "unknown"]
     remote_id: str | None
     owned: bool
     intent_at: str
     confirmed_at: str | None
     error_category: str | None
+
+
+class TaskSnapshot(TaskFields):
+    id: str
+    source: SourceSnapshot | None = None
+    prepared: PreparedSnapshot | None = None
 
 
 class RunResponse(BaseModel):
@@ -172,7 +186,7 @@ class RunResponse(BaseModel):
     updated_at: str
     finished_at: str | None
     config_revision: int
-    task_snapshot: dict[str, JsonValue]
+    task_snapshot: TaskSnapshot
     request_id: str
     request_hash: str
     cancel_requested_at: str | None

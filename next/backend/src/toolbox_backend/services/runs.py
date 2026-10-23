@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
 
+from toolbox_backend.adapters.ado_read import AdoFailure
 from toolbox_backend.adapters.run_store import TERMINAL
 from toolbox_backend.adapters.task_git import GitFailure
 from toolbox_backend.domain.errors import SettingsError
@@ -173,7 +174,12 @@ class RunService:
             collection=project.collection,
             project=project.project,
         )
-        prepared = await self.executor.prepare(snapshot, body.operation, body.rollback_offset)
+        try:
+            prepared = await self.executor.prepare(snapshot, body.operation, body.rollback_offset)
+        except AdoFailure as exc:
+            raise SettingsError(
+                "ado_request_failed", exc.message, 502, category=exc.category
+            ) from None
         snapshot["prepared"] = prepared.frozen
         resources = list(prepared.resources)
         if snapshot["local_repo_path"] and body.operation == "sync_build_release":
@@ -303,7 +309,7 @@ class RunService:
     async def _execute(self, rid, cancel):
         try:
             await self._execute_worker(rid, cancel)
-        except (Exception, asyncio.CancelledError):
+        except Exception, asyncio.CancelledError:
             # Do not leak adapter/DB exception text or pretend unknown was committed.
             self.lost_workers[rid] = LOST_WORKER_DIAGNOSTIC
             logger.error("%s run_id=%s", LOST_WORKER_DIAGNOSTIC, rid)
@@ -340,10 +346,28 @@ class RunService:
         except TimeoutError, asyncio.CancelledError:
             cancel.set()
             await self.store.cancel(rid, "shutdown" if self.closing else "timeout")
-            await self._finish(rid, ExecutionOutcome("unknown", "interrupted"))
+            await self._failure_outcome(rid, stopped=True, reason="interrupted")
         except Exception:
-            # An adapter exception can occur after remote delivery: never infer failure.
-            await self._finish(rid, ExecutionOutcome("unknown", "remote_unknown"))
+            await self._failure_outcome(rid, stopped=False, reason="remote_unknown")
+
+    async def _failure_outcome(self, rid, *, stopped, reason):
+        run = await self.store.get(rid)
+        # An unowned reused Build is an observation even without a create effect.
+        remote = bool(run["effects"]) or any(
+            any(
+                step["checkpoint"].get(k) is not None
+                for k in ("build_id", "pipeline_run_id", "release_id")
+            )
+            for step in run["steps"]
+        )
+        await self._finish(
+            rid,
+            ExecutionOutcome(
+                "unknown" if remote else "cancelled" if stopped else "failed",
+                reason if remote else "interrupted" if stopped else "local_failed",
+            ),
+        )
+
     @contextlib.asynccontextmanager
     async def _slot(self, cancelled):
         acquire = asyncio.create_task(self._semaphore.acquire())

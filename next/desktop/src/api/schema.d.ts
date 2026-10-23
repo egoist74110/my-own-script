@@ -690,6 +690,11 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** ArtifactDefinition */
+        ArtifactDefinition: {
+            definition: components["schemas"]["DefinitionIdentity"];
+            project: components["schemas"]["DefinitionIdentity"];
+        };
         /** Attachment */
         Attachment: {
             /** Blocked Origin */
@@ -702,6 +707,18 @@ export interface components {
             name: string;
             /** Size */
             size?: number | null;
+        };
+        /** CheckpointPayload */
+        CheckpointPayload: {
+            /** Data */
+            data: components["schemas"]["JournalCheckpoint"] | components["schemas"]["EffectIntent"] | components["schemas"]["ReceiptPayload"] | components["schemas"]["StepFinishedPayload"];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "checkpoint" | "intent" | "receipt" | "step_finished";
+            /** Step No */
+            step_no: number;
         };
         /** ChildItem */
         ChildItem: {
@@ -821,6 +838,13 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /** DefinitionIdentity */
+        DefinitionIdentity: {
+            /** Id */
+            id: string | number;
+            /** Name */
+            name?: string | null;
+        };
         /** DeployTarget */
         DeployTarget: {
             /** Build Id */
@@ -850,6 +874,47 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** EffectIntent */
+        EffectIntent: {
+            /** Api Kind */
+            api_kind?: ("pipeline" | "build" | "release" | "git") | null;
+            /** Api Version */
+            api_version?: string | null;
+            /** Baseline Attempt */
+            baseline_attempt?: number | null;
+            /** Branch */
+            branch?: string | null;
+            /** Build Id */
+            build_id?: number | null;
+            /** Commit */
+            commit?: string | null;
+            /** Definition Id */
+            definition_id?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Environment Id */
+            environment_id?: number | null;
+            /** Kind */
+            kind: string;
+            /** Manual Environments */
+            manual_environments?: string[] | null;
+            /** Pipeline Run Id */
+            pipeline_run_id?: number | null;
+            /** Previous Remote Commit */
+            previous_remote_commit?: string | null;
+            /** Queue Id */
+            queue_id?: number | null;
+            /** Ref Name */
+            ref_name?: string | null;
+            /** Release Definition Id */
+            release_definition_id?: number | null;
+            /** Release Id */
+            release_id?: number | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Source Version */
+            source_version?: string | null;
+        };
         /** EffectView */
         EffectView: {
             /** Confirmed At */
@@ -858,10 +923,7 @@ export interface components {
             effect_id: string;
             /** Error Category */
             error_category: string | null;
-            /** Intent */
-            intent: {
-                [key: string]: components["schemas"]["JsonValue"];
-            };
+            intent: components["schemas"]["EffectIntent"];
             /** Intent At */
             intent_at: string;
             /** Intent Key */
@@ -898,6 +960,52 @@ export interface components {
             push_branches?: string[];
             /** Update Branches */
             update_branches?: string[];
+        };
+        /** FrozenTarget */
+        FrozenTarget: {
+            /**
+             * Api Kind
+             * @enum {string}
+             */
+            api_kind: "build" | "pipeline";
+            /**
+             * Api Version
+             * @enum {string}
+             */
+            api_version: "6.0" | "7.0";
+            artifact: components["schemas"]["ReleaseArtifact"];
+            /** Build Id */
+            build_id?: number | null;
+            /** Commit */
+            commit?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Definition Id */
+            definition_id: number;
+            /** Deployment Attempts */
+            deployment_attempts?: {
+                [key: string]: number;
+            } | null;
+            /** Environment Ids */
+            environment_ids?: number[] | null;
+            /** History Ids */
+            history_ids?: number[] | null;
+            /** Manual Environments */
+            manual_environments: string[];
+            /** Name */
+            name: string;
+            /** Release Definition Id */
+            release_definition_id: number;
+            /** Release Id */
+            release_id?: number | null;
+            /** Release Stage Ids */
+            release_stage_ids?: string[];
+            /** Release Stage Names */
+            release_stage_names?: string[];
+            /** Stage Ids */
+            stage_ids: number[];
+            /** Target Index */
+            target_index: number;
         };
         /** GitFlow */
         GitFlow: {
@@ -1018,6 +1126,67 @@ export interface components {
             /** Written Credentials */
             written_credentials?: string[];
         };
+        /** JournalCheckpoint */
+        JournalCheckpoint: {
+            /** Api Version */
+            api_version?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /** Build Id */
+            build_id?: number | null;
+            /** Commit */
+            commit?: string | null;
+            /** Common Dir */
+            common_dir?: string | null;
+            /** Deadline At */
+            deadline_at?: string | null;
+            /** Definition Id */
+            definition_id?: number | null;
+            /** Deployment Attempts */
+            deployment_attempts?: {
+                [key: string]: number;
+            } | null;
+            /** Expected Commit */
+            expected_commit?: string | null;
+            /** Kind */
+            kind: string;
+            /** Lock Keys */
+            lock_keys?: string[] | null;
+            /** New Refs */
+            new_refs?: {
+                [key: string]: string;
+            } | null;
+            /** Original Branch */
+            original_branch?: string | null;
+            /** Original Head */
+            original_head?: string | null;
+            /** Original Refs */
+            original_refs?: {
+                [key: string]: string | null;
+            } | null;
+            /** Owned */
+            owned?: boolean | null;
+            /** Pipeline Run Id */
+            pipeline_run_id?: number | null;
+            /** Queue Id */
+            queue_id?: number | null;
+            /** Release Definition Id */
+            release_definition_id?: number | null;
+            /** Release Id */
+            release_id?: number | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Needs Attention */
+            repo_needs_attention?: boolean | null;
+            /** Result */
+            result?: string | null;
+            /** Root */
+            root?: string | null;
+            /** Stage Ids */
+            stage_ids?: number[] | null;
+            /** Target Index */
+            target_index?: number | null;
+        };
         JsonValue: unknown;
         /** LibraryCreate */
         LibraryCreate: {
@@ -1102,6 +1271,11 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** LogPayload */
+        LogPayload: {
+            /** Text */
+            text: string;
+        };
         /** MergeInput */
         MergeInput: {
             /** Source */
@@ -1155,19 +1329,43 @@ export interface components {
             /** Revision */
             revision: number;
             /** Steps */
-            steps: {
-                [key: string]: components["schemas"]["JsonValue"];
-            }[];
+            steps: components["schemas"]["PlanStep"][];
             /** Targets */
-            targets: {
-                [key: string]: components["schemas"]["JsonValue"];
-            }[];
-            /** Task Summary */
-            task_summary: {
-                [key: string]: components["schemas"]["JsonValue"];
-            };
+            targets: components["schemas"]["PlanTarget"][];
+            task_summary: components["schemas"]["TaskSummary"];
             /** Warnings */
             warnings: string[];
+        };
+        /** PlanStep */
+        PlanStep: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "git" | "build" | "release" | "rollback";
+            /** Target Index */
+            target_index?: number | null;
+        };
+        /** PlanTarget */
+        PlanTarget: {
+            /** Build Id */
+            build_id?: number | null;
+            /** Commit */
+            commit?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Definition Id */
+            definition_id: number;
+            /** Name */
+            name: string;
+            /** Release Definition Id */
+            release_definition_id: number;
+            /** Release Id */
+            release_id?: number | null;
+            /** Stage Ids */
+            stage_ids: number[];
+            /** Target Index */
+            target_index: number;
         };
         /** PreflightRequest */
         PreflightRequest: {
@@ -1180,6 +1378,13 @@ export interface components {
             revision: number;
             /** Rollback Offset */
             rollback_offset?: number | null;
+        };
+        /** PreparedSnapshot */
+        PreparedSnapshot: {
+            /** Commit */
+            commit?: string | null;
+            /** Targets */
+            targets?: components["schemas"]["FrozenTarget"][];
         };
         /** Project */
         Project: {
@@ -1214,6 +1419,27 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** ReceiptPayload */
+        ReceiptPayload: {
+            /**
+             * Owned
+             * @default false
+             */
+            owned: boolean;
+            /** Remote Id */
+            remote_id?: string | null;
+        };
+        /** ReleaseArtifact */
+        ReleaseArtifact: {
+            /** Alias */
+            alias: string;
+            definitionReference: components["schemas"]["ArtifactDefinition"];
+            /**
+             * Type
+             * @constant
+             */
+            type: "Build";
+        };
         /** RemoteProject */
         RemoteProject: {
             /** Name */
@@ -1222,9 +1448,7 @@ export interface components {
         /** RunEventData */
         RunEventData: {
             /** Payload */
-            payload: {
-                [key: string]: unknown;
-            };
+            payload: components["schemas"]["StatePayload"] | components["schemas"]["LogPayload"] | components["schemas"]["CheckpointPayload"];
             /** Run Id */
             run_id: string;
             /** Run Seq */
@@ -1308,10 +1532,7 @@ export interface components {
             summary: string;
             /** Task Id */
             task_id: string;
-            /** Task Snapshot */
-            task_snapshot: {
-                [key: string]: components["schemas"]["JsonValue"];
-            };
+            task_snapshot: components["schemas"]["TaskSnapshot"];
             /** Updated At */
             updated_at: string;
         };
@@ -1339,6 +1560,19 @@ export interface components {
              */
             store_state: "ok" | "readonly_error";
         };
+        /** SourceSnapshot */
+        SourceSnapshot: {
+            /** Base Url */
+            base_url: string;
+            /** Collection */
+            collection: string;
+            /** Library Id */
+            library_id: string;
+            /** Project */
+            project: string;
+            /** Project Id */
+            project_id: string;
+        };
         /** StartRequest */
         StartRequest: {
             /**
@@ -1364,6 +1598,36 @@ export interface components {
              * Format: uuid
              */
             run_id: string;
+        };
+        /** StatePayload */
+        StatePayload: {
+            /** Finished At */
+            finished_at?: string | null;
+            /** Reason Code */
+            reason_code?: string | null;
+            /** Recovery State */
+            recovery_state?: ("none" | "pending" | "reconciled" | "manual_required") | null;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown";
+            /** Stop Reason */
+            stop_reason?: ("user" | "timeout" | "shutdown") | null;
+            /** Summary */
+            summary?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** StepFinishedPayload */
+        StepFinishedPayload: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "failed" | "skipped" | "unknown";
         };
         /** StepView */
         StepView: {
@@ -1513,6 +1777,63 @@ export interface components {
             item: components["schemas"]["TaskView"];
             /** Revision */
             revision: number;
+        };
+        /** TaskSnapshot */
+        TaskSnapshot: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            git_flow?: components["schemas"]["FlowInput"];
+            /** Id */
+            id: string;
+            /**
+             * Local Repo Path
+             * @default
+             */
+            local_repo_path: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            prepared?: components["schemas"]["PreparedSnapshot"] | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            source?: components["schemas"]["SourceSnapshot"] | null;
+            /** Targets */
+            targets?: components["schemas"]["TargetInput"][];
+            /**
+             * Tg Command
+             * @default
+             */
+            tg_command: string;
+            /**
+             * Tg Desc
+             * @default
+             */
+            tg_desc: string;
+        };
+        /** TaskSummary */
+        TaskSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** TaskValidation */
         TaskValidation: {

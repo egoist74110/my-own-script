@@ -206,6 +206,22 @@
         "title": "AlertState",
         "type": "object"
       },
+      "ArtifactDefinition": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/DefinitionIdentity"
+          },
+          "project": {
+            "$ref": "#/components/schemas/DefinitionIdentity"
+          }
+        },
+        "required": [
+          "project",
+          "definition"
+        ],
+        "title": "ArtifactDefinition",
+        "type": "object"
+      },
       "Attachment": {
         "additionalProperties": false,
         "properties": {
@@ -258,6 +274,48 @@
           "blocked_origin"
         ],
         "title": "Attachment",
+        "type": "object"
+      },
+      "CheckpointPayload": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JournalCheckpoint"
+              },
+              {
+                "$ref": "#/components/schemas/EffectIntent"
+              },
+              {
+                "$ref": "#/components/schemas/ReceiptPayload"
+              },
+              {
+                "$ref": "#/components/schemas/StepFinishedPayload"
+              }
+            ],
+            "title": "Data"
+          },
+          "kind": {
+            "enum": [
+              "checkpoint",
+              "intent",
+              "receipt",
+              "step_finished"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "step_no": {
+            "title": "Step No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step_no",
+          "kind",
+          "data"
+        ],
+        "title": "CheckpointPayload",
         "type": "object"
       },
       "ChildItem": {
@@ -672,6 +730,37 @@
         "title": "CredentialStatus",
         "type": "object"
       },
+      "DefinitionIdentity": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "DefinitionIdentity",
+        "type": "object"
+      },
       "DeployTarget": {
         "additionalProperties": true,
         "properties": {
@@ -758,6 +847,234 @@
         "title": "DeployTarget",
         "type": "object"
       },
+      "EffectIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "api_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pipeline",
+                  "build",
+                  "release",
+                  "git"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Kind"
+          },
+          "api_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Version"
+          },
+          "baseline_attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Attempt"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "definition_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "environment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment Id"
+          },
+          "kind": {
+            "pattern": "^(git_push|build_create|build_cancel|release_create|env_deploy)$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "manual_environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Environments"
+          },
+          "pipeline_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Run Id"
+          },
+          "previous_remote_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Remote Commit"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "ref_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Name"
+          },
+          "release_definition_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Definition Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EffectIntent",
+        "type": "object"
+      },
       "EffectView": {
         "properties": {
           "confirmed_at": {
@@ -787,11 +1104,7 @@
             "title": "Error Category"
           },
           "intent": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "title": "Intent",
-            "type": "object"
+            "$ref": "#/components/schemas/EffectIntent"
           },
           "intent_at": {
             "title": "Intent At",
@@ -897,6 +1210,172 @@
           }
         },
         "title": "FlowInput",
+        "type": "object"
+      },
+      "FrozenTarget": {
+        "properties": {
+          "api_kind": {
+            "enum": [
+              "build",
+              "pipeline"
+            ],
+            "title": "Api Kind",
+            "type": "string"
+          },
+          "api_version": {
+            "enum": [
+              "6.0",
+              "7.0"
+            ],
+            "title": "Api Version",
+            "type": "string"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/ReleaseArtifact"
+          },
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "integer"
+          },
+          "deployment_attempts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Attempts"
+          },
+          "environment_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment Ids"
+          },
+          "history_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Ids"
+          },
+          "manual_environments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Manual Environments",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "release_definition_id": {
+            "title": "Release Definition Id",
+            "type": "integer"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "release_stage_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Release Stage Ids",
+            "type": "array"
+          },
+          "release_stage_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Release Stage Names",
+            "type": "array"
+          },
+          "stage_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stage Ids",
+            "type": "array"
+          },
+          "target_index": {
+            "title": "Target Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_index",
+          "name",
+          "definition_id",
+          "release_definition_id",
+          "stage_ids",
+          "api_kind",
+          "api_version",
+          "artifact",
+          "manual_environments"
+        ],
+        "title": "FrozenTarget",
         "type": "object"
       },
       "GitFlow": {
@@ -1259,6 +1738,326 @@
         "title": "ImportState",
         "type": "object"
       },
+      "JournalCheckpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Version"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "common_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common Dir"
+          },
+          "deadline_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline At"
+          },
+          "definition_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Id"
+          },
+          "deployment_attempts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Attempts"
+          },
+          "expected_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Commit"
+          },
+          "kind": {
+            "pattern": "^(git|git_cleanup|build|release|rollback)$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "lock_keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lock Keys"
+          },
+          "new_refs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Refs"
+          },
+          "original_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Branch"
+          },
+          "original_head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Head"
+          },
+          "original_refs": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Refs"
+          },
+          "owned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owned"
+          },
+          "pipeline_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Run Id"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "release_definition_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Definition Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
+          "repo_needs_attention": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Needs Attention"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "stage_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Ids"
+          },
+          "target_index": {
+            "anyOf": [
+              {
+                "maximum": 19.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Index"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "JournalCheckpoint",
+        "type": "object"
+      },
       "JsonValue": {},
       "LibraryCreate": {
         "additionalProperties": false,
@@ -1522,6 +2321,19 @@
         "title": "LocalRepoView",
         "type": "object"
       },
+      "LogPayload": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "LogPayload",
+        "type": "object"
+      },
       "MergeInput": {
         "additionalProperties": false,
         "properties": {
@@ -1645,30 +2457,20 @@
           },
           "steps": {
             "items": {
-              "additionalProperties": {
-                "$ref": "#/components/schemas/JsonValue"
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/PlanStep"
             },
             "title": "Steps",
             "type": "array"
           },
           "targets": {
             "items": {
-              "additionalProperties": {
-                "$ref": "#/components/schemas/JsonValue"
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/PlanTarget"
             },
             "title": "Targets",
             "type": "array"
           },
           "task_summary": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "title": "Task Summary",
-            "type": "object"
+            "$ref": "#/components/schemas/TaskSummary"
           },
           "warnings": {
             "items": {
@@ -1688,6 +2490,116 @@
           "warnings"
         ],
         "title": "PlanResponse",
+        "type": "object"
+      },
+      "PlanStep": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "git",
+              "build",
+              "release",
+              "rollback"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "target_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Index"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "PlanStep",
+        "type": "object"
+      },
+      "PlanTarget": {
+        "properties": {
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "release_definition_id": {
+            "title": "Release Definition Id",
+            "type": "integer"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "stage_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stage Ids",
+            "type": "array"
+          },
+          "target_index": {
+            "title": "Target Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_index",
+          "name",
+          "definition_id",
+          "release_definition_id",
+          "stage_ids"
+        ],
+        "title": "PlanTarget",
         "type": "object"
       },
       "PreflightRequest": {
@@ -1726,6 +2638,30 @@
           "operation"
         ],
         "title": "PreflightRequest",
+        "type": "object"
+      },
+      "PreparedSnapshot": {
+        "properties": {
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/FrozenTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "title": "PreparedSnapshot",
         "type": "object"
       },
       "Project": {
@@ -1835,6 +2771,51 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "ReceiptPayload": {
+        "properties": {
+          "owned": {
+            "default": false,
+            "title": "Owned",
+            "type": "boolean"
+          },
+          "remote_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Id"
+          }
+        },
+        "title": "ReceiptPayload",
+        "type": "object"
+      },
+      "ReleaseArtifact": {
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "definitionReference": {
+            "$ref": "#/components/schemas/ArtifactDefinition"
+          },
+          "type": {
+            "const": "Build",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "type",
+          "definitionReference"
+        ],
+        "title": "ReleaseArtifact",
+        "type": "object"
+      },
       "RemoteProject": {
         "properties": {
           "name": {
@@ -1851,9 +2832,18 @@
       "RunEventData": {
         "properties": {
           "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatePayload"
+              },
+              {
+                "$ref": "#/components/schemas/LogPayload"
+              },
+              {
+                "$ref": "#/components/schemas/CheckpointPayload"
+              }
+            ],
+            "title": "Payload"
           },
           "run_id": {
             "title": "Run Id",
@@ -2105,11 +3095,7 @@
             "type": "string"
           },
           "task_snapshot": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "title": "Task Snapshot",
-            "type": "object"
+            "$ref": "#/components/schemas/TaskSnapshot"
           },
           "updated_at": {
             "title": "Updated At",
@@ -2203,6 +3189,39 @@
         "title": "SettingsResponse",
         "type": "object"
       },
+      "SourceSnapshot": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "library_id",
+          "base_url",
+          "collection",
+          "project"
+        ],
+        "title": "SourceSnapshot",
+        "type": "object"
+      },
       "StartRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2242,6 +3261,135 @@
           "run_id"
         ],
         "title": "StartResponse",
+        "type": "object"
+      },
+      "StatePayload": {
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "recovery_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "pending",
+                  "reconciled",
+                  "manual_required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery State"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "cancelled",
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "user",
+                  "timeout",
+                  "shutdown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StatePayload",
+        "type": "object"
+      },
+      "StepFinishedPayload": {
+        "properties": {
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "skipped",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StepFinishedPayload",
         "type": "object"
       },
       "StepView": {
@@ -2763,6 +3911,160 @@
           "item"
         ],
         "title": "TaskResponse",
+        "type": "object"
+      },
+      "TaskSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_queue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Id"
+          },
+          "agent_queue_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Name"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "git_flow": {
+            "$ref": "#/components/schemas/FlowInput"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "local_repo_path": {
+            "default": "",
+            "title": "Local Repo Path",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "prepared": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreparedSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
+          "repo_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Name"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetInput"
+            },
+            "maxItems": 20,
+            "title": "Targets",
+            "type": "array"
+          },
+          "tg_command": {
+            "default": "",
+            "maxLength": 32,
+            "pattern": "^[a-z0-9_]*$",
+            "title": "Tg Command",
+            "type": "string"
+          },
+          "tg_desc": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Tg Desc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "TaskSnapshot",
+        "type": "object"
+      },
+      "TaskSummary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "TaskSummary",
         "type": "object"
       },
       "TaskValidation": {

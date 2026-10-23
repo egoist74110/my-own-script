@@ -1,4 +1,4 @@
-# toolbox-backend (S0 / S1 / S2-A)
+# toolbox-backend (S0 / S1 / S2 / S3-B)
 
 TOOLBOX next 的本地后端进程：FastAPI + uvicorn，Python >= 3.14，uv 管理依赖（`uv.lock` 入库）。
 接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1、S2 及「S1-A 主控裁决」。
@@ -139,9 +139,9 @@ S1 ADO 请求在锁内取得同一快照的 library/PAT，释放锁后发送；c
   SettingsService 的 ConfigStore、revision CAS 和单次提交。请求只接受表单字段；存量任务及
   git_flow/targets 中的未知字段保留，执行快照只投影已知字段。`legacy_flows` 不再生成任务。
   ACL 引用阻止删除；活动/unknown 任务及其项目、library 在同一协调边界内阻止变更。
-- **生产 preflight/start 返回 409 `unsupported_task`**，直到 S3-B 接入完整执行适配器。
-  HTTP 不接受 executor、cwd、URL、argv、owner 或测试远端开关。应用创建时可通过
-  `create_app(task_executor=..., task_git=...)` 做可信依赖注入；没有环境变量或页面后门。
+- 生产 preflight/start 已接入 `AdoTaskExecutor`，支持同步→构建→发布、只发布、回滚。
+  HTTP 不接受 executor、cwd、URL、argv、owner 或测试远端开关。
+  `create_app(task_executor=..., task_git=...)` 仅为可信进程内依赖注入；临时 file 远端例外仅限下述完整 dev 假模式。
 - 运行库 `<data-dir>/runs.sqlite3` 为 schema v1，WAL / FULL / foreign_keys / 5 秒 busy timeout；
   DB、WAL/SHM、runner.lock 与仓库锁为 0600，目录为 0700，拒绝符号链接 DB/锁文件。
   一个数据目录一个运行器。配置不参与伪跨库事务：锁内冻结配置，再一次事务提交 run、步骤、
@@ -241,3 +241,130 @@ S1-D 进程 stderr 用例 `tests/test_s1d_process.py::test_cr006_dev_memory_proc
   每连接队列 256，满则标记溢出，处理器以 4408 关闭；对完全不读的对端，uvicorn 的发送背压会使关闭帧
   无法送达，处理器等待 2 秒后连接被拆除（不影响其他连接）。
 - WS 缺少 Origin 或不在允许列表时，握手拒绝。
+
+## S3-B 执行与恢复
+
+`adapters/ado_tasks.py` 实现唯一 TaskExecutor；请求使用同一 `AdoRead.request_json` 与
+`services.work_items.outbound`，S1/S2/S3 合计 6 个许可。连接 5 秒、JSON 总计 15 秒/4 MiB、
+排队 15 秒；不跟随 3xx、不使用远端 URL 发请求。每次请求重新取得同来源的当前凭据，
+配置内部 project/library id、base URL、collection、project 全部须与冻结来源一致。
+Build/Pipeline 固定 7.0；Release 定义只读 GET 先 6.0，只有 400/404 且结构化 typeKey 为
+`VssVersionNotSupportedException`、`UnsupportedApiVersionException` 或
+`ApiVersionNotSupportedException` 时探测 7.0。版本冻结后写请求不重试、不换版本。
+
+预检读取全部启用目标的 Build/Release 定义和环境，按数组索引关联。只支持单 Build artifact，
+核对项目/构建定义。只有全部选定 stage 唯一存在才继续；旧名称必须唯一解析为 id。
+Release 创建的 `manualEnvironments` 包含定义全部环境名称；创建后再核实手动条件和未启动状态，
+不满足即停止后续写，保留已经创建的 Release，等待核实。只有选定环境会收到部署 PATCH。
+HTTPS Git、SSH 别名/代理、无本地路径但存在 git 规则、缺少可信 Pipeline↔Build 关联、多 artifact、
+无法验证环境手动条件等返回 `unsupported_task` 或在受理后进入需要核实的运行状态。
+这些拒绝不会通过切换协议、猜同 id、自动重发或修改定义来绕过。
+
+构建复用读取可信 Build 详情，逐项核对项目、仓库、定义、分支、commit、可选队列；
+只复用 notStarted/inProgress/postponed，永远 owned=false。新 Build/Pipeline 固定提交；
+Pipeline 只有同来源、同项目的 `_links.build.href` 精确 Build API 路径可作为关联，
+提取数字 id 后用安全 builder 重建请求。无法关联则 unknown，不能发布或猜 id 取消。
+只取消持久创建 intent 和成功回执证明为本 run 创建的构建；Pipeline 取消使用已核实关联的
+Build PATCH，不探测/猜测另一种取消端点。partiallySucceeded 不能发布。
+
+只发布冻结具体成功 Build 与 commit，执行前重新核对，不换最新。回滚冻结最近六条列表中的
+offset 1..5 对应 Release、Build 制品、环境 id 和 attempt；历史列表、环境身份或 attempt 变化要求重做计划。
+回滚不创建 Release、不触发构建、不运行 Git。禁用目标在三种操作中均跳过。
+
+每次 POST/PATCH 之前提交 effect intent，成功回执提交后才能继续。传输错误、坏响应、回执落盘失败
+都保留不明 intent，禁止重发。恢复只 GET/本地只读 git 检查，不续写剩余步骤。
+丢失的 Release 响应用精确 run/effect description 标记有限查询；Build 缺少可靠唯一关联标记时，
+即使发现同 commit 的候选也不认领。环境对账要求 attempt 大于写前基线，旧 succeeded 不算成功。
+有未核实/仍运行的任何相关远端操作都保留 unknown 和预约；每 30 秒后台核实，15 分钟后
+manual_required 并停止自动查询，手动 reconcile 仍仅重新查询。响应丢失后的 intent 可能一直需人工核实。
+
+CR-S3A-001：本地异常/总超时不能一律 unknown。无 effect 且检查点未记录任何 Build/Pipeline/Release
+观察时，异常落 failed，总超时/关闭落 cancelled，释放预约；存在复用 owned=false Build 的观察，
+即使 effects 为空也保持 unknown。DB 不可写时不伪造终态，沿用 lost worker 恢复机制。
+本地子进程、锁、DB/HTTP 的释放归原有生命周期所有者；unknown 只保留数据库预约。
+
+## S3 冻结 DTO 字段
+
+HTTP 形状见 `../contracts/openapi.json`，WS 形状见 `../contracts/events.schema.json`。
+下列字段均有具体 Pydantic 模型；`?` 表示可为 null 或有默认值。UTC 时间使用 ISO 8601 字符串。
+未知配置扩展保留在 TaskView 中；StepView.checkpoint 是跨版本动态检查点容器。
+
+| DTO | 字段及含义 |
+| --- | --- |
+| TaskSummary | id（任务标识）、name（显示名） |
+| PlanStep | kind（git/build/release/rollback）、target_index?（配置数组索引，Git 无索引） |
+| PlanTarget | target_index、name、definition_id（Build 定义）、release_definition_id、stage_ids（完整选定定义环境 id）、build_id?、commit?（只发布/回滚制品）、release_id?、created_at?（历史 Release 创建时间） |
+| PlanResponse | plan_id、expires_at（5 分钟）、revision、task_summary:TaskSummary、steps:PlanStep[]、targets:PlanTarget[]、warnings:string[] |
+| SourceSnapshot | project_id/library_id（内部配置身份）、base_url、collection、project（远端路径身份） |
+| DefinitionIdentity | id（字符串或整数）、name? |
+| ArtifactDefinition | project/definition:DefinitionIdentity；远端未知 JSON 不复制进快照 |
+| ReleaseArtifact | alias、type=Build、definitionReference:ArtifactDefinition |
+| FrozenTarget | PlanTarget 全部字段，另含 api_kind（build/pipeline）、api_version（6.0/7.0）、artifact:ReleaseArtifact、manual_environments（全部环境名称）、release_stage_ids/release_stage_names（配置输入）、history_ids?（冻结历史列表）、environment_ids?（历史具体环境）、deployment_attempts?（环境 id→写前 attempt） |
+| PreparedSnapshot | targets:FrozenTarget[]、commit?（无本地 Git 的主路径提交） |
+| TaskSnapshot | TaskFields 的全部白名单字段，另含 id、source?:SourceSnapshot、prepared?:PreparedSnapshot；未知配置字段不执行、不复制 |
+| TaskFields | enabled、sort_order、tg_command、tg_desc、name、project_id?、local_repo_path、repo_id?、repo_name?、git_flow:FlowInput、agent_queue_id?、agent_queue_name?、targets:TargetInput[] |
+| FlowInput / MergeInput | build_branch、update_branches、merges（每项 source/target）、push_branches；均保留数组顺序 |
+| TargetInput | name、enabled、build_kind?、build_id?、build_name?、release_id?、release_name?、release_stage_ids、release_stage_names |
+| TaskValidation / TaskView | valid；TaskView 为任务已知字段及未知保留字段，另有 warnings、validation、active_run_id? |
+| TaskListResponse / TaskResponse | revision + items:TaskView[] / item:TaskView |
+| StartResponse | run_id |
+| StepView | run_id、step_no、kind、target_index?、status、started_at?、finished_at?、checkpoint（动态 JSON） |
+| EffectIntent | kind、api_kind?、branch?、commit?、previous_remote_commit?、definition_id?、queue_id?、repo_id?、ref_name?、source_version?、build_id?、pipeline_run_id?、release_definition_id?、release_id?、environment_id?、baseline_attempt?、api_version?、description?、manual_environments?；只保存受限写意图，非任意请求体 |
+| EffectView | effect_id、run_id、step_no、kind、intent_key、intent:EffectIntent、state、remote_id?、owned、intent_at、confirmed_at?、error_category? |
+| RunResponse | store_error?、run_id、task_id、operation、status、phase、reason_code?、created_at/started_at?/updated_at/finished_at?、config_revision、task_snapshot:TaskSnapshot、request_id/request_hash（幂等）、cancel_requested_at?、stop_reason?、deadline_at、last_seq、log_bytes、state_version（CAS）、recovery_state、summary、steps:StepView[]、effects:EffectView[] |
+| RunListResponse / RunEventsResponse | items:RunResponse[] + cursor?；items:RunEventData[] + next_seq + has_more |
+| StatePayload | status、reason_code?、updated_at?/started_at?/finished_at?、summary?、recovery_state?、stop_reason? |
+| LogPayload | text（纯文本、已脱敏） |
+| ReceiptPayload / StepFinishedPayload | remote_id? + owned；status（步骤结束状态） |
+| CheckpointPayload | step_no、kind（checkpoint/intent/receipt/step_finished）、data（JournalCheckpoint/EffectIntent/ReceiptPayload/StepFinishedPayload） |
+| JournalCheckpoint | kind、root?/common_dir?/lock_keys?、original_head?/original_branch?/original_refs?/new_refs?、expected_commit?、repo_needs_attention?、target_index?、definition_id?/queue_id?/repo_id?/branch?/commit?/api_version?/deadline_at?、build_id?/pipeline_run_id?/release_definition_id?/release_id?/stage_ids?/deployment_attempts?/owned?/result?；Git refs、远端观察和恢复证据 |
+| RunEventData | run_id、run_seq（持久序号）、type（state/log/checkpoint）、payload（StatePayload/LogPayload/CheckpointPayload） |
+| RunEvent / RunSubscribedData / RunSubscribedEvent | RunEvent 为 seq/topic=run/ts/type=run.event/data:RunEventData；订阅回执 data 为 run_id/last_seq，type=run.subscribed，其余 envelope 相同 |
+
+运行七态：queued、running、cancelling、cancelled、succeeded、failed、unknown。
+只有 cancelled/succeeded/failed 为不可变终态。步骤态：pending、running、succeeded、failed、skipped、unknown。
+效果态：intent、confirmed、rejected、unknown。恢复态：none、pending、reconciled、manual_required。
+operation：sync_build_release、deploy_only、rollback；stop_reason：user、timeout、shutdown。
+
+S3 HTTP 错误 code：validation_error（422）；not_found（404）；revision_conflict、task_active、resource_active、
+task_referenced、idempotency_conflict、plan_expired、plan_changed、no_credential、unsafe_repository、unsupported_task（409）；
+busy、run_store_unavailable、store_unavailable（503）；ado_request_failed（502）。ADO category 沿用
+no_credential/unauthorized/forbidden/not_found/redirect/timeout/tls/network/bad_response/too_large。
+内部一致性拒绝还可能为 invalid_transition、state_conflict、effect_already_recorded（409）。
+运行 reason_code 包括 git_failed、repo_needs_attention、plan_changed、build_failed、release_failed、remote_failed、
+remote_running、remote_unknown、local_failed、interrupted、timeout、cancelled、busy、backend_restart、worker_lost；
+错误正文不包含远端响应原文或凭据，前端显示 summary 和实际状态，不据 reason 推测成功。
+
+## S3 dev 假任务启动器约定
+
+保持原有 `--dev`、`TOOLBOX_CREDENTIALS=memory`、`TOOLBOX_DEV_FAKE_ADO` 三重门。
+新增 `TOOLBOX_DEV_TASK_ROOT`：启动器先在系统临时目录创建**空的独立目录**，把绝对路径传给后端。
+缺少任一门、路径非临时/非空/符号链接时启动失败；非 dev 不能打开 file 协议。
+假数据 fixture 为 `tests/fixtures/fake-ado/tasks.json`，ADO handler 为有状态进程内 MockTransport。
+此模式要求全新隔离 data-dir；直接播种虚构 library/project、内存假 PAT 与四个任务并将导入状态设为 declined。
+未设置 TASK_ROOT 时仍保留原有工单导入演示，不播种任务、不允许生产 Git file 协议。
+
+启动器应设置（路径均绝对、由启动器解析，无 shell 展开依赖）：
+
+| 设置 | 值 |
+| --- | --- |
+| CLI | `--dev --data-dir <本次新建数据目录>` |
+| TOOLBOX_CREDENTIALS | memory |
+| TOOLBOX_LEGACY_CONFIG_DIR | 仓库 `tests/fixtures/legacy` 的绝对路径，或启动器另建的空旧配置目录 |
+| TOOLBOX_DEV_FAKE_ADO | 仓库 `tests/fixtures/fake-ado` 的绝对路径（含 fixture.json 与 tasks.json） |
+| TOOLBOX_DEV_TASK_ROOT | 启动器在系统临时目录创建的空目录 |
+
+后端在 TASK_ROOT 下创建 remote.git（bare）与 clone，使用隔离 Git 环境和仅 file 协议，
+播种一个提交，并将其 commit 注入假 ADO。四任务：同步成功、只发布失败、回滚需核实、已停用。
+建议演示操作依名称选择，回滚 offset=1；三个正常启用任务也可调用其它操作，定义 11/12/13
+分别提供成功/失败/部署送达后丢响应并仍运行的场景。只有所选环境部署；未选环境保持原状。
+
+清理责任：启动器关闭本次后端 stdin 并等待退出后，删除本次 TASK_ROOT 和 data-dir；
+后端负责每个 Git 子进程 TERM/KILL/wait、管道与锁回收，不删除启动器目录。
+后端重启演示应保留 data-dir 并**不再次设置 TASK_ROOT**，避免重播种；旧运行只读核实，
+内存远端服务重置意味着可能无法核实旧资源，按 unknown/manual_required 展示。
+前端 `dev-web.mjs` 接线属于 S3-C，本包没有改它。
+
+离线验证覆盖 S3-B `tests/test_s3b_*.py` 与 `tests/independent/s3b/`。
+真实自建 ADO 对 Release manualEnvironments、Pipeline 显式 Build link、部署 attempt 的返回兼容性，
+以及真实 SSH/Keychain/回环端口/Tauri 需主控或用户另行验收；内存假服务通过不代表真实服务器已验证。
