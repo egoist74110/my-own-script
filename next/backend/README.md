@@ -781,7 +781,7 @@ Popen、exec*、posix_spawn*：解析到替身目录以外的claude/codex/agy会
   completed/failed/interrupted，`category` 为 timeout/exit/cli_error/process_exited/start_failed/interrupted）。
   排队 ≤10、提示词 ≤32 KiB；interrupt 同时清空排队；会话内 `request_id` 重复返回同一结果。
 - 事件 payload：init `{cli,external_id}`、assistant/thinking `{text}`、tool_use `{tool,tool_use_id,summary}`、
-  tool_result `{tool_use_id,is_error,text}`、approval `{approval_id,tool,summary,state,scope?}`、
+  tool_result `{tool_use_id,is_error,text}`、turn_started `{turn,text}`（text 为本回合用户提示词，最多 4000 字）、approval `{approval_id,tool,summary,state,scope?}`、
   error `{category(stderr|bad_json|line_too_long|cli_error|process_exited),text?}`；stderr/坏 JSON/超长行
   共用每秒 ≤20 条限流，超出合并为 `notice{reason:"suppressed",count}`；单行 >4 MiB 丢弃；stderr 环形 64 KiB 脱敏。
 - usage 汇总到 `usage_json`：`{turns,cost_usd,input_tokens,output_tokens}`。

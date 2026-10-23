@@ -1001,3 +1001,4 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
   - 改进：后端不 fork + 监督器回收进程组（D09）；TG 输出异步投影、合并与限速（D11）；Claude 审批真正可用；Codex/agy 提示词经 stdin（agy 视 stdin 支持）；agy 用 stream-json 首事件取 conversation_id；各 AI 机器人独立开关；工作目录只限已配置仓库；高权限档仅桌面且需确认；工单分析只读档；凭据不进子进程环境；会话事件持久化与重启续聊。
   - 有意推迟/放弃：TG 手输任意路径（已决3 放弃）；TG 选“完全放开/自动批准”（已决4 放弃）；`ai_policy` 编辑与旧 `targets`（推迟）；新端 MCP server 托管（S6，S5 沿用旧注册）；Codex 真实协议最小会话核对（待 codex 额度）。
 - 状态：S5 **集成验收进行中**——自动验收通过、dev:web 主流程通过，S5-LEAD-002..005 待修后结束。真实验收清单与 AI 机器人所有权切换未授权、未执行。
+- S5-LEAD-003 根因：后端 `turn_started.payload` 为 `{turn, text}`（`services/ai_chat.py:394`），前端 `ChatView.vue` 读 `payload.message`；S5-D2 独立夹具也用了 `message`，故自动化未发现。主控裁决以后端为准：README「S5-B」事件 payload 清单补 `turn_started {turn,text}`；主控把 `tests/independent/{s5d2-chat,s1c-ui}.test.ts` 4 处夹具键 `message→text`（机械改名，不改断言）。前端修复与施工者自有单测随 S5-LEAD-002..005 一并交 agy。

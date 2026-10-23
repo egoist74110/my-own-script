@@ -554,12 +554,12 @@ describe('AI 会话隔离（独立）', () => {
       ],
       {
         s1: [
-          fxEvent('s1', 1, 'turn_started', { message: '改一下' }),
+          fxEvent('s1', 1, 'turn_started', { text: '改一下' }),
           fxEvent('s1', 2, 'tool_use', { tool: 'Edit', tool_use_id: 't1', summary: 'src/a.ts' }),
           fxEvent('s1', 3, 'turn_completed', {}),
         ],
         s2: [
-          fxEvent('s2', 1, 'turn_started', { message: '另一个问题' }),
+          fxEvent('s2', 1, 'turn_started', { text: '另一个问题' }),
           fxEvent('s2', 2, 'tool_use', { tool: 'Read', tool_use_id: 't2', summary: 'b.md' }),
           fxEvent('s2', 3, 'turn_completed', {}),
         ],

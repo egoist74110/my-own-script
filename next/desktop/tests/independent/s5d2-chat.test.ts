@@ -192,7 +192,7 @@ describe('S5D2 事件流：去重、乱序、断线补齐、对账', () => {
   it('乱序到达（seq 4 先于 seq 3）按 session_seq 升序渲染', async () => {
     const b = await openChat(
       new FakeAi([fxSession({ id: 's1', state: 'busy', last_seq: 2 })], {
-        s1: [fxEvent('s1', 1, 'turn_started', { message: '问' })],
+        s1: [fxEvent('s1', 1, 'turn_started', { text: '问' })],
       }),
     )
     pushAi(b.sock, 'ai.event', fxEvent('s1', 4, 'assistant', { text: '乙' }))
@@ -207,7 +207,7 @@ describe('S5D2 事件流：去重、乱序、断线补齐、对账', () => {
   it('WS 已推送的 seq 与随后 after_seq 补齐的 GET 结果重叠时不重复渲染', async () => {
     const fake = new FakeAi([fxSession({ id: 's1', state: 'busy', last_seq: 2 })], {
       s1: [
-        fxEvent('s1', 1, 'turn_started', { message: '问' }),
+        fxEvent('s1', 1, 'turn_started', { text: '问' }),
         fxEvent('s1', 2, 'assistant', { text: '丙' }),
       ],
     })
