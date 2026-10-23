@@ -197,7 +197,7 @@ describe('/ai 页审批集成', () => {
     await flushPromises()
     expect(() => press('y')).not.toThrow()
     await flushPromises()
-    expect(b.wrapper.find('[data-testid=tasks-placeholder]').exists()).toBe(true)
+    expect(b.wrapper.find('[data-testid=tasks-page]').exists()).toBe(true)
     expect(b.wrapper.find('[data-testid=approval-bar]').exists()).toBe(false)
     await b.done()
   })

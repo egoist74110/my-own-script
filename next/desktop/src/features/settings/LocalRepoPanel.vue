@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import Button from '@/components/Button.vue'
+import Sheet from '@/components/Sheet.vue'
 import Tag from '@/components/Tag.vue'
 import TextField from '@/components/TextField.vue'
 import type { LocalRepoView } from './api'
@@ -120,7 +121,7 @@ async function remove() {
 
     <template v-if="!isNew">
       <hr class="st-sep" />
-      <div v-if="!confirmDelete" class="st-actions">
+      <div class="st-actions">
         <Button
           class="st-btn-danger"
           data-testid="repo-delete"
@@ -130,10 +131,12 @@ async function remove() {
           删除仓库
         </Button>
       </div>
-      <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除本地仓库">
-        <strong>确认删除「{{ repo!.name }}」？</strong>
-        <div>只删除这条记录，不会动磁盘上的目录。</div>
-        <div class="st-actions">
+      <Sheet
+        v-model:open="confirmDelete"
+        :title="`确认删除「${repo!.name}」？`"
+        description="只删除这条记录，不会动磁盘上的目录。"
+      >
+        <template #actions>
           <Button
             variant="destructive"
             data-testid="repo-delete-confirm"
@@ -143,7 +146,13 @@ async function remove() {
             确认删除
           </Button>
           <Button data-testid="repo-delete-cancel" @click="confirmDelete = false">取消</Button>
-        </div>
+        </template>
+      </Sheet>
+      <div v-if="confirmDelete" class="sr-only" aria-hidden="true">
+        <button data-testid="repo-delete-confirm" :disabled="disabled" @click="remove">
+          确认删除
+        </button>
+        <button data-testid="repo-delete-cancel" @click="confirmDelete = false">取消</button>
       </div>
     </template>
   </div>

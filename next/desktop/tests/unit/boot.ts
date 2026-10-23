@@ -38,13 +38,20 @@ export async function bootUnconnected(opts: BootOpts = {}) {
 async function mountApp(opts: BootOpts) {
   const pinia = createPinia()
   setActivePinia(pinia)
-  const fetchMock =
-    opts.fetchImpl ??
-    (vi.fn(async (req: Request) =>
-      req.url.endsWith('/health')
-        ? json({ status: 'ok', version: '9.9.9', pid: 4242, uptime_s: 12.4, alert: false })
-        : json({ active: true, reason: 'S0 DEMO ALERT', changed_at: 't' }),
-    ) as unknown as typeof fetch)
+  const userFetch = opts.fetchImpl
+  const fetchMock = userFetch
+    ? (vi.fn(async (req: Request) => {
+        const url = new URL(req.url)
+        if (url.pathname === '/api/tasks' && req.method === 'GET' && !opts.path) {
+          return json({ items: [], revision: 1 })
+        }
+        return userFetch(req)
+      }) as unknown as typeof fetch)
+    : (vi.fn(async (req: Request) =>
+        req.url.endsWith('/health')
+          ? json({ status: 'ok', version: '9.9.9', pid: 4242, uptime_s: 12.4, alert: false })
+          : json({ active: true, reason: 'S0 DEMO ALERT', changed_at: 't' }),
+      ) as unknown as typeof fetch)
   const runtime = createBackendRuntime({
     fetch: fetchMock,
     events: {

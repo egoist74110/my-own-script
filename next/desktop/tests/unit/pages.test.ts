@@ -18,15 +18,15 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('任务页（R1：占位）', () => {
-  it('只有 EmptyState 占位，不含 S0.5 mock 任务台、假任务与假 KPI', async () => {
+describe('任务页（S3-C 真实列表与空态）', () => {
+  it('无任务时渲染 EmptyState 空态，不含 S0.5 mock 任务台、假任务与假 KPI', async () => {
     const b = await boot()
     b.sock.emit(hello())
     await flushPromises()
     const w = b.wrapper
     expect(w.get('h1').text()).toBe('任务')
-    const ph = w.get('[data-testid=tasks-placeholder]')
-    expect(ph.text()).toContain('任务执行正在接入')
+    expect(w.find('[data-testid=tasks-empty-state]').exists()).toBe(true)
+    expect(w.find('[data-testid=tasks-empty-state]').text()).toContain('还没有任务')
     expect(w.find('table').exists()).toBe(false)
     expect(w.find('[data-testid=add-task]').exists()).toBe(false)
     const text = w.get('main').text()

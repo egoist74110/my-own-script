@@ -197,13 +197,12 @@ describe('AI 会话页审批 Y/A/N（R1）', () => {
 })
 
 describe('任务页占位与根路由（R1）', () => {
-  it('/ 重定向到 /tasks；占位含「任务执行正在接入」，不含 mock 任务文本', async () => {
+  it('/ 重定向到 /tasks；任务页根节点存在且不含 mock 任务文本', async () => {
     const b = await boot({ path: '/' })
     b.sock.emit(hello())
     await settle()
     expect(b.router.currentRoute.value.path).toBe('/tasks')
-    const ph = b.wrapper.get('[data-testid=tasks-placeholder]')
-    expect(ph.text()).toContain('任务执行正在接入')
+    expect(b.wrapper.find('[data-testid=tasks-page]').exists()).toBe(true)
     const text = b.wrapper.get('main').text()
     for (const bad of [
       'web-portal',

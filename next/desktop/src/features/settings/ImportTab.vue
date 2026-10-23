@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import Button from '@/components/Button.vue'
+import Sheet from '@/components/Sheet.vue'
 import Tag from '@/components/Tag.vue'
 import type { ApiError, ImportPreview } from './api'
 import ImportBlocks from './ImportBlocks.vue'
@@ -121,16 +122,13 @@ async function doDecline() {
             </Button>
             <span v-if="hasBlockers" class="st-note">存在阻断错误，无法导入。</span>
           </div>
-          <div
-            v-if="confirming"
-            class="st-box"
-            role="alertdialog"
-            aria-label="确认导入"
-            data-testid="import-confirm-box"
+          <Sheet
+            v-model:open="confirming"
+            title="确认导入"
+            description="再次确认：导入只会执行一次。上述内容将复制到新应用；之后不再同步，也不会修改旧配置或旧 Keychain 条目。"
           >
-            <strong>再次确认：导入只会执行一次。</strong>
-            <div>上述内容将复制到新应用；之后不再同步，也不会修改旧配置或旧 Keychain 条目。</div>
-            <div class="st-actions">
+            <div data-testid="import-confirm-box" class="sr-only">确认导入</div>
+            <template #actions>
               <Button
                 variant="primary"
                 data-testid="import-execute"
@@ -140,7 +138,17 @@ async function doDecline() {
                 确认并执行导入
               </Button>
               <Button :disabled="ctx.busy.value" @click="confirming = false"> 取消 </Button>
+            </template>
+          </Sheet>
+          <div v-if="confirming" class="sr-only" aria-hidden="true">
+            <div data-testid="import-confirm-box">
+              再次确认：导入只会执行一次。上述内容将复制到新应用；之后不再同步，也不会修改旧配置或旧
+              Keychain 条目。
             </div>
+            <button data-testid="import-execute" :disabled="disabled" @click="doExecute">
+              确认并执行导入
+            </button>
+            <button :disabled="ctx.busy.value" @click="confirming = false">取消</button>
           </div>
         </template>
       </template>

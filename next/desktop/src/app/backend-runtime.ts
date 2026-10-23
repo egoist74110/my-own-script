@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import { createApiClient, type ApiClient } from '@/api/client'
 import type { BackendConnection } from '@/api/connection'
-import { EventClient, type EventClientOptions } from '@/api/events'
+import { EventClient, type EventClientOptions, type EventEnvelope } from '@/api/events'
 import { useBackendStore } from '@/stores/backend'
 
 export interface BackendRuntime {
@@ -9,6 +9,14 @@ export interface BackendRuntime {
   api(): ApiClient | null
   start(): void
   stop(): void
+  /** 发送已认证的 WS 客户端消息（如 subscribe/unsubscribe）；未连接或未就绪时返回 false */
+  send(message: Record<string, unknown> | string): boolean
+  /** 订阅 run 日志 */
+  subscribeRun(runId: string, afterSeq?: number): boolean
+  /** 退订 run 日志 */
+  unsubscribeRun(runId: string): boolean
+  /** 注册事件监听器，返回解除监听的回调 */
+  onEvent(listener: (event: EventEnvelope) => void): () => void
 }
 
 export const backendRuntimeKey: InjectionKey<BackendRuntime> = Symbol('backend-runtime')
@@ -37,5 +45,9 @@ export function createBackendRuntime(deps: RuntimeDeps = {}): BackendRuntime {
     api: () => (conn ? client : null),
     start: () => events.start(),
     stop: () => events.stop(),
+    send: (msg) => events.send(msg),
+    subscribeRun: (runId, afterSeq) => events.subscribeRun(runId, afterSeq),
+    unsubscribeRun: (runId) => events.unsubscribeRun(runId),
+    onEvent: (listener) => events.addEventListener(listener),
   }
 }

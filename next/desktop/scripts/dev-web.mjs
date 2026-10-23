@@ -10,15 +10,21 @@ import { parseReadyLine } from './ready-line.mjs'
 
 const desktopDir = fileURLToPath(new URL('..', import.meta.url))
 const backendDir = fileURLToPath(new URL('../../backend', import.meta.url))
-// 隔离环境（S1 合同）：临时数据目录、仓库内假旧配置、内存凭据 + 假 PAT；绝不落到真实目录与 Keychain。
+// 隔离环境（S1/S3 合同）：临时数据目录、仓库内假旧配置、内存凭据 + 假 PAT；绝不落到真实目录与 Keychain。
 const dataDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-web-'))
+const taskRootDir = mkdtempSync(join(tmpdir(), 'toolbox-dev-task-root-'))
 const legacyDir = join(backendDir, 'tests', 'fixtures', 'legacy')
 const fakeCredentials = join(backendDir, 'tests', 'fixtures', 'dev-credentials.json')
-// 本地假 ADO（S2 合同）：后端仅在 --dev + memory 凭据下接受，出站请求改读 fixture，不连任何真实服务。
+// 本地假 ADO（S2/S3 合同）：后端仅在 --dev + memory 凭据下接受，出站请求改读 fixture，不连任何真实服务。
 const fakeAdo = join(backendDir, 'tests', 'fixtures', 'fake-ado')
-function removeDataDir() {
+function removeTempDirs() {
   try {
     rmSync(dataDir, { recursive: true, force: true })
+  } catch {
+    // 临时目录清理失败不影响退出
+  }
+  try {
+    rmSync(taskRootDir, { recursive: true, force: true })
   } catch {
     // 临时目录清理失败不影响退出
   }
@@ -62,7 +68,7 @@ async function shutdown(code) {
   shuttingDown = true
   await stopChild(vite)
   await stopChild(backend, { closeStdin: true })
-  removeDataDir()
+  removeTempDirs()
   process.exit(code)
 }
 
@@ -71,7 +77,7 @@ process.on('SIGTERM', () => void shutdown(143))
 process.on('exit', () => {
   // 兜底：同步路径下尽量不留子进程
   for (const c of [vite, backend]) if (c && !exited(c)) c.kill('SIGKILL')
-  removeDataDir()
+  removeTempDirs()
 })
 
 function startBackend() {
@@ -86,6 +92,7 @@ function startBackend() {
         TOOLBOX_CREDENTIALS: 'memory',
         TOOLBOX_DEV_FAKE_CREDENTIALS: fakeCredentials,
         TOOLBOX_DEV_FAKE_ADO: fakeAdo,
+        TOOLBOX_DEV_TASK_ROOT: taskRootDir,
       },
       stdio: ['pipe', 'pipe', 'inherit'],
     })

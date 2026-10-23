@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import Button from '@/components/Button.vue'
+import Sheet from '@/components/Sheet.vue'
 import Tag from '@/components/Tag.vue'
 import TextField from '@/components/TextField.vue'
 import type { Project } from './api'
@@ -172,7 +173,7 @@ async function remove() {
 
     <template v-if="!isNew">
       <hr class="st-sep" />
-      <div v-if="!confirmDelete" class="st-actions">
+      <div class="st-actions">
         <Button
           class="st-btn-danger"
           data-testid="project-delete"
@@ -182,10 +183,12 @@ async function remove() {
           删除 project
         </Button>
       </div>
-      <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除 project">
-        <strong>确认删除「{{ project!.project }}」？</strong>
-        <div>被任务引用时无法删除。</div>
-        <div class="st-actions">
+      <Sheet
+        v-model:open="confirmDelete"
+        :title="`确认删除「${project!.project}」？`"
+        description="被任务引用时无法删除。"
+      >
+        <template #actions>
           <Button
             variant="destructive"
             data-testid="project-delete-confirm"
@@ -195,7 +198,13 @@ async function remove() {
             确认删除
           </Button>
           <Button @click="confirmDelete = false">取消</Button>
-        </div>
+        </template>
+      </Sheet>
+      <div v-if="confirmDelete" class="sr-only" aria-hidden="true">
+        <button data-testid="project-delete-confirm" :disabled="disabled" @click="remove">
+          确认删除
+        </button>
+        <button @click="confirmDelete = false">取消</button>
       </div>
     </template>
   </div>

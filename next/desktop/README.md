@@ -1,7 +1,7 @@
 # TOOLBOX 桌面前端（R1：方向 B「macOS 原生」）
 
 Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + vue-query。
-骨架：232px 通高侧栏（分组导航 + 底部设置/连接状态行）｜页面区（每页自己的列表栏 / 详情 / 顶栏，52px）｜可开关的右侧检查器（280px）。没有底部状态栏。任务 `/tasks` 是占位页（任务执行由 S3 接入）；AI 会话 `/ai` 仍是 mock；工单 `/work-items` 与设置 `/settings` 已接真实接口（`/` 重定向 `/tasks`）。
+骨架：232px 通高侧栏（分组导航 + 底部设置/连接状态行）｜页面区（每页自己的列表栏 / 详情 / 顶栏，52px）｜可开关的右侧检查器（280px）。没有底部状态栏。任务 `/tasks` 已接真实 S3 接口（CRUD、执行预检、双击幂等启动、取消与 unknown 对账、WS 日志订阅与补齐、检查器），按 B-Tasks 原生风格呈现；AI 会话 `/ai` 仍是 mock；工单 `/work-items` 与设置 `/settings` 已接真实接口（`/` 重定向 `/tasks`）。
 
 ## 命令（在 `next/desktop`）
 
@@ -48,15 +48,25 @@ Vue 3 + TypeScript strict + Vite + Tailwind v4 + Reka UI / shadcn-vue + Pinia + 
 
 ## 组件清单（`src/components`）
 
-Pane（纯色面，`surface`）· SegmentedControl（Reka Tabs，横向分段/页签，`orientation="vertical"` 为设置分区列表；可带计数；传默认插槽时每页签配 tabpanel，传 `panelId` 时 aria-controls 指向页面容器）· Button（primary/default/destructive/plain，高 28）· ToolbarButton（无底色，按下态，必须 `label`）· TextField · SearchField（⌘K/Ctrl+K 聚焦，Esc 失焦）· Tag（中性小标签）· StatusDot（ok/run/warn/idle）· StatusPill（八态，文案见 `pill.ts`）· Banner（info/warn/error，贴在所属区域内）· ApprovalBar（Y/A/N，输入框聚焦时不响应，发出 `decide`）· Inspector（Teleport 进壳的检查器）· InspectorToggle（顶栏开关，`aria-pressed`）· Sidebar（分组导航）· ConnectionStatus（侧栏底部状态行 + 弹出层：后端状态、pid、心跳延迟、告警演示开关）· AlertToggle · ListRow（两行；选中聚焦=强调底，选中未聚焦=灰底，由 `.b-list:focus-within` 区分）· EmptyState · Skeleton · Sheet（Reka Dialog 确认单，焦点陷阱，Esc 关闭；组件已提供，现有设置页确认仍是行内确认，未改用）。
+Pane（纯色面，`surface`）· SegmentedControl（Reka Tabs，横向分段/页签，`orientation="vertical"` 为设置分区列表；可带计数；传默认插槽时每页签配 tabpanel，传 `panelId` 时 aria-controls 指向页面容器）· Button（primary/default/destructive/plain，高 28）· ToolbarButton（无底色，按下态，必须 `label`）· TextField · SearchField（⌘K/Ctrl+K 聚焦，Esc 失焦）· Tag（中性小标签）· StatusDot（ok/run/warn/idle）· StatusPill（八态，文案见 `pill.ts`）· Banner（info/warn/error，贴在所属区域内）· ApprovalBar（Y/A/N，输入框聚焦时不响应，发出 `decide`）· Inspector（Teleport 进壳的检查器）· InspectorToggle（顶栏开关，`aria-pressed`）· Sidebar（分组导航）· ConnectionStatus（侧栏底部状态行 + 弹出层：后端状态、pid、心跳延迟、告警演示开关）· AlertToggle · ListRow（两行；选中聚焦=强调底，选中未聚焦=灰底，由 `.b-list:focus-within` 区分）· EmptyState · Skeleton · Sheet（Reka Dialog 确认单，焦点陷阱，Esc 关闭；设置页删除与导入确认、任务执行计划与取消均已使用 Sheet）。
 
 ## 告警
 
 状态只来自 store 的 `alert`（`system.alert` / `system.hello`）。告警时：页面区顶部出现 warn Banner（`reason`，缺省给默认文案），侧栏连接状态行变橙；无遮罩，不拦截操作。
 
-## 任务页占位
+## 任务页（S3-C）
 
-`/tasks` 只显示 EmptyState「任务执行正在接入」，不放假任务或假 KPI；S0.5 的 mock 任务台与 `features/tasks/mock/` 已删除。真实页面由 S3-C 按 `docs/modernization/design/b-native/B-Tasks.dc.html` 实现。
+`/tasks` 已按 `docs/modernization/design/b-native/B-Tasks.dc.html` 实现完整业务流与真实后端对接：
+
+- 任务列表：搜索、启用过滤、两行 ListRow、状态 StatusPill 八态取真实 active run / 最近 run；
+- 任务 CRUD：新建 / 编辑 / 删除 / 排序（409 冲突刷新提示，未知字段保留）；
+- 执行计划预检（preflight）：弹出 Sheet 确认，展示分支、target、steps、不可撤回副作用警告，必选确认旧应用空闲勾选（`ack_old_app_idle`）；
+- 三种操作：`sync_build_release` / `deploy_only` / `rollback`（带 offset 1-5 选择）；
+- 幂等启动：一次确认会话派发单一随机 `request_id`，防止双击重复启动；
+- 运行详情与历史：运行记录列表、步骤列表（StepList）、取消运行（Cancel）、unknown 态核查（Reconcile）与只读核对；
+- 日志同步器（`useRunLogs`）：WS 订阅（`run.event`）先订阅后 HTTP 补齐，连续 `run_seq` 去重与乱序缓冲，切换运行退订，组件卸载清理订阅且不中断后端任务；日志纯文本渲染（无 `v-html`、不解析 ANSI），token 不外泄；
+- 存储：localStorage 仅持久化选中的 `task_id`，草稿与日志不进持久化；
+- 侧栏任务角标：真实活动运行数（`${count} 运行中`，无活动运行则不显示）。
 
 ## mock 位置
 

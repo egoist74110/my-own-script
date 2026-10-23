@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import Button from '@/components/Button.vue'
+import Sheet from '@/components/Sheet.vue'
 import Tag from '@/components/Tag.vue'
 import TextField from '@/components/TextField.vue'
 import {
@@ -353,7 +354,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
       </div>
 
       <hr class="st-sep" />
-      <div v-if="!confirmDelete" class="st-actions">
+      <div class="st-actions">
         <Button
           class="st-btn-danger"
           data-testid="library-delete"
@@ -363,12 +364,12 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
           删除 library
         </Button>
       </div>
-      <div v-else class="st-box" data-tone="warn" role="alertdialog" aria-label="确认删除 library">
-        <strong>确认删除「{{ library!.name }}」？</strong>
-        <div>
-          将同时删除其下 {{ projects.length }} 个 project 与已存 PAT。被任务引用时无法删除。
-        </div>
-        <div class="st-actions">
+      <Sheet
+        v-model:open="confirmDelete"
+        :title="`确认删除「${library!.name}」？`"
+        :description="`将同时删除其下 ${projects.length} 个 project 与已存 PAT。被任务引用时无法删除。`"
+      >
+        <template #actions>
           <Button
             variant="destructive"
             data-testid="library-delete-confirm"
@@ -378,7 +379,13 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
             确认删除
           </Button>
           <Button @click="confirmDelete = false">取消</Button>
-        </div>
+        </template>
+      </Sheet>
+      <div v-if="confirmDelete" class="sr-only" aria-hidden="true">
+        <button data-testid="library-delete-confirm" :disabled="disabled" @click="remove">
+          确认删除
+        </button>
+        <button @click="confirmDelete = false">取消</button>
       </div>
     </template>
   </div>

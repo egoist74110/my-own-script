@@ -3,6 +3,11 @@ import { getBackendConnection, wsUrl, type BackendConnection } from './connectio
 import type { components } from './schema'
 
 export type AlertState = components['schemas']['AlertState']
+export type RunEventData = components['schemas']['RunEventData']
+export interface RunSubscribedData {
+  run_id: string
+  last_seq: number
+}
 
 export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
@@ -39,6 +44,8 @@ export interface EventClientOptions {
   onConnection?: (conn: BackendConnection) => void
   onEvent?: (event: EventEnvelope) => void
   onHeartbeat?: (latencyMs: number) => void
+  onRunEvent?: (data: components['schemas']['RunEventData'], envelope: EventEnvelope) => void
+  onRunSubscribed?: (data: RunSubscribedData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -77,6 +84,7 @@ export class EventClient {
   private everOnline = false
   private generation = 0
   private _state: ConnectionState = 'offline'
+  private listeners = new Set<(event: EventEnvelope) => void>()
 
   constructor(options: EventClientOptions = {}) {
     this.opts = {
@@ -92,6 +100,44 @@ export class EventClient {
 
   get state(): ConnectionState {
     return this._state
+  }
+
+  /** 发送已认证的 WS 客户端消息（如 run 订阅）；仅在 online 状态下发出。返回是否已发送。 */
+  send(data: string | Record<string, unknown>): boolean {
+    if (this._state !== 'online' || !this.socket) return false
+    try {
+      this.socket.send(typeof data === 'string' ? data : JSON.stringify(data))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** 订阅 run 日志 */
+  subscribeRun(runId: string, afterSeq = 0): boolean {
+    return this.send({
+      type: 'subscribe',
+      topic: 'run',
+      run_id: runId,
+      after_seq: afterSeq,
+    })
+  }
+
+  /** 退订 run 日志 */
+  unsubscribeRun(runId: string): boolean {
+    return this.send({
+      type: 'unsubscribe',
+      topic: 'run',
+      run_id: runId,
+    })
+  }
+
+  /** 注册事件监听器，返回解除监听的回调 */
+  addEventListener(listener: (event: EventEnvelope) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
   }
 
   start(): void {
@@ -191,7 +237,21 @@ export class EventClient {
         this.opts.onHeartbeat?.(Math.max(0, this.opts.now() - sent))
       }
     }
+    if (parsed.topic === 'run') {
+      if (parsed.type === 'run.event') {
+        this.opts.onRunEvent?.(parsed.data as components['schemas']['RunEventData'], parsed)
+      } else if (parsed.type === 'run.subscribed') {
+        this.opts.onRunSubscribed?.(parsed.data as unknown as RunSubscribedData, parsed)
+      }
+    }
     this.opts.onEvent?.(parsed)
+    for (const listener of this.listeners) {
+      try {
+        listener(parsed)
+      } catch {
+        // 监听器异常不破坏客户端
+      }
+    }
   }
 
   private handleClose(gen: number): void {

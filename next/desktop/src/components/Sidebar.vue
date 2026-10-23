@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { computed, inject, type Component } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
 import {
   Cable,
   CheckCircle2,
@@ -9,7 +10,37 @@ import {
   Settings,
   ShieldCheck,
 } from 'lucide-vue-next'
+import { backendRuntimeKey } from '@/app/backend-runtime'
+import { useBackendStore } from '@/stores/backend'
+import { unwrap } from '@/features/tasks/api'
 import ConnectionStatus from './ConnectionStatus.vue'
+
+const runtime = inject(backendRuntimeKey)
+const store = useBackendStore()
+const online = computed(() => store.connection === 'online')
+
+const tasksQuery = useQuery({
+  queryKey: ['tasks'],
+  enabled: online,
+  queryFn: async ({ signal }) => {
+    const api = runtime?.api()
+    if (!api) return null
+    return unwrap(api.GET('/api/tasks', { signal }))
+  },
+})
+
+const activeRunsCount = computed(() => {
+  const items = tasksQuery.data.value?.items
+  if (!items || !Array.isArray(items)) return 0
+  return items.filter((t) => Boolean(t.active_run_id)).length
+})
+
+const taskBadge = computed(() => {
+  if (activeRunsCount.value > 0) {
+    return `${activeRunsCount.value} 运行中`
+  }
+  return null
+})
 
 interface NavItem {
   label: string
@@ -52,6 +83,12 @@ const groups: NavGroup[] = [
           <RouterLink v-if="n.to" :to="n.to" class="item">
             <component :is="n.icon" :size="16" :style="{ color: n.color }" aria-hidden="true" />
             <span class="name">{{ n.label }}</span>
+            <span
+              v-if="n.to === '/tasks' && taskBadge"
+              class="task-badge"
+              data-testid="task-badge"
+              >{{ taskBadge }}</span
+            >
           </RouterLink>
           <span v-else class="item item-off" aria-disabled="true" title="尚未提供">
             <component :is="n.icon" :size="16" aria-hidden="true" />
@@ -118,6 +155,12 @@ const groups: NavGroup[] = [
 }
 .name {
   flex: 1;
+}
+.task-badge {
+  margin-left: auto;
+  font-size: var(--text-sub);
+  font-weight: 500;
+  color: var(--accent-ink);
 }
 .item-off {
   color: var(--disabled);
