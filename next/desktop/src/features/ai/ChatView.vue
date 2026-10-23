@@ -306,10 +306,10 @@ const turnBlocks = computed(() => {
       if (current.userText || current.assistantText || current.tools.length > 0) {
         blocks.push(current)
       }
-      const p = ev.payload as { message?: string }
+      const p = ev.payload as { text?: string; message?: string }
       current = {
         turnId: ev.session_seq,
-        userText: p.message || '',
+        userText: p.text || p.message || '',
         tools: [],
         notices: [],
         errors: [],

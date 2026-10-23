@@ -98,7 +98,7 @@ describe('S5-D2: ChatView 结构化事件流与交互', () => {
         session_seq: 1,
         ts: '2026-10-24T00:00:30Z',
         kind: 'turn_started',
-        payload: { message: '请帮忙分析' },
+        payload: { text: '请帮忙分析' },
       },
       {
         session_id: 'sess-chat-1',
@@ -144,7 +144,7 @@ describe('S5-D2: ChatView 结构化事件流与交互', () => {
         session_seq: 1,
         ts: '2026-10-24T00:00:00Z',
         kind: 'turn_started',
-        payload: { message: '运行测试' },
+        payload: { text: '运行测试' },
       },
       {
         session_id: 'sess-chat-1',
@@ -813,6 +813,219 @@ describe('S5-D2: NewSessionSheet 对话模式与配置项', () => {
       expect(w.find('[data-testid=approval-card]').exists()).toBe(false)
 
       w.unmount()
+    })
+  })
+
+  describe('S5 集成验收修复轮回归 (S5-LEAD-002 ~ 005)', () => {
+    const regSession: SessionView = {
+      id: 'sess-lead-1',
+      cli: 'claude',
+      kind: 'chat',
+      profile: 'prof-claude',
+      repo: { id: 'repo-1', name: 'my-project' },
+      state: 'idle',
+      last_seq: 10,
+      created_at: '2026-10-24T00:00:00Z',
+      has_external_id: true,
+      pending_approval: false,
+      purpose: 'general',
+      queue_len: 0,
+      model: 'claude-3-7-sonnet',
+      permission: 'manual',
+    }
+    it('S5-LEAD-002: NewSessionSheet 初始权限/模式/effort 取自 defaults.<cli>，Claude 默认 auto 且选项含 xhigh', async () => {
+      const w = mount(NewSessionSheet, {
+        props: {
+          open: true,
+          profiles: [
+            {
+              id: 'prof-claude',
+              name: 'Claude Code',
+              cli: 'claude',
+              resolved: { ok: true, path_hint: '/bin/claude' },
+            },
+          ] as unknown as ProfileView[],
+          localRepos: [{ id: 'repo-1', name: 'repo-1' }],
+          defaultProfileId: 'prof-claude',
+          defaults: {
+            claude: { permission: 'auto', effort: 'xhigh', model: 'claude-3-7-sonnet' },
+          },
+        },
+        ...createMountOptions(),
+      })
+      await flushPromises()
+
+      const chatRadio = w.find('input[type=radio][value=chat]')
+      if (chatRadio.exists()) {
+        await chatRadio.trigger('change')
+        await flushPromises()
+      }
+
+      const permSelect = w.find('[data-testid=select-permission]')
+      if (permSelect.exists()) {
+        expect((permSelect.element as HTMLSelectElement).value).toBe('auto')
+      }
+
+      const effortSelect = w.find('[data-testid=select-effort]')
+      if (effortSelect.exists()) {
+        const options = effortSelect
+          .findAll('option')
+          .map((o) => (o.element as HTMLOptionElement).value)
+        expect(options).toContain('xhigh')
+        expect((effortSelect.element as HTMLSelectElement).value).toBe('xhigh')
+      }
+
+      w.unmount()
+    })
+
+    it('S5-LEAD-003: 对话流渲染 turn_started 的 text 字段作为用户消息', async () => {
+      const mockEvents = [
+        {
+          session_id: 'sess-turn-text',
+          session_seq: 1,
+          ts: '2026-10-24T00:00:30Z',
+          kind: 'turn_started',
+          payload: { turn: 1, text: '请帮我实现快速排序' },
+        },
+        {
+          session_id: 'sess-turn-text',
+          session_seq: 2,
+          ts: '2026-10-24T00:01:00Z',
+          kind: 'assistant',
+          payload: { text: '这是快速排序代码' },
+        },
+      ]
+
+      const fakeFetch = vi.fn().mockImplementation(async (req: Request) => {
+        const url = new URL(req.url)
+        if (url.pathname.includes('/events')) {
+          return json({ items: mockEvents, last_seq: 2 })
+        }
+        return json({})
+      })
+
+      const b = await boot({ fetchImpl: fakeFetch })
+      b.sock.emit(hello())
+      await flushPromises()
+
+      const w = mount(ChatView, {
+        props: {
+          session: {
+            ...regSession,
+            id: 'sess-turn-text',
+          },
+        },
+        ...createMountOptions(b.runtime),
+      })
+      await flushPromises()
+
+      const flowText = w.get('[data-testid=chat-flow]').text()
+      expect(flowText).toContain('请帮我实现快速排序')
+      expect(flowText).toContain('这是快速排序代码')
+
+      w.unmount()
+      await b.done()
+    })
+
+    it('S5-LEAD-004: 会话列表 awaiting_approval 状态胶囊文字显示为“待审批”', async () => {
+      const fakeFetch = vi.fn().mockImplementation(async (req: Request) => {
+        const url = new URL(req.url)
+        if (req.url.endsWith('/health')) {
+          return json({ status: 'ok', version: '9.9.9', pid: 4242, uptime_s: 10, alert: false })
+        }
+        if (url.pathname === '/api/ai/sessions') {
+          return json({
+            items: [
+              {
+                id: 'sess-awaiting',
+                cli: 'claude',
+                kind: 'chat',
+                profile: 'prof-1',
+                repo: { id: 'repo-1', name: 'my-repo' },
+                state: 'awaiting_approval',
+                pending_approval: true,
+                last_seq: 0,
+                created_at: '2026-10-24T10:00:00Z',
+                has_external_id: false,
+                purpose: 'general',
+                queue_len: 0,
+              },
+            ],
+          })
+        }
+        if (url.pathname === '/api/ai') {
+          return json({ profiles: [], selected_profile_id: '', model_presets: {} })
+        }
+        if (url.pathname.endsWith('/events')) {
+          return json({ items: [], last_seq: 0 })
+        }
+        return json({})
+      })
+
+      const b = await boot({ path: '/ai', fetchImpl: fakeFetch })
+      b.sock.emit(hello())
+      for (let i = 0; i < 4; i++) await flushPromises()
+
+      const pill = b.wrapper.get('[data-testid=session-sess-awaiting] .pill')
+      expect(pill.text()).toBe('待审批')
+      expect(pill.text()).not.toContain('需核实')
+
+      await b.done()
+    })
+
+    it('S5-LEAD-005: 检查器格式化显示回合数、费用两位小数、输入输出token，无原始键值串', async () => {
+      const fakeFetch = vi.fn().mockImplementation(async (req: Request) => {
+        const url = new URL(req.url)
+        if (req.url.endsWith('/health')) {
+          return json({ status: 'ok', version: '9.9.9', pid: 4242, uptime_s: 10, alert: false })
+        }
+        if (url.pathname === '/api/ai/sessions') {
+          return json({
+            items: [
+              {
+                id: 'sess-usage',
+                cli: 'claude',
+                kind: 'chat',
+                profile: 'prof-1',
+                repo: { id: 'repo-1', name: 'my-repo' },
+                state: 'idle',
+                last_seq: 0,
+                created_at: '2026-10-24T10:00:00Z',
+                has_external_id: false,
+                pending_approval: false,
+                purpose: 'general',
+                queue_len: 0,
+                usage: {
+                  turns: 3,
+                  cost_usd: 0.1234,
+                  input_tokens: 1520,
+                  output_tokens: 380,
+                },
+              },
+            ],
+          })
+        }
+        if (url.pathname === '/api/ai') {
+          return json({ profiles: [], selected_profile_id: '', model_presets: {} })
+        }
+        if (url.pathname.endsWith('/events')) {
+          return json({ items: [], last_seq: 0 })
+        }
+        return json({})
+      })
+
+      const b = await boot({ path: '/ai', fetchImpl: fakeFetch })
+      b.sock.emit(hello())
+      for (let i = 0; i < 4; i++) await flushPromises()
+
+      const inspector = b.wrapper.get('[data-testid=ai-chat-inspector]').text()
+      expect(inspector).toContain('3 回合')
+      expect(inspector).toContain('$0.12')
+      expect(inspector).toContain('输入 1520 / 输出 380')
+      expect(inspector).not.toContain('cost_usd: 0.1234')
+      expect(inspector).not.toMatch(/\d+%/)
+
+      await b.done()
     })
   })
 })

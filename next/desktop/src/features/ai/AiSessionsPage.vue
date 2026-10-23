@@ -101,6 +101,32 @@ function mapPill(state: string): PillState | null {
   }
 }
 
+function formatAiUsage(usage?: Record<string, unknown> | null): string[] {
+  if (!usage) return []
+  const parts: string[] = []
+  if (typeof usage.turns === 'number') {
+    parts.push(`${usage.turns} 回合`)
+  }
+  if (typeof usage.cost_usd === 'number') {
+    parts.push(`$${usage.cost_usd.toFixed(2)}`)
+  }
+  const hasIn = usage.input_tokens !== undefined
+  const hasOut = usage.output_tokens !== undefined
+  if (hasIn || hasOut) {
+    const inTokens = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0
+    const outTokens = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0
+    parts.push(`输入 ${inTokens} / 输出 ${outTokens}`)
+  }
+  if (parts.length === 0) {
+    for (const [k, v] of Object.entries(usage)) {
+      if (v !== null && v !== undefined) {
+        parts.push(`${k}: ${v}`)
+      }
+    }
+  }
+  return parts
+}
+
 const hasRealData = computed(() => {
   return sessionsQuery.isSuccess.value && Array.isArray(sessionsQuery.data.value?.items)
 })
@@ -382,7 +408,12 @@ function handleJumpToRepos() {
               <span class="b-row-l2">
                 <span class="mono">{{ s.repo }}</span>
                 <span aria-hidden="true">·</span>
-                <StatusPill v-if="s.pillState" :state="s.pillState" :title="s.stateText" />
+                <StatusPill
+                  v-if="s.pillState"
+                  :state="s.pillState"
+                  :label="s.state === 'awaiting_approval' ? '待审批' : undefined"
+                  :title="s.stateText"
+                />
                 <span v-else>{{ s.stateText }}</span>
                 <span
                   v-if="s.isTerminal && s.exitCode !== null && s.exitCode !== undefined"
@@ -560,13 +591,15 @@ function handleJumpToRepos() {
             </dd>
             <dt>状态</dt>
             <dd class="mono">{{ selected.stateText }}</dd>
-            <template
-              v-if="selected.rawReal?.usage && Object.keys(selected.rawReal.usage).length > 0"
-            >
-              <dt>Token 消耗</dt>
+            <template v-if="formatAiUsage(selected.rawReal?.usage).length > 0">
+              <dt>用量</dt>
               <dd class="mono">
-                <span v-for="(v, k) in selected.rawReal.usage" :key="k" class="mr-2">
-                  {{ k }}: {{ v }}
+                <span
+                  v-for="part in formatAiUsage(selected.rawReal?.usage)"
+                  :key="part"
+                  class="mr-2"
+                >
+                  {{ part }}
                 </span>
               </dd>
             </template>
@@ -593,6 +626,7 @@ function handleJumpToRepos() {
       :local-repos="localRepos"
       :default-profile-id="aiOverviewQuery.data.value?.selected_profile_id"
       :model-presets="aiOverviewQuery.data.value?.model_presets"
+      :defaults="aiOverviewQuery.data.value?.defaults"
       @created="handleSessionCreated"
       @jump-to-repos="handleJumpToRepos"
     />

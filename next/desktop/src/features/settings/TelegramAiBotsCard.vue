@@ -91,7 +91,7 @@ const BOT_META: Record<string, { name: string; desc: string }> = {
     desc: '专用于 OpenAI Codex 代码生成与会话交互的专属 Telegram 机器人。',
   },
   gemini: {
-    name: 'Gemini (agy) 机器人',
+    name: 'Antigravity 机器人',
     desc: '专用于 Google Gemini / Antigravity CLI 交互的专属 Telegram 机器人。',
   },
 }

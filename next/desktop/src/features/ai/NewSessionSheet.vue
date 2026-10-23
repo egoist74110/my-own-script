@@ -9,6 +9,7 @@ import {
   fetchAiAgyModels,
   fetchResumeCandidates,
   toApiError,
+  type AIDefaults,
   type ModelPresets,
   type ProfileView,
   type RepoView,
@@ -23,6 +24,7 @@ const props = defineProps<{
   localRepos: RepoView[]
   defaultProfileId?: string
   modelPresets?: ModelPresets
+  defaults?: AIDefaults
 }>()
 
 const emit = defineEmits<{
@@ -137,16 +139,17 @@ const effortOptions = computed(() => {
       { value: 'low', label: '低 (low)' },
       { value: 'medium', label: '中 (medium)' },
       { value: 'high', label: '高 (high)' },
+      { value: 'xhigh', label: '超高 (xhigh)' },
       { value: 'max', label: '最高 (max)' },
     ]
   }
   if (cli === 'codex') {
     return [
       { value: '', label: '默认 (Default)' },
+      { value: 'minimal', label: '极低 (minimal)' },
       { value: 'low', label: '低 (low)' },
       { value: 'medium', label: '中 (medium)' },
       { value: 'high', label: '高 (high)' },
-      { value: 'xhigh', label: '超高 (xhigh)' },
     ]
   }
   if (cli === 'agy') {
@@ -203,17 +206,20 @@ async function loadResumeCandidates() {
 function resetDefaultsForCli() {
   const cli = selectedCli.value
   if (cli === 'claude') {
-    model.value = props.modelPresets?.claude?.[0] || ''
-    permission.value = 'manual'
-    effort.value = ''
+    const claudeDef = props.defaults?.claude
+    model.value = claudeDef?.model || props.modelPresets?.claude?.[0] || ''
+    permission.value = claudeDef?.permission || 'auto'
+    effort.value = claudeDef?.effort || ''
   } else if (cli === 'codex') {
-    model.value = props.modelPresets?.codex?.[0] || ''
-    permission.value = 'workspace-write'
-    effort.value = ''
+    const codexDef = props.defaults?.codex
+    model.value = codexDef?.model || props.modelPresets?.codex?.[0] || ''
+    permission.value = codexDef?.sandbox || 'workspace-write'
+    effort.value = codexDef?.effort || ''
   } else if (cli === 'agy') {
-    model.value = agyModels.value[0] || ''
-    permission.value = 'plan'
-    effort.value = ''
+    const agyDef = props.defaults?.agy
+    model.value = agyDef?.model || agyModels.value[0] || ''
+    permission.value = agyDef?.mode || 'sandbox'
+    effort.value = agyDef?.effort || ''
     void loadAgyModels()
   }
 }

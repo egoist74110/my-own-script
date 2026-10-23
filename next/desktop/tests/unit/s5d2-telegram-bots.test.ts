@@ -7,6 +7,7 @@ import { boot } from './boot'
 import { FakeSocket, env, hello, resetSeq } from './helpers'
 import { json } from './settings-fake'
 import TelegramAiBotsCard from '@/features/settings/TelegramAiBotsCard.vue'
+import TelegramAiBotEnableSheet from '@/features/settings/TelegramAiBotEnableSheet.vue'
 import type { AIBotsView } from '@/features/ai/api'
 
 function createMountOptions(runtime?: BackendRuntime) {
@@ -368,5 +369,55 @@ describe('S5-D2: Telegram AI 专属机器人卡片组', () => {
 
     w.unmount()
     await b.done()
+  })
+
+  describe('S5 集成验收修复轮回归 (S5-LEAD-005 机器人标题与警告)', () => {
+    it('第三张 AI 机器人卡标题为“Antigravity 机器人”', async () => {
+      const fakeFetch = vi.fn().mockImplementation(async (req: Request) => {
+        const url = new URL(req.url)
+        if (url.pathname === '/api/telegram/ai-bots') {
+          return json(FAKE_AI_BOTS_RESPONSE)
+        }
+        return json({})
+      })
+
+      const b = await boot({ fetchImpl: fakeFetch })
+      b.sock.emit(hello())
+      await flushPromises()
+      await flushPromises()
+
+      const w = mount(TelegramAiBotsCard, {
+        props: { busy: false, writable: true },
+        ...createMountOptions(b.runtime),
+      })
+      await flushPromises()
+      await flushPromises()
+
+      const geminiCard = w.find('[data-testid="ai-bot-card-gemini"]')
+      expect(geminiCard.exists()).toBe(true)
+      expect(geminiCard.text()).toContain('Antigravity 机器人')
+      expect(geminiCard.text()).not.toContain('Gemini (agy) 机器人')
+
+      w.unmount()
+      await b.done()
+    })
+
+    it('AI 机器人启用 Sheet 包含“切换后，旧应用主机器人对该 AI 的‘MCP 分析’将不再可用（会话输出会丢失），请改用新应用”提示', async () => {
+      const w = mount(TelegramAiBotEnableSheet, {
+        props: {
+          open: true,
+          aiTitle: 'Claude Code 机器人',
+          submitting: false,
+        },
+      })
+      await flushPromises()
+
+      const text = document.body.textContent || w.text()
+      expect(text).toContain(
+        '切换后，旧应用主机器人对该 AI 的‘MCP 分析’将不再可用（会话输出会丢失），请改用新应用',
+      )
+
+      w.unmount()
+    })
   })
 })

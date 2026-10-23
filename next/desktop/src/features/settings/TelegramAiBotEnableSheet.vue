@@ -42,7 +42,7 @@ function onConfirm() {
   <Sheet
     :open="open"
     :title="`启用 ${aiTitle}`"
-    description="接管前请仔细核对切换步骤，避免多个端同时长轮询导致 Telegram 409 conflict 冲突。"
+    description="接管前请仔细核对切换步骤，避免多个端同时长轮询导致 Telegram 409 conflict 冲突。切换后，旧应用主机器人对该 AI 的‘MCP 分析’将不再可用（会话输出会丢失），请改用新应用。"
     @update:open="emit('update:open', $event)"
   >
     <div class="enable-flow p-1" data-testid="ai-bot-enable-sheet">
@@ -59,7 +59,9 @@ function onConfirm() {
         <li>
           <strong>步骤 2：清除旧版绑定</strong>
           <p class="step-desc">
-            打开旧版应用，在 AI 配置界面清空对应 AI 机器人的 Token 并保存（不要关闭主任务机器人）。
+            打开旧版应用，在 AI 配置界面清空对应 AI 机器人的 Token
+            并保存（不要关闭主任务机器人）。切换后，旧应用主机器人对该 AI 的‘MCP
+            分析’将不再可用（会话输出会丢失），请改用新应用。
           </p>
         </li>
         <li>

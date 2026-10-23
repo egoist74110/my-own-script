@@ -3,13 +3,13 @@ import { computed } from 'vue'
 import { PILL_LABEL, type PillState } from './pill'
 
 /** 运行状态胶囊（八态）：颜色只作底与圆点，文字始终是文案。 */
-const props = defineProps<{ state: PillState }>()
-const label = computed(() => PILL_LABEL[props.state])
+const props = defineProps<{ state: PillState; label?: string }>()
+const text = computed(() => props.label || PILL_LABEL[props.state])
 </script>
 
 <template>
   <span class="pill" :data-state="state"
-    ><span class="dot" aria-hidden="true"></span>{{ label }}</span
+    ><span class="dot" aria-hidden="true"></span><slot>{{ text }}</slot></span
   >
 </template>
 
