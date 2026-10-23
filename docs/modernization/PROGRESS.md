@@ -783,4 +783,5 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 用户原话“开始派工 S4-A（codex gpt-6.1-sol / medium，测试员 gpt-6-luna / high）”。主控：Claude Code 会话，role: lead，actual unknown。
 - 输入 `rewrite/next @ b70afb0`；worktree `.local/worktrees/s4a`（detached），后端 `uv sync --frozen --offline` 后 `contracts --check` exit 0。
 - 施工：codex exec，`-m gpt-6.1-sol -c model_reasoning_effort=medium -s workspace-write`，不联网；请求与输出 `.local/dispatch/s4a/`（request.md、stdout.jsonl、stderr.log）。施工者可派一层测试子agent gpt-6-luna / high，仅写 `next/backend/tests/independent/s4a/`；不做交叉审计。实际型号/档位以 rollout turn_context 为准，返回后补记。
+- codex session `01a16743-a089-74d1-8d42-a2a6201bb517`。
 - 状态：S4-A **dispatched / running**；S4-B、S4-C not_dispatched。
