@@ -876,3 +876,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 用户原答复“S5 的十项待决均按你推荐的来。”，十项均按推荐确认；WORK_PACKAGES「S5 已决」已写入（revision 10），合同状态改为已确认，派工门禁解除。主控 actual model/effort=unknown。
 - 待决9 授权的真实 CLI 协议核对排在 S5-A 集成后、S5-B 派工前执行，本轮未运行任何 CLI。
 - 状态：S5-A/S5-B/S5-C/S5-D 仍 **not_dispatched**（本会话受派生任务约束“只写合同、不派工”，派工另行开始）；AI 机器人与主 Bot 切换、真实验收未授权。
+
+### S5-A 派工（2026-10-23）
+
+- 用户原话“开始派工 S5-A（codex gpt-6.1-sol / medium，测试员 gpt-6-luna / high）。”主控：Claude Code 会话，role: lead，actual unknown。
+- 输入 `rewrite/next @ 04f9897`；worktree `.local/worktrees/s5a`（detached），后端 `uv sync --frozen --offline` 后 `contracts --check` exit 0。
+- 施工：codex exec（codex-cli 0.163.0），`-m gpt-6.1-sol -c model_reasoning_effort=medium -s workspace-write`，不联网，请求经 stdin；请求与输出 `.local/dispatch/s5a/`（request.md、stdout.jsonl、stderr.log、exit.txt）。施工者可派一层测试子agent gpt-6-luna / high，仅写 `next/backend/tests/independent/s5a/`；不做交叉审计。测试只用替身 CLI，禁止调用本机真实 claude/codex/agy。实际型号/档位以 rollout turn_context 为准，返回后补记。
+- codex thread `01a16895-14fa-7e10-8ab8-9c2c7c90f8b8`。
+- 状态：S5-A **dispatched / running**；S5-B/C/D not_dispatched；待决9 协议核对排在 S5-A 集成后。
