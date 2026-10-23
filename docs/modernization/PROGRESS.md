@@ -819,3 +819,9 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成版本验收：后端全量 **875 passed**（260.72s，沙箱外含端口与 bare git），ruff exit 0，contracts --check exit 0；前端 contracts:check exit 0（契约无变化，schema.d.ts 未重生成）；`git diff --check` exit 0。Rust/旧代码守卫 not_run（未改）。
 - 未测：真实 Telegram/ADO/Keychain/系统代理/Tauri；dev:web 端到端待 S4-C 集成后主控联调。施工 worktree `.local/worktrees/s4a` 保留。
 - 状态：**S4-B integrated**（本地提交，未 push）；S4-C 施工已交回、独立测试进行中。
+
+### S4-C 施工与独立测试（2026-10-23，进行中）
+
+- 施工第 1 轮：agy `--sandbox --model gemini-3.8-flash-high --effort high`，cwd 缓存会话 `e2d67d9a-9943-40fa-8656-f55dd36e7baf`，exit 0；actual model/effort=unknown（agy 无回执）。22 文件均在 write_scope；新增 `tests/unit/s4c-*` 3 文件 26 例；既有测试仅两处随新增分区更新（页签列表加“Telegram”、竖向页签计数 5→6），主控核对 diff。主控在施工树复跑 frozen install/typecheck/lint（0 error/8 既有 warning）/test **929 passed**/build/guard:dist/contracts:check 全 exit 0，`git diff --check` exit 0。
+- 独立测试：codex exec `gpt-6-luna` / high，session `01a167af-4003-71e2-b4ea-fba73e77cf27`（rollout turn_context 回执 gpt-6-luna/high），新增 `tests/independent/s4c-*` 4 文件 11 例：10 passed / **1 failed**——缺陷 S4C-001：`telegram.status` WS 事件晚于在途 GET 时被旧 GET 结果回滚（conflict→已停用），疑似 `useSettings.ts:94/115`。测试员自报未覆盖：502/503 文案、enable 请求体、九种状态与阈值、解绑 revision/Esc、ACL 重名/规范化/冲突草稿、任务删除查询参数、方向键/焦点陷阱、PAT/Bearer 全面扫描（部分由施工者单测覆盖，不计独立）。
+- 退回 agy 第 2 轮（同 `--conversation`）：修 S4C-001，不得改独立测试，新增自有回归。请求 `.local/dispatch/s4c/round2.md`。
