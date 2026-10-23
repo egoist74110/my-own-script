@@ -29,6 +29,9 @@ from toolbox_backend.domain.telegram import (
 from toolbox_backend.logging_setup import contains_secret, redact_exception, register_secret
 
 TOKEN_ACCOUNT = "telegram_bot_token"
+AI_IDS = ("claude_code", "codex", "gemini")
+RATE_PER_CHAT_S = 1.0
+RATE_PER_BOT = (20, 60.0)
 NOTIFY_STATES = {"running", "succeeded", "failed", "cancelled", "unknown", "manual_required"}
 
 
@@ -63,7 +66,32 @@ def identities(update):
 
 
 class TelegramService:
-    def __init__(self, settings, store, runs, hub, *, transport=None, work_items=None):
+    def __init__(
+        self,
+        settings,
+        store,
+        runs,
+        hub,
+        *,
+        transport=None,
+        work_items=None,
+        slot="main",
+        ai=None,
+        registry=None,
+        projector=None,
+    ):
+        self.slot = slot
+        self.ai_id = slot.split(":", 1)[1] if slot != "main" else None
+        self.token_account = TOKEN_ACCOUNT if self.ai_id is None else f"ai_bot_token:{self.ai_id}"
+        self.credential_kind = "telegram_bot" if self.ai_id is None else "telegram_ai_bot"
+        self.ai = ai
+        self.registry = registry if registry is not None else {}
+        self.projector = projector
+        self.focus = {}
+        self.reply_map = {}
+        self._sent_chat = {}
+        self._sent_bot = []
+        self.rate_chat_s, (self.rate_bot_n, self.rate_bot_s) = RATE_PER_CHAT_S, RATE_PER_BOT
         self.settings = settings
         self.config_store = settings.store
         self.store = store
@@ -97,7 +125,17 @@ class TelegramService:
         self._baseline_delay = None
         from toolbox_backend.services.telegram_commands import TelegramDispatcher
 
-        self.dispatcher = TelegramDispatcher(self, work_items)
+        if self.ai_id is None:
+            self.dispatcher = TelegramDispatcher(self, work_items)
+        else:
+            from toolbox_backend.services.telegram_ai import AiBotDispatcher
+
+            self.dispatcher = AiBotDispatcher(self)
+
+    def control_of(self, config):
+        if self.ai_id is None:
+            return config.telegram.control
+        return getattr(config.ai.bots, self.ai_id)
 
     def attached(self):
         scope = self._handler_context.get()
@@ -115,11 +153,23 @@ class TelegramService:
         self.state, self.last_error_category, self.since = state, category, stamp()
         self.hub.publish(
             TelegramStatusEvent,
-            TelegramStatusData(state=state, since=self.since, last_error_category=category),
+            TelegramStatusData(
+                state=state, since=self.since, last_error_category=category, slot=self.slot
+            ),
         )
 
     async def initialize(self):
-        await self.store.initialize()
+        if self.ai_id is not None:
+            # AI slots open nothing until enabled; a store fault surfaces on activation.
+            try:
+                config = await self.config_store.read()
+                if self.control_of(config).enabled:
+                    async with self._control:
+                        await self._activate(config, restart=True)
+            except SettingsError:
+                return
+            return
+        await self.store.initialize(self.slot)
         if self.store.readonly_error:
             self.status("store_unavailable", "store_unavailable")
             return
@@ -136,8 +186,8 @@ class TelegramService:
     async def view(self):
         config = await self.config_store.read()
         tg = config.telegram
-        present = bool(await asyncio.to_thread(self.settings._get, TOKEN_ACCOUNT))
-        meta = config.credentials.get(TOKEN_ACCOUNT)
+        present = bool(await asyncio.to_thread(self.settings._get, self.token_account))
+        meta = config.credentials.get(self.token_account)
         _, _, warnings = acl_validity(config)
         if self.store.readonly_error:
             warnings.append("Telegram 数据库不可用")
@@ -171,9 +221,40 @@ class TelegramService:
         )
         return json.loads(redact_exception(json.dumps(result)))
 
-    @staticmethod
-    def inactive(config):
-        if config.telegram.control.enabled:
+    async def ai_view(self):
+        config = await self.config_store.read()
+        control = self.control_of(config)
+        present = bool(await asyncio.to_thread(self.settings._get, self.token_account))
+        meta = config.credentials.get(self.token_account)
+        result = dict(
+            ai_id=self.ai_id,
+            slot=self.slot,
+            control=dict(
+                enabled=control.enabled, enabled_at=control.enabled_at, bot_id=control.bot_id
+            ),
+            bot=dict(
+                credential=dict(present=present, source=meta.source if meta else "unknown"),
+                bot_id=control.bot_id,
+                username=self.bot_username or control.username,
+            ),
+            owner=dict(
+                bound=numeric(config.telegram.owner.chat_id),
+                chat_id=config.telegram.owner.chat_id,
+                source=config.telegram.owner.source,
+            ),
+            poller=dict(
+                state=self.state,
+                since=self.since,
+                slot=self.slot,
+                last_poll_at=self.last_poll_at,
+                last_error_category=self.last_error_category,
+                consecutive_failures=self.consecutive_failures,
+            ),
+        )
+        return json.loads(redact_exception(json.dumps(result)))
+
+    def inactive(self, config):
+        if self.control_of(config).enabled:
             raise SettingsError("telegram_active", "请先停用 Telegram")
 
     async def token(self, revision, value=None, *, legacy=False, delete=False):
@@ -182,7 +263,7 @@ class TelegramService:
                 config = await self.config_store.read()
                 self.inactive(config)
                 try:
-                    value = await asyncio.to_thread(self.settings.legacy.get, TOKEN_ACCOUNT)
+                    value = await asyncio.to_thread(self.settings.legacy.get, self.token_account)
                 except Exception:
                     raise SettingsError("credential_backend_error", "旧凭据读取失败", 502) from None
                 if value:
@@ -197,28 +278,28 @@ class TelegramService:
             def operation(tx):
                 self.inactive(tx.config)
                 source = "imported" if legacy else "manual"
-                old = self.settings._get(TOKEN_ACCOUNT)
+                old = self.settings._get(self.token_account)
                 if delete:
 
                     def pending(c):
-                        c.credentials[TOKEN_ACCOUNT] = CredentialMeta(
-                            kind="telegram_bot",
-                            ref=TOKEN_ACCOUNT,
+                        c.credentials[self.token_account] = CredentialMeta(
+                            kind=self.credential_kind,
+                            ref=self.ai_id or self.token_account,
                             source=source,
                             updated_at=stamp(),
                             state="pending_delete",
                         )
 
                     tx.commit(pending)
-                    self.settings._delete(TOKEN_ACCOUNT)
-                    tx.commit(lambda c: c.credentials.pop(TOKEN_ACCOUNT, None))
+                    self.settings._delete(self.token_account)
+                    tx.commit(lambda c: c.credentials.pop(self.token_account, None))
                 else:
-                    self.settings._set(TOKEN_ACCOUNT, value)
+                    self.settings._set(self.token_account, value)
 
                     def record(c):
-                        c.credentials[TOKEN_ACCOUNT] = CredentialMeta(
-                            kind="telegram_bot",
-                            ref=TOKEN_ACCOUNT,
+                        c.credentials[self.token_account] = CredentialMeta(
+                            kind=self.credential_kind,
+                            ref=self.ai_id or self.token_account,
                             source=source,
                             updated_at=stamp(),
                         )
@@ -227,22 +308,31 @@ class TelegramService:
                         tx.commit(record)
                     except BaseException:
                         if old is None:
-                            self.settings._delete(TOKEN_ACCOUNT)
+                            self.settings._delete(self.token_account)
                         else:
-                            self.settings._set(TOKEN_ACCOUNT, old)
+                            self.settings._set(self.token_account, old)
                         raise
                 return MutationResponse(revision=tx.config.revision)
 
             return await self.config_store.run(revision, operation)
 
     async def _open_client(self):
-        value = await asyncio.to_thread(self.settings._get, TOKEN_ACCOUNT)
+        value = await asyncio.to_thread(self.settings._get, self.token_account)
         if not value:
             raise SettingsError("no_credential", "请先录入 Bot Token")
         self.client = TelegramHTTP(value, transport=self.transport)
 
+    def claimed_elsewhere(self, config, bot_id):
+        """True when another enabled slot is registered for this bot id (single writer view)."""
+        others = [("main", config.telegram.control)] + [
+            (f"ai:{i}", getattr(config.ai.bots, i)) for i in AI_IDS
+        ]
+        return any(
+            slot != self.slot and ctl.enabled and ctl.bot_id == bot_id for slot, ctl in others
+        )
+
     async def _activate(self, config, *, restart=False, delete_webhook=False):
-        await self.store.initialize()
+        await self.store.initialize(self.slot)
         if self.store.readonly_error:
             self.status("store_unavailable", "store_unavailable")
             raise SettingsError("telegram_store_unavailable", "Telegram 数据库不可用", 503)
@@ -268,17 +358,30 @@ class TelegramService:
                 raise SettingsError("webhook_set", "Bot 已设置 webhook，需显式确认删除")
             if delete_webhook:
                 await self.client.request("deleteWebhook", {"drop_pending_updates": False})
-            bot = await self.store.bot(self.bot_id, self.bot_username)
+            bot = await self.store.bot(self.bot_id, self.bot_username, self.slot)
             if not restart:
 
                 def enabled(c):
-                    c.telegram.control.enabled = True
-                    c.telegram.control.enabled_at = stamp()
-                    c.telegram.control.bot_id = self.bot_id
+                    if self.claimed_elsewhere(c, self.bot_id):
+                        raise SettingsError("bot_in_use", "该 Bot 已被另一个槽位使用")
+                    ctl = self.control_of(c)
+                    ctl.enabled = True
+                    ctl.enabled_at = stamp()
+                    ctl.bot_id = self.bot_id
+                    if self.ai_id is not None:
+                        ctl.username = self.bot_username
 
                 config = await self.config_store.update(config.revision, enabled)
-            elif config.telegram.control.bot_id != self.bot_id:
+            elif self.control_of(config).bot_id != self.bot_id:
                 raise SettingsError("no_credential", "Bot 身份已变化，请停用后重新启用")
+            elif any(
+                p.slot != self.slot and p.bot_id == self.bot_id and p.task is not None
+                for p in self.registry.values()
+            ):
+                self.status("conflict", "bot_in_use")
+                raise SettingsError("bot_in_use", "该 Bot 已被另一个槽位使用")
+            if self.ai_id is not None:
+                await self.store.drop_pending_ai(self.bot_id)
             enabled_committed = True
             if not bot["baseline_done"]:
                 await self._baseline()
@@ -312,14 +415,14 @@ class TelegramService:
             config = await self.config_store.read()
             if config.revision != body.revision:
                 raise SettingsError("revision_conflict", "配置已更新", revision=config.revision)
-            if config.telegram.control.enabled:
+            if self.control_of(config).enabled:
                 raise SettingsError("telegram_active", "Telegram 已启用，请先停用")
             return await self._activate(config, delete_webhook=body.delete_webhook)
 
     async def disable(self, revision):
         async with self._control:
             config = await self.config_store.update(
-                revision, lambda c: setattr(c.telegram.control, "enabled", False)
+                revision, lambda c: setattr(self.control_of(c), "enabled", False)
             )
             await self._stop()
             self.status("disabled")
@@ -330,13 +433,13 @@ class TelegramService:
             config = await self.config_store.read()
             if config.revision != revision:
                 raise SettingsError("revision_conflict", "配置已更新", revision=config.revision)
-            if self.state not in {"conflict", "backoff"} or not config.telegram.control.enabled:
+            if self.state not in {"conflict", "backoff"} or not self.control_of(config).enabled:
                 raise SettingsError("telegram_active", "当前状态不能重试接管")
             await self._stop()
             try:
-                await self.store.initialize()
+                await self.store.initialize(self.slot)
                 await self._open_client()
-                self.bot_id = config.telegram.control.bot_id
+                self.bot_id = self.control_of(config).bot_id
                 bot = await self.store.bot(self.bot_id)
                 updates = await self.client.request(
                     "getUpdates",
@@ -394,7 +497,8 @@ class TelegramService:
                         return
                     self.consecutive_failures += 1
                     await asyncio.sleep(self.backoff(self.consecutive_failures, exc.retry_after))
-            await self.recover_notifications()
+            if self.ai_id is None:
+                await self.recover_notifications()
             workers = [asyncio.create_task(self._worker()) for _ in range(2)]
             sender = asyncio.create_task(self._send_loop())
             if initial_updates:
@@ -600,7 +704,9 @@ class TelegramService:
         tg = config.telegram
         if private and numeric(tg.owner.chat_id) and chat == tg.owner.chat_id:
             return "owner", None
-        if not tg.owner.chat_id:
+        if self.ai_id is not None or not tg.owner.chat_id:
+            # AI slots only know the private owner; groups, members and legacy entries
+            # are none: zero reply, zero side effect.
             return "none", None
         groups, members, _ = acl_validity(config)
         gids = {g.id: g for g in groups}
@@ -650,6 +756,18 @@ class TelegramService:
         parts = text.split(maxsplit=1)
         command = parts[0].split("@")[0] if parts else ""
         date = message.get("date")
+        if self.ai_id is not None:
+            role, _ = await self.resolve_acl(update)
+            if role == "none":
+                return "ignored"
+            if isinstance(callback, dict):
+                return await self.dispatcher.dispatch(update, command, role, None)
+            if type(date) not in (int, float) or not 0 <= date <= 2**40:
+                return "ignored"
+            if time.time() - date > 300:
+                await self.reply(update, f"该消息发送于 {local_clock(date)}，已过期，请重新发送")
+                return "expired"
+            return await self.dispatcher.message(update, command, text)
         if command.startswith("/") and (type(date) not in (int, float) or not 0 <= date <= 2**40):
             raise TelegramError("bad_response")
         if private and command == "/bind":
@@ -1075,10 +1193,27 @@ class TelegramService:
             if status in NOTIFY_STATES:
                 await self.notify_run(run, status, config)
 
+    def rate_blocked(self):
+        """(chats sent to within the per-chat interval, seconds until the bot budget frees)."""
+        now = time.monotonic()
+        self._sent_chat = {c: t for c, t in self._sent_chat.items() if now - t < self.rate_chat_s}
+        self._sent_bot = [t for t in self._sent_bot if now - t < self.rate_bot_s]
+        wait = 0.0
+        if len(self._sent_bot) >= self.rate_bot_n:
+            wait = self.rate_bot_s - (now - self._sent_bot[0])
+        return tuple(self._sent_chat), wait
+
     async def send_once(self):
-        row = await self.store.take(self.bot_id)
+        blocked, wait = self.rate_blocked() if self.ai_id is not None else ((), 0.0)
+        if wait > 0:
+            return False
+        row = await self.store.take(self.bot_id, blocked)
         if row is None:
             return False
+        if self.ai_id is not None:
+            now = time.monotonic()
+            self._sent_chat[row["chat_id"]] = now
+            self._sent_bot.append(now)
         try:
             payload = {"chat_id": row["chat_id"], "text": row["text"]}
             if row["reply_markup_json"]:
@@ -1088,14 +1223,15 @@ class TelegramService:
                 method = "editMessageText"
                 payload["message_id"] = row["edit_message_id"]
             try:
-                await self.client.request(method, payload)
+                result = await self.client.request(method, payload)
             except TelegramError:
                 if method != "editMessageText":
                     raise
                 # A panel edit failure never retries an execution action. Only its
                 # already materialized plain-text reply falls back to a new message.
                 payload.pop("message_id", None)
-                await self.client.request("sendMessage", payload)
+                result = await self.client.request("sendMessage", payload)
+            self.remember_message(row, result)
             await self.store.sent(row["id"], "sent")
         except TelegramError as exc:
             age = (datetime.now(UTC) - datetime.fromisoformat(row["created_at"])).total_seconds()
@@ -1113,6 +1249,15 @@ class TelegramService:
         # Cancellation during sending deliberately leaves 'sending': next initialization
         # marks unknown, so an ambiguous send is never automatically repeated.
         return True
+
+    def remember_message(self, row, result):
+        """Reply-to routing: map a sent AI message back to its session (memory, bounded)."""
+        mid = result.get("message_id") if isinstance(result, dict) else None
+        match = re.match(r"(?:bot:\d+:)?ai:(ais_[0-9a-f]{32}):", row["dedup_key"] or "")
+        if type(mid) is int and match:
+            self.reply_map[(row["chat_id"], mid)] = match.group(1)
+            while len(self.reply_map) > 512:
+                del self.reply_map[next(iter(self.reply_map))]
 
     async def _send_loop(self):
         while True:
@@ -1135,7 +1280,9 @@ class TelegramService:
                 if client:
                     await client.close()
             finally:
-                await self.store.close()
+                self.focus.clear()
+                self.reply_map.clear()
+                await self.store.close(self.slot)
 
     async def _stop(self):
         self.status("stopping")

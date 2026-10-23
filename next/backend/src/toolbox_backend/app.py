@@ -37,7 +37,8 @@ from toolbox_backend.services.runs import RunService
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
 from toolbox_backend.services.tasks import TasksService
-from toolbox_backend.services.telegram import TelegramService
+from toolbox_backend.services.telegram import AI_IDS, TelegramService
+from toolbox_backend.services.telegram_ai import AiTelegramProjector
 from toolbox_backend.services.work_items import WorkItemsService
 from toolbox_backend.settings import Settings
 
@@ -85,6 +86,9 @@ def create_app(
         await app.state.run_service.initialize()
         await app.state.ai_service.initialize()
         await app.state.telegram_service.initialize()
+        for ai_slot in app.state.telegram_ai_services.values():
+            await ai_slot.initialize()
+        app.state.ai_projector.start()
         beat = asyncio.create_task(app.state.system.heartbeat_loop(settings.heartbeat_interval_s))
         try:
             yield
@@ -97,7 +101,15 @@ def create_app(
                 try:
                     await app.state.ai_service.close()
                 finally:
-                    await app.state.telegram_service.close()
+                    try:
+                        await app.state.ai_projector.close()
+                    finally:
+                        try:
+                            await asyncio.gather(
+                                *(s.close() for s in app.state.telegram_ai_services.values())
+                            )
+                        finally:
+                            await app.state.telegram_service.close()
 
     app = FastAPI(
         title="TOOLBOX backend",
@@ -192,7 +204,7 @@ def create_app(
 
         @app.post("/api/dev/telegram/inject", response_model=MutationResponse)
         async def inject(body: InjectRequest):
-            fake.inject(body.update)
+            fake.inject(body.update, **({"bot_id": body.bot_id} if body.bot_id else {}))
             config = await store.read()
             return MutationResponse(revision=config.revision)
 
@@ -200,14 +212,42 @@ def create_app(
         async def sent():
             return {"items": fake.sent}
 
-    app.state.telegram_service = TelegramService(
+    registry: dict[str, TelegramService] = {}
+    app.state.telegram_service = registry["main"] = TelegramService(
         app.state.settings_service,
         app.state.telegram_store,
         app.state.run_service,
         hub,
         transport=telegram_transport,
         work_items=app.state.work_items_service,
+        ai=app.state.ai_service,
+        registry=registry,
     )
+    app.state.telegram_ai_services = {}
+    for ai_id in AI_IDS:
+        app.state.telegram_ai_services[ai_id] = registry[f"ai:{ai_id}"] = TelegramService(
+            app.state.settings_service,
+            app.state.telegram_store,
+            None,
+            hub,
+            transport=telegram_transport,
+            slot=f"ai:{ai_id}",
+            ai=app.state.ai_service,
+            registry=registry,
+        )
+    projector = AiTelegramProjector(store, app.state.telegram_ai_services)
+    app.state.ai_projector = projector
+    for service in registry.values():
+        service.projector = projector
+
+    def ai_event(event):
+        hub.publish_ai(event)
+        try:
+            projector.offer(event)
+        except Exception:  # projection must never affect a session or the hub fan-out
+            pass
+
+    app.state.ai_store.on_event = ai_event
     prior_event = app.state.run_store.on_event
 
     def run_event(event):

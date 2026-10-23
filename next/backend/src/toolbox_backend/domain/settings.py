@@ -221,7 +221,7 @@ class ImportState(StrictModel):
 
 
 class CredentialMeta(StrictModel):
-    kind: Literal["ado_pat", "telegram_bot"] = "ado_pat"
+    kind: Literal["ado_pat", "telegram_bot", "telegram_ai_bot"] = "ado_pat"
     ref: Id
     source: Literal["imported", "manual"]
     updated_at: str
@@ -244,7 +244,11 @@ class Config(StrictModel):
     @model_validator(mode="after")
     def credential_accounts(self):
         if any(
-            key != ("telegram_bot_token" if meta.kind == "telegram_bot" else f"ado_pat:{meta.ref}")
+            key
+            != {
+                "telegram_bot": "telegram_bot_token",
+                "telegram_ai_bot": f"ai_bot_token:{meta.ref}",
+            }.get(meta.kind, f"ado_pat:{meta.ref}")
             for key, meta in self.credentials.items()
         ):
             raise ValueError("invalid credential account")

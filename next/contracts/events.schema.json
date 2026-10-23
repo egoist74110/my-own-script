@@ -1477,6 +1477,11 @@
           "title": "Since",
           "type": "string"
         },
+        "slot": {
+          "default": "main",
+          "title": "Slot",
+          "type": "string"
+        },
         "state": {
           "enum": [
             "disabled",

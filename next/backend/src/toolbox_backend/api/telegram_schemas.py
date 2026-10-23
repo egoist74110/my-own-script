@@ -118,13 +118,22 @@ PollState = Literal[
 ]
 
 
-class TelegramStatusData(BaseModel):
+AIId = Literal["claude_code", "codex", "gemini"]
+
+
+class _PollStatus(BaseModel):
     state: PollState
     since: str
     last_error_category: str | None = None
 
 
-class PollerView(TelegramStatusData):
+class TelegramStatusData(_PollStatus):
+    # Additive (S5-C): "main" or "ai:<ai_id>"; absent in older payloads means main.
+    slot: str = "main"
+
+
+class PollerView(_PollStatus):
+    # No slot here: the main GET keeps its S4 shape; AIBotView carries its own slot.
     last_poll_at: str | None = None
     consecutive_failures: int = 0
 
@@ -144,6 +153,32 @@ class TelegramView(BaseModel):
     poller: PollerView
     acl: ACLView
     warnings: list[str]
+
+
+class AIBotEnableRequest(RevisionRequest):
+    ack_old_bot_cleared: bool
+    delete_webhook: bool = False
+
+
+class AIBotControlView(BaseModel):
+    enabled: bool
+    enabled_at: str | None = None
+    bot_id: str | None = None
+
+
+class AIBotView(BaseModel):
+    ai_id: AIId
+    slot: str
+    control: AIBotControlView
+    bot: BotView
+    owner: OwnerView
+    poller: PollerView
+
+
+class AIBotsView(BaseModel):
+    revision: int
+    items: list[AIBotView]
+    warnings: list[str] = Field(default_factory=list)
 
 
 class BindCodeResponse(BaseModel):
@@ -166,9 +201,11 @@ class ActivityResponse(BaseModel):
 
 class InjectRequest(StrictModel):
     update: dict[str, JsonValue]
+    bot_id: int | None = Field(default=None, ge=1)
 
 
 class FakeSentItem(BaseModel):
+    bot_id: str | None = None
     method: str
     payload: dict[str, JsonValue]
 
@@ -183,6 +220,7 @@ class TelegramErrorDetail(BaseModel):
         "telegram_active",
         "ack_required",
         "webhook_set",
+        "bot_in_use",
         "legacy_missing",
         "owner_not_bound",
         "telegram_request_failed",

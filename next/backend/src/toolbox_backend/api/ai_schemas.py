@@ -161,6 +161,11 @@ class ResumeCandidates(BaseModel):
     items: list[ResumeCandidate]
 
 
+class AgyModels(BaseModel):
+    items: list[str]
+    category: str | None = None
+
+
 class AnalysisRequest(StrictModel):
     request_id: UUID
     project_id: str = Field(min_length=1, max_length=128)

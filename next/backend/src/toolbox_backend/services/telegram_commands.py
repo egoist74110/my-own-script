@@ -471,7 +471,7 @@ class TelegramDispatcher:
         if kind.startswith("wi_"):
             if role != "owner":
                 return "ignored"
-            return await self.work_items.callback(update, kind, payload)
+            return await self.work_items.callback(update, kind, payload, token)
         page = payload.get("page")
         if page == "tasks":
             await self.tasks(update)

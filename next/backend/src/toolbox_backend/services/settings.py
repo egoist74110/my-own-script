@@ -619,7 +619,7 @@ class SettingsService:
 
     async def delete_orphan(self, key, revision):
         def operation(tx):
-            if key == "telegram_bot_token":
+            if key == "telegram_bot_token" or key.startswith("ai_bot_token:"):
                 raise SettingsError("in_use", "请通过 Telegram 设置管理 Bot 凭据")
             meta = tx.config.credentials.get(key)
             if not meta and key in tx.config.import_.written_credentials:

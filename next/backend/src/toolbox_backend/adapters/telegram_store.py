@@ -19,7 +19,7 @@ from toolbox_backend.logging_setup import contains_secret, redact_exception
 SCHEMA = (
     """CREATE TABLE tg_bots(bot_id TEXT PRIMARY KEY, username TEXT, next_offset INTEGER
        NOT NULL DEFAULT 0, baseline_done INTEGER NOT NULL DEFAULT 0, state TEXT,
-       updated_at TEXT NOT NULL)""",
+       updated_at TEXT NOT NULL, slot TEXT)""",
     """CREATE TABLE tg_updates(bot_id TEXT, update_id INTEGER, received_at TEXT,
        kind TEXT, chat_id TEXT, user_id TEXT, command TEXT, status TEXT, reason TEXT,
        handled_at TEXT, PRIMARY KEY(bot_id,update_id))""",
@@ -44,6 +44,7 @@ class TelegramStore:
         self._db = None
         self._fd = None
         self._lock = threading.RLock()
+        self._holders = set()
         self.readonly_error = None
         self.checkpoint = lambda _: None
 
@@ -71,7 +72,7 @@ class TelegramStore:
                 self._db.row_factory = sqlite3.Row
                 db = self._db
                 version = db.execute("PRAGMA user_version").fetchone()[0]
-                if version not in (0, 1):
+                if version not in (0, 1, 2):
                     self.readonly_error = "Telegram 数据库版本不支持"
                     db.close()
                     self._db = None
@@ -84,7 +85,13 @@ class TelegramStore:
                     with self.transaction() as db:
                         for statement in SCHEMA:
                             db.execute(statement)
-                        db.execute("PRAGMA user_version=1")
+                        db.execute("PRAGMA user_version=2")
+                elif version == 1:
+                    # v1 -> v2 (S5-C): one transaction; every pre-existing bot is the main slot.
+                    with self.transaction() as db:
+                        db.execute("ALTER TABLE tg_bots ADD COLUMN slot TEXT")
+                        db.execute("UPDATE tg_bots SET slot='main'")
+                        db.execute("PRAGMA user_version=2")
                 if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise ValueError("corrupt")
                 with self.transaction() as db:
@@ -111,8 +118,19 @@ class TelegramStore:
             if path.exists():
                 path.chmod(0o600)
 
-    async def initialize(self):
-        await self.call(self._initialize)
+    async def initialize(self, holder=None):
+        # A holder is registered before awaiting so a concurrent release cannot close the
+        # database under a slot that is still starting.
+        if holder is not None:
+            self._holders.add(holder)
+        try:
+            await self.call(self._initialize)
+        except BaseException:
+            if holder is not None:
+                self._holders.discard(holder)
+            raise
+        if holder is not None and self._db is None:
+            self._holders.discard(holder)
 
     def _call(self, fn, args, kwargs):
         with self._lock:
@@ -142,13 +160,16 @@ class TelegramStore:
             db.rollback()
             raise
 
-    async def bot(self, bot_id, username=None):
+    async def bot(self, bot_id, username=None, slot=None):
         def read():
             with self.transaction() as db:
                 db.execute(
-                    "INSERT OR IGNORE INTO tg_bots(bot_id,username,updated_at) VALUES(?,?,?)",
-                    (bot_id, username, stamp()),
+                    "INSERT OR IGNORE INTO tg_bots(bot_id,username,updated_at,slot) "
+                    "VALUES(?,?,?,?)",
+                    (bot_id, username, stamp(), slot),
                 )
+                if slot is not None:
+                    db.execute("UPDATE tg_bots SET slot=? WHERE bot_id=?", (slot, bot_id))
                 if username is not None:
                     db.execute("UPDATE tg_bots SET username=? WHERE bot_id=?", (username, bot_id))
                 return dict(
@@ -255,15 +276,24 @@ class TelegramStore:
                 for i, chunk in enumerate(chunks):
                     pending = db.execute("SELECT count(*) FROM tg_outbox WHERE state='pending'")
                     if pending.fetchone()[0] >= 500:
-                        oldest = db.execute(
-                            "SELECT id FROM tg_outbox WHERE state='pending' "
-                            "AND kind='notify' ORDER BY id LIMIT 1"
-                        ).fetchone()
-                        if oldest:
+                        # AI projection loses tool summaries first, then plain notifications,
+                        # then the oldest assistant text; it never raises into a session.
+                        victim = None
+                        for victim_kind in ("ai_tool", "notify", "ai_text"):
+                            victim = db.execute(
+                                "SELECT id FROM tg_outbox WHERE state='pending' "
+                                "AND kind=? ORDER BY id LIMIT 1",
+                                (victim_kind,),
+                            ).fetchone()
+                            if victim:
+                                break
+                        if victim and not (kind == "ai_tool" and victim_kind != "ai_tool"):
                             db.execute(
                                 "UPDATE tg_outbox SET state='dropped',text='' WHERE id=?",
-                                (oldest[0],),
+                                (victim[0],),
                             )
+                        elif kind.startswith("ai_"):
+                            return  # projection is lossy by contract; the newest is dropped
                         else:
                             raise SettingsError("busy", "Telegram 发件箱已满", 503)
                     key = key_base if i == 0 else f"{key_base}:part:{i}"
@@ -290,13 +320,29 @@ class TelegramStore:
 
         await self.call(save)
 
-    async def take(self, bot_id):
+    async def drop_pending_ai(self, bot_id):
+        """A re-enabled AI slot never replays output of an earlier run of the slot."""
+
         def save():
             with self.transaction() as db:
+                db.execute(
+                    "UPDATE tg_outbox SET state='dropped',text='' WHERE bot_id=? "
+                    "AND state='pending' AND kind LIKE 'ai\\_%' ESCAPE '\\'",
+                    (bot_id,),
+                )
+
+        await self.call(save)
+
+    async def take(self, bot_id, exclude_chats=()):
+        def save():
+            with self.transaction() as db:
+                marks = ",".join("?" for _ in exclude_chats)
                 row = db.execute(
                     "SELECT * FROM tg_outbox WHERE bot_id=? AND state='pending' "
-                    "AND next_attempt_at<=? ORDER BY kind='reply' DESC,id LIMIT 1",
-                    (bot_id, stamp()),
+                    "AND next_attempt_at<=? "
+                    + (f"AND chat_id NOT IN ({marks}) " if exclude_chats else "")
+                    + "ORDER BY kind IN ('reply','ai_approval') DESC,id LIMIT 1",
+                    (bot_id, stamp(), *exclude_chats),
                 ).fetchone()
                 if row is None:
                     return None
@@ -433,5 +479,9 @@ class TelegramStore:
                 os.close(self._fd)
                 self._fd = None
 
-    async def close(self):
+    async def close(self, holder=None):
+        if holder is not None:
+            self._holders.discard(holder)
+            if self._holders:
+                return
         await asyncio.to_thread(self._close)

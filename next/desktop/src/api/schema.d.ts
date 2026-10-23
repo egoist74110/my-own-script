@@ -212,6 +212,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/agy-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agy Models */
+        get: operations["agy_models_api_ai_agy_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/jobs/{jid}/cancel": {
         parameters: {
             query?: never;
@@ -883,6 +900,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telegram/ai-bots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Bots */
+        get: operations["ai_bots_api_telegram_ai_bots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Bot */
+        get: operations["ai_bot_api_telegram_ai_bots__ai_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}/control/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Disable */
+        post: operations["ai_disable_api_telegram_ai_bots__ai_id__control_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}/control/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Enable */
+        post: operations["ai_enable_api_telegram_ai_bots__ai_id__control_enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}/control/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Retry */
+        post: operations["ai_retry_api_telegram_ai_bots__ai_id__control_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ai Token */
+        put: operations["ai_token_api_telegram_ai_bots__ai_id__token_put"];
+        post?: never;
+        /** Ai Delete Token */
+        delete: operations["ai_delete_token_api_telegram_ai_bots__ai_id__token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/ai-bots/{ai_id}/token/import-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Import Token */
+        post: operations["ai_import_token_api_telegram_ai_bots__ai_id__token_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/telegram/control/disable": {
         parameters: {
             query?: never;
@@ -1285,6 +1422,50 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** AIBotControlView */
+        AIBotControlView: {
+            /** Bot Id */
+            bot_id?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Enabled At */
+            enabled_at?: string | null;
+        };
+        /** AIBotEnableRequest */
+        AIBotEnableRequest: {
+            /** Ack Old Bot Cleared */
+            ack_old_bot_cleared: boolean;
+            /**
+             * Delete Webhook
+             * @default false
+             */
+            delete_webhook: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** AIBotView */
+        AIBotView: {
+            /**
+             * Ai Id
+             * @enum {string}
+             */
+            ai_id: "claude_code" | "codex" | "gemini";
+            bot: components["schemas"]["BotView"];
+            control: components["schemas"]["AIBotControlView"];
+            owner: components["schemas"]["OwnerView"];
+            poller: components["schemas"]["PollerView"];
+            /** Slot */
+            slot: string;
+        };
+        /** AIBotsView */
+        AIBotsView: {
+            /** Items */
+            items: components["schemas"]["AIBotView"][];
+            /** Revision */
+            revision: number;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** AIDefaults */
         AIDefaults: {
             agy?: components["schemas"]["AgyDefaults"];
@@ -1486,6 +1667,13 @@ export interface components {
             model?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** AgyModels */
+        AgyModels: {
+            /** Category */
+            category?: string | null;
+            /** Items */
+            items: string[];
         };
         /** AlertRequest */
         AlertRequest: {
@@ -1765,7 +1953,7 @@ export interface components {
              * @default ado_pat
              * @enum {string}
              */
-            kind: "ado_pat" | "telegram_bot";
+            kind: "ado_pat" | "telegram_bot" | "telegram_ai_bot";
             /** Present */
             present: boolean | null;
             /** Ref */
@@ -3305,7 +3493,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "validation_error" | "telegram_active" | "ack_required" | "webhook_set" | "legacy_missing" | "owner_not_bound" | "telegram_request_failed" | "telegram_store_unavailable" | "revision_conflict" | "no_credential" | "credential_backend_error" | "store_unavailable" | "store_busy" | "busy" | "not_found";
+            code: "validation_error" | "telegram_active" | "ack_required" | "webhook_set" | "bot_in_use" | "legacy_missing" | "owner_not_bound" | "telegram_request_failed" | "telegram_store_unavailable" | "revision_conflict" | "no_credential" | "credential_backend_error" | "store_unavailable" | "store_busy" | "busy" | "not_found";
             /** Message */
             message: string;
             /** Revision */
@@ -4062,6 +4250,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIView"];
+                };
+            };
+        };
+    };
+    agy_models_api_ai_agy_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgyModels"];
                 };
             };
         };
@@ -5820,6 +6028,562 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_bots_api_telegram_ai_bots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBotsView"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_bot_api_telegram_ai_bots__ai_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIBotView"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_disable_api_telegram_ai_bots__ai_id__control_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_enable_api_telegram_ai_bots__ai_id__control_enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIBotEnableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_retry_api_telegram_ai_bots__ai_id__control_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_token_api_telegram_ai_bots__ai_id__token_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_delete_token_api_telegram_ai_bots__ai_id__token_delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_import_token_api_telegram_ai_bots__ai_id__token_import_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
                 };
             };
             /** @description Not Found */

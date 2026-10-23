@@ -9,6 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 
 from toolbox_backend.api.ai_schemas import (
+    AgyModels,
     AIEventsResponse,
     AISettingsPatch,
     AIView,
@@ -72,6 +73,11 @@ async def upgrade(pid: str, request: Request):
 @router.post("/api/ai/jobs/{jid}/cancel", response_model=JobResponse)
 async def cancel_job(jid: str, request: Request):
     return await request.app.state.ai_service.cancel_job(jid)
+
+
+@router.get("/api/ai/agy-models", response_model=AgyModels)
+async def agy_models(request: Request):
+    return await request.app.state.ai_service.agy_models()
 
 
 @router.get("/api/ai/resume-candidates", response_model=ResumeCandidates)

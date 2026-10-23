@@ -121,6 +121,24 @@ def claude(argv):
                     decision = body["response"]["response"]
                     log(decision=decision, request_id=body["response"]["request_id"])
                     break
+        if "MANYLINES" in prompt:
+            for index in range(1500):
+                emit({"type": "assistant", "message": {"content": [{"type": "text", "text": f"line {index}"}]}})
+        if "TOOLS3" in prompt:
+            for index in range(3):
+                emit(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {"type": "tool_use", "id": f"tu-m{index}", "name": "Bash", "input": {"command": f"echo {index}"}}
+                            ]
+                        },
+                    }
+                )
+        if "TOOLFAIL" in prompt:
+            emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu-f", "name": "Bash", "input": {"command": "false"}}]}})
+            emit({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-f", "is_error": True, "content": "command failed badly"}]}})
         if "TOOL" in prompt:
             emit(
                 {
@@ -244,5 +262,8 @@ if __name__ == "__main__":
     mode, rest = sys.argv[1], sys.argv[2:]
     if "--version" in rest:
         print(f"fake-{mode} 1.0")
+        sys.exit(0)
+    if mode == "agy" and rest[:1] == ["models"]:
+        print("fake-agy-fast\nfake-agy-pro")
         sys.exit(0)
     {"claude": claude, "codex": codex, "agy": agy}[mode](rest)

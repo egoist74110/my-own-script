@@ -2,10 +2,13 @@
 
 import re
 import time
+import uuid
 from html.parser import HTMLParser
 
 from toolbox_backend.adapters.telegram_http import TelegramError
 from toolbox_backend.domain.errors import SettingsError
+from toolbox_backend.services.telegram import AI_IDS
+from toolbox_backend.services.telegram import identities as identities_of
 from toolbox_backend.services.work_items import COLUMNS, image_type
 
 ADO_ERRORS = {
@@ -253,7 +256,11 @@ class TelegramWorkItems:
             [
                 await self.button(update, "全文", "full", payload),
                 await self.button(update, "关联项", "related", payload),
-            ]
+            ],
+            [
+                await self.button(update, "🔍 AI 分析", "ai", payload),
+                await self.button(update, "📋 复制提示词", "cp", payload),
+            ],
         ]
         if full:
             await self.dispatcher.service.reply(
@@ -325,10 +332,175 @@ class TelegramWorkItems:
         if self.dispatcher.role(config, update)[0] != "owner":
             return
         category = exc.extra.get("category", exc.code)
-        await self.dispatcher.panel(update, ADO_ERRORS.get(category, "工单读取失败，请稍后重试"))
+        from toolbox_backend.services.telegram_ai import ERRORS as AI_ERRORS
 
-    async def callback(self, update, kind, payload):
+        fallback = AI_ERRORS.get(exc.code, "工单读取失败，请稍后重试")
+        await self.dispatcher.panel(update, ADO_ERRORS.get(category, fallback))
+
+    # ---- AI analysis and prompt copy (S5-C; main slot, owner only) ------------------------
+
+    def ai_slot(self, profile):
+        """The AI bot slot that carries this profile's output, or None (desktop only)."""
+        registry = self.dispatcher.service.registry
+        slot = registry.get(f"ai:{profile.id}") if profile.id in AI_IDS else None
+        live = slot is not None and slot.task is not None and slot.bot_id and not slot._closing
+        return slot if live else None
+
+    async def ai_flow(self, update, kind, payload, token):
+        ai = self.dispatcher.service.ai
+        config = await self.owner(update)
+        pid, ident = payload.get("project_id"), payload.get("id")
+        if (
+            ai is None
+            or type(ident) is not int
+            or not 1 <= ident <= 2147483647
+            or pid not in {p.id for p in config.ado.projects}
+        ):
+            return "ignored"
+        base = {"project_id": pid, "id": ident}
+        repos = {r.id: r.name for r in config.ado.local_repos}
+        if kind == "wi_ai":
+            if not repos:
+                await self.dispatcher.panel(update, "尚未配置本地仓库，请先在桌面端添加")
+                return "handled"
+            rows = [
+                [await self.button(update, name[:48], "air", {**base, "repo_id": rid})]
+                for rid, name in list(repos.items())[:8]
+            ]
+            await self.dispatcher.panel(update, f"工单 #{ident}：选择分析用的本地仓库", rows)
+            return "handled"
+        if kind == "wi_cp":
+            return await self.copy_prompt(update, config, base, payload.get("cli"))
+        rid = payload.get("repo_id")
+        if rid not in repos:
+            await self.dispatcher.panel(update, "本地仓库不存在")
+            return "handled"
+        profiles = ai.runnable_profiles(config)
+        if kind == "wi_air":
+            if not profiles:
+                await self.dispatcher.panel(update, "没有可运行的 AI，请先在桌面端配置")
+                return "handled"
+            rows = []
+            for profile in profiles[:8]:
+                label = profile.name[:40]
+                if self.ai_slot(profile) is None:
+                    label += "（仅桌面可见）"
+                rows.append(
+                    [
+                        await self.button(
+                            update, label, "aip", {**base, "repo_id": rid, "profile_id": profile.id}
+                        )
+                    ]
+                )
+            await self.dispatcher.panel(update, f"工单 #{ident}：选择 AI", rows)
+            return "handled"
+        profile = next((p for p in profiles if p.id == payload.get("profile_id")), None)
+        if profile is None:
+            await self.dispatcher.panel(update, "该 AI 不可运行")
+            return "handled"
+        if kind == "wi_aip":
+            slot = self.ai_slot(profile)
+            where = (
+                f"输出将发到 @{slot.bot_username or '该 AI 机器人'}"
+                if slot is not None
+                else "对应 AI 机器人未启用，仅可在桌面 AI 会话页查看"
+            )
+            confirm = await self.button(
+                update, "确认分析", "aic", {**base, "repo_id": rid, "profile_id": profile.id}
+            )
+            cancel = await self.button(
+                update, "取消", "menu_cancel", {"confirm_token": confirm["callback_data"]}
+            )
+            await self.dispatcher.panel(
+                update,
+                f"将用 {profile.name} 在仓库 {repos[rid]} 以只读分析档分析工单 #{ident}\n{where}",
+                [[confirm, cancel]],
+            )
+            return "handled"
+        # wi_aic: execute. The request id derives from the single-use token.
+        from toolbox_backend.api.ai_schemas import AnalysisRequest
+        from toolbox_backend.services.telegram_ai import short
+        from toolbox_backend.services.telegram_commands import TG_NAMESPACE
+
+        _, _, chat, user, _, _ = identities_of(update)
+        service = self.dispatcher.service
+
+        def authorize(c):
+            return (
+                service.attached()
+                and not service._closing
+                and c.telegram.control.enabled
+                and c.telegram.owner.chat_id == chat
+            )
+
+        body = AnalysisRequest(
+            request_id=uuid.uuid5(TG_NAMESPACE, token),
+            project_id=pid,
+            repo_id=rid,
+            profile_id=profile.id,
+            ack_high_risk=False,
+        )
+        origin = {"kind": "telegram", "bot_id": service.bot_id, "chat_id": chat, "user_id": user}
+        view = await ai.analyze(self.service, ident, body, origin=origin, authorize=authorize)
+        slot = self.ai_slot(profile)
+        if slot is not None and slot.projector is not None:
+            slot.focus[chat] = view.id
+            slot.projector.bind(
+                view.id, profile.id, chat, user, bot_id=slot.bot_id, since_seq=0, origin=True
+            )
+            bot = slot.bot_username or "该 AI 机器人"
+            await self.dispatcher.panel(
+                update,
+                f"已创建会话（#{short(view.id)}），回复将发到 @{bot}",
+            )
+        else:
+            await self.dispatcher.panel(update, f"已在桌面 AI 会话页创建（#{short(view.id)}）")
+        return "handled"
+
+    async def copy_prompt(self, update, config, base, cli):
+        ai = self.dispatcher.service.ai
+        if cli not in {"claude", "codex", "agy"}:
+            from toolbox_backend.services.ai_sessions import parse_profile_safe
+
+            selected = next(
+                (
+                    p
+                    for p in map(parse_profile_safe, config.ai.profiles)
+                    if p is not None and p.id == config.ai.selected_profile_id
+                ),
+                None,
+            )
+            cli = selected.cli if selected is not None and selected.cli != "other" else "claude"
+        result = await ai.prompt(self.service, base["id"], base["project_id"], cli)
+        rows = [
+            [
+                await self.button(update, label, "cp", {**base, "cli": name})
+                for label, name in (
+                    ("Claude 版", "claude"),
+                    ("Codex 版", "codex"),
+                    ("agy 版", "agy"),
+                )
+                if name != cli
+            ]
+        ]
+        # Plain text, never Markdown: the prompt contains names from configuration.
+        await self.dispatcher.service.reply(
+            update,
+            result["prompt"],
+            reply_markup={"inline_keyboard": rows},
+            chunk_size=3900,
+        )
+        return "handled"
+
+    async def callback(self, update, kind, payload, token=None):
         try:
+            if kind == "wi_menu_cancel":
+                _, _, chat, user, _, _ = identities_of(update)
+                done = await self.dispatcher.service.store.cancel_action(
+                    payload.get("confirm_token"), self.dispatcher.service.bot_id, chat, user
+                )
+                await self.dispatcher.panel(update, "已取消" if done else "确认已处理")
+                return "handled"
             if kind == "wi_projects":
                 await self.projects(update, payload.get("page", 0))
             elif kind == "wi_project":
@@ -339,6 +511,8 @@ class TelegramWorkItems:
                 return await self.detail(update, payload, full=kind == "wi_full")
             elif kind == "wi_related":
                 return await self.related(update, payload)
+            elif kind in {"wi_ai", "wi_air", "wi_aip", "wi_aic", "wi_cp"}:
+                return await self.ai_flow(update, kind, payload, token)
             else:
                 return "ignored"
             return "handled"

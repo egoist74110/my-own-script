@@ -3,6 +3,10 @@ from fastapi import APIRouter, Query, Request
 from toolbox_backend.api.settings_schemas import MutationResponse
 from toolbox_backend.api.telegram_schemas import (
     ActivityResponse,
+    AIBotEnableRequest,
+    AIBotsView,
+    AIBotView,
+    AIId,
     BindCodeResponse,
     EnableRequest,
     GroupCreate,
@@ -25,6 +29,58 @@ router = APIRouter(
 
 def service(request):
     return request.app.state.telegram_service
+
+
+def ai_slot(request, ai_id):
+    return request.app.state.telegram_ai_services[ai_id]
+
+
+@router.get("/ai-bots", response_model=AIBotsView)
+async def ai_bots(request: Request):
+    items = [await ai_slot(request, i).ai_view() for i in request.app.state.telegram_ai_services]
+    config = await request.app.state.config_store.read()
+    return dict(revision=config.revision, items=items)
+
+
+@router.get("/ai-bots/{ai_id}", response_model=AIBotView)
+async def ai_bot(ai_id: AIId, request: Request):
+    return await ai_slot(request, ai_id).ai_view()
+
+
+@router.put("/ai-bots/{ai_id}/token", response_model=MutationResponse)
+async def ai_token(ai_id: AIId, body: TokenRequest, request: Request):
+    return await ai_slot(request, ai_id).token(body.revision, body.token.get_secret_value())
+
+
+@router.post("/ai-bots/{ai_id}/token/import-legacy", response_model=MutationResponse)
+async def ai_import_token(ai_id: AIId, body: RevisionRequest, request: Request):
+    return await ai_slot(request, ai_id).token(body.revision, legacy=True)
+
+
+@router.delete("/ai-bots/{ai_id}/token", response_model=MutationResponse)
+async def ai_delete_token(ai_id: AIId, request: Request, revision: int = Query(ge=0)):
+    return await ai_slot(request, ai_id).token(revision, delete=True)
+
+
+@router.post("/ai-bots/{ai_id}/control/enable", response_model=MutationResponse)
+async def ai_enable(ai_id: AIId, body: AIBotEnableRequest, request: Request):
+    return await ai_slot(request, ai_id).enable(
+        EnableRequest(
+            revision=body.revision,
+            ack_old_bot_stopped=body.ack_old_bot_cleared,
+            delete_webhook=body.delete_webhook,
+        )
+    )
+
+
+@router.post("/ai-bots/{ai_id}/control/disable", response_model=MutationResponse)
+async def ai_disable(ai_id: AIId, body: RevisionRequest, request: Request):
+    return await ai_slot(request, ai_id).disable(body.revision)
+
+
+@router.post("/ai-bots/{ai_id}/control/retry", response_model=MutationResponse)
+async def ai_retry(ai_id: AIId, body: RevisionRequest, request: Request):
+    return await ai_slot(request, ai_id).retry(body.revision)
 
 
 @router.get("", response_model=TelegramView)

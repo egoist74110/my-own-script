@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import secrets
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -51,6 +52,13 @@ def parse_profile(value):
         return profile
     except ValidationError, ValueError, TypeError:
         raise invalid() from None
+
+
+def parse_profile_safe(value):
+    try:
+        return parse_profile(value)
+    except SettingsError:
+        return None
 
 
 def find_profile(ai, pid):
@@ -109,6 +117,7 @@ class AISessionService:
         self._job_task = None
         self._aux = {}
         self._checks = set()
+        self._models_cache = None
         # Timing knobs (seconds); tests shrink them on the instance.
         self.approval_ttl_s = 540
         self.claude_idle_s = 4 * 3600
@@ -412,7 +421,16 @@ class AISessionService:
             raise SettingsError("high_risk_ack_required", "高权限会话需要再次确认", 409)
         return model, effort, permission
 
-    async def create(self, body, *, purpose="general", work_item_ref=None, warnings=()):
+    async def create(
+        self,
+        body,
+        *,
+        purpose="general",
+        work_item_ref=None,
+        warnings=(),
+        origin=None,
+        authorize=None,
+    ):
         self.require()
         async with self._lock:
             self.require()
@@ -420,6 +438,8 @@ class AISessionService:
             if previous:
                 return await self.view(previous)
             config = await self.config.read()
+            if authorize is not None and not authorize(config):
+                raise SettingsError("validation_error", "权限已变化", 422)
             chat = body.kind == "chat"
             profile = self._profile(config.ai, body.profile_id, chat)
             if chat and profile.cli == "other":
@@ -458,7 +478,7 @@ class AISessionService:
                 work_item_ref_json=json.dumps(work_item_ref) if work_item_ref else None,
                 external_id=external_id,
                 resume_of=old["id"] if old else None,
-                origin_json='{"kind":"ui"}',
+                origin_json=json.dumps(origin or {"kind": "ui"}),
                 state="starting",
                 created_at=stamp(),
                 usage_json="{}",
@@ -512,7 +532,7 @@ class AISessionService:
             raise SettingsError("resume_unavailable", "该会话没有可续聊的标识", 409)
         return old
 
-    async def resume(self, sid, body):
+    async def resume(self, sid, body, *, origin=None, authorize=None):
         old = await self.store.get(sid)
         if old["state"] not in TERMINAL:
             raise SettingsError("session_active", "会话仍在运行，不能续聊", 409)
@@ -529,7 +549,7 @@ class AISessionService:
             resume=dict(session_id=sid),
             ack_high_risk=body.ack_high_risk,
         )
-        return await self.create(create)
+        return await self.create(create, origin=origin, authorize=authorize)
 
     async def send(self, sid, body):
         self.require()
@@ -541,8 +561,9 @@ class AISessionService:
             raise SettingsError("session_ended", "会话已结束", 409)
         return active["chat"].submit(str(body.request_id), body.text)
 
-    async def decide(self, sid, aid, body):
+    async def decide(self, sid, aid, body, *, by=None, authorize=None):
         self.require()
+        by = by or {"kind": "ui"}
         row = await self.store.get_approval(sid, aid)
         active = self._active.get(sid)
         if row["state"] != "pending":
@@ -550,9 +571,20 @@ class AISessionService:
             raise SettingsError(code, "审批已处理", 409)
         state = "denied" if body.decision == "deny" else "allowed"
         scope = "session" if body.decision == "allow_session" else "once"
-        won = await self.store.settle_approval(
-            sid, aid, state, scope, {"kind": "ui"}, datetime.now(UTC).isoformat()
-        )
+        now = datetime.now(UTC).isoformat()
+        if authorize is None:
+            won = await self.store.settle_approval(sid, aid, state, scope, by, now)
+        else:
+            # The permission is evaluated under the single config writer lock, immediately
+            # before the atomic settle (same pattern as S4 run start/cancel).
+            def guarded(tx):
+                if not authorize(tx.config):
+                    raise SettingsError("validation_error", "权限已变化", 422)
+                return self.store._call(
+                    self.store.settle_approval_sync, (sid, aid, state, scope, by, now)
+                )
+
+            won = await self.config.run(None, guarded)
         if not won:
             row = await self.store.get_approval(sid, aid)
             if row["state"] == "pending":  # past its deadline but the timer has not fired yet
@@ -563,15 +595,69 @@ class AISessionService:
             code = "approval_expired" if row["state"] == "expired" else "approval_settled"
             raise SettingsError(code, "审批已处理", 409)
         if active is not None and "chat" in active:
-            active["chat"].decided(aid, body.decision, {"kind": "ui"})
+            active["chat"].decided(aid, body.decision, by)
         return dict(approval_id=aid, state=state)
+
+    async def agy_models(self):
+        """`agy models` (15 s, cached 10 min). Failure gives an empty table + category."""
+        now = time.monotonic()
+        if self._models_cache and now < self._models_cache[0]:
+            return dict(items=list(self._models_cache[1]), category=None)
+        self.require()
+        config = await self.config.read()
+        try:
+            pid = next(
+                p.id
+                for p in map(parse_profile_safe, config.ai.profiles)
+                if p is not None and p.cli == "agy"
+            )
+            argv = self._resolve(self._profile(config.ai, pid, True).command)
+        except (StopIteration, SettingsError):
+            return dict(items=[], category="cli_not_found")
+        try:
+            self._reserve_cli("agy")
+        except SettingsError:
+            return dict(items=[], category="ai_session_limit")
+        try:
+            result = await self._command([argv[0], "models"], 15, 16384, "check")
+        except RuntimeError, TimeoutError, OSError:
+            return dict(items=[], category="failed")
+        finally:
+            self._release_cli("agy")
+        if not result["ok"]:
+            return dict(items=[], category="failed")
+        items = []
+        for line in result["output"].splitlines():
+            token = line.strip().lstrip("-*• \t").split(None, 1)[0] if line.strip() else ""
+            try:
+                if token and validate_model(token) and token not in items:
+                    items.append(token)
+            except ValueError:
+                continue
+        items = items[:30]
+        self._models_cache = (now + 600, items)
+        return dict(items=list(items), category=None)
+
+    def runnable_profiles(self, config):
+        """Profiles that could start a headless session now: (profile, runnable)."""
+        result = []
+        for value in config.ai.profiles:
+            profile = parse_profile_safe(value)
+            if profile is None or profile.cli not in ("claude", "codex", "agy"):
+                continue
+            try:
+                self._resolve(self._profile(config.ai, profile.id, True).command)
+                result.append(profile)
+            except SettingsError:
+                continue
+        return result
 
     async def resume_candidates(self, repo_id, cli, query):
         config = await self.config.read()
         _, cwd = self._repo(config, repo_id)
         return dict(items=await asyncio.to_thread(claude_history.list_sessions, cwd, query))
 
-    async def analyze(self, work_items, ident, body):
+    async def analyze(self, work_items, ident, body, *, origin=None, authorize=None):
         self.require()
         project, library, _ = await work_items.snapshot(body.project_id, require_pat=False)
         config = await self.config.read()
@@ -603,6 +689,8 @@ class AISessionService:
         return await self.create(
             create,
             purpose="work_item_analysis",
+            origin=origin,
+            authorize=authorize,
             work_item_ref={"id": ident, "project_id": project.id},
             warnings=("legacy_mcp_may_not_resolve_project",) if new_only else (),
         )

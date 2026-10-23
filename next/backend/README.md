@@ -840,3 +840,78 @@ Claude `behavior:"allow"` 的 control_response 形状；Codex `--json` 事件结
 
 `tests/test_s5b_*.py`、`tests/independent/s5b/`；替身 `tests/fixtures/fake_cli/{claude,codex,agy}`（sh 蹦床，
 读 `FAKE_AI_PYTHON`）与 `ai_fake.py`（行为由提示词关键字控制，`FAKE_AI_LOG` 记录 argv/stdin）。
+
+## S5-C：Telegram AI 机器人与 `/wi` AI 分析
+
+### 槽位与 telegram.sqlite3 v2
+
+`TelegramService` 按槽位实例化：`main` 与 `ai:claude_code|codex|gemini`（`app.state.telegram_service`、
+`app.state.telegram_ai_services[ai_id]`）。每槽位独立 Token、enable/disable/retry、getMe/webhook 检查、
+首次基线（丢积压）、先登记后处理、409 立即 `conflict`（不抢占、不 deleteWebhook）、退避、5 分钟过期、
+关闭清理；开关互不影响。共享同一 `TelegramStore`（按持有者计数，最后一个槽位释放才关库）、发件箱发送、
+统一脱敏与纯文本发送。同一 bot_id 只能被一个已启用槽位使用：启用事务内检查，冲突 409 `bot_in_use`。
+导入/迁移从不自动启用（config v3 `ai.bots.*.enabled` 迁移时即为 false）。
+
+`telegram.sqlite3` user_version 1→2：单事务 `ALTER TABLE tg_bots ADD COLUMN slot`，已有 Bot 记为 `main`；
+新库直接建 v2；更高版本进入只读错误态。不自动降级。
+
+AI 槽位速率（每槽位独立）：每 chat ≤1 条/秒、每 Bot ≤20 条/分钟（`rate_chat_s`/`rate_bot_n`）。
+主槽位沿用 S4 行为，未加该限速（偏差，见交付报告）。
+
+### Token 与接口
+
+Keychain `toolbox-next` account `ai_bot_token:<ai_id>`，元数据 kind=`telegram_ai_bot`（ref=ai_id）。
+`GET /api/telegram/ai-bots`、`GET /api/telegram/ai-bots/{ai_id}`，`PUT|DELETE .../token`，
+`POST .../token/import-legacy`（只读旧 `my-own-script`/`ai_bot_token:<id>`，缺失 404 `legacy_missing`），
+`POST .../control/{enable,disable,retry}`；enable 需 `ack_old_bot_cleared:true`（可选 `delete_webhook`）。
+启用中改删 Token 409 `telegram_active`；`ai_id` 仅 claude_code|codex|gemini（否则 422）。
+WS `telegram.status` 增加 `slot`（默认 "main"，向后兼容）。新增 `GET /api/ai/agy-models`（`agy models`，
+15 秒，缓存 10 分钟，失败返回空表 + category）。新增 DTO：AIBotEnableRequest、AIBotView、AIBotsView、
+AIBotControlView、AgyModels。新增错误码：409 `bot_in_use`。
+
+### ACL、指令与向导
+
+AI 槽位只认私聊 owner；群内 owner、非 owner、伪造/跨 chat/重放令牌一律零回复零副作用；不响应 `/bind`、
+任务、`/wi`。`/start|/help|/menu|/cc` 出该 CLI 的活动会话（聚焦/⏹/🗑）与「➕ 新建」。向导（全部为 S4 动作令牌，
+payload 在服务端累积并在确认时重验）：仓库（仅 local_repos）→ Claude：全新/续聊（resume-candidates 最近 10 个）→
+权限档 auto/acceptEdits/plan/manual/dontAsk；Codex：模型预设→effort→沙箱 read-only/workspace-write；
+agy：模型（agy models）→模式 sandbox/plan。bypassPermissions、danger-full-access、agy auto 不提供，
+手工构造含这些值的令牌也被拒。会话 origin=`{kind:"telegram",bot_id,chat_id,user_id}`，request_id=uuid5(令牌)。
+非 `/` 文本投给本 chat 聚焦会话（无则出菜单）；回复某条会话输出投给该会话；AI 槽位上超过 5 分钟的消息
+（含普通文本）回复“已过期”不执行。聚焦的桌面会话同样被投影。
+
+### 投影（AiTelegramProjector，D11）
+
+`AIStore.on_event` 同步调用 `offer()`（O(1)、有界队列 8192、满则丢弃并计数），消费任务只写发件箱。
+assistant 正文 4000 字分块；工具调用 3 秒窗口合并为“🔧 工具: 摘要 等 N 个”；thinking 不发；tool_result 只发失败
+（≤500 字）；回合结束“✓ 完成 / ❌ 出错（类别）/ ⏹ 已中断”+ 📝/🗑 按钮；意外结束发一条结束通知（user_closed 不发）。
+dedup_key=`ai:<session_id>:<seq>`。发件箱 pending ≥500 时丢弃顺序：ai_tool → notify → ai_text(最旧)；
+AI 类新条目在无可丢时自己被丢弃，不抛错。正文入箱前统一脱敏 + 已登记密钥扫描。槽位重新启用时丢弃
+其遗留的 AI pending。reply-to 路由表仅内存、有界 512。
+
+Claude 审批：TG 来源（或在该 Bot 聚焦过）的会话出现 pending 审批 → 向该 chat 发“✅ 允许一次/❌ 拒绝”
+（kind=`ai_approval`，TTL=剩余有效期，无“始终允许”）。点击时重查 ACL，并在 config 单写者锁内评估
+`authorize` 后原子 settle（`AISessionService.decide(..., authorize=)`）；先到者生效，另一端得“已由另一端处理”。
+
+### `/wi`
+
+详情新增「🔍 AI 分析」「📋 复制提示词」（仅 owner）。分析：仓库 → AI（只列可运行 profile，对应 AI 机器人未启用
+标“（仅桌面可见）”）→ 确认 → `AISessionService.analyze`（analysis 档、origin=主槽位 chat、request_id=uuid5(令牌)）。
+AI 槽位已启用则聚焦并路由输出，回复“已创建会话（#短id），回复将发到 @机器人”，否则“已在桌面 AI 会话页创建”。
+高权限分析档（配置为 auto 等）因无 ack 被拒。复制提示词用 `reply`（纯文本、无 parse_mode），按钮可切换另两种 CLI 版本。
+不写回任何配置。
+
+### 切换步骤（摘要，逐个 AI 机器人）
+
+①新端导入 Token（先做）②旧端清除该 AI 绑定（不要关旧端“启用 Telegram 触发任务”）③新端勾选
+“旧端已清除绑定”启用 ④conflict 则回到②。回退：停用槽位，在旧 UI 重新粘贴 Token。
+
+### Dev 假 Telegram
+
+`FakeTelegram` 按 token 数字前缀区分 bot；`/api/dev/telegram/inject` 增加可选 `bot_id`，`sent` 带 `bot_id`。
+三重门不变（--dev + memory 凭据 + TOOLBOX_DEV_FAKE_TELEGRAM=1）。
+
+### 测试
+
+`tests/test_s5c_*.py`（夹具 `tests/s5c_helpers.py`：按 token 区分的内存 Bot API + 替身 CLI）与
+`tests/independent/s5c/`。替身 `ai_fake.py` 新增关键字 TOOLS3/TOOLFAIL/MANYLINES 与 `agy models`。

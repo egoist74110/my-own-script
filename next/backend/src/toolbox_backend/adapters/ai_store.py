@@ -402,22 +402,22 @@ class AIStore:
 
         return await self.call(read)
 
+    def settle_approval_sync(self, sid, aid, state, scope, by, now):
+        """Blocking core of settle_approval; the caller may already hold another store's lock."""
+        with self._lock, self.transaction() as db:
+            cursor = db.execute(
+                "UPDATE ai_approvals SET state=?,scope=?,decided_at=?,decided_by_json=? "
+                "WHERE id=? AND session_id=? AND state='pending' "
+                "AND (?='expired' OR expires_at>?)",
+                (state, scope, stamp(), json.dumps(by), aid, sid, state, now),
+            )
+            return cursor.rowcount == 1
+
     async def settle_approval(self, sid, aid, state, scope, by, now):
         """Atomic pending -> allowed|denied|expired. True only for the single winner.
 
         A decision arriving after expires_at never wins (the timer may simply be late)."""
-
-        def save():
-            with self.transaction() as db:
-                cursor = db.execute(
-                    "UPDATE ai_approvals SET state=?,scope=?,decided_at=?,decided_by_json=? "
-                    "WHERE id=? AND session_id=? AND state='pending' "
-                    "AND (?='expired' OR expires_at>?)",
-                    (state, scope, stamp(), json.dumps(by), aid, sid, state, now),
-                )
-                return cursor.rowcount == 1
-
-        return await self.call(save)
+        return await self.call(self.settle_approval_sync, sid, aid, state, scope, by, now)
 
     async def expire_pending(self, sid):
         """Mark every pending approval of a session expired; returns the ids that changed."""

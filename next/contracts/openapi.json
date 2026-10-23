@@ -164,6 +164,133 @@
         "title": "AIAnalysis",
         "type": "object"
       },
+      "AIBotControlView": {
+        "properties": {
+          "bot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Id"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "enabled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled At"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AIBotControlView",
+        "type": "object"
+      },
+      "AIBotEnableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_old_bot_cleared": {
+            "title": "Ack Old Bot Cleared",
+            "type": "boolean"
+          },
+          "delete_webhook": {
+            "default": false,
+            "title": "Delete Webhook",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "ack_old_bot_cleared"
+        ],
+        "title": "AIBotEnableRequest",
+        "type": "object"
+      },
+      "AIBotView": {
+        "properties": {
+          "ai_id": {
+            "enum": [
+              "claude_code",
+              "codex",
+              "gemini"
+            ],
+            "title": "Ai Id",
+            "type": "string"
+          },
+          "bot": {
+            "$ref": "#/components/schemas/BotView"
+          },
+          "control": {
+            "$ref": "#/components/schemas/AIBotControlView"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/OwnerView"
+          },
+          "poller": {
+            "$ref": "#/components/schemas/PollerView"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ai_id",
+          "slot",
+          "control",
+          "bot",
+          "owner",
+          "poller"
+        ],
+        "title": "AIBotView",
+        "type": "object"
+      },
+      "AIBotsView": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AIBotView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision",
+          "items"
+        ],
+        "title": "AIBotsView",
+        "type": "object"
+      },
       "AIDefaults": {
         "additionalProperties": true,
         "properties": {
@@ -728,6 +855,33 @@
           }
         },
         "title": "AgyDefaults",
+        "type": "object"
+      },
+      "AgyModels": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AgyModels",
         "type": "object"
       },
       "AlertRequest": {
@@ -1560,7 +1714,8 @@
             "default": "ado_pat",
             "enum": [
               "ado_pat",
-              "telegram_bot"
+              "telegram_bot",
+              "telegram_ai_bot"
             ],
             "title": "Kind",
             "type": "string"
@@ -6411,6 +6566,7 @@
               "telegram_active",
               "ack_required",
               "webhook_set",
+              "bot_in_use",
               "legacy_missing",
               "owner_not_bound",
               "telegram_request_failed",
@@ -7940,6 +8096,24 @@
           }
         },
         "summary": "Settings"
+      }
+    },
+    "/api/ai/agy-models": {
+      "get": {
+        "operationId": "agy_models_api_ai_agy_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgyModels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agy Models"
       }
     },
     "/api/ai/jobs/{jid}/cancel": {
@@ -10323,6 +10497,720 @@
           }
         },
         "summary": "Activity"
+      }
+    },
+    "/api/telegram/ai-bots": {
+      "get": {
+        "operationId": "ai_bots_api_telegram_ai_bots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIBotsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Bots"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}": {
+      "get": {
+        "operationId": "ai_bot_api_telegram_ai_bots__ai_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIBotView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Bot"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}/control/disable": {
+      "post": {
+        "operationId": "ai_disable_api_telegram_ai_bots__ai_id__control_disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Disable"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}/control/enable": {
+      "post": {
+        "operationId": "ai_enable_api_telegram_ai_bots__ai_id__control_enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIBotEnableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Enable"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}/control/retry": {
+      "post": {
+        "operationId": "ai_retry_api_telegram_ai_bots__ai_id__control_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Retry"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}/token": {
+      "delete": {
+        "operationId": "ai_delete_token_api_telegram_ai_bots__ai_id__token_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Delete Token"
+      },
+      "put": {
+        "operationId": "ai_token_api_telegram_ai_bots__ai_id__token_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Token"
+      }
+    },
+    "/api/telegram/ai-bots/{ai_id}/token/import-legacy": {
+      "post": {
+        "operationId": "ai_import_token_api_telegram_ai_bots__ai_id__token_import_legacy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ai_id",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude_code",
+                "codex",
+                "gemini"
+              ],
+              "title": "Ai Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ai Import Token"
       }
     },
     "/api/telegram/control/disable": {

@@ -941,3 +941,14 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 状态：S5-D1 **built / independent testing**；S5-C running。
 - 独立测试（Claude Haiku 5.5 / medium，原生子 agent，actual unknown）：新增 `tests/independent/s5d-{protocol,terminal-ws,sessions,settings-ai}.test.ts` 共 74 例，全量 1057 中 **10 failed**（均为新增独立用例），对应缺陷 S5D-T01..T09：T01 会话 GET 失败回退显示 mock 假会话；T02 字符串 detail 原文显示；T03 `ai.session` 覆盖层不与较新 GET 对账；T04 保存设置写死 `agy: []` 清空 agy 预设；T05 升级确认双击两次 POST；T06 `ai.job` 早于 POST 响应到达被丢弃；T07 profiles 含 null 项崩溃；T08 clamp 对 ±Infinity 回默认值；T09 attach 水位 >2^53 丢精度。另设计备注：TerminalView 每次 open 清零重连计数，服务端立即断开时 500ms 无限重连。主控核实 T01、T04 源码。测试员自报调试时两次写 `/tmp` 文件（已删除）。
 - 主控把 s5d worktree 的 `next/contracts/*` 与 `schema.d.ts` 同步为主目录最新（含 S5-B），typecheck/contracts:check exit 0；agy 第 2 轮同 `--conversation 6520b039-…` 续接修 T01..T09 与重连计数，不得改 `tests/independent/**`，请求 `.local/dispatch/s5d/round2.md`。
+
+### S5-C 集成（2026-10-24）
+
+- 施工：Claude Sonnet 5.5 / medium（原生子 agent，单轮，约 40 分钟），actual unknown；测试员 Claude Haiku 5.5 / medium（子 agent 自派），独立新增 48 例（`tests/independent/s5c/`，施工者事后小改其中一处，自报）。施工者报告 complete：1099 passed（新增 62）、ruff/contracts/diff-check 通过、无 not_run、无遗留替身进程；既有测试无改动（仅扩展 `fake_cli/ai_fake.py` 关键字）。
+- 结果：`services/telegram_ai.py`（AiBotDispatcher 菜单/向导/审批按钮/文本路由 + AiTelegramProjector）；TelegramService 多槽位（main + 三个 AI 槽位，各自启停/409/基线/过期/关闭，同 bot_id 409 `bot_in_use`）；`telegram.sqlite3` v1→v2（`tg_bots.slot`）与持有者计数；AI Bot Token 凭据 kind `telegram_ai_bot`（含旧端只读导入）；主槽位 `/wi` AI 分析与复制提示词；`GET /api/ai/agy-models`（S5-A/B 漏实现，本包补）；dev 假 Telegram 多 bot；README「S5-C」。
+- **主控接受的偏差**（记录）：限速只作用于 AI 槽位（主槽位保持 S4 行为）；AI 槽位超过 5 分钟的普通文本也按过期处理不投递；AI 槽位对非菜单 `/` 指令静默忽略；复制提示词按 selected_profile 一步发出并附另两种 CLI 按钮；Claude TG 向导含非高权限的权限档步骤（续聊也走该步骤）；审批消息也发给在该 Bot 聚焦过的桌面会话（仍仅 owner 私聊）；聚焦/回复路由/投影关注表仅内存；每 chat 未消费令牌上限 16 时旧按钮静默失效。
+- **集成发现并由主控修复 S5-LEAD-001**：S5-C 把附加字段 `slot` 放进 `TelegramStatusData` 后由 `PollerView` 继承，`GET /api/telegram` 的 poller 在 TS 契约中多出必填 `slot`，前端 typecheck 与 build 失败（S4-C 夹具缺字段，8 处）。修复：`telegram_schemas.py` 抽出 `_PollStatus` 基类，`TelegramStatusData` 保留 `slot`，`PollerView` 不含（`AIBotView` 自带 `slot`）。回归 `tests/test_s5_lead_fixes.py`：S5-C 原契约 `PollerView` 含 slot（修前该断言失败，主控用 s5c worktree 契约核对），修后 passed。
+- 施工树沙箱外全量 1099 passed（334.01s）。集成：限定 binary patch（`.local/dispatch/s5c/integration.patch`，31 文件），主目录该范围自 `bb4b4a3` 无改动，`git apply --check` 后应用；主控重生成 contracts 与 `schema.d.ts`。
+- 集成版本验收（含 S5-LEAD-001）：后端全量 **1100 passed**（301.98s，沙箱外），ruff/contracts --check exit 0；前端 typecheck/lint/test **944 passed**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。
+- 未测：真实 Telegram/CLI；`/wi` 详情新按钮的完整渲染（只测令牌链路）；`telegram.status.slot` 无端到端断言。worktree `.local/worktrees/s5c` 保留。
+- 状态：**S5-C integrated**（本地提交，未 push）。S5-D1 第 2 轮已交回待核；S5-D2 可在 S5-D1 集成后派。
