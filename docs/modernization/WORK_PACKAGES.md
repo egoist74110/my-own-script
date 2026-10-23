@@ -1569,6 +1569,7 @@ ai: {
 
 ### AI 子进程所有权与生命周期（D09）
 
+- **主控修订（2026-10-23，S5-A 第 1 轮交回）**：监督器与 CLI 分属不同进程组——监督器由后端 `start_new_session=True` 启动；CLI 在监督器 fork 出的子进程内 `setpgid(0,0)`（PTY 模式 `setsid`+`TIOCSCTTY`），监督器杀 CLI 组后继续 `waitpid`；下文“于自身进程组内”以此为准。env 过滤按 `_` 切段：任一段为 `TOKEN|TOKENS|SECRET|SECRETS|PASSWORD|PASSWD|PAT|COOKIE|COOKIES`，或整名含 `API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY` 或子串 `TOKEN|SECRET|PASSWORD` 即删；`PATH/MANPATH/INFOPATH/FPATH` 永不删；PATH 补全目录可注入（测试注入替身目录）。
 - **不在后端进程内 `os.fork()`**。统一经 `subprocess.Popen(start_new_session=True)` 启动 `python -m toolbox_backend.adapters.proc_supervisor`（单线程，可安全 fork）：参数为控制管道 fd、模式（pipe/pty）、cwd、argv（JSON 经 stdin 传入，不放 argv）；监督器 fork CLI 子进程于自身进程组内、等待其退出、控制管道 EOF 或收到 stop 指令时 TERM 进程组 → 3 秒 → KILL → `wait`，并清理已退出直接子进程留下的后代（同 `git_process.py:22–38` 语义）。主动 `setsid` 脱离进程组的后代不在回收范围，合同如实记为限制。
 - PTY 模式：后端 `pty.openpty()`，slave 作为监督器 stdio，监督器 `setsid` + `TIOCSCTTY` 后 fork CLI；master fd 由后端 asyncio 读（非阻塞，单次 64 KiB），`TIOCSWINSZ` 由后端设置；rows 5..300、cols 20..500。
 - 环境变量：继承后端环境后**删除** `TOOLBOX_*`、`CI`、以及名字匹配 `(?i)(TOKEN|SECRET|PASSWORD|PAT|API_KEY|COOKIE)` 的变量（用户 shell 中真实需要的变量由 CLI 自己的配置文件提供）；补全 PATH；设 `TERM=xterm-256color`（PTY 另设 `COLORTERM=truecolor`）。**不向 CLI 注入任何 PAT/Bot Token**；ADO MCP 由 CLI 侧自行配置（S6 前沿用旧注册，待决8）。
