@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 9（2026-10-23 追加 S5 AI 开发合同草案与待决项；此前 8：S4 Telegram 合同）
+- revision: 10（2026-10-23 S5 十项待决按推荐确认；此前 9：S5 AI 开发合同草案）
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
 - max_same_failure_attempts: 2
@@ -1435,9 +1435,9 @@ telegram: {
 - 本确认解除派工门禁；不授权主 Bot 切换、真实 Telegram/ADO 连接、读取真实配置/凭据或删除 worktree，真实验收按清单另行授权。合同中“按待决N”均由以上已决收敛，施工者不得选择备选路径。
 - 派工顺序：S4-A（codex gpt-6.1-sol/medium）→ S4-B（同会话续接）；S4-C（agy gemini-3.8-flash-high，`--sandbox`）在 S4-A 接口冻结后可与 S4-B 并行；每包最多一个 codex gpt-6-luna/high 测试员；不做交叉审计。
 
-# S5：AI 开发（合同草案，待用户确认）
+# S5：AI 开发（用户已确认，2026-10-23）
 
-状态：**合同草案，待用户确认「S5 待决」后才派工**。实际包状态与证据以 PROGRESS 为准。
+状态：**用户2026-10-23回复“S5 的十项待决均按你推荐的来。”，十项全部采用推荐方案，派工门禁解除**（见「S5 已决」）。实际包状态与证据以 PROGRESS 为准。
 输入调查基线：新版 `rewrite/next @ 90889b9`，旧版 `main @ 885d186`（旧目录有用户未提交改动，均不在 AI 会话/TG 桥相关文件内；只读）。本轮未读真实配置/凭据/会话缓存（`~/.claude`、`~/.codex`、`~/.gemini` 均未读）、未连接真实 Telegram/ADO、未启动任何 AI CLI（含 `--help`）。
 依据：ARCHITECTURE §2/§4/§5、MIGRATION_PLAN S5（D09/D11）、S0 进程监督（Tauri `process_group(0)` + stdin EOF 协调退出）、S1 `imported.ai` 与 `ado.local_repos`、S2 工单读取、S3 `adapters/git_process.py` 子进程监督模式、S4 TelegramService（409 让出、先登记后处理、动作令牌、发件箱、统一脱敏、纯文本发送）。
 本合同覆盖：PTY 终端（xterm.js）、Claude/Codex/agy 三种 headless 会话与续聊、Claude 工具审批、AI CLI 配置（profiles/升级/检测）、三个专属 AI 机器人（轮询、所有权切换）、`/wi` 中「MCP 分析」与「复制提示词」、桌面工单「AI 分析」、AI 子进程所有权与回收。**不含**：MCP server 托管/注册（S6，见待决8）、工单改动策略（`ai_policy`）编辑界面、旧 `targets`（prompt_copy/command/url）、launchd 无界面常驻、Windows。
@@ -1710,7 +1710,7 @@ ai: {
 5. AI 机器人所有权切换（按待决1 时机，另行授权）：逐个导入旧 Token → 旧端清除绑定 → 新端启用 → 旧端主机器人与其他 AI 机器人仍正常 → 回退演练。
 6. 旧 ADO MCP（`ado-work-items`/`adoWorkItems`）在新端会话中被正确调用；新端独有项目的警示。未测逐项记账。
 
-## S5 待决（需用户拍板；确认前不派工）
+## S5 待决（已决，保留选项以便追溯；备选均不实施）
 
 技术已定（无需拍板）：监督器进程模型与后端不 fork、`ai.sqlite3` 与启动扫描、env 过滤、只传 repo_id、多槽位 TelegramService 与各槽位独立开关、409 让出、TG 投影异步合并（D11）、纯文本发送、动作令牌与 request_id 幂等、Codex 提示词经 stdin、PTY 输出不落盘、各资源上限、headless 只取 profile 的 `argv[0]`。
 
@@ -1726,3 +1726,9 @@ ai: {
 | 8 | 工单 AI 分析依赖的 ADO MCP | **S5 沿用你在各 CLI 中已全局注册的旧 MCP**（`ado-work-items`/`adoWorkItems`，读旧配置与旧 Keychain），提示词按 CLI 改正工具前缀并显式带 library/project 名称；新端不启动/不注册 MCP，S6 再切 | 推迟工单 AI 分析到 S6（新端 MCP 就绪后再做）：S5 只做普通会话 |
 | 9 | 真实 CLI 协议核对 | **授权主控在派 S5-B 前，在临时空目录跑三个 CLI 的 `--version`/`--help` 及各一次最小会话**（固定无害提示词、只读档，消耗少量订阅额度），核对：Claude `--permission-prompt-tool stdio` 协议、Codex `exec -`/resume 参数与 effort 档位、agy `--print=` 与 `--sandbox` 不带 dangerously 是否会卡住、当前模型名 | 不核对：完全依据旧代码注释（Codex CLI 0.123.0 时代）施工，真实验收时才发现不符再返工 |
 | 10 | 前端依赖 | **授权 S5-D 联网安装 `@xterm/xterm`、`@xterm/addon-fit`**（MIGRATION_PLAN 已规划 xterm.js），写入 lockfile | 不装：终端视图暂缓，S5 只交付结构化会话（PTY 终端推迟） |
+
+## S5 已决
+
+- 用户2026-10-23原答复：**“S5 的十项待决均按你推荐的来。”**，确认十项：1 S5 开发与真实验收用三个单独的测试 AI Bot，验收通过后逐个按“导入 Token → 旧端清除绑定 → 新端启用”切换（不等 S6–S8），切换后不再使用旧端主机器人的「MCP 分析」；2 AI 机器人只认私聊 owner；3 会话工作目录只允许已配置本地仓库，去掉 TG 手输路径与直接选最近 Claude 项目，桌面提供“加入本地仓库”；4 高权限档位（Claude `bypassPermissions`、Codex `danger-full-access`、agy `--dangerously-skip-permissions`）仅桌面可选且每次新建二次确认，TG 不提供；5 普通会话默认 Claude `auto`、Codex `workspace-write`/medium、agy `--sandbox` 不带 dangerously（以待决9 核对为准），工单 AI 分析会话用只读档（Claude `plan`、Codex `read-only`、agy `--sandbox`）；6 实现 Claude 工具审批（桌面 + 来源 TG 的 owner，9 分钟未决默认拒绝，“始终允许”仅本会话）；7 持久化脱敏后的规范化事件（每会话 ≤5000 条/8 MiB，保留 14 天，可手动删除），PTY 输出不落盘；8 S5 沿用各 CLI 已全局注册的旧 ADO MCP，提示词按 CLI 改正工具前缀并显式带 library/project 名称，新端不启动/不注册 MCP，S6 再切；9 授权主控在派 S5-B 前于临时空目录运行三个 CLI 的 `--version`/`--help` 及各一次最小会话（固定无害提示词、只读档）核对协议，结论写回「三种 headless 协议」节；10 授权 S5-D 联网安装 `@xterm/xterm`、`@xterm/addon-fit` 并写入 lockfile。
+- 本确认解除派工门禁；不授权 AI 机器人或主 Bot 所有权切换、真实 Telegram/ADO 连接、读取真实配置/凭据/CLI 会话缓存（待决9 的最小会话只在临时空目录进行，不读 `~/.claude|~/.codex|~/.gemini` 中的已有会话）、删除 worktree；真实验收按清单另行授权。合同中“按待决N”均由以上已决收敛，施工者不得选择备选路径。
+- 派工顺序：S5-A（codex gpt-6.1-sol/medium）→ 主控协议核对（待决9）→ S5-B（同会话续接）→ S5-C（同会话续接）；S5-D（agy gemini-3.8-flash-high，`--sandbox`，`--print=`）在 S5-B 接口冻结后可与 S5-C 并行，AI 机器人卡片在 S5-C 契约冻结后同会话补；每包最多一个 codex gpt-6-luna/high 测试员；不做交叉审计。
