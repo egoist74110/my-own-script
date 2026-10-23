@@ -1585,6 +1585,28 @@ ai: {
 - **agy**：每回合 `agy --print=<prompt> [--sandbox] [--dangerously-skip-permissions（仅 mode=auto）] [--model <名>] [--conversation <id>] --print-timeout=<n>s`（用户已定的 `--print=` 写法）；提示词只能经 argv，提示词 ≤32 KiB，会话信息标注“提示词对本机其他进程可见”。只产出 assistant/turn 事件。
 - 事件统一为 `ai_events.kind`；Claude 的 `total_cost_usd`/Codex 的 `usage` 汇总进 `usage_json`；设计稿右栏的“上下文 %”只在 CLI 提供数据时显示，否则隐藏（不估算）。
 
+### 协议核对结论（主控，2026-10-23，已决9；本节优先于上文与旧代码注释）
+
+本机版本：Claude Code 2.1.308、codex-cli 0.163.0、agy 1.4.6（均在 `~/.local/bin`）。在临时空目录用固定无害提示词运行；Claude 用 `--model haiku --max-budget-usd 0.30`，四次会话合计约 0.03 美元；只记录事件结构与类型，不记录内容；未读取 `~/.claude|~/.codex|~/.gemini` 已有会话。原始结构摘要在主控 scratchpad，不入库。
+
+- **Claude（已核对）**：
+  - `--permission-mode` 合法值改为 `acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`（**无 `default`**；传 `manual` 时 init 报告 `permissionMode:"default"`）。配置枚举随之修订：`default` 作为旧值在输入/迁移时规范化为 `manual`。
+  - 审批：`--permission-prompt-tool stdio` **可用**——CLI 在 stdout 发 `{"type":"control_request","request_id":..,"request":{"subtype":"can_use_tool","tool_name","display_name","input","description","permission_suggestions","blocked_path","tool_use_id"}}`；后端经 stdin 回 `{"type":"control_response","response":{"subtype":"success","request_id":..,"response":{"behavior":"deny","message":..}}}`，CLI 据此拒绝并继续回合（已核对）。`behavior:"allow"`（需带 `updatedInput`）**未在真实 CLI 核对**（本轮只做只读拒绝），替身按 SDK 形状实现，真实验收清单第 1 项补核。不用 PreToolUse 钩子退路。
+  - 只给 `--permission-prompts host` 而不给 `--permission-prompt-tool stdio` 时，需要审批的工具被**静默自动拒绝**（`system/permission_denied`），不可用。用户 settings 中已放行的命令（如 `echo`）不会触发审批。
+  - 用 `--session-id <uuid>` 由后端预先指定会话 id（即 `external_id`），不必等 init；`--resume <id>` 续聊后 init 的 session_id 不变、上下文保持（已核对）。
+  - 事件新增 `system` 子类型 `thinking_tokens|task_summary|post_turn_summary|permission_denied`、`rate_limit_event`；`result` 含 `permission_denials`、`usage`、`modelUsage`、`total_cost_usd` 等。适配器忽略未知类型/字段，不报错。可选 `--max-budget-usd` 不默认使用。
+- **Codex（仅 `--help`；最小会话待额度恢复）**：
+  - **`exec` 已无 `--full-auto`**：沙箱一律 `-s read-only|workspace-write|danger-full-access`（旧端 `--full-auto` 映射作废）；另有 `--dangerously-bypass-approvals-and-sandbox`、`--approve-for-me`。
+  - 提示词：`exec` 的 PROMPT 省略或为 `-` 时读 stdin；`exec resume [SESSION_ID] [PROMPT]` 中 PROMPT 为 `-` 时读 stdin——**提示词经 stdin 可行**。
+  - `resume` 不接受 `-s`/`-C`（沙箱继承首轮，cwd 由进程 cwd 决定），但接受 `--dangerously-bypass-approvals-and-sandbox`：适配器只有首轮为 danger 档时才可在续聊传入，其余一律不传。两者都支持 `--json`、`-m`、`-c`、`--skip-git-repo-check`、`--ephemeral`、`-o`。
+  - effort 合法值、`--json` 事件结构（thread.started/item.*/turn.*）与 `thread_id` 来源：**待最小会话核对**（S5-B 先按旧事实实现，核对结果不符时停下交主控）。
+- **agy（已核对）**：
+  - 新增 `--output-format stream-json`：事件 `{"event":..,"conversation_id":..,"init":{cwd,permission_mode,tools}}` → 多条 `step_update{conversation_id,state(ACTIVE|DONE|ERROR),step_index,step_type(user_input|tool|agent_response),tool_name(run_command|read_file|…),tool_info,text_delta,usage,duration_seconds}` → `result{conversation_id,response,status(SUCCESS…),num_turns,usage}`。**`conversation_id` 在首个事件给出**：不再读 `last_conversations.json`，取消“同 cwd 首轮互斥”（上文对应条款作废），agy 会话也有工具/正文事件。
+  - `--print=<prompt>` 与 `--conversation <id>` 续聊已核对（上下文保持）。另有 `--input-format stream-json`（stdin 每行一条消息，需配 stream-json 输出）——S5-B 优先用它让提示词经 stdin；替身与真实验收各核对一次，不可用则退回 argv 并标注。
+  - **`--sandbox` 不带 `--dangerously-skip-permissions` 不会卡住**（只读命令 31 秒完成），但 init 报告 `permission_mode:"always-proceed"`——agy 在 print 模式下本就不询问，`--sandbox` 只限制终端。旧端“必须带 dangerously”的注释作废。
+  - `--mode accept-edits|auto|plan`：`--mode plan` 下写文件未发生，但仍执行了 `run_command`。agy 模式枚举修订为 `sandbox`（`--sandbox`）/`plan`（`--sandbox --mode plan`）/`auto`（`--dangerously-skip-permissions`，高权限档，仅桌面）；**工单分析默认改为 `plan`**（已决5 的“只读档”对 agy 的落实）。新增可选 `--effort low|medium|high|xhigh|max`。
+  - **超时陷阱**：`--print-timeout` 默认 0（不限时）；到时 **exit 0 且 `result.status=SUCCESS`、response 为部分输出**，只在 stderr 打印 `[agy] print timeout after …; returning partial output`。适配器必须总是传 `--print-timeout`，并以该 stderr 标记或缺少最终 `agent_response` DONE 判定为 `turn_failed(timeout)`，不得当成功。
+
 ### 审批（Claude；待决6）
 
 - CLI 请求 → 写 `ai_approvals(pending)` + 事件 `approval` → 桌面审批卡（设计稿：允许一次 Y / 本会话始终允许 A / 拒绝 N）与（TG 来源会话时）对应 AI 机器人发消息带两个动作令牌按钮（S4 `tg_actions`，kind=`ai_approval`，TTL=审批有效期）。

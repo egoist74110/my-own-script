@@ -899,3 +899,11 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成版本验收：后端全量 pytest **977 passed**（254.62s，沙箱外含端口/PTY/ps），ruff exit 0，contracts --check exit 0；前端 frozen install/typecheck/lint/test **944 passed / 66 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；测试后无遗留替身进程（按命令行核对为 0）。Rust 与旧代码守卫 not_run（未改 src-tauri/旧代码）。本包新增后端用例 100（877→977）。
 - 未完成/未测：资源关闭逐项审计清单（主控在 S5 集成验收时按 resource-lifecycle-audit 补核）；dev:web 假 AI 端到端未跑（前端 S5-D 前无页面）；真实 CLI/Tauri 未测。施工 worktree `.local/worktrees/s5a` 保留（删除前问用户）。
 - 状态：**S5-A integrated**（本地提交，未 push）。下一步：待决9 协议核对 → S5-B（codex 额度恢复后同会话续接）。
+
+### S5 协议核对（2026-10-23，已决9）
+
+- 用户原话“现在做协议核对：Claude 和 agy 现在跑，Codex 先只看 --help，最小会话等额度恢复。”主控 actual unknown。
+- 在 scratchpad 临时空目录运行（固定无害提示词、只读/拒绝审批，Claude `--model haiku --max-budget-usd 0.30`，四次合计约 0.03 美元；agy 四次；Codex 仅 `--version`/`--help`）。未读 `~/.claude|~/.codex|~/.gemini` 已有会话；只记录事件结构，不记录内容。版本：Claude Code 2.1.308、codex-cli 0.163.0、agy 1.4.6。
+- 结论写入 WORK_PACKAGES「协议核对结论」：Claude 权限档无 `default`（改 `manual`），`--permission-prompt-tool stdio` 审批协议可用（拒绝已核对、允许未核对），`--session-id` 预设 id、`--resume` 已核对；Codex `exec` 已无 `--full-auto`（改 `-s`），exec/resume 均可经 stdin 读提示词，resume 不收 `-s/-C`；agy 有 stream-json 事件且首事件给 `conversation_id`（取消读 `last_conversations.json` 与同 cwd 互斥），`--sandbox` 不带 dangerously 不会卡但本身 always-proceed，`--mode plan` 用于工单分析，print 超时会 exit 0 + SUCCESS 返回部分输出（适配器须识别）。
+- 待办：Codex 最小会话（effort 合法值、`--json` 事件结构、thread_id）待额度恢复（2026-10-24 01:46 后）。S5-A 已集成的配置枚举（Claude `default`、agy `sandbox|auto`）由 S5-B 按上述结论修订。
+- 清理：临时目录在 scratchpad，未写仓库；Claude 在 `~/.claude/projects` 为临时目录生成了 4 个会话记录、agy 在其缓存生成 4 条会话（CLI 自管，未删除）。
