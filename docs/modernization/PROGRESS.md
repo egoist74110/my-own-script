@@ -979,3 +979,25 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 集成：worktree `next/desktop` 相对 `7dee0ca` 的限定 binary patch（`.local/dispatch/s5d/integration-d2.patch`，28 文件，含删除 `src/features/ai/mock/`），主目录 `next/` 自 `7dee0ca` 无改动，`git apply --check` 后应用。
 - 集成版本验收：前端 frozen install/typecheck/lint/test **1117 passed / 79 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；后端未改（1100 passed）。
 - 状态：**S5-D2 integrated**（本地提交，未 push）。S5 全部施工包（A/B/C/D1/D2）已集成；下一步 S5 集成验收（主控）。
+
+## 2026-10-24：S5 集成验收（主控）
+
+- 版本：`rewrite/next` 集成树（S5-A/B/C/D1/D2 全部集成后）。主控 actual unknown。
+- 自动验收：后端全量 **1100 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1117 passed / 79 文件**/build/guard:dist/contracts:check；Rust `cargo fmt --check` exit 0、`cargo clippy --offline -- -D warnings` 无警告、`cargo test --offline` 36 passed（8+9+19）；`git diff --check` exit 0。根目录旧代码守卫测试 not_run（S5 未改旧代码）。
+- **dev:web 端到端**（`pnpm dev:web`，假 ADO + 假 Telegram + 替身 CLI + 临时 git 仓库，1440×900；临时 `.claude/launch.json` 用后删除）：
+  - 设置→本地仓库登记临时 git 仓库；AI 会话页空态正常。
+  - Claude 对话会话（替身）：首条提示触发 `can_use_tool` → 审批卡（倒计时 8:58、Y/A/N）→ 允许一次 → CLI 收到 allow、工具卡片“运行 ls 完成”、回合完成、状态回到空闲；第二轮消息正常回显。右栏显示工具/仓库/开始时间/来源/状态/用量。
+  - Codex 终端会话：xterm 输入回显正常；**页面刷新后终端回放 3 行无重复**；对话会话刷新后回放 2 回合、各事件只出现一次。
+  - 设置→Telegram→Codex 机器人：录入假 Token（提交后清空）→ 启用 Sheet（四步说明、勾选前“确认启用”禁用）→ 启用后“轮询中”、显示假 bot 用户名/ID，其他两张卡不受影响。脚本检查 DOM/输入框/localStorage/sessionStorage/URL 不含 Token；dev 服务日志无 Token。
+  - 停止 dev 服务：后端、两个监督器及其替身 CLI 共 6 个 pid 全部退出，1420 释放，三个 `toolbox-dev-*` 临时目录已删除。
+- **验收发现（待修，S5-LEAD-002..005）**：
+  - S5-LEAD-002：新会话 Sheet 的 Claude 权限默认选中 `manual`，未取 `ai.defaults.claude.permission`（应为 `auto`，已决5）；effort 选项缺 `xhigh`（疑似前端写死，违反“选项只来自后端枚举”）。
+  - S5-LEAD-003：对话流不显示用户自己的消息（初始提示与后续消息均未渲染，只见 AI 回复）。
+  - S5-LEAD-004：会话列表在 `awaiting_approval` 时状态胶囊显示“需核实”（S3 unknown 的文案），应为“待审批”。
+  - S5-LEAD-005（展示）：右栏用量为原始键值串（`turns: 1 cost_usd: …`），应格式化；AI 机器人启用 Sheet 未提及“切换后旧端主机器人对该 AI 的 MCP 分析不可用”；第三张卡标题“Gemini (agy)”应为“Antigravity”。
+- 未做（not_run）：dev:web 中 Telegram AI 槽位 `/cc` 注入对话、主槽位 `/wi` AI 分析端到端、桌面工单详情 AI 分析端到端（三者均有后端/前端自动化覆盖，未在 dev:web 手工走通）。资源关闭逐项清单：主控核对 backend README「S5-A 进程布局与资源关闭」表（监督器/FD/PTY/任务/WS/SQLite/升级 job/审批）与对应用例，并以上述 dev:web 退出后零残留作为补充证据。
+- 能力对照（旧 `docs/capabilities/ai-dev.md`、`telegram-control.md`）：
+  - 迁移：PTY 终端（xterm.js，替代 pyte 自绘）、Claude/Codex/agy headless 与续聊、AI CLI profile 配置/检测/升级、三个专属 AI 机器人（`/cc` 菜单与向导、停止/结束/发提示词）、工单 MCP 分析与复制提示词（TG 与桌面）。
+  - 改进：后端不 fork + 监督器回收进程组（D09）；TG 输出异步投影、合并与限速（D11）；Claude 审批真正可用；Codex/agy 提示词经 stdin（agy 视 stdin 支持）；agy 用 stream-json 首事件取 conversation_id；各 AI 机器人独立开关；工作目录只限已配置仓库；高权限档仅桌面且需确认；工单分析只读档；凭据不进子进程环境；会话事件持久化与重启续聊。
+  - 有意推迟/放弃：TG 手输任意路径（已决3 放弃）；TG 选“完全放开/自动批准”（已决4 放弃）；`ai_policy` 编辑与旧 `targets`（推迟）；新端 MCP server 托管（S6，S5 沿用旧注册）；Codex 真实协议最小会话核对（待 codex 额度）。
+- 状态：S5 **集成验收进行中**——自动验收通过、dev:web 主流程通过，S5-LEAD-002..005 待修后结束。真实验收清单与 AI 机器人所有权切换未授权、未执行。
