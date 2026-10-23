@@ -79,7 +79,7 @@ export const TASK_ERROR_MESSAGES: Record<string, string> = {
   revision_conflict: '配置已被修改，请刷新后重试',
   task_active: '任务正在运行中，无法修改、删除或重复启动',
   resource_active: '任务引用的仓库或发布资源正在被占用',
-  task_referenced: '任务被其他配置或工单引用，无法删除',
+  task_referenced: '任务被 Telegram 权限组引用，无法直接删除',
   idempotency_conflict: '重复提交冲突，请勿重复操作',
   plan_expired: '执行计划已过期，推送和发布未执行，请重新确认',
   plan_changed: '仓库分支或远端状态已改变，执行计划已失效，请重新确认',

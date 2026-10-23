@@ -51,7 +51,16 @@ export function useRunLogs(
   let snapshotTimer: ReturnType<typeof setTimeout> | null = null
   let snapshotReqId = 0
 
+  // 初次同步回放期间不逐个刷新快照：回放结束后统一刷新一次，避免请求突发
+  let refreshAfterLoad = false
+  let snapshotInFlight = false
+  let snapshotPending = false
+
   function scheduleSnapshotRefresh(delayMs = 80) {
+    if (loading.value) {
+      refreshAfterLoad = true
+      return
+    }
     if (snapshotTimer) {
       clearTimeout(snapshotTimer)
       snapshotTimer = null
@@ -69,6 +78,12 @@ export function useRunLogs(
   async function refreshSnapshot() {
     const id = activeRunId
     if (!id || !online.value) return
+    // 单飞：在途时只记一次待刷新，结束后再取一次最新快照
+    if (snapshotInFlight) {
+      snapshotPending = true
+      return
+    }
+    snapshotInFlight = true
     const reqId = ++snapshotReqId
     try {
       const client = api()
@@ -86,6 +101,12 @@ export function useRunLogs(
       summary.value = snap.summary
     } catch {
       // 忽略后台刷新失败
+    } finally {
+      snapshotInFlight = false
+      if (snapshotPending && activeRunId === id) {
+        snapshotPending = false
+        void refreshSnapshot()
+      }
     }
   }
 
@@ -266,6 +287,7 @@ export function useRunLogs(
   async function syncRun(id: string) {
     activeRunId = id
     watermark.value = 0
+    refreshAfterLoad = false
     buffer.clear()
     lines.value = []
     loading.value = true
@@ -301,9 +323,10 @@ export function useRunLogs(
 
       // 初次只拉取最近若干页（如最近 1000 条），避免全量 20MB 日志进内存
       const startAfterSeq = Math.max(0, (snapshot.last_seq ?? 0) - 1000)
-      watermark.value = startAfterSeq
+      // 快照在途时 WS 回放可能已推进水位：水位只进不退，否则 HTTP 回放会重复追加日志
+      if (watermark.value < startAfterSeq) watermark.value = startAfterSeq
 
-      let cursor = startAfterSeq
+      let cursor = watermark.value
       let hasMore = true
       while (hasMore) {
         const evs = await unwrap(
@@ -337,6 +360,10 @@ export function useRunLogs(
     } finally {
       if (activeRunId === id) {
         loading.value = false
+        if (refreshAfterLoad) {
+          refreshAfterLoad = false
+          scheduleSnapshotRefresh(0)
+        }
         if (buffer.size > 0) {
           void fetchGap()
         }

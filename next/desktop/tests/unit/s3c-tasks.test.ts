@@ -309,7 +309,7 @@ describe('S3-C 运行停止、取消确认与副作用说明', () => {
 describe('S3-C 错误码映射与辅助函数', () => {
   it('TASK_ERROR_MESSAGES 覆盖关键错误码中文说明', () => {
     expect(TASK_ERROR_MESSAGES.task_active).toContain('正在运行中')
-    expect(TASK_ERROR_MESSAGES.task_referenced).toContain('被其他配置或工单引用')
+    expect(TASK_ERROR_MESSAGES.task_referenced).toContain('被 Telegram 权限组引用')
     expect(TASK_ERROR_MESSAGES.resource_active).toContain('资源正在被占用')
     expect(TASK_ERROR_MESSAGES.plan_expired).toContain('已过期')
     expect(TASK_ERROR_MESSAGES.plan_changed).toContain('已失效')

@@ -37,6 +37,11 @@ class HandlerScope:
     detached: bool = False
 
 
+def local_clock(timestamp):
+    """HH:MM in the machine's local timezone; users read it next to their own clock."""
+    return datetime.fromtimestamp(timestamp).astimezone().strftime("%H:%M")
+
+
 def invalid(message="Telegram 配置无效"):
     return SettingsError("validation_error", message, 422)
 
@@ -661,7 +666,7 @@ class TelegramService:
         if isinstance(callback, dict):
             return await self.dispatcher.dispatch(update, command, role, group)
         if command.startswith("/") and time.time() - date > 300:
-            clock = datetime.fromtimestamp(date, UTC).strftime("%H:%M")
+            clock = local_clock(date)
             await self.reply(update, f"该指令发送于 {clock}，已过期，请重新发送")
             return "expired"
         if command in {"/help", "/start", "/menu"}:

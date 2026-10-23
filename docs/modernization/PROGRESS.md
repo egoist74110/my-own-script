@@ -843,3 +843,13 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 未测：真实 Telegram（测试 Bot）/Keychain/系统代理/Tauri；真实验收清单未授权未执行；主 Bot 切换按已决1 推迟到 S6–S8。worktree `.local/worktrees/{s4a,s4c}` 保留（删除前问用户）。
 - 集成版本后端（含 S4-LEAD-001 修复）：全量 pytest **876 passed**（254.51s，沙箱外），ruff exit 0，contracts --check exit 0。Rust 与根目录旧代码守卫 not_run（S4 未改 src-tauri/旧代码）。
 - 状态：**S4-A/S4-B/S4-C integrated**（本地提交，未 push）。S4 真实验收清单（测试 Bot）待用户另行授权；主 Bot 切换按已决1 推迟到 S6–S8。
+
+### S4 联调遗留四项修复（2026-10-23，主控亲自修）
+
+- 用户原话“修一下联调记录的四个小问题：任务页选中 run 的请求突发、日志行号疑似重复（先确认）、过期提示时间改本地时区、删除冲突文案去掉‘工单’。”主控 actual unknown。每项先写会失败的回归。
+- S3C-F1 请求突发（**fixed**）：根因 `features/tasks/useRunLogs.ts` 回放每个 checkpoint/state 事件都 `scheduleSnapshotRefresh(0)` 立即 GET 快照，无合并。修复：初次同步期间只记标记、结束后统一刷新一次；快照刷新改单飞（在途时只记一次待刷新）。回归 `tests/unit/s4-lead-run-replay.test.ts` 用例 1：修前 **11 次**快照 GET（≤2 失败）→ 修后通过。
+- S3C-F2 日志行重复（**确认为真缺陷并 fixed**）：dev:web 实测后端该 run 仅 10 条 log 事件，页面渲染 20 行、仅 10 行唯一。根因：`syncRun` 先 WS 订阅再等快照，快照在途时 WS 回放已把水位推到末尾，快照返回后 `watermark = startAfterSeq` 把水位重置为 0，HTTP 回放重复追加。修复：水位只进不退，HTTP 回放游标取当前水位。回归同文件用例 2：修前 **40 行**（期望 20）→ 修后通过。dev:web 复测：10 行/10 唯一，快照 GET 2 次（修前约 40 次）。
+- 过期提示时区（**fixed**）：`services/telegram.py` 新增 `local_clock()` 按本机时区格式化；回归 `tests/test_s4_lead_fixes.py::test_expired_command_time_is_shown_in_local_timezone`（TZ=Asia/Shanghai，07:44Z→15:44）修前失败→修后通过。
+- 删除冲突文案（**fixed**）：`features/tasks/api.ts` `task_referenced` 改为“任务被 Telegram 权限组引用，无法直接删除”；既有断言 `tests/unit/s3c-tasks.test.ts:312` 按用户本次要求同步改为匹配新文案（仅改期望文本）。
+- 验收：前端 frozen install/typecheck/lint（0 error/8 既有 warning）/test **944 passed / 66 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；dev:web 本会话启动并停止，临时 `.claude/launch.json` 已删、1420 已释放。后端全量见下条。
+- 后端（含时区修复）：全量 pytest **877 passed**（258.46s，沙箱外），ruff exit 0，contracts --check exit 0。四项均 fixed，本地提交未 push。
