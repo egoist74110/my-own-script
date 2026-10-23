@@ -772,3 +772,8 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - **八项待决**（推荐与影响见合同「S4 待决」）：1 主 Bot 切换时机与方式；2 TG 执行是否加确认；3 owner 绑定；4 username 成员与旧白名单；5 删除被 ACL 引用的任务；6 `/wi` 图片转发；7 停机积压指令；8 Telegram 是否走系统代理。尚无用户已决。
 - 状态：S4-A/S4-B/S4-C **not_dispatched**；交叉审计按用户 2026-10-23 决定不做。
 - 安全范围：未读真实配置/凭据/offset 文件、未连真实 Telegram/ADO；旧目录源码未改；未新建 worktree/进程/临时目录，无需清理；`.local/worktrees/{s3a,s3b,s3c,r1}` 保留。本轮只改 WORK_PACKAGES 与 PROGRESS，未运行功能测试（无代码改动）。
+
+### S4 合同确认（2026-10-23）
+
+- 用户原答复“S4 的八项待决均按你推荐的来。”，八项均按推荐确认；WORK_PACKAGES「S4 已决」已写入，合同状态改为已确认，派工门禁解除。主控 actual model/effort=unknown。
+- 状态：S4-A/S4-B/S4-C 仍 **not_dispatched**（本会话受派生任务约束“只写合同、不派工”，派工另行开始）；主 Bot 切换与真实验收未授权。
