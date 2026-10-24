@@ -1595,11 +1595,15 @@ ai: {
   - 只给 `--permission-prompts host` 而不给 `--permission-prompt-tool stdio` 时，需要审批的工具被**静默自动拒绝**（`system/permission_denied`），不可用。用户 settings 中已放行的命令（如 `echo`）不会触发审批。
   - 用 `--session-id <uuid>` 由后端预先指定会话 id（即 `external_id`），不必等 init；`--resume <id>` 续聊后 init 的 session_id 不变、上下文保持（已核对）。
   - 事件新增 `system` 子类型 `thinking_tokens|task_summary|post_turn_summary|permission_denied`、`rate_limit_event`；`result` 含 `permission_denials`、`usage`、`modelUsage`、`total_cost_usd` 等。适配器忽略未知类型/字段，不报错。可选 `--max-budget-usd` 不默认使用。
-- **Codex（仅 `--help`；最小会话待额度恢复）**：
-  - **`exec` 已无 `--full-auto`**：沙箱一律 `-s read-only|workspace-write|danger-full-access`（旧端 `--full-auto` 映射作废）；另有 `--dangerously-bypass-approvals-and-sandbox`、`--approve-for-me`。
-  - 提示词：`exec` 的 PROMPT 省略或为 `-` 时读 stdin；`exec resume [SESSION_ID] [PROMPT]` 中 PROMPT 为 `-` 时读 stdin——**提示词经 stdin 可行**。
-  - `resume` 不接受 `-s`/`-C`（沙箱继承首轮，cwd 由进程 cwd 决定），但接受 `--dangerously-bypass-approvals-and-sandbox`：适配器只有首轮为 danger 档时才可在续聊传入，其余一律不传。两者都支持 `--json`、`-m`、`-c`、`--skip-git-repo-check`、`--ephemeral`、`-o`。
-  - effort 合法值、`--json` 事件结构（thread.started/item.*/turn.*）与 `thread_id` 来源：**待最小会话核对**（S5-B 先按旧事实实现，核对结果不符时停下交主控）。
+- **Codex（已核对，2026-10-24 最小会话；codex-cli 0.163.0）**：在 scratchpad 临时空目录运行三次：一次非法 effort（`-c model_reasoning_effort=bogus`）、一次首轮 `codex exec --json --skip-git-repo-check -s read-only -C <tmp> -c model_reasoning_effort=low -`、一次 `codex exec resume <thread_id> --json --skip-git-repo-check -c model_reasoning_effort=xhigh -`（进程 cwd=该临时目录）；固定无害提示词经 stdin（首轮要求执行一次 `pwd` 并回 OK、记一个暗号，续聊问暗号）；默认模型（未传 `-m`）。只记录事件结构与类型，不记录内容；未读 `~/.codex`。
+  - **`exec` 已无 `--full-auto`**：沙箱一律 `-s read-only|workspace-write|danger-full-access`（旧端 `--full-auto` 映射作废）；另有 `--dangerously-bypass-approvals-and-sandbox`、`--approve-for-me`。`resume` 不接受 `-s`/`-C`（沙箱继承首轮，cwd 由进程 cwd 决定），但接受 `--dangerously-bypass-approvals-and-sandbox`：适配器只有首轮为 danger 档时才可在续聊传入，其余一律不传。两者都支持 `--json`、`-m`、`-c`、`--skip-git-repo-check`、`--ephemeral`、`-o`（以上来自 `--help`）。
+  - **提示词经 stdin（`-`）生效**（已核对）：首轮按 stdin 指令执行了 `pwd` 并回复 OK；续聊经 stdin 提问，回复含首轮暗号——上下文保持。
+  - **`thread_id` 来源**（已核对）：每次进程的第一行事件 `{"type":"thread.started","thread_id":<UUID 36 字符>}`；续聊同样先发 `thread.started`，且 `thread_id` 与首轮相同。**即使回合随后失败也会先发 `thread.started`**（见非法 effort）。
+  - **`--json` 事件结构**（已核对，均为每行一个 JSON 对象，stderr 为空）：`thread.started{thread_id}` → `turn.started{}` → `item.started|item.completed{item}` → `turn.completed{usage{input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens}}`。`item` 共有 `id`（短字符串，非 UUID）、`type`：`command_execution{command,aggregated_output,exit_code(started 时为 null),status(in_progress|completed)}` 有 started 与 completed 两条；`agent_message{text}` 只有 completed。本轮 low/xhigh 下均未出现 `reasoning` 条目；`file_change`/`mcp_tool_call`/`web_search` 未触发（结构未核对，适配器保持容错）。成功 exit 0。
+  - **失败形状**（已核对）：非法 effort 时 `thread.started` → `turn.started` → `{"type":"error","message":<字符串>}` → `turn.failed{error{message}}`，exit 1；两处 `message` 本身是**JSON 编码的 API 错误串**（`{"type":"error","error":{"message":…,"type":"invalid_request_error",…},"status":400}`），需解出内层 `error.message` 再展示。
+  - **effort 合法值**（已核对）：effort 不在本地校验，由服务端校验；拒绝时列出的合法值为 `none|minimal|low|medium|high|xhigh|max`；`xhigh` 在续聊中被接受并正常完成。具体模型是否支持某档由服务端决定，不支持时表现为上面的失败形状（`turn_failed(cli_error)`）。
+  - **与实现的差异（S5-E 修复）**：①配置/请求/TG 的 Codex effort 枚举只有 `minimal|low|medium|high`（`domain/ai.py:93`、`services/ai_sessions.py:406`、`services/telegram_ai.py:40`、前端 `NewSessionSheet.vue`/`AiCliTab.vue`），缺 `none|xhigh|max`（S5-LEAD-002 曾按旧事实删掉 xhigh，作废）；②`codex.parse` 对 `error`/`turn.failed` 直接截断外层 JSON 串展示；③`turn.completed.usage` 只取 input/output，丢 `cached_input_tokens`、`reasoning_output_tokens`。其余（argv 形状、stdin、resume 不传 `-s/-C`、`thread.started` 取 id 且同 id 不重复登记、item 类型映射、resume 用会话 cwd 起进程）与真实 CLI 一致。
+  - 未核对：`-m` 指定模型、`workspace-write`/danger 档、`file_change`/`mcp_tool_call`/`reasoning` 条目形状、回合中断（TERM）后的续聊；首轮失败后（已登记 thread_id）再续聊是否可用——真实验收清单第 1 项补核。
 - **agy（已核对）**：
   - 新增 `--output-format stream-json`：事件 `{"event":..,"conversation_id":..,"init":{cwd,permission_mode,tools}}` → 多条 `step_update{conversation_id,state(ACTIVE|DONE|ERROR),step_index,step_type(user_input|tool|agent_response),tool_name(run_command|read_file|…),tool_info,text_delta,usage,duration_seconds}` → `result{conversation_id,response,status(SUCCESS…),num_turns,usage}`。**`conversation_id` 在首个事件给出**：不再读 `last_conversations.json`，取消“同 cwd 首轮互斥”（上文对应条款作废），agy 会话也有工具/正文事件。
   - `--print=<prompt>` 与 `--conversation <id>` 续聊已核对（上下文保持）。另有 `--input-format stream-json`（stdin 每行一条消息，需配 stream-json 输出）——S5-B 优先用它让提示词经 stdin；替身与真实验收各核对一次，不可用则退回 argv 并标注。
@@ -1742,6 +1746,18 @@ ai: {
 4. 用三个**测试 AI Bot**（BotFather 新建）完成 `/cc` 新建/续聊/停止/审批；主测试 Bot `/wi` AI 分析 → AI 测试 Bot 收到输出。
 5. AI 机器人所有权切换（按待决1 时机，另行授权）：逐个导入旧 Token → 旧端清除绑定 → 新端启用 → 旧端主机器人与其他 AI 机器人仍正常 → 回退演练。
 6. 旧 ADO MCP（`ado-work-items`/`adoWorkItems`）在新端会话中被正确调用；新端独有项目的警示。未测逐项记账。
+
+## S5-E：Codex 协议核对修复（主控 2026-10-24，依据「协议核对结论」Codex 小节）
+
+拆两件：**S5-E1 后端**（codex gpt-6.1-sol/medium，额度不足按 prefs 换下一个候选；测试员 gpt-6-luna/high 或 Claude Haiku 5.5，至多一个）→ **S5-E2 前端**（agy gemini-3.8-flash-high，`--sandbox`，在 E1 契约重新生成后）。不改合同接口以外的行为；不做交叉审计。
+
+- **E1 写范围** `next/backend/**`、`next/contracts/**`：
+  1. Codex effort 枚举统一为 `none|minimal|low|medium|high|xhigh|max`（单一常量，如 `domain/ai.py` 的 `CODEX_EFFORTS`）：`CodexDefaults.effort`（默认仍 `medium`）、`services/ai_sessions.py` 允许集合、`services/telegram_ai.py` 的 `TG_CODEX_EFFORTS`（向导按钮与校验同源）均引用它；Claude/agy 枚举不变。既有配置值全部仍合法，无迁移。
+  2. `adapters/ai_cli/codex.py`：`error.message` 与 `turn.failed.error.message` 若是 JSON 对象串，取内层 `error.message`（无则 `message`），否则原样；结果仍 `clip(…,500)` 且经现有脱敏路径；解析失败不抛。`turn.completed.usage` 另取 `cached_input_tokens`、`reasoning_output_tokens`（非负整数，否则 0），沿用 `*_tokens` 汇总规则。模块 docstring 改为已核对事实。
+  3. 回归：每项先写会失败的用例（保存修前失败摘要）；用真实结构样例（无内容，字段与类型同核对结论）做 parse 夹具：首轮成功流、续聊流（同 thread_id 不重复登记 external_id）、非法 effort 失败流（会话 `turn_failed(cli_error)`、展示内层消息）、HTTP 与 TG 接受 `xhigh`/`max`/`none` 并拒绝未知值。重新生成 `next/contracts`。测试只用替身 CLI，禁止调用真实 codex。
+  4. 自检：`.venv/bin/python -m pytest -q`、`ruff check .`、`python -m toolbox_backend.contracts --check` 全 exit 0。
+- **E2 写范围** `next/desktop/**`：`pnpm contracts:gen` 同步 `schema.d.ts`；`NewSessionSheet.vue` 与 `AiCliTab.vue` 的 Codex effort 选项改为上述 7 项（标签中文+原值，与 Claude 一致风格），`tests/unit/s5-lead-ai-enums.test.ts` 守卫须通过；不改 `tests/independent`。自检 frozen install/typecheck/lint/test/build/guard:dist/contracts:check 全 exit 0。
+- **主控验收**：沙箱外后端全量 + ruff + contracts、前端全量；diff 只在写范围；限定路径 binary patch 集成。
 
 ## S5 待决（已决，保留选项以便追溯；备选均不实施）
 
