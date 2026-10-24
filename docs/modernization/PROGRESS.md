@@ -1006,3 +1006,7 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 - 主控补守卫 `tests/unit/s5-lead-ai-enums.test.ts`：逐 CLI 比对新会话 Sheet 手写档位列表与 OpenAPI 枚举；主控把 Sheet 临时换回修前版本复跑，**2 failed**（claude/codex effort），恢复后 6 passed。
 - 集成：worktree `next/desktop` 相对 `ac08288` 的限定 binary patch（`.local/dispatch/s5d/integration-lead.patch`，10 文件），`git apply --check` 后应用；主控修正守卫用例一处类型错误。集成版本前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0；后端未改（1100 passed）。S5-LEAD-002..005 **fixed**（003 由单测回归覆盖，未在 dev:web 二次走查）。
 - **S5 集成验收结论**：S5-A/B/C/D1/D2 全部 integrated，自动验收与 dev:web 主流程通过，验收发现均已修复（本地提交，未 push）。遗留：dev:web 未手工走通的三条（TG `/cc`、`/wi` AI 分析、桌面工单 AI 分析）；Codex 最小会话协议核对（待 codex 额度）；Claude 审批 allow 回包与 agy stdin 格式未在真实 CLI 核对；真实验收清单与 AI 机器人所有权切换未授权；worktree `.local/worktrees/{s5a,s5b,s5c,s5d}` 保留（删除前问用户）。
+
+### S5 施工 worktree 清理（2026-10-24）
+
+- 用户原话“删除 S5 的四个 worktree（.local/worktrees/s5a、s5b、s5c、s5d）。”主控先把四个 worktree 相对各自 HEAD 的未提交改动（含未跟踪文件，不含 node_modules/.venv）存为 binary patch，归档到 `.local/dispatch/worktree-archive-s5-20261024/`（内容均已按限定路径集成进 `rewrite/next`），再 `git worktree remove --force` 四个并 `git worktree prune`。当前仅剩主目录与旧应用两个工作树。
