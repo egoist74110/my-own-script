@@ -700,10 +700,13 @@ async function onSaveSettings() {
           <div class="form-row">
             <label for="codex-effort-select">思考努力程度 (Effort)</label>
             <select id="codex-effort-select" v-model="codexEffort" class="b-select">
+              <option value="none">none</option>
               <option value="minimal">minimal</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
             </select>
           </div>
           <div class="form-row">

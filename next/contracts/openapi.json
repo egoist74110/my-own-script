@@ -1475,10 +1475,13 @@
           "effort": {
             "default": "medium",
             "enum": [
+              "none",
               "minimal",
               "low",
               "medium",
-              "high"
+              "high",
+              "xhigh",
+              "max"
             ],
             "title": "Effort",
             "type": "string"

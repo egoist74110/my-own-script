@@ -784,7 +784,8 @@ Popen、exec*、posix_spawn*：解析到替身目录以外的claude/codex/agy会
   tool_result `{tool_use_id,is_error,text}`、turn_started `{turn,text}`（text 为本回合用户提示词，最多 4000 字）、approval `{approval_id,tool,summary,state,scope?}`、
   error `{category(stderr|bad_json|line_too_long|cli_error|process_exited),text?}`；stderr/坏 JSON/超长行
   共用每秒 ≤20 条限流，超出合并为 `notice{reason:"suppressed",count}`；单行 >4 MiB 丢弃；stderr 环形 64 KiB 脱敏。
-- usage 汇总到 `usage_json`：`{turns,cost_usd,input_tokens,output_tokens}`。
+- usage 汇总到 `usage_json`：`{turns,cost_usd,input_tokens,output_tokens}`，并累加适配器提供的其他
+  `*_tokens`（Codex 包括 `cached_input_tokens`、`reasoning_output_tokens`；仅非负整数）。
 
 ### 审批（Claude）
 
@@ -817,6 +818,10 @@ Popen、exec*、posix_spawn*：解析到替身目录以外的claude/codex/agy会
 
 ### 配置枚举修订
 
+Codex effort：`none|minimal|low|medium|high|xhigh|max`，默认仍为 `medium`；配置、HTTP 和 TG 向导
+共用 `CODEX_EFFORTS`，已有配置无需迁移。具体模型不支持的档位由 CLI 服务端报错；JSON 编码的
+API 错误取内层消息，经现有事件脱敏与 500 字截断后展示。
+
 Claude permission：`acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`，输入或已存的 `default` 规范化为
 `manual`（pydantic 前置校验，迁移与读取都生效）；agy mode：`sandbox|plan|auto`，`analysis.agy.mode` 新默认 `plan`
 （已存值不变），agy 增加可选 `effort low|medium|high|xhigh|max`。高权限档（bypassPermissions、danger-full-access、
@@ -832,7 +837,10 @@ AnalysisRequest、PromptResponse；AISettingsPatch/AIView 增 `mcp_tool_prefix`�
 
 ### 未核对真实 CLI 的事项
 
-Claude `behavior:"allow"` 的 control_response 形状；Codex `--json` 事件结构、thread_id 来源与 effort 枚举；agy
+Codex 0.163.0 的首轮/续聊、stdin、thread_id、command/agent 事件、usage 和 effort 枚举已由主控
+于 2026-10-24 核对；本包回归只使用相同结构的替身。仍未核对：Codex 指定模型、workspace-write/danger
+档、file/MCP/reasoning 事件、TERM 后续聊与首轮失败后续聊；
+Claude `behavior:"allow"` 的 control_response 形状；agy
 `--input-format stream-json` 的 stdin 行格式（已有 argv 退路）及 init/step_update/result 载荷是否嵌套在事件名下
 （两种都解析）；Codex/agy 的 MCP 工具名前缀写法。替身只证明适配逻辑，不证明真实 CLI 行为。
 

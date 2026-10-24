@@ -1869,7 +1869,7 @@ export interface components {
              * @default medium
              * @enum {string}
              */
-            effort: "minimal" | "low" | "medium" | "high";
+            effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
             /** Model */
             model?: string | null;
             /**

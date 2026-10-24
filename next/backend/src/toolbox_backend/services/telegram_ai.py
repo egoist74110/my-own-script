@@ -25,7 +25,7 @@ from toolbox_backend.api.ai_schemas import (
     SendMessage,
     SessionCreate,
 )
-from toolbox_backend.domain.ai import AIProfile, validate_model
+from toolbox_backend.domain.ai import CODEX_EFFORTS, AIProfile, validate_model
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.telegram import numeric
 from toolbox_backend.logging_setup import redact_exception
@@ -37,7 +37,7 @@ TG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "toolbox-next:telegram")
 # agy auto) is desktop-only and refused here even for a hand-built payload.
 TG_CLAUDE_PERMISSIONS = ("auto", "acceptEdits", "plan", "manual", "dontAsk")
 TG_CODEX_SANDBOXES = ("read-only", "workspace-write")
-TG_CODEX_EFFORTS = ("minimal", "low", "medium", "high")
+TG_CODEX_EFFORTS = CODEX_EFFORTS
 TG_AGY_MODES = ("sandbox", "plan")
 PERMISSION_LABELS = {
     "auto": "自动（默认）",

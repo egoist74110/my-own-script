@@ -146,10 +146,13 @@ const effortOptions = computed(() => {
   if (cli === 'codex') {
     return [
       { value: '', label: '默认 (Default)' },
+      { value: 'none', label: '无 (none)' },
       { value: 'minimal', label: '极低 (minimal)' },
       { value: 'low', label: '低 (low)' },
       { value: 'medium', label: '中 (medium)' },
       { value: 'high', label: '高 (high)' },
+      { value: 'xhigh', label: '超高 (xhigh)' },
+      { value: 'max', label: '最高 (max)' },
     ]
   }
   if (cli === 'agy') {

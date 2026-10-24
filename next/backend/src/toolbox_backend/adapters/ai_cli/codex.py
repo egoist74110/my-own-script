@@ -1,9 +1,11 @@
 """Codex exec --json protocol.
 
-Checked with --help only (codex-cli 0.163.0): no --full-auto, -s sandbox values, prompt from
-stdin via "-". NOT checked against a real session: event shapes (thread.started/item.*/turn.*),
-thread_id source and the effort enum follow the old app's facts.
+Checked with codex-cli 0.163.0 (2026-10-24): stdin prompts, thread.started IDs,
+command/agent items, turn usage and JSON-encoded API errors; resume preserves thread ID
+and uses the process cwd without -s/-C. File/MCP/reasoning items remain tolerant mappings.
 """
+
+import json
 
 from toolbox_backend.adapters.ai_cli.base import Norm, clip, safe_id, tool_summary
 
@@ -58,14 +60,18 @@ def parse(obj) -> list[Norm]:
                     "is_error": False,
                     "input_tokens": _int(usage.get("input_tokens")),
                     "output_tokens": _int(usage.get("output_tokens")),
+                    "cached_input_tokens": _int(usage.get("cached_input_tokens")),
+                    "reasoning_output_tokens": _int(usage.get("reasoning_output_tokens")),
                 },
             )
         ]
     if kind == "turn.failed":
         error = obj.get("error") if isinstance(obj.get("error"), dict) else {}
-        return [Norm("result", {"is_error": True, "message": clip(error.get("message"), 500)})]
+        return [Norm("result", {"is_error": True, "message": _error_message(error.get("message"))})]
     if kind == "error":
-        return [Norm("error", {"category": "cli_error", "text": clip(obj.get("message"), 500)})]
+        return [
+            Norm("error", {"category": "cli_error", "text": _error_message(obj.get("message"))})
+        ]
     return []
 
 
@@ -169,3 +175,19 @@ def _item(event, item):
 
 def _int(value) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _error_message(value) -> str:
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except ValueError, RecursionError:
+            decoded = None
+        if isinstance(decoded, dict):
+            error = decoded.get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            if not isinstance(message, str):
+                message = decoded.get("message")
+            if isinstance(message, str):
+                value = message
+    return clip(value, 500)

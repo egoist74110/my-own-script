@@ -29,6 +29,7 @@ from toolbox_backend.domain.ai import (
     AGY_EFFORTS,
     BUILTINS,
     CLAUDE_PERMISSIONS,
+    CODEX_EFFORTS,
     AIProfile,
     validate_model,
     validate_profile,
@@ -403,7 +404,7 @@ class AISessionService:
             permission = "manual"  # legacy value; the real CLI has no "default" mode
         allowed_effort = {
             "claude": {None, "low", "medium", "high", "xhigh", "max"},
-            "codex": {"minimal", "low", "medium", "high"},
+            "codex": set(CODEX_EFFORTS),
             "agy": {None, *AGY_EFFORTS},
         }
         allowed_permission = {

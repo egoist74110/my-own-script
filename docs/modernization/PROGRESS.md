@@ -1010,3 +1010,29 @@ info（记录，真实 ADO 验收时留意）：I-5 原始前缀按字节比较�
 ### S5 施工 worktree 清理（2026-10-24）
 
 - 用户原话“删除 S5 的四个 worktree（.local/worktrees/s5a、s5b、s5c、s5d）。”主控先把四个 worktree 相对各自 HEAD 的未提交改动（含未跟踪文件，不含 node_modules/.venv）存为 binary patch，归档到 `.local/dispatch/worktree-archive-s5-20261024/`（内容均已按限定路径集成进 `rewrite/next`），再 `git worktree remove --force` 四个并 `git worktree prune`。当前仅剩主目录与旧应用两个工作树。
+
+## 2026-10-24：S5 Codex 协议核对、S5-E 修复、S6 合同草案（主控）
+
+- 主控 actual unknown（Claude Opus 5.5 会话，lead）。输入 `rewrite/next @ 1a5548d`。
+
+### S5 Codex 最小会话协议核对（已决9）
+
+- codex-cli 0.163.0，scratchpad 临时空目录，固定无害提示词经 stdin，默认模型；三次运行：非法 effort（`bogus`，exit 1）、首轮 `-s read-only -c model_reasoning_effort=low`（exit 0）、`exec resume <thread_id>` + `xhigh`（exit 0）。只记录事件结构/类型与布尔核对（stdin 生效、thread_id 相同、上下文保持），未记录内容，未读 `~/.codex`。原始结构摘要在主控 scratchpad，不入库。
+- 结论写入 WORK_PACKAGES「协议核对结论」Codex 小节：stdin 生效；`thread.started.thread_id`（续聊同 id，失败回合也先发）；事件 `thread.started→turn.started→item.started|completed→turn.completed{usage 5 项}`；失败为 `error` + `turn.failed`，message 为 JSON 编码的 API 错误；effort 由服务端校验，合法值 `none|minimal|low|medium|high|xhigh|max`（S5-LEAD-002 删 xhigh 的依据作废）。
+- 与实现差异 3 项 → 开 S5-E。
+
+### S5-E 修复包
+
+- S5-E1 后端：codex exec `gpt-6.1-sol` / medium（workspace-write，不联网），thread `01a16b84-83a5-7bc2-8b66-e173c4df0d82`，actual model/effort unknown；worktree `.local/worktrees/s5e`（detached `2a92606`）；请求/输出 `.local/dispatch/s5e/`（request.md、stdout.jsonl、stderr.log、exit.txt）。测试子agent `/root/s5e_tests`（requested gpt-6-luna/high，actual unknown）新增 `tests/independent/s5e/` 12 例；施工者新增 `tests/test_s5e_codex_protocol.py` 24 例。变更：`CODEX_EFFORTS` 七档单一常量（domain/HTTP/TG 同源，默认 medium，无迁移）；`codex.parse` 解出内层 `error.message`；usage 增 `cached_input_tokens`/`reasoning_output_tokens`，`_add_usage` 累加全部非负 `*_tokens`；README 同步；契约重新生成。既有断言改动：无。施工者沙箱内全量受端口/监督器限制未跑完，修前失败摘要与日志写在 `/tmp/s5e-*`（仓库外，施工者自报）。
+- 主控沙箱外复跑施工树：后端 **1136 passed**、ruff、contracts --check 全 exit 0。修前失败由施工者观察，主控未逐项反向复现（unknown）。
+- S5-E2 前端：agy `--sandbox --model gemini-3.8-flash-high --effort high --print=`（新会话，actual unknown），exit 0；请求/输出 `.local/dispatch/s5e/e2-*`。`pnpm contracts:gen` 同步 schema.d.ts；新会话 Sheet 与 AI CLI 设置的 Codex effort 改为七项；既有断言改动：无；主控守卫 `s5-lead-ai-enums` 未改且通过。
+- 集成：worktree 相对 `2a92606` 的限定路径 binary patch（`.local/dispatch/s5e/integration.patch`，12 文件：backend README/src/tests、contracts、desktop/src），主目录 `next/` 自 `2a92606` 无改动，`git apply --check` 后应用。
+- 集成版本验收：后端全量 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check 全 exit 0；`git diff --check` exit 0。
+- 未测：真实 CLI 下 `none`/`max` 档、`-m` 指定模型、workspace-write/danger 档、file/MCP/reasoning 条目、TERM 后与首轮失败后续聊（真实验收清单第 1 项）。worktree `.local/worktrees/s5e` 保留（删除前问用户）。
+
+### S6 合同草案
+
+- 主控只读核实旧应用 `main @ 885d186` 的 ADO/Lark/Figma MCP 托管事实（文件与行号写入 WORK_PACKAGES「S6 旧应用事实核实」），未读真实配置/凭据/CLI 配置/lark-mcp 存储，未连真实服务，未启动旧应用 MCP 或 node/npx。
+- 关键新发现：①ADO/Figma 的应用“启动”进程不服务任何客户端（CLI 各自 spawn stdio）；②Lark 登录把 App Secret 放进 argv（`app_lark/mcp_server_manager.py:333–337`）；③lark-mcp 令牌存储是全局 `storage.json`，新旧应用天然共用；④Bearer 注入把 UAT 明文写进三家 CLI 配置；⑤Node 下载无校验、解包无过滤；⑥lark-mcp/figma 包未锁版本（D13）。
+- 合同写入 WORK_PACKAGES「S6」：架构五问、config v4、凭据、ADO server、stdio 有界自检（D08）、Lark 托管与端口预检/补丁标记、Figma wrapper、Node/npm、接入片段与 S5 分析来源切换、HTTP/WS、安全核对表、S6-0/A/B/C 分包、集成验收、真实验收清单、Lark 所有权切换步骤、待决 11 项。
+- 状态：S6 **待用户确认待决**，未派工。

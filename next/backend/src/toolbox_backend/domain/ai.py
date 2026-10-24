@@ -78,6 +78,7 @@ ClaudePermission = Annotated[
     BeforeValidator(_legacy_permission),
 ]
 CLAUDE_PERMISSIONS = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+CODEX_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 AGY_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 AgyMode = Literal["sandbox", "plan", "auto"]
 
@@ -90,7 +91,7 @@ class ClaudeDefaults(Extensible):
 
 class CodexDefaults(Extensible):
     sandbox: Literal["read-only", "workspace-write", "danger-full-access"] = "workspace-write"
-    effort: Literal["minimal", "low", "medium", "high"] = "medium"
+    effort: Literal[*CODEX_EFFORTS] = "medium"
     model: str | None = None
 
 

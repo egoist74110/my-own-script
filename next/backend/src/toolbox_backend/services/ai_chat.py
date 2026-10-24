@@ -415,8 +415,14 @@ class ChatSession:
     def _add_usage(self, payload, cost=0.0):
         self.usage["turns"] += 1
         self.usage["cost_usd"] = round(self.usage["cost_usd"] + cost, 6)
-        self.usage["input_tokens"] += payload.get("input_tokens", 0)
-        self.usage["output_tokens"] += payload.get("output_tokens", 0)
+        for key, value in payload.items():
+            if (
+                key.endswith("_tokens")
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+            ):
+                self.usage[key] = self.usage.get(key, 0) + value
 
     async def _finish_turn(self, kind, payload):
         """The only place a turn reaches a terminal event: exactly one per turn."""
