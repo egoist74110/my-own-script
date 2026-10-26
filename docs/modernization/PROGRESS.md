@@ -18,7 +18,8 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
-| S8 VPN / S9 交付 | not_started | — | — |
+| S8 VPN | 合同草案待确认（[WORK_PACKAGES.md「S8」](WORK_PACKAGES.md)，10 项待决；未派工） | 真实验收清单、所有权切换与主 Bot 切换未授权 | — |
+| S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -62,3 +63,18 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 本次只核对代码与既有测试，未重跑测试。
 
 资源：施工 worktree 剩 `.local/worktrees/s5e`、`s7a`、`s7c`（删除前问用户）；`s6a/s6b/s6c` 经用户 2026-10-26 同意已删除（删除前核对：未提交内容均已在 `8b6e446`/`9ffedba`/`6a00fc2` 中，唯一差异是集成时去掉的文件尾空行）；`.local/cargo-target` 约 4 GB 等 git 忽略目录保留。
+
+## S8 合同草案（2026-10-26）
+
+- 角色：主控（lead）；requested/actual：Sonnet 5.5（会话系统提示自述，无提供方回执，证据等级同前）；无子 agent、无派工。
+- 输入：新版 `rewrite/next @ 82a6904`；旧版 `main @ 885d186`；AGENT_WORKFLOW/ARCHITECTURE/MIGRATION_PLAN、旧 `docs/capabilities/vpn.md`、项目记忆 harmony-vpn-automation、S4 已决1、S5/S6/S7 监督器与服务样板。
+- 只读核对范围：旧 `app_ado/vpn_control.py`、`vpn_login.py`、`vpn_totp.py`、`vpn_update.py`（结构与关键函数）、`vpn_ip.py`、`secrets.py` VPN 段、`tg_control.py` `/vpn` 与 `svc:vpn`、`tg_help_inline.py`、`ui/services_tab.py` VPN 卡（均无未提交改动）；本机客户端 `Info.plist`、`ps`、`ifconfig`（只读）；新端 `site-packages`（确认无 playwright/pyobjc/pyotp）。**未**读真实配置/凭据/Ente 导出，未启动/停止任何 VPN 或浏览器，未点击，未联网。
+- 关键新发现（详见合同「S8 事实核实」）：
+  1. **客户端已改名为 `Check Point SASE`（13.1.0，bundle id `com.safervpn.osx.smb`）**，旧代码把 “Harmony SASE” 硬编码在 `pgrep`/`open -a`/`osascript`/OCR 窗口筛选里 → 在 13.1.0 上 `app_running()` 恒 False、窗口自愈整体失效；只有“读 utun 10.254 是否已连”仍然有效。URL scheme 仍同时注册 `HarmonySASE` 与 `CheckPointSASE`。新品牌下 SSO 入口/选择器/`redirectUrl` 未验证。
+  2. 旧端自愈全程同步 `sleep`、无取消、无并发保护（可同时起多个 Chrome 登录）；A/B 档靠 `pkill -f`。
+  3. 回调深链（含 id_token JWT）经 `open <url>` 进 argv 且每 8 秒重发；日志写深链前缀与页面控件 dump。
+  4. TOTP 导入由服务端读用户给的路径并无论成败 `unlink`（等于替用户删任意文件），多条匹配静默取第一条；UI 配置对话框回填明文密码。
+  5. 窗口自动化需屏幕录制/辅助功能，合成点击会移动真实鼠标，`surface_app` 周期抢前台；新后端无 pyobjc/playwright 依赖，需新增并锁定（待决1）。
+- 产物：[WORK_PACKAGES.md「S8」](WORK_PACKAGES.md)（事实核实、S8-0 本机核对计划、架构五问、config v6、凭据与 TOTP、客户端控制、窗口自动化、登录 worker、连接运行模型、接口、安全核对表、S8-A/B/C 分包与模型分工、集成验收、真实验收清单、所有权切换步骤、10 项待决）。
+- 状态：合同草案，**待用户确认「S8 待决」**；确认前不派工，不授权 S8-0、依赖锁定联网、真实验收、所有权切换与主 Bot 切换。
+- not_run：未重跑测试（只写文档）；新品牌 SSO 页面、窗口文案、深链 scheme 有效性均未实测。
