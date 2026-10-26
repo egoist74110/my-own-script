@@ -55,4 +55,4 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 
 本次只核对代码与既有测试，未重跑测试。
 
-资源：施工 worktree `.local/worktrees/s5e`、`s6a`、`s6b`、`s6c`（删除前问用户）；`.local/cargo-target` 约 4 GB 等 git 忽略目录保留。
+资源：施工 worktree 仅剩 `.local/worktrees/s5e`（删除前问用户）；`s6a/s6b/s6c` 经用户 2026-10-26 同意已删除（删除前核对：未提交内容均已在 `8b6e446`/`9ffedba`/`6a00fc2` 中，唯一差异是集成时去掉的文件尾空行）；`.local/cargo-target` 约 4 GB 等 git 忽略目录保留。
