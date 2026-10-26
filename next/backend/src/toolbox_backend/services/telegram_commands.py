@@ -499,8 +499,13 @@ class TelegramDispatcher:
             return "handled"
         req = LarkActionRequest(request_id=uuid.uuid5(TG_NAMESPACE, token))
         if kind == "mcp_lark_start":
-            await mcp.start_lark(req)
-            await self.mcp_panel(update, notice="Lark MCP 已启动")
+            snap = await mcp.start_lark(req)
+            notice = (
+                "Lark MCP 已启动"
+                if snap.lark.state in {"running", "running_degraded"}
+                else f"Lark MCP 启动失败（{snap.lark.last_error or snap.lark.state}）"
+            )
+            await self.mcp_panel(update, notice=notice)
         else:
             await mcp.stop_lark(req)
             await self.mcp_panel(update, notice="Lark MCP 已停止")

@@ -30,7 +30,8 @@ def process_identity(pid):
 
 
 def terminate_group(child, code=None, grace_s=3):
-    with contextlib.suppress(ProcessLookupError):
+    # macOS answers EPERM (not ESRCH) for a group whose only members are zombies.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(child, signal.SIGTERM)
     deadline = time.monotonic() + grace_s
     while time.monotonic() < deadline:
@@ -38,12 +39,14 @@ def terminate_group(child, code=None, grace_s=3):
             os.killpg(child, 0)
         except ProcessLookupError:
             break
+        except PermissionError:
+            pass  # zombie-only group: reap below, then the group is gone
         if code is None:
             waited, result = os.waitpid(child, os.WNOHANG)
             if waited:
                 code = os.waitstatus_to_exitcode(result)
         time.sleep(0.02)
-    with contextlib.suppress(ProcessLookupError):
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(child, signal.SIGKILL)
     if code is None:
         _, result = os.waitpid(child, 0)
@@ -155,7 +158,7 @@ def main():
         return 127
     finally:
         if child:
-            with contextlib.suppress(ProcessLookupError):
+            with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(child, signal.SIGKILL)
             with contextlib.suppress(ChildProcessError):
                 os.waitpid(child, 0)

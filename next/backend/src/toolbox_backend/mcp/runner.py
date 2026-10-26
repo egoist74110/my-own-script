@@ -39,9 +39,12 @@ def mcp_environment(*, path_extras=None):
 
 def validate_data_dir(path):
     path = Path(path).absolute()
-    # Reject symlinks in every path component, including a symlink data-dir ancestor.
-    for part in (path, *path.parents):
-        if part.is_symlink():
+    # The data dir itself must not be a link; an ancestor link is accepted only when root owns
+    # it (macOS /var, /tmp), since only root could redirect it. Any other link is rejected.
+    if path.is_symlink():
+        raise ValueError("unsafe data directory")
+    for part in path.parents:
+        if part.is_symlink() and part.lstat().st_uid != 0:
             raise ValueError("unsafe data directory")
     info = path.stat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:

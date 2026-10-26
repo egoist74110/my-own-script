@@ -1,271 +1,214 @@
 /**
- * Lark MCP Runtime Patches (loaded via NODE_OPTIONS="--require .../lark_mcp_patches.js")
+ * Lark MCP runtime patches (loaded via NODE_OPTIONS="--require .../lark_mcp_patches.js").
  *
- * Patches:
- *   1. mcp_tool: LarkMcpTool.prototype.ensureGetUserAccessToken single-flight
- *   2. auth_store: AuthStore.prototype.{getToken,storeToken,removeToken} supersession grace
- *   3. oidc: LarkOIDC2Provider.prototype.{verifyAccessToken,exchangeRefreshToken}
+ * Ported from the old app's lark_mcp_singleflight.js (proven against lark-mcp 0.5.1; targets
+ * re-verified in S6-0). Targets and shapes are taken from the real package, not invented:
+ *   - auth/store.js          exports the singleton `authStore`; storeToken/removeToken are
+ *                            prototype methods, entries live in `storageDataCache.tokens`.
+ *   - auth/provider/oidc.js  exports `LarkOIDC2OAuthServerProvider` (async verifyAccessToken).
+ *   - mcp-tool/mcp-tool.js   exports `LarkMcpTool` (ensureGetUserAccessToken).
  *
- * S6-LEAD-001 fix: Always resolve filename via Module._resolveFilename(request, parent, isMain)
- * before checking if the module belongs to lark-mcp, so relative requires such as
- * require("./oidc") from dist/auth/provider/index.js are matched reliably.
+ * S6-LEAD-001: the module filename is always resolved (Module._resolveFilename) before the
+ * "does it belong to lark-mcp" check; there is no request-string pre-filter, so relative
+ * requires such as require("./oidc") from auth/provider/index.js are matched.
+ *
+ * Each patch reports exactly one stderr marker: `[toolbox-lark-patch] <name>=applied|skipped|failed`
+ * (names: auth_store, oidc, mcp_tool). A missing target is `skipped`; it never takes the server down.
  */
 
 "use strict";
 
 const Module = require("module");
-const origLoad = Module._load;
 
-const SUPERSEDE_GRACE_MS = 60 * 1000;
-const RefreshState = {
-  inflightByApp: new Map(),
-  superseded: new Map(),
-  lastRefreshDoneAt: 0,
-};
+/** oldToken -> newToken supersession map (updated after every refresh). */
+const supersededBy = new Map();
+/** Latest token entry written by storeToken, consumed by the next removeToken (TTL guarded). */
+let pendingNewToken = null;
+let pendingNewTokenAt = 0;
+const PENDING_TTL_MS = 10000;
 
-const emittedMarkers = new Set();
+const SUFFIX_MCP_TOOL = "mcp-tool/mcp-tool.js";
+const SUFFIX_AUTH_STORE = "auth/store.js";
+const SUFFIX_OIDC = "auth/provider/oidc.js";
 
-function emitMarker(name, status) {
-  const key = `${name}=${status}`;
-  if (emittedMarkers.has(name)) {
+const reported = new Set();
+function mark(name, status) {
+  if (reported.has(name)) return false;
+  reported.add(name);
+  try {
+    process.stderr.write(`[toolbox-lark-patch] ${name}=${status}\n`);
+  } catch (_err) {
+    // stderr closed: nothing to report to
+  }
+  return true;
+}
+
+function patchAuthStore(store) {
+  const proto = Object.getPrototypeOf(store);
+  const origStore = proto && proto.storeToken;
+  const origRemove = proto && proto.removeToken;
+  if (typeof origStore !== "function" || typeof origRemove !== "function") {
+    mark("auth_store", "skipped");
     return;
   }
-  emittedMarkers.add(name);
-  process.stderr.write(`[toolbox-lark-patch] ${key}\n`);
-}
+  if (origStore.__tbPatched || origRemove.__tbPatched) return;
 
-function patchMcpTool(exportsObj) {
-  try {
-    const Tool = exportsObj && exportsObj.LarkMcpTool;
-    if (!Tool || !Tool.prototype || typeof Tool.prototype.ensureGetUserAccessToken !== "function") {
-      emitMarker("mcp_tool", "skipped");
-      return;
+  proto.storeToken = async function (tokenData) {
+    const result = await origStore.call(this, tokenData);
+    if (tokenData && tokenData.token) {
+      pendingNewToken = tokenData;
+      pendingNewTokenAt = Date.now();
     }
-    if (Tool.prototype.ensureGetUserAccessToken.__toolboxPatched) {
-      return;
-    }
-    const origFn = Tool.prototype.ensureGetUserAccessToken;
-    const inflight = new WeakMap();
-    const wrapped = function (...args) {
-      let pending = inflight.get(this);
-      if (pending) {
-        return pending;
-      }
-      pending = Promise.resolve()
-        .then(() => origFn.apply(this, args))
-        .finally(() => {
-          inflight.delete(this);
-        });
-      inflight.set(this, pending);
-      return pending;
-    };
-    wrapped.__toolboxPatched = true;
-    Tool.prototype.ensureGetUserAccessToken = wrapped;
-    emitMarker("mcp_tool", "applied");
-  } catch (_err) {
-    emitMarker("mcp_tool", "failed");
-  }
-}
+    return result;
+  };
+  proto.storeToken.__tbPatched = true;
 
-function patchAuthStore(exportsObj) {
-  try {
-    const Store = exportsObj && exportsObj.AuthStore;
-    if (
-      !Store ||
-      !Store.prototype ||
-      typeof Store.prototype.getToken !== "function" ||
-      typeof Store.prototype.storeToken !== "function" ||
-      typeof Store.prototype.removeToken !== "function"
-    ) {
-      emitMarker("auth_store", "skipped");
-      return;
-    }
-    if (Store.prototype.getToken.__toolboxPatched) {
-      return;
-    }
+  // A refresh stores the new token then removes the old one. Keep the old entry alive (carrying
+  // the new expiry/refresh token) and remember old -> new, so a client's old bearer keeps working.
+  proto.removeToken = async function (oldToken) {
+    const age = Date.now() - pendingNewTokenAt;
+    const newData = age < PENDING_TTL_MS ? pendingNewToken : null;
+    pendingNewToken = null;
 
-    const origGetToken = Store.prototype.getToken;
-    const origStoreToken = Store.prototype.storeToken;
-    const origRemoveToken = Store.prototype.removeToken;
+    const isSupersession =
+      newData &&
+      newData.token &&
+      newData.token !== oldToken &&
+      newData.extra &&
+      newData.extra.refreshToken;
 
-    const getTokenWrapped = async function (accessToken) {
-      const record = await origGetToken.call(this, accessToken);
-      if (record) {
-        return record;
-      }
-      const entry = RefreshState.superseded.get(accessToken);
-      if (!entry) {
-        return undefined;
-      }
-      if (Date.now() > entry.until) {
-        RefreshState.superseded.delete(accessToken);
-        return undefined;
-      }
-      const redirected = await origGetToken.call(this, entry.newToken);
-      if (redirected) {
-        return redirected;
-      }
-      return entry.tokenData;
-    };
-    getTokenWrapped.__toolboxPatched = true;
-    Store.prototype.getToken = getTokenWrapped;
-
-    Store.prototype.storeToken = async function (tokenData) {
-      let prevToken;
+    if (isSupersession) {
       try {
-        const appId = tokenData && tokenData.extra && tokenData.extra.appId;
-        if (appId && typeof this.getLocalAccessToken === "function") {
-          prevToken = await this.getLocalAccessToken(appId);
+        const cache = this.storageDataCache && this.storageDataCache.tokens;
+        const existing = cache && cache[oldToken];
+        if (existing) {
+          existing.expiresAt = newData.expiresAt;
+          existing.extra = existing.extra || {};
+          existing.extra.refreshToken = newData.extra.refreshToken;
+          if (newData.extra.appId) existing.extra.appId = newData.extra.appId;
+          if (newData.extra.appSecret) existing.extra.appSecret = newData.extra.appSecret;
         }
+        supersededBy.set(oldToken, newData.token);
+        if (typeof this.saveToStorage === "function") {
+          await this.saveToStorage();
+        }
+        return;
       } catch (_err) {
-        // ignore
+        // fall through to the original removal
       }
-      const result = await origStoreToken.call(this, tokenData);
-      if (prevToken && tokenData && tokenData.token && prevToken !== tokenData.token) {
-        RefreshState.superseded.set(prevToken, {
-          newToken: tokenData.token,
-          tokenData,
-          until: Date.now() + SUPERSEDE_GRACE_MS,
-        });
-        RefreshState.lastRefreshDoneAt = Date.now();
-      }
-      return result;
-    };
-
-    Store.prototype.removeToken = async function (accessToken) {
-      const entry = RefreshState.superseded.get(accessToken);
-      if (entry && Date.now() <= entry.until) {
-        try {
-          if (this.storage && this.storage.tokens && this.storage.tokens[accessToken]) {
-            entry.tokenData = this.storage.tokens[accessToken];
-          }
-        } catch (_err) {
-          // ignore
-        }
-      }
-      return origRemoveToken.call(this, accessToken);
-    };
-
-    emitMarker("auth_store", "applied");
-  } catch (_err) {
-    emitMarker("auth_store", "failed");
-  }
+    }
+    return origRemove.call(this, oldToken);
+  };
+  proto.removeToken.__tbPatched = true;
+  mark("auth_store", "applied");
 }
 
-function patchOidcProvider(exportsObj, parent) {
-  try {
-    const Provider = exportsObj && exportsObj.LarkOIDC2Provider;
-    if (
-      !Provider ||
-      !Provider.prototype ||
-      typeof Provider.prototype.verifyAccessToken !== "function" ||
-      typeof Provider.prototype.exchangeRefreshToken !== "function"
-    ) {
-      emitMarker("oidc", "skipped");
-      return;
-    }
-    if (Provider.prototype.verifyAccessToken.__toolboxPatched) {
-      return;
-    }
+function patchOidc(Provider) {
+  const proto = Provider && Provider.prototype;
+  const orig = proto && proto.verifyAccessToken;
+  if (typeof orig !== "function") {
+    mark("oidc", "skipped");
+    return;
+  }
+  if (orig.__tbPatched) return;
 
-    let authStoreRef = null;
+  // The HTTP bearer middleware rejects an expired token before ensureGetUserAccessToken could
+  // refresh it. For an expired token that still has a refresh token, report "2 minutes left" to
+  // the middleware only; the stored expiresAt stays untouched so the refresh path still triggers.
+  proto.verifyAccessToken = async function (token) {
+    const result = await orig.call(this, token);
+    if (!result) return result;
+    const now = Date.now() / 1000;
+    const expired = result.expiresAt && result.expiresAt < now;
+    const hasRefreshToken = result.extra && result.extra.refreshToken;
+    if (expired && hasRefreshToken) {
+      return Object.assign({}, result, { expiresAt: now + 120 });
+    }
+    return result;
+  };
+  proto.verifyAccessToken.__tbPatched = true;
+  mark("oidc", "applied");
+}
+
+function patchMcpTool(Tool) {
+  const proto = Tool && Tool.prototype;
+  const orig = proto && proto.ensureGetUserAccessToken;
+  if (typeof orig !== "function") {
+    mark("mcp_tool", "skipped");
+    return;
+  }
+  if (orig.__tbPatched) return;
+
+  // Layer 1: single-flight, so concurrent calls share one refresh (avoids Lark error 20038).
+  function singleFlight() {
+    if (this.__tbInflight) return this.__tbInflight;
+    let p;
     try {
-      const storeFilename = Module._resolveFilename("../store", parent, false);
-      const storeMod = origLoad.call(Module, storeFilename, parent, false);
-      authStoreRef = storeMod && storeMod.authStore;
-    } catch (_err) {
-      // ignore if store cannot be resolved relative to parent
+      p = Promise.resolve(orig.apply(this, arguments));
+    } catch (err) {
+      return Promise.reject(err);
     }
-
-    const origVerify = Provider.prototype.verifyAccessToken;
-    const origRefresh = Provider.prototype.exchangeRefreshToken;
-
-    const verifyWrapped = async function (token) {
-      try {
-        if (authStoreRef && typeof authStoreRef.getToken === "function") {
-          const tokenData = await authStoreRef.getToken(token);
-          if (tokenData) {
-            const nowSec = Math.floor(Date.now() / 1000);
-            const expired = Boolean(tokenData.expiresAt && tokenData.expiresAt < nowSec);
-            const hasRefreshToken = Boolean(tokenData.extra && tokenData.extra.refreshToken);
-            if (expired && hasRefreshToken) {
-              const savedExpiresAt = tokenData.expiresAt;
-              tokenData.expiresAt = nowSec + 60;
-              try {
-                return await origVerify.call(this, token);
-              } finally {
-                tokenData.expiresAt = savedExpiresAt;
-              }
-            }
-          }
-        }
-      } catch (_err) {
-        // fall through to original verify
-      }
-      return origVerify.call(this, token);
+    this.__tbInflight = p;
+    const clear = () => {
+      this.__tbInflight = null;
     };
-    verifyWrapped.__toolboxPatched = true;
-    Provider.prototype.verifyAccessToken = verifyWrapped;
+    p.then(clear, clear);
+    return p;
+  }
 
-    Provider.prototype.exchangeRefreshToken = function (tokenData, ...rest) {
-      const appId = (tokenData && tokenData.extra && tokenData.extra.appId) || "__default__";
-      const existing = RefreshState.inflightByApp.get(appId);
-      if (existing) {
-        return existing;
+  // Layer 2: follow the supersession chain so an old bearer resolves to the current token.
+  proto.ensureGetUserAccessToken = async function () {
+    const result = await singleFlight.apply(this, arguments);
+    if (result && result.userAccessToken) {
+      let current = result.userAccessToken;
+      let hops = 0;
+      while (supersededBy.has(current) && hops++ < 20) {
+        current = supersededBy.get(current);
       }
-      const promise = Promise.resolve()
-        .then(async () => {
-          const sinceLast = Date.now() - RefreshState.lastRefreshDoneAt;
-          if (sinceLast >= 0 && sinceLast < SUPERSEDE_GRACE_MS && authStoreRef) {
-            try {
-              const latestKey = await authStoreRef.getLocalAccessToken(appId);
-              if (latestKey && tokenData && latestKey !== tokenData.token) {
-                const latestData = await authStoreRef.getToken(latestKey);
-                if (
-                  latestData &&
-                  (!latestData.expiresAt ||
-                    latestData.expiresAt > Math.floor(Date.now() / 1000) + 60)
-                ) {
-                  return latestData;
-                }
-              }
-            } catch (_err) {
-              // proceed with refresh
-            }
-          }
-          return origRefresh.call(this, tokenData, ...rest);
-        })
-        .finally(() => {
-          RefreshState.inflightByApp.delete(appId);
-        });
-      RefreshState.inflightByApp.set(appId, promise);
-      return promise;
-    };
+      if (current !== result.userAccessToken) {
+        return Object.assign({}, result, { userAccessToken: current });
+      }
+    }
+    return result;
+  };
+  proto.ensureGetUserAccessToken.__tbPatched = true;
+  mark("mcp_tool", "applied");
+}
 
-    emitMarker("oidc", "applied");
+function apply(name, fn, target) {
+  try {
+    fn(target);
   } catch (_err) {
-    emitMarker("oidc", "failed");
+    mark(name, "failed");
   }
 }
 
+const origLoad = Module._load;
 Module._load = function (request, parent, isMain) {
-  const result = origLoad.apply(this, arguments);
-  let resolved = "";
+  const exported = origLoad.apply(this, arguments);
+  if (typeof request !== "string" || !exported) return exported;
+
+  let filename = "";
   try {
-    resolved = Module._resolveFilename(request, parent, isMain);
+    filename = Module._resolveFilename(request, parent, isMain);
   } catch (_err) {
-    return result;
+    return exported;
   }
-  const normalized = String(resolved).replace(/\\/g, "/");
-  if (!normalized.includes("lark-mcp")) {
-    return result;
+  const normalized = String(filename).replace(/\\/g, "/");
+  if (!normalized.includes("lark-mcp")) return exported;
+
+  if (normalized.endsWith(SUFFIX_MCP_TOOL)) {
+    if (exported.LarkMcpTool) apply("mcp_tool", patchMcpTool, exported.LarkMcpTool);
+    else mark("mcp_tool", "skipped");
+  } else if (normalized.endsWith(SUFFIX_AUTH_STORE)) {
+    if (exported.authStore) apply("auth_store", patchAuthStore, exported.authStore);
+    else mark("auth_store", "skipped");
+  } else if (normalized.endsWith(SUFFIX_OIDC)) {
+    if (exported.LarkOIDC2OAuthServerProvider) {
+      apply("oidc", patchOidc, exported.LarkOIDC2OAuthServerProvider);
+    } else {
+      mark("oidc", "skipped");
+    }
   }
-  if (normalized.endsWith("mcp-tool/mcp-tool.js")) {
-    patchMcpTool(result);
-  } else if (normalized.endsWith("auth/store.js")) {
-    patchAuthStore(result);
-  } else if (normalized.endsWith("auth/provider/oidc.js")) {
-    patchOidcProvider(result, parent);
-  }
-  return result;
+  return exported;
 };

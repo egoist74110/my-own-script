@@ -194,6 +194,10 @@ if subcmd == "login":
     sys.exit(0)
 
 if subcmd == "logout":
+    if mode_cfg.get("logout") == "fail":
+        sys.stderr.write("Logout failed\\n")
+        sys.stderr.flush()
+        sys.exit(1)
     print("Logged out cleanly", flush=True)
     sys.exit(0)
 

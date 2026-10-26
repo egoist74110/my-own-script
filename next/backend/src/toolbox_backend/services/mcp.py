@@ -151,6 +151,8 @@ class McpService:
         self.logout_timeout_s: float = 60.0
         self.lark_http_prober = probe_lark_http
         self._lark_op_lock = asyncio.Lock()
+        # Set synchronously (no await between check and set) so two requests cannot both pass.
+        self._lark_claimed: bool = False
         self._lark_state: str = "stopped"
         self._lark_pid: int | None = None
         self._lark_owner: SupervisedProcess | None = None
@@ -358,10 +360,21 @@ class McpService:
 
     def _ensure_lark_not_busy(self) -> None:
         if (
-            self._lark_state in ("starting", "stopping", "logging_in")
+            self._lark_claimed
+            or self._lark_state in ("starting", "stopping", "logging_in")
             or self._lark_op_lock.locked()
         ):
             raise SettingsError("mcp_busy", "飞书 MCP 操作正在进行", 409)
+
+    @contextlib.contextmanager
+    def _claim_lark_op(self):
+        """Check-and-claim with no await in between: the loser of a race gets mcp_busy."""
+        self._ensure_lark_not_busy()
+        self._lark_claimed = True
+        try:
+            yield
+        finally:
+            self._lark_claimed = False
 
     async def _pump_lark_stream(
         self, stream: asyncio.StreamReader | None
@@ -369,7 +382,15 @@ class McpService:
         if stream is None:
             return
         try:
-            while raw := await stream.readline():
+            while True:
+                try:
+                    raw = await stream.readline()
+                except ValueError:
+                    # Line over the reader limit: asyncio dropped it; keep draining so the
+                    # child never blocks on a full pipe.
+                    continue
+                if not raw:
+                    break
                 line = raw.decode("utf-8", errors="replace")
                 self._lark_logs.write_line(line)
                 self._lark_patches, self._lark_keytar_available, _ = (
@@ -487,9 +508,11 @@ class McpService:
             cached = self._idempotency.get(("lark_start", str(req.request_id)))
             if isinstance(cached, MCPSnapshot):
                 return await self.snapshot()
+        with self._claim_lark_op():
+            return await self._start_lark_claimed(req)
 
+    async def _start_lark_claimed(self, req: LarkActionRequest) -> MCPSnapshot:
         config = await self.store.read()
-        self._ensure_lark_not_busy()
         node_rt, cli_js, secret = await self._check_lark_gates(
             config, require_secret=True
         )
@@ -514,110 +537,122 @@ class McpService:
             self._lark_last_error = None
             self._lark_warnings = []
             self._lark_logs.clear_tail()
-            await self._emit_status()
-
-            node_path = Path(node_rt.path)
-            extra_dirs: list[str | Path] = [node_path.parent]
-            if self.path_extras:
-                extra_dirs.extend(self.path_extras)
-            env = mcp_environment(path_extras=extra_dirs)
-            env["APP_SECRET"] = secret
-            env["NODE_OPTIONS"] = (
-                f"--require {RESOURCES_MCP_DIR / 'lark_mcp_patches.js'}"
-            )
-
-            run_cwd = await asyncio.to_thread(
-                prepare_run_directory, self.store.data_dir, "lark"
-            )
-            argv = [
-                str(node_path),
-                str(cli_js),
-                "mcp",
-                "-a",
-                lark.app_id,
-                "-d",
-                lark.domain,
-                "-t",
-                lark.tools,
-                "-m",
-                "streamable",
-                "--host",
-                "localhost",
-                "-p",
-                str(lark.port),
-                "--oauth",
-                "--token-mode",
-                "user_access_token",
-                "-l",
-                lark.language,
-                "--debug",
-            ]
-            owner = await SupervisedProcess.start(
-                argv,
-                str(run_cwd),
-                env=env,
-                path_extras=extra_dirs,
-                stdio=True,
-            )
-            self._lark_owner = owner
-            self._lark_pid = owner.identity.get("pid") or owner.proc.pid
-            self._lark_log_tasks = [
-                asyncio.create_task(self._pump_lark_stream(owner.stdout)),
-                asyncio.create_task(self._pump_lark_stream(owner.stderr)),
-            ]
-
-            timeout_s = req.timeout_s or self.start_timeout_s
-            deadline = asyncio.get_running_loop().time() + timeout_s
-            listening = False
-            while asyncio.get_running_loop().time() < deadline:
-                if owner.proc.returncode is not None:
-                    break
-                if await self.lark_http_prober(lark.port, 0.25):
-                    listening = True
-                    break
-                await asyncio.sleep(0.25)
-
-            if not listening:
-                exited_early = owner.proc.returncode is not None
-                if exited_early:
-                    await asyncio.gather(
-                        *self._lark_log_tasks, return_exceptions=True
-                    )
+            try:
+                await self._emit_status()
+                snap = await self._spawn_lark(req, lark, node_rt, cli_js, secret)
+            except BaseException:
+                # Never leave the state machine in "starting": that rejects every later
+                # operation with mcp_busy until the backend restarts.
                 await self._teardown_lark_proc()
                 self._lark_state = "failed"
-                self._lark_last_error = (
-                    "exited" if exited_early else "start_timeout"
-                )
-                snap = await self._emit_status()
-                if req.request_id is not None:
-                    self._idempotency[("lark_start", str(req.request_id))] = snap
-                return snap
-
-            # Allow stderr patch markers a brief moment to flush
-            for _ in range(5):
-                if self._lark_patches.all_applied:
-                    break
-                await asyncio.sleep(0.02)
-
-            self._refresh_degraded_warnings()
-            self._lark_state = (
-                "running"
-                if (
-                    self._lark_patches.all_applied
-                    and self._lark_keytar_available
-                )
-                else "running_degraded"
-            )
-            self._lark_health_task = asyncio.create_task(
-                self._lark_health_loop(lark.port)
-            )
-            self._lark_exit_task = asyncio.create_task(
-                self._lark_exit_watcher(owner)
-            )
-            snap = await self._emit_status()
+                self._lark_last_error = "start_failed"
+                with contextlib.suppress(Exception):
+                    await self._emit_status()
+                raise
             if req.request_id is not None:
                 self._idempotency[("lark_start", str(req.request_id))] = snap
             return snap
+
+    async def _spawn_lark(self, req, lark, node_rt, cli_js, secret) -> MCPSnapshot:
+        if self._lark_owner is not None:
+            # A previous process exited on its own: release its descriptors before reuse.
+            await self._teardown_lark_proc()
+        node_path = Path(node_rt.path)
+        extra_dirs: list[str | Path] = [node_path.parent]
+        if self.path_extras:
+            extra_dirs.extend(self.path_extras)
+        env = mcp_environment(path_extras=extra_dirs)
+        env["APP_SECRET"] = secret
+        env["NODE_OPTIONS"] = (
+            f"--require {RESOURCES_MCP_DIR / 'lark_mcp_patches.js'}"
+        )
+
+        run_cwd = await asyncio.to_thread(
+            prepare_run_directory, self.store.data_dir, "lark"
+        )
+        argv = [
+            str(node_path),
+            str(cli_js),
+            "mcp",
+            "-a",
+            lark.app_id,
+            "-d",
+            lark.domain,
+            "-t",
+            lark.tools,
+            "-m",
+            "streamable",
+            "--host",
+            "localhost",
+            "-p",
+            str(lark.port),
+            "--oauth",
+            "--token-mode",
+            "user_access_token",
+            "-l",
+            lark.language,
+            "--debug",
+        ]
+        owner = await SupervisedProcess.start(
+            argv,
+            str(run_cwd),
+            env=env,
+            path_extras=extra_dirs,
+            stdio=True,
+        )
+        self._lark_owner = owner
+        self._lark_pid = owner.identity.get("pid") or owner.proc.pid
+        self._lark_log_tasks = [
+            asyncio.create_task(self._pump_lark_stream(owner.stdout)),
+            asyncio.create_task(self._pump_lark_stream(owner.stderr)),
+        ]
+
+        timeout_s = req.timeout_s or self.start_timeout_s
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        listening = False
+        while asyncio.get_running_loop().time() < deadline:
+            if owner.proc.returncode is not None:
+                break
+            if await self.lark_http_prober(lark.port, 0.25):
+                listening = True
+                break
+            await asyncio.sleep(0.25)
+
+        if not listening:
+            exited_early = owner.proc.returncode is not None
+            if exited_early:
+                await asyncio.gather(
+                    *self._lark_log_tasks, return_exceptions=True
+                )
+            await self._teardown_lark_proc()
+            self._lark_state = "failed"
+            self._lark_last_error = (
+                "exited" if exited_early else "start_timeout"
+            )
+            return await self._emit_status()
+
+        # Allow stderr patch markers a brief moment to flush
+        for _ in range(5):
+            if self._lark_patches.all_applied:
+                break
+            await asyncio.sleep(0.02)
+
+        self._refresh_degraded_warnings()
+        self._lark_state = (
+            "running"
+            if (
+                self._lark_patches.all_applied
+                and self._lark_keytar_available
+            )
+            else "running_degraded"
+        )
+        self._lark_health_task = asyncio.create_task(
+            self._lark_health_loop(lark.port)
+        )
+        self._lark_exit_task = asyncio.create_task(
+            self._lark_exit_watcher(owner)
+        )
+        return await self._emit_status()
 
     async def stop_lark(
         self, body: LarkActionRequest | None = None
@@ -633,13 +668,13 @@ class McpService:
             raise SettingsError(
                 "lark_owner_unconfirmed", "请先确认已停止旧应用中的飞书 MCP", 409
             )
-        self._ensure_lark_not_busy()
-        async with self._lark_op_lock:
-            await self._stop_lark_internal()
-            snap = await self._emit_status()
-            if req.request_id is not None:
-                self._idempotency[("lark_stop", str(req.request_id))] = snap
-            return snap
+        with self._claim_lark_op():
+            async with self._lark_op_lock:
+                await self._stop_lark_internal()
+                snap = await self._emit_status()
+                if req.request_id is not None:
+                    self._idempotency[("lark_stop", str(req.request_id))] = snap
+                return snap
 
     async def login_lark(
         self, body: LarkActionRequest | None = None
@@ -649,9 +684,11 @@ class McpService:
             cached = self._idempotency.get(("lark_login", str(req.request_id)))
             if isinstance(cached, MCPSnapshot):
                 return await self.snapshot()
+        with self._claim_lark_op():
+            return await self._login_lark_claimed(req)
 
+    async def _login_lark_claimed(self, req: LarkActionRequest) -> MCPSnapshot:
         config = await self.store.read()
-        self._ensure_lark_not_busy()
         node_rt, cli_js, secret = await self._check_lark_gates(
             config, require_secret=True
         )
@@ -700,9 +737,8 @@ class McpService:
                 "-p",
                 str(lark.port),
             ]
-            if lark.scope_hint.strip():
-                for scope_item in lark.scope_hint.split():
-                    argv.extend(["--scope", scope_item])
+            # Deliberately no --scope (old app, S6-ACC-002): it selects the v1 OAuth2 provider,
+            # which never issues a refresh token. scope_hint is display metadata only.
 
             owner = await SupervisedProcess.start(
                 argv,
@@ -725,6 +761,11 @@ class McpService:
         except asyncio.CancelledError:
             if not self._lark_login_cancelled:
                 raise
+        except Exception:
+            # e.g. the process failed to start: do not stay in "logging_in".
+            self._lark_state = "failed"
+            self._lark_last_error = "login_failed"
+            raise
         finally:
             self._lark_login_owner = None
             self._lark_login_task = None
@@ -775,7 +816,7 @@ class McpService:
         )
         self._lark_state = "stopped"
         if was_running:
-            snap = await self.start_lark()
+            snap = await self._start_lark_claimed(LarkActionRequest())
         else:
             snap = await self._emit_status()
         if req.request_id is not None:
@@ -793,6 +834,8 @@ class McpService:
             if isinstance(cached, MCPSnapshot):
                 return await self.snapshot()
 
+        if self._lark_login_task is None and self._lark_state != "logging_in":
+            return await self.snapshot()  # nothing to cancel; never rewrite an unrelated state
         self._lark_login_cancelled = True
         owner = self._lark_login_owner
         if owner is not None:
@@ -816,9 +859,11 @@ class McpService:
             cached = self._idempotency.get(("lark_logout", str(req.request_id)))
             if isinstance(cached, MCPSnapshot):
                 return await self.snapshot()
+        with self._claim_lark_op():
+            return await self._logout_lark_claimed(req)
 
+    async def _logout_lark_claimed(self, req: LarkActionRequest) -> MCPSnapshot:
         config = await self.store.read()
-        self._ensure_lark_not_busy()
         node_rt, cli_js, _ = await self._check_lark_gates(
             config, require_secret=False
         )
@@ -854,10 +899,13 @@ class McpService:
                 asyncio.create_task(self._pump_lark_stream(owner.stdout)),
                 asyncio.create_task(self._pump_lark_stream(owner.stderr)),
             ]
+            rc: int | None = None
             try:
                 async with asyncio.timeout(req.timeout_s or self.logout_timeout_s):
                     await asyncio.gather(*pumps)
-                    await owner.proc.wait()
+                    rc = await owner.proc.wait()
+            except TimeoutError:
+                rc = None
             finally:
                 owner.close_control()
                 for pt in pumps:
@@ -865,6 +913,15 @@ class McpService:
                         pt.cancel()
                 await asyncio.gather(*pumps, return_exceptions=True)
                 await owner.close()
+
+            if rc != 0:
+                # Do not claim a logout that did not happen, and keep the login metadata.
+                self._lark_state = "stopped"
+                self._lark_last_error = "logout_timeout" if rc is None else "logout_failed"
+                snap = await self._emit_status()
+                if req.request_id is not None:
+                    self._idempotency[("lark_logout", str(req.request_id))] = snap
+                return snap
 
             latest = await self.store.read()
             await self.store.update(
@@ -1121,8 +1178,20 @@ class McpService:
                 value = getattr(body, key)
                 if value is not None:
                     setattr(c.mcp, key, value)
+            # Ownership confirmation and login metadata have their own routes; a settings
+            # PATCH must not be able to forge them (compared after applying, against the
+            # config the revision check just accepted).
+            if (
+                c.mcp.lark.owner_confirmed_at != before.owner_confirmed_at
+                or c.mcp.lark.login != before.login
+            ):
+                raise SettingsError(
+                    "validation_error", "所有权确认与登录状态不能通过设置接口修改", 422
+                )
 
+        before = config.mcp.lark.model_copy(deep=True)
         result = await self.store.update(body.revision, mutate)
+        await self._emit_status()  # other open views of the MCP page refresh from this
         return {"revision": result.revision}
 
     @staticmethod
@@ -1183,7 +1252,9 @@ class McpService:
                 raise
             return {"revision": tx.config.revision}
 
-        return await self.store.run(revision, operation)
+        result = await self.store.run(revision, operation)
+        await self._emit_status()
+        return result
 
     async def import_credentials(self, body):
         config = await self.store.read()
