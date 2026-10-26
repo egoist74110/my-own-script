@@ -72,6 +72,24 @@ export type SelfTestResult = S['SelfTestResult']
 export type CredentialPut = S['CredentialPut']
 export type CredentialImport = S['CredentialImport']
 
+export type ServicesSnapshot = S['ServicesSnapshot']
+export type ServiceView = S['ServiceView']
+export type CloudflaredView = S['CloudflaredView']
+export type BinariesView = S['BinariesView']
+export type BinaryInfo = S['BinaryInfo']
+export type NetworkInfo = S['NetworkInfo']
+export type ServicesConfig = S['ServicesConfig']
+export type CloudflaredSettings = S['CloudflaredSettings']
+export type CodeServerSettings = S['CodeServerSettings']
+export type ServiceBinaries = S['ServiceBinaries']
+export type SettingsResult = S['SettingsResult']
+export type LogsResult = S['LogsResult']
+export type TunnelCreate = S['TunnelCreate']
+export type ActionRequest = S['ActionRequest']
+export type ProtocolRequest = S['ProtocolRequest']
+export type LegacyImport = S['LegacyImport']
+export type SettingsPatch = S['SettingsPatch']
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -98,7 +116,8 @@ function toApiError(status: number, body: unknown): ApiError {
     const message =
       typeof d.message === 'string' && d.message
         ? d.message
-        : (MCP_ERROR_MESSAGES[code] ??
+        : (SERVICES_ERROR_MESSAGES[code] ??
+          MCP_ERROR_MESSAGES[code] ??
           TELEGRAM_ERROR_MESSAGES[code] ??
           `请求失败（HTTP ${status}）`)
     return new ApiError(status, code, message, d)
@@ -148,6 +167,22 @@ export const CATEGORY_TEXT: Record<ConnectionResult['category'], string> = {
   network: '网络不可达',
   bad_response: '响应格式异常',
   no_credential: '尚未保存 PAT',
+}
+
+export const SERVICES_ERROR_MESSAGES: Record<string, string> = {
+  service_busy: '操作正在进行中或服务运行中，请稍后重试（运行中修改设置请先停止服务）',
+  service_port_in_use: '端口已被占用，请检查是否有其他进程正在使用该端口',
+  service_binary_missing: '未找到服务二进制执行文件，请检查安装路径',
+  service_unsafe_config:
+    'code-server 配置为无认证且监听非回环地址，已拒绝启动；请在其 config.yaml 中启用密码认证',
+  tunnel_target_forbidden:
+    '隧道目标地址不合法，仅允许显式端口的回环地址（localhost / 127.0.0.1 / [::1]）',
+  tunnel_limit: '自定义隧道已达到数量上限',
+  revision_conflict: '配置已被修改，请刷新后重试',
+  validation_error: '输入格式不正确',
+  not_found: '未找到指定条目',
+  store_unavailable: '配置存储不可用',
+  store_busy: '配置存储正忙',
 }
 
 export const MCP_ERROR_MESSAGES: Record<string, string> = {

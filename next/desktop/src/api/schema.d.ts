@@ -880,6 +880,159 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Snapshot */
+        get: operations["snapshot_api_services_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/cloudflared/protocol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Protocol */
+        post: operations["protocol_api_services_cloudflared_protocol_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/cloudflared/tunnels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Tunnel */
+        post: operations["create_tunnel_api_services_cloudflared_tunnels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/cloudflared/tunnels/{identifier}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Tunnel */
+        delete: operations["delete_tunnel_api_services_cloudflared_tunnels__identifier__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/import-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Legacy */
+        post: operations["import_legacy_api_services_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Settings */
+        patch: operations["settings_api_services_settings_patch"];
+        trace?: never;
+    };
+    "/api/services/{name}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Logs */
+        get: operations["logs_api_services__name__logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/{name}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_services__name__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/{name}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop */
+        post: operations["stop_api_services__name__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -1863,6 +2016,16 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** ActionRequest */
+        ActionRequest: {
+            /**
+             * Ack Public
+             * @default false
+             */
+            ack_public: boolean;
+            /** Request Id */
+            request_id?: string | null;
+        };
         /** ActiveRequest */
         ActiveRequest: {
             /** Library Id */
@@ -2057,6 +2220,28 @@ export interface components {
             /** Size */
             size?: number | null;
         };
+        /** BinariesView */
+        BinariesView: {
+            cloudflared?: components["schemas"]["BinaryInfo"];
+            code_server?: components["schemas"]["BinaryInfo"];
+        };
+        /** BinaryInfo */
+        BinaryInfo: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /**
+             * Found
+             * @default false
+             */
+            found: boolean;
+            /** Path */
+            path?: string | null;
+            /** Version */
+            version?: string | null;
+        };
         /** BindCodeResponse */
         BindCodeResponse: {
             /** Code */
@@ -2179,6 +2364,34 @@ export interface components {
             server: "ado" | "lark" | "figma";
             /** Snippet */
             snippet: string;
+        };
+        /** CloudflaredSettings */
+        CloudflaredSettings: {
+            /**
+             * Max Tunnels
+             * @default 5
+             */
+            max_tunnels: number;
+            /**
+             * Protocol
+             * @default http2
+             * @enum {string}
+             */
+            protocol: "http2" | "quic";
+        };
+        /** CloudflaredView */
+        CloudflaredView: {
+            global?: components["schemas"]["ServiceView"];
+            /** Tunnels */
+            tunnels?: components["schemas"]["ServiceView"][];
+        };
+        /** CodeServerSettings */
+        CodeServerSettings: {
+            /**
+             * Start Timeout S
+             * @default 30
+             */
+            start_timeout_s: number;
         };
         /** CodexAnalysis */
         CodexAnalysis: {
@@ -3006,6 +3219,13 @@ export interface components {
              */
             status: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown";
         };
+        /** LegacyImport */
+        LegacyImport: {
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: number;
+        };
         /** LibraryCreate */
         LibraryCreate: {
             /** Base Url */
@@ -3100,6 +3320,11 @@ export interface components {
             logged_in_at?: string | null;
             /** Scope */
             scope?: string | null;
+        };
+        /** LogsResult */
+        LogsResult: {
+            /** Text */
+            text: string;
         };
         /** MCPSettingsPatch */
         MCPSettingsPatch: {
@@ -3236,6 +3461,18 @@ export interface components {
             revision: number;
             /** Warnings */
             warnings?: string[];
+        };
+        /** NetworkInfo */
+        NetworkInfo: {
+            /** Lan Ip */
+            lan_ip?: string | null;
+            /**
+             * On Lan
+             * @default false
+             */
+            on_lan: boolean;
+            /** Vpn Ip */
+            vpn_ip?: string | null;
         };
         /** NoCredentialErrorDetail */
         NoCredentialErrorDetail: {
@@ -3505,6 +3742,16 @@ export interface components {
             prompt: string;
             /** Warnings */
             warnings?: string[];
+        };
+        /** ProtocolRequest */
+        ProtocolRequest: {
+            /**
+             * Protocol
+             * @enum {string}
+             */
+            protocol: "http2" | "quic";
+            /** Revision */
+            revision: number;
         };
         /** ReceiptPayload */
         ReceiptPayload: {
@@ -3786,6 +4033,58 @@ export interface components {
              */
             status: "sent" | "queued";
         };
+        /** ServiceBinaries */
+        ServiceBinaries: {
+            /** Cloudflared */
+            cloudflared?: string | null;
+            /** Code Server */
+            code_server?: string | null;
+        };
+        /** ServiceView */
+        ServiceView: {
+            /** Id */
+            id?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Log Tail Available
+             * @default false
+             */
+            log_tail_available: boolean;
+            /**
+             * Owned
+             * @default false
+             */
+            owned: boolean;
+            /** Port */
+            port?: number | null;
+            /**
+             * State
+             * @default stopped
+             * @enum {string}
+             */
+            state: "stopped" | "starting" | "running" | "stopping" | "failed" | "external" | "unhealthy";
+            /** Target Url */
+            target_url?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** ServicesConfig */
+        ServicesConfig: {
+            binaries?: components["schemas"]["ServiceBinaries"];
+            cloudflared?: components["schemas"]["CloudflaredSettings"];
+            code_server?: components["schemas"]["CodeServerSettings"];
+        };
+        /** ServicesSnapshot */
+        ServicesSnapshot: {
+            binaries: components["schemas"]["BinariesView"];
+            cloudflared: components["schemas"]["CloudflaredView"];
+            code_server: components["schemas"]["ServiceView"];
+            network: components["schemas"]["NetworkInfo"];
+            /** Revision */
+            revision: number;
+            settings: components["schemas"]["ServicesConfig"];
+        };
         /** SessionCreate */
         SessionCreate: {
             /**
@@ -3890,6 +4189,12 @@ export interface components {
                 [key: string]: components["schemas"]["JsonValue"];
             } | null;
         };
+        /** SettingsPatch */
+        SettingsPatch: {
+            /** Revision */
+            revision: number;
+            services: components["schemas"]["ServicesConfig"];
+        };
         /** SettingsResponse */
         SettingsResponse: {
             /** App Version */
@@ -3913,6 +4218,16 @@ export interface components {
              * @enum {string}
              */
             store_state: "ok" | "readonly_error";
+        };
+        /** SettingsResult */
+        SettingsResult: {
+            /**
+             * Restart Required
+             * @default false
+             */
+            restart_required: boolean;
+            /** Revision */
+            revision: number;
         };
         /** SourceSnapshot */
         SourceSnapshot: {
@@ -4303,6 +4618,18 @@ export interface components {
              * Format: password
              */
             token: string;
+        };
+        /** TunnelCreate */
+        TunnelCreate: {
+            /**
+             * Ack Public
+             * @default false
+             */
+            ack_public: boolean;
+            /** Request Id */
+            request_id?: string | null;
+            /** Target Url */
+            target_url: string;
         };
         /** Update */
         Update: {
@@ -6411,6 +6738,292 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshot_api_services_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesSnapshot"];
+                };
+            };
+        };
+    };
+    protocol_api_services_cloudflared_protocol_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tunnel_api_services_cloudflared_tunnels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TunnelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tunnel_api_services_cloudflared_tunnels__identifier__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identifier: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_legacy_api_services_import_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegacyImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_api_services_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logs_api_services__name__logs_get: {
+        parameters: {
+            query?: {
+                tail?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_services__name__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: "code-server" | "cloudflared";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_api_services__name__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: "code-server" | "cloudflared";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesSnapshot"];
                 };
             };
             /** @description Validation Error */

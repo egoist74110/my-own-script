@@ -15,6 +15,15 @@ export interface McpSubscribedData {
   last_seq: number
 }
 
+export type ServicesSnapshot = components['schemas']['ServicesSnapshot']
+export interface ServicesStatusData {
+  services_seq: number
+  snapshot: ServicesSnapshot
+}
+export interface ServicesSubscribedData {
+  last_seq: number
+}
+
 export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
 export interface TelegramStatusEventData {
@@ -106,6 +115,8 @@ export interface EventClientOptions {
   onMcpStatus?: (data: MCPSnapshot, envelope: EventEnvelope) => void
   onMcpJob?: (data: McpJobView, envelope: EventEnvelope) => void
   onMcpSubscribed?: (data: McpSubscribedData, envelope: EventEnvelope) => void
+  onServicesStatus?: (data: ServicesStatusData, envelope: EventEnvelope) => void
+  onServicesSubscribed?: (data: ServicesSubscribedData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -225,6 +236,23 @@ export class EventClient {
     return this.send({
       type: 'unsubscribe',
       topic: 'mcp',
+    })
+  }
+
+  /** 订阅 services 主题 */
+  subscribeServices(afterSeq = 0): boolean {
+    return this.send({
+      type: 'subscribe',
+      topic: 'services',
+      after_seq: afterSeq,
+    })
+  }
+
+  /** 退订 services 主题 */
+  unsubscribeServices(): boolean {
+    return this.send({
+      type: 'unsubscribe',
+      topic: 'services',
     })
   }
 
@@ -361,6 +389,13 @@ export class EventClient {
         this.opts.onMcpJob?.(parsed.data as unknown as McpJobView, parsed)
       } else if (parsed.type === 'mcp.subscribed') {
         this.opts.onMcpSubscribed?.(parsed.data as unknown as McpSubscribedData, parsed)
+      }
+    }
+    if (parsed.topic === 'services') {
+      if (parsed.type === 'services.status') {
+        this.opts.onServicesStatus?.(parsed.data as unknown as ServicesStatusData, parsed)
+      } else if (parsed.type === 'services.subscribed') {
+        this.opts.onServicesSubscribed?.(parsed.data as unknown as ServicesSubscribedData, parsed)
       }
     }
     this.opts.onEvent?.(parsed)

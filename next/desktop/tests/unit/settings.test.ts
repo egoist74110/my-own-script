@@ -71,6 +71,7 @@ describe('S1-B 导航与页签', () => {
       'Telegram',
       'AI CLI',
       'MCP',
+      '服务',
       '常规',
     ])
     await b.done()

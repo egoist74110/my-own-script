@@ -93,3 +93,10 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 新发现 **S6-ACC-014（deferred，非 S7 引入）**：`services/mcp.py:634–638` 启动后只等补丁标记 5×20 ms，负载下 `test_s6b_lark.py::test_lark_health_probe_marks_unhealthy_after_3_failures` 间歇失败（主工作区无 S7 时也复现 1/4）；生产含义：慢机器上 Lark 启动会误报 `running_degraded`。建议另包把等待改成有界（如 ≤2 秒）事件等待。
 - 隔离：施工方披露早期一条 HTTP 用例可能触达真实 cloudflared 启动路径（已改为纯 DTO 测试）；主控核对：无 s7/code-server 残留进程，唯一的 cloudflared 是用户自己 ppid=1 的命名隧道（早于本会话，未动）。
 - not_run：真实 code-server/cloudflared、真实 `ifconfig`、TG 真实 Bot、Tauri 内走查；S7-C 前端未做。
+
+### S7-C 前端集成（2026-10-26）
+
+- 角色：施工 agy `gemini-3.8-flash-high`（--sandbox，--effort high；会话 `33c45e4c-4959-42db-9309-94bd960f0565`，耗时约 27 分钟）；verified_by=executor, independent=false；lead 集成 Sonnet 5.5，限定路径 binary patch 自 `.local/worktrees/s7c`（输入 `a3bd7b3`）。
+- 变更：设置新增「服务」分区（`ServicesTab`/`CodeServerCard`/`CloudflaredCard`/`CloudflaredTunnelSheet`/`CloudflaredImportSheet`/`NetworkBar`/`useServices`）、`events.ts`/`backend-runtime.ts` 增 `services` 主题订阅、`api.ts` 错误文案与类型、`SettingsPage.vue` 追加式注册、`schema.d.ts` 由主控重新生成。既有断言仅一处：设置 tab 索引数组 8→9 项（`tests/independent/settings-independent.test.ts`，纯扩展）。
+- 主控复核：主工作区 frozen install 后 typecheck/lint/test（82 文件 1162 passed）/build/guard:dist/contracts:check 全部 exit 0，`git diff --check` 0；服务页源码无 dsh、无密码/token 输入。
+- not_run：dev:web 真实走查、Tauri 内人工体验、真实 code-server/cloudflared；S7 集成验收（dev:web 端到端替身、关闭点逐项审计、迁移/改进/放弃清单、归档）待做。
