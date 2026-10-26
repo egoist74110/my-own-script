@@ -78,3 +78,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 产物：[WORK_PACKAGES.md「S8」](WORK_PACKAGES.md)（事实核实、S8-0 本机核对计划、架构五问、config v6、凭据与 TOTP、客户端控制、窗口自动化、登录 worker、连接运行模型、接口、安全核对表、S8-A/B/C 分包与模型分工、集成验收、真实验收清单、所有权切换步骤、10 项待决）。
 - 状态：合同草案，**待用户确认「S8 待决」**；确认前不派工，不授权 S8-0、依赖锁定联网、真实验收、所有权切换与主 Bot 切换。
 - not_run：未重跑测试（只写文档）；新品牌 SSO 页面、窗口文案、深链 scheme 有效性均未实测。
+
+## S8-0 本机核对（2026-10-26）
+
+- 角色：主控（lead）；requested/actual：Sonnet 5.5（会话系统提示自述，无提供方回执，证据等级同前）；无子 agent、无派工。基线 `rewrite/next @ 025338a`。
+- 方法：scratchpad 独立 venv/uv 项目（仓库 `pyproject.toml`/`uv.lock` 未改）；Playwright 驱动系统 Chrome 155.0.8059.40 开回环假 SSO 页 + 假 scheme `s8probe://`，headless 与 headed 各用新临时 profile 两轮；`ps -axo pid,ppid,pgid` 按记录 PID 树核对；fork+setpgid+exec 复现 supervisor 子进程组语义，做 SIGKILL worker / killpg TERM→KILL / killpg KILL（headless+headed）回收实验；`lsof -i` 观察 Chrome 首次启动外联；scratchpad 内 `uv lock/sync` 解析并实测 `pyobjc-framework-ApplicationServices==12.2.2`。
+- 只读/联网范围：只读 `proc_supervisor.py`/合同；联网仅 `uv` 解析/下载（已授权）与系统 Chrome 自身后台外联（观察到，非主动访问）；未访问真实站点/SSO、未登录、未读真实配置/凭据/Ente 导出、未点击/退出/重启 Check Point SASE（全程保持已连接）、未用任何真实 scheme。
+- 结果：结论与合同修订已写入 [WORK_PACKAGES.md「S8-0 结论」](WORK_PACKAGES.md)；要点：补依赖 ApplicationServices；窗口 owner name=`Check Point SASE`（按 PID 筛）；headless/headed 手法全通过（捕获事件会重复触发需去重）；Chrome 自成进程组但随管道 EOF 自行退出，三种强杀场景零残留，仍保留精确 PID 兜底；Chrome 新 profile 自行外联 Google，加禁后台联网参数；可派 S8-A。
+- 清理：本任务启动的 Chrome/worker 均已回收，`ps` 无残留；scratchpad 临时 profile 保留。
+- not_run：未重跑仓库测试（只改文档）；新品牌 SSO 页面/真实窗口 OCR/授权后权限行为均未实测。

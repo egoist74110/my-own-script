@@ -72,6 +72,27 @@
 
 可在不联网、不登录的前提下核对：① PyObjC（Quartz/Vision/Cocoa）与 Playwright 在新 venv 的可用性与 wheel 来源（解析依赖需联网一次 `uv lock`，需授权）；② Playwright 驱动系统 Chrome 打开本地 `data:`/`http://127.0.0.1` 假 SSO 页（**不访问任何真实站点**）验证 persistent context 与 CDP 深链捕获手法；③ 客户端窗口的真实 owner name 与窗口矩形（`CGWindowListCopyWindowInfo` 不需屏幕录制权限即可读 owner/bounds）；④ 当前进程是否已有屏幕录制/辅助功能权限（`CGPreflightScreenCaptureAccess`/`AXIsProcessTrusted`，只读）。**不做**：真实 SSO 登录、点击客户端窗口、退出/重启客户端（均属真实验收）。结论写回本节，优先于下文。
 
+### S8-0 结论（2026-10-26，主控 Sonnet 5.5 实测；**优先于上文与下文一切冲突处**）
+
+方法：scratchpad 独立 venv（仓库 `pyproject.toml`/`uv.lock` 未改）；Playwright 驱动系统 Chrome 打开回环假页（`127.0.0.1` 随机端口）+ 假 scheme `s8probe://`；`ps -axo pid,ppid,pgid` 按 PID 树（记录的 Chrome 主 PID 及后代）核对，不按名字/路径 grep；未访问真实站点、未登录、未碰真实客户端（Check Point SASE 全程保持已连接）、未用任何真实 scheme。
+
+1. **依赖解析**（联网仅 `uv lock/sync`）：CPython 3.14.8；`playwright==1.64.1`（greenlet 3.5.6、pyee 14.0.0、typing-extensions 4.16.0）；`pyobjc-framework-Quartz/Vision/Cocoa==12.2.2`（带入 pyobjc-core 12.2.2、pyobjc-framework-coreml 12.2.2）；全部 `sys_platform=='darwin'` 标记可解析。**需补 `pyobjc-framework-ApplicationServices==12.2.2`**（`AXIsProcessTrusted` 在其中；带入 coretext 12.2.2，共 12 包）——S8-B 依赖清单 = playwright + 上述 4 个 pyobjc 子包，均锁 `==`，darwin 标记；已实测 `import ApplicationServices` 与 `AXIsProcessTrusted()` 可用。不引入 pyotp。
+2. **权限只读探测**：`CGPreflightScreenCaptureAccess()=False`、`AXIsProcessTrusted()=False`（宿主=当前 Claude 会话进程树）。**权限归属启动 Python 的宿主应用**：开发模式归启动后端的终端/Claude 桌面应用，打包后归 TOOLBOX；权限状态接口必须在后端进程内探测，页面须提示“授权对象是启动后端的那个应用，授权后需重启后端”。
+3. **客户端窗口**：`CGWindowListCopyWindowInfo` 全量列表可见 owner name = **`Check Point SASE`**（两个 layer 0 窗口 280×533 与 166×56，当前 `kCGWindowIsOnscreen` 为空）；`OptionOnScreenOnly` 下无匹配。**不含旧名 “Harmony SASE”，旧筛选已失效**。S8-B 窗口筛选**按 owner PID（由 `ClientController` 以 bundle id 解析出的主进程）匹配**，owner name 仅作辅助与日志；窗口为空/不在屏上时返回明确状态而非静默。`NSWorkspace.openURLs_withApplicationAtURL_configuration_completionHandler_` API 存在（未调用）。
+4. **Chrome/Playwright 手法**（系统 Chrome 155.0.8059.40，`channel="chrome"`，launch_persistent_context）：**headless 与 headed 均通过**——每个临时 profile 连续两轮启动成功；CDP `Page.frameRequestedNavigation` 与 `Page.frameScheduledNavigation` 均捕获到页面脚本跳转的 `s8probe://cb#id_token=…`（reason=scriptInitiated，页面写 `S8Probe://` 而 scheme 比较大小写不敏感成功；**两个事件各触发一次，同一 URL 共 2 条，捕获端须去重/只取首条**）；第 2 轮 cookie 保留（persistent profile 有效）；`navigator.webdriver=false`（带 `--disable-blink-features=AutomationControlled`）。版本要求：Playwright 1.64.1 内置参照 Chromium 156.0.8078.4，用 `channel="chrome"` 驱动系统 Chrome 155 无需下载浏览器且可用（不强制同版本，但随 Chrome 大版本升级可能漂移，真实验收记录版本）；`chrome_path` 校验保留。
+5. **首次启动联网（观察）**：Playwright 自身与启动不联网取包（系统 Chrome）；**但全新 profile 的 Chrome 即使只开 `about:blank` 也会自行外联 Google（`:443` 多条、`:80` 一条，Chrome 后台服务如组件更新/Safe Browsing/variations）**，且当前机器出口经 VPN 隧道。这不是我们访问的“站点”，但**合同修订：worker 启动 Chrome 附加 `--disable-background-networking --disable-component-update --disable-sync --no-first-run --no-default-browser-check --disable-default-apps`（真实验收时核对是否减少外联；不影响登录页自身访问）**，并在页面/文档如实说明。
+6. **进程树与回收**（headed/headless 相同）：Playwright 的 Python 进程 → node `run-driver`（与 worker **同进程组**）→ Chrome 主进程（**自成进程组/会话，pgid≠worker pgid**）→ GPU/Renderer 等 helper（与 Chrome 主进程同组）。对 worker 进程组 `killpg` **不会直接覆盖 Chrome**。实测回收（fork+setpgid+exec 复现 `proc_supervisor` 的子进程组语义；用记录的精确 PID 集核对，每轮后零残留）：
+   - 仅 `SIGKILL` worker：Chrome 全部回收（≤3 秒）；
+   - `killpg` TERM → 3 秒 → KILL（与 supervisor 控制管道 EOF 路径一致）：全部回收；
+   - 直接 `killpg SIGKILL`（无 TERM 宽限，node driver 也被强杀）：Chrome 仍全部回收；
+   - headless 与 headed 结果一致。
+   机理（推断，行为已实测）：Playwright 以 `--remote-debugging-pipe` 与 node driver 通信，driver/worker 死亡导致管道 EOF，Chrome 随之自行退出；**并非靠进程组**。因此**不依赖按名字 pkill**，也未发现需要额外 reaper 的泄漏；但这是 Chrome 行为而非合同保证，S8-B 须保留**纵深兜底**：worker 在 Chrome 起来后经 stdout 事件 `chrome_started {pid, lstart}`（`ps -o lstart` 身份）上报；`VpnService` 在运行收尾与**后端启动清扫**时，对记录的精确 PID 核对 `lstart` 与命令行含本数据目录 profile 路径后，才对该 PID 所在进程组 TERM（→3 秒→KILL，仅限我们记录且身份核对过的 PID/组），绝不 `pkill`/按名杀。S8-A 假 worker 测试须包含“派生自建进程组的孙进程”用例并断言兜底路径回收它。
+7. **探测环境清理**：全部由本任务启动的 Chrome/worker 均按记录 PID 回收；`ps` 复核无残留；临时 profile 留在 scratchpad。
+
+**对 S8-A/B 合同的修订**：① S8-B 依赖增加 `pyobjc-framework-ApplicationServices==12.2.2`（见 1）；② 窗口筛选改按 owner PID，不按名称；③ 回调捕获去重（见 4）；④ Chrome 附加禁后台联网参数（见 5）；⑤ 回收：`chrome_started` 事件 + 精确 PID/lstart/profile 身份核对的兜底清扫，纵深而非依赖进程组（见 6）；⑥ 权限状态页文案按“宿主应用”表述（见 2）。其余沿用「S8 已决」。
+
+**是否可以派 S8-A：可以。** S8-A 不依赖本节的浏览器/窗口实测（只经接缝 + 假实现），S8-0 无阻塞项；S8-B 在 S8-A 集成后按上述修订施工。仍**未**验证（留给真实验收）：新品牌 SSO 页面/选择器/`redirectUrl` scheme、真实窗口 OCR 文案、屏幕录制/辅助功能授予后的实际行为。派工前仍须先问用户。
+
 ## S8 数据模型与访问边界（主控技术裁决；涉及取舍的见「S8 待决」，下文“推荐”按待决推荐写，确认后以「S8 已决」为准）
 
 实现完成须按 backend-architecture-review、backend-security-review、backend-business-safety、data-consistency-review、resource-lifecycle-audit、production-readiness-review 复核。
