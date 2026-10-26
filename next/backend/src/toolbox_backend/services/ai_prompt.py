@@ -22,7 +22,9 @@ def one_line(value, limit=128) -> str:
     return " ".join(text.split())[:limit]
 
 
-def tool_prefix(cli, configured) -> str:
+def tool_prefix(cli, configured, source="legacy") -> str:
+    if source == "toolbox":
+        return "mcp__toolbox_ado__"
     return CLAUDE_PREFIX if cli == "claude" else configured
 
 
@@ -31,7 +33,9 @@ def is_new_only(project_id) -> bool:
     return isinstance(project_id, str) and project_id.startswith("proj:")
 
 
-def build_prompt(*, cli, work_item_id, library_name, project_name, prefix, new_only=False) -> str:
+def build_prompt(
+    *, cli, work_item_id, library_name, project_name, prefix, new_only=False, source="legacy"
+) -> str:
     ident = int(work_item_id)
     library, project = one_line(library_name), one_line(project_name)
     names = [f"`{prefix}{tool}`" for tool, _ in TOOLS]
@@ -42,7 +46,7 @@ def build_prompt(*, cli, work_item_id, library_name, project_name, prefix, new_o
         f"- library 名称：{library}（参数 library_name）",
         f"- project 名称：{project}（参数 project_name）",
     ]
-    if new_only:
+    if new_only and source != "toolbox":
         lines += ["", f"警示：{NEW_ONLY_WARNING}；若工具报找不到项目，请直接说明，不要猜测。"]
     lines += ["", "可用工具（MCP 注册名，必须用完整前缀）："]
     lines += [f"- {name}" for name in names]

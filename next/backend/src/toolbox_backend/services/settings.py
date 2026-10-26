@@ -350,6 +350,8 @@ class SettingsService:
                         plan.config.imported,
                     )
                     c.telegram = plan.config.telegram
+                    from toolbox_backend.domain.mcp import imported_mcp
+                    c.mcp = imported_mcp(c.imported.model_dump())
                     c.credentials = {
                         **{
                             key: meta

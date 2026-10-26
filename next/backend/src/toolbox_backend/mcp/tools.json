@@ -1,0 +1,315 @@
+{
+  "ado_get_work_item": {
+    "description": "按 work item id 读取 ADO 工作项详情。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "work_item_id": {
+          "type": "integer"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expand_relations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "work_item_id"
+      ]
+    }
+  },
+  "ado_get_work_item_comments": {
+    "description": "读取指定工作项的评论列表。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "work_item_id": {
+          "type": "integer"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "top": {
+          "type": "integer"
+        },
+        "include_deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "work_item_id"
+      ]
+    }
+  },
+  "ado_query_work_items": {
+    "description": "执行 WIQL 查询并返回工作项详情列表。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "wiql": {
+          "type": "string"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expand_relations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "wiql"
+      ]
+    }
+  },
+  "ado_list_board_columns": {
+    "description": "列出指定 team/board 的版块列配置。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "team": {
+          "type": "string"
+        },
+        "board": {
+          "type": "string"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "team",
+        "board"
+      ]
+    }
+  },
+  "ado_list_work_items_by_column": {
+    "description": "按 team/board/column 查询版块列中的工作项。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "team": {
+          "type": "string"
+        },
+        "board": {
+          "type": "string"
+        },
+        "column_name": {
+          "type": "string"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "work_item_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "team",
+        "board",
+        "column_name"
+      ]
+    }
+  },
+  "ado_get_attachment": {
+    "description": "下载附件到新端私有缓存并返回本地路径；未安装 Pillow 时跳过压缩。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "attachment_url": {
+          "type": "string"
+        },
+        "work_item_id": {
+          "type": "integer"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "compress": {
+          "type": "boolean"
+        },
+        "force_redownload": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attachment_url"
+      ]
+    }
+  },
+  "ado_create_work_item": {
+    "description": "新建一个 ADO 工作项。默认类型用「用户情景」（User Story），这样测试能在用户情景看板看到；可选挂到某个 parent work item 下。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "work_item_type": {
+          "type": "string",
+          "description": "工作项类型。新需求、客户/测试反馈一律用「用户情景」（User Story）；只有明确拆分子任务时才用「任务」；其他可选类型：测试用例、Bug 等。"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "acceptance_criteria": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "area_path": {
+          "type": "string"
+        },
+        "iteration_path": {
+          "type": "string"
+        },
+        "assigned_to": {
+          "type": "string"
+        },
+        "parent_work_item_id": {
+          "type": "integer"
+        },
+        "extra_fields": {
+          "type": "object"
+        },
+        "validate_only": {
+          "type": "boolean",
+          "description": "true 时只做字段校验，不真正创建"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "work_item_type",
+        "title"
+      ]
+    }
+  },
+  "ado_evaluate_change_policy": {
+    "description": "按本地策略评估某个 work item 是否允许 AI 自动改代码。",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "work_item_id": {
+          "type": "integer"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "library_name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "target_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "change_summary": {
+          "type": "string"
+        },
+        "expand_relations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "work_item_id"
+      ]
+    }
+  }
+}

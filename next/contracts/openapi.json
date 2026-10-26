@@ -159,6 +159,15 @@
           },
           "codex": {
             "$ref": "#/components/schemas/CodexAnalysis"
+          },
+          "mcp_source": {
+            "default": "legacy",
+            "enum": [
+              "legacy",
+              "toolbox"
+            ],
+            "title": "Mcp Source",
+            "type": "string"
           }
         },
         "title": "AIAnalysis",
@@ -438,6 +447,11 @@
       "AISettingsPatch": {
         "additionalProperties": false,
         "properties": {
+          "ack_cli_registered": {
+            "default": false,
+            "title": "Ack Cli Registered",
+            "type": "boolean"
+          },
           "analysis": {
             "anyOf": [
               {
@@ -680,6 +694,39 @@
           "items"
         ],
         "title": "ActivityResponse",
+        "type": "object"
+      },
+      "AdoMcp": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_create_work_item": {
+            "default": false,
+            "title": "Allow Create Work Item",
+            "type": "boolean"
+          },
+          "attachment_cache_mb": {
+            "default": 500,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Attachment Cache Mb",
+            "type": "integer"
+          },
+          "attachment_max_mb": {
+            "default": 25,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attachment Max Mb",
+            "type": "integer"
+          },
+          "query_max_items": {
+            "default": 200,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Query Max Items",
+            "type": "integer"
+          }
+        },
+        "title": "AdoMcp",
         "type": "object"
       },
       "AdoRequestErrorDetail": {
@@ -1452,6 +1499,53 @@
         "title": "ClaudeDefaults",
         "type": "object"
       },
+      "ClientConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "cli": {
+            "enum": [
+              "claude",
+              "codex",
+              "agy"
+            ],
+            "title": "Cli",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Config",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "server": {
+            "enum": [
+              "ado",
+              "lark",
+              "figma"
+            ],
+            "title": "Server",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "cli",
+          "name",
+          "config",
+          "snippet"
+        ],
+        "title": "ClientConfig",
+        "type": "object"
+      },
       "CodexAnalysis": {
         "additionalProperties": true,
         "properties": {
@@ -1706,6 +1800,94 @@
         "title": "Control",
         "type": "object"
       },
+      "CredentialImport": {
+        "additionalProperties": false,
+        "properties": {
+          "app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Id"
+          },
+          "kinds": {
+            "items": {
+              "enum": [
+                "lark_app_secret",
+                "figma_token"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Kinds",
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "kinds"
+        ],
+        "title": "CredentialImport",
+        "type": "object"
+      },
+      "CredentialPut": {
+        "additionalProperties": false,
+        "properties": {
+          "app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Id"
+          },
+          "expiry_days": {
+            "default": 90,
+            "enum": [
+              1,
+              7,
+              30,
+              90
+            ],
+            "title": "Expiry Days",
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "value": {
+            "format": "password",
+            "maxLength": 4096,
+            "minLength": 8,
+            "title": "Value",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "revision",
+          "value"
+        ],
+        "title": "CredentialPut",
+        "type": "object"
+      },
       "CredentialStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1718,7 +1900,9 @@
             "enum": [
               "ado_pat",
               "telegram_bot",
-              "telegram_ai_bot"
+              "telegram_ai_bot",
+              "lark_app_secret",
+              "figma_token"
             ],
             "title": "Kind",
             "type": "string"
@@ -2285,6 +2469,57 @@
           "ack_old_bot_stopped"
         ],
         "title": "EnableRequest",
+        "type": "object"
+      },
+      "FigmaMcp": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry_days": {
+            "default": 90,
+            "enum": [
+              1,
+              7,
+              30,
+              90
+            ],
+            "title": "Expiry Days",
+            "type": "integer"
+          },
+          "max_concurrency": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Concurrency",
+            "type": "integer"
+          },
+          "max_retry": {
+            "default": 4,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max Retry",
+            "type": "integer"
+          },
+          "min_interval_ms": {
+            "default": 350,
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Min Interval Ms",
+            "type": "integer"
+          },
+          "token_set_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Set At"
+          }
+        },
+        "title": "FigmaMcp",
         "type": "object"
       },
       "FlowInput": {
@@ -3320,6 +3555,70 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LarkMcp": {
+        "additionalProperties": false,
+        "properties": {
+          "app_id": {
+            "default": "",
+            "pattern": "^[A-Za-z0-9_-]{0,128}$",
+            "title": "App Id",
+            "type": "string"
+          },
+          "autostart": {
+            "default": false,
+            "title": "Autostart",
+            "type": "boolean"
+          },
+          "domain": {
+            "default": "https://open.larksuite.com",
+            "title": "Domain",
+            "type": "string"
+          },
+          "language": {
+            "default": "zh",
+            "enum": [
+              "zh",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "login": {
+            "$ref": "#/components/schemas/LoginMetadata"
+          },
+          "owner_confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Confirmed At"
+          },
+          "port": {
+            "default": 3000,
+            "maximum": 65535.0,
+            "minimum": 1024.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "scope_hint": {
+            "default": "offline_access docx:document wiki:wiki drive:drive",
+            "maxLength": 4096,
+            "title": "Scope Hint",
+            "type": "string"
+          },
+          "tools": {
+            "default": "preset.doc.default,docx.v1.documentBlock.list,drive.v1.media.batchGetTmpDownloadUrl",
+            "title": "Tools",
+            "type": "string"
+          }
+        },
+        "title": "LarkMcp",
+        "type": "object"
+      },
       "LastRunSummary": {
         "properties": {
           "created_at": {
@@ -3649,6 +3948,158 @@
         "title": "LogPayload",
         "type": "object"
       },
+      "LoginMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "logged_in_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged In At"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          }
+        },
+        "title": "LoginMetadata",
+        "type": "object"
+      },
+      "MCPSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "ado": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdoMcp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "figma": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FigmaMcp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LarkMcp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Runtime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "MCPSettingsPatch",
+        "type": "object"
+      },
+      "MCPSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "ado": {
+            "$ref": "#/components/schemas/AdoMcp"
+          },
+          "managed_node_version": {
+            "title": "Managed Node Version",
+            "type": "string"
+          },
+          "node_min_version": {
+            "title": "Node Min Version",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/Runtime"
+          },
+          "self_test_running": {
+            "title": "Self Test Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revision",
+          "ado",
+          "runtime",
+          "node_min_version",
+          "managed_node_version",
+          "self_test_running"
+        ],
+        "title": "MCPSnapshot",
+        "type": "object"
+      },
+      "McpConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "ado": {
+            "$ref": "#/components/schemas/AdoMcp"
+          },
+          "figma": {
+            "$ref": "#/components/schemas/FigmaMcp"
+          },
+          "lark": {
+            "$ref": "#/components/schemas/LarkMcp"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/Runtime"
+          }
+        },
+        "title": "McpConfig",
+        "type": "object"
+      },
       "McpToolPrefix": {
         "additionalProperties": true,
         "description": "Registered MCP tool-name prefixes for the work-item analysis prompt (S5-B increment).\n\nClaude always uses mcp__ado-work-items__; Codex/agy default to the old registrations.",
@@ -3891,6 +4342,45 @@
           "detail"
         ],
         "title": "NoCredentialErrorResponse",
+        "type": "object"
+      },
+      "NodeRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "source": {
+            "default": "none",
+            "enum": [
+              "detected",
+              "managed",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "NodeRuntime",
         "type": "object"
       },
       "Notify": {
@@ -4177,6 +4667,28 @@
           "stage_ids"
         ],
         "title": "PlanTarget",
+        "type": "object"
+      },
+      "PolicyImport": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "path"
+        ],
+        "title": "PolicyImport",
         "type": "object"
       },
       "PollerView": {
@@ -5105,6 +5617,99 @@
           "effects"
         ],
         "title": "RunResponse",
+        "type": "object"
+      },
+      "Runtime": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeRuntime"
+          },
+          "packages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Packages",
+            "type": "object"
+          }
+        },
+        "title": "Runtime",
+        "type": "object"
+      },
+      "SelfTestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "timeout_s": {
+            "default": 15,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Timeout S",
+            "type": "number"
+          }
+        },
+        "title": "SelfTestRequest",
+        "type": "object"
+      },
+      "SelfTestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "default": 0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "ok": {
+            "default": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "protocol_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol Version"
+          },
+          "server_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Name"
+          },
+          "stderr_tail": {
+            "default": "",
+            "title": "Stderr Tail",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "title": "SelfTestResult",
         "type": "object"
       },
       "SendMessage": {
@@ -9008,6 +9613,355 @@
           }
         },
         "summary": "Delete Credential"
+      }
+    },
+    "/api/mcp": {
+      "get": {
+        "operationId": "snapshot_api_mcp_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Snapshot"
+      }
+    },
+    "/api/mcp/ado/policy/import-legacy": {
+      "post": {
+        "operationId": "import_policy_api_mcp_ado_policy_import_legacy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Policy"
+      }
+    },
+    "/api/mcp/ado/self-test": {
+      "post": {
+        "operationId": "self_test_api_mcp_ado_self_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Self Test"
+      }
+    },
+    "/api/mcp/client-config": {
+      "get": {
+        "operationId": "client_config_api_mcp_client_config_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "server",
+            "required": true,
+            "schema": {
+              "enum": [
+                "ado",
+                "lark",
+                "figma"
+              ],
+              "title": "Server",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cli",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claude",
+                "codex",
+                "agy"
+              ],
+              "title": "Cli",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Client Config"
+      }
+    },
+    "/api/mcp/credentials/import-legacy": {
+      "post": {
+        "operationId": "import_credentials_api_mcp_credentials_import_legacy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Credentials"
+      }
+    },
+    "/api/mcp/credentials/{kind}": {
+      "delete": {
+        "operationId": "delete_credential_api_mcp_credentials__kind__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "lark_app_secret",
+                "figma_token"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "app_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential"
+      },
+      "put": {
+        "operationId": "put_credential_api_mcp_credentials__kind__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "lark_app_secret",
+                "figma_token"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Credential"
+      }
+    },
+    "/api/mcp/settings": {
+      "patch": {
+        "operationId": "patch_api_mcp_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch"
       }
     },
     "/api/runs": {

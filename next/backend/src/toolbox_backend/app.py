@@ -20,6 +20,7 @@ from toolbox_backend.adapters.task_git import GitAdapter
 from toolbox_backend.adapters.telegram_store import TelegramStore
 from toolbox_backend.api import (
     ai_routes,
+    mcp_routes,
     routes,
     settings_routes,
     task_routes,
@@ -33,6 +34,7 @@ from toolbox_backend.domain.models import SettingsChangedData, SettingsChangedEv
 from toolbox_backend.logging_setup import register_secret
 from toolbox_backend.services.ai_sessions import AISessionService
 from toolbox_backend.services.events import EventHub
+from toolbox_backend.services.mcp import McpService
 from toolbox_backend.services.runs import RunService
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
@@ -99,7 +101,9 @@ def create_app(
                 await app.state.run_service.close()
             finally:
                 try:
-                    await app.state.ai_service.close()
+                    await asyncio.gather(
+                        app.state.ai_service.close(), app.state.mcp_service.close()
+                    )
                 finally:
                     try:
                         await app.state.ai_projector.close()
@@ -152,6 +156,7 @@ def create_app(
         settings.legacy_config_dir,
         ado_http or AdoHTTP(),
     )
+    app.state.mcp_service = McpService(app.state.settings_service)
     app.state.work_items_service = WorkItemsService(
         app.state.settings_service, ado_read or AdoRead()
     )
@@ -255,6 +260,7 @@ def create_app(
         app.state.telegram_service.on_run_event(event)
 
     app.state.run_store.on_event = run_event
+    app.include_router(mcp_routes.router)
     app.include_router(ai_routes.router)
     app.include_router(telegram_routes.router)
     app.include_router(task_routes.router)

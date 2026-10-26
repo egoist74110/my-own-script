@@ -250,6 +250,13 @@ class AISessionService:
 
     async def patch_settings(self, body):
         def mutate(config):
+            if (
+                body.analysis
+                and body.analysis.mcp_source == "toolbox"
+                and config.ai.analysis.mcp_source != "toolbox"
+                and not body.ack_cli_registered
+            ):
+                raise SettingsError("validation_error", "请确认已在 Claude/Codex/agy 注册", 422)
             for key in ("selected_profile_id", "defaults", "analysis", "model_presets"):
                 if key in body.model_fields_set:
                     value = getattr(body, key)
@@ -613,7 +620,7 @@ class AISessionService:
                 if p is not None and p.cli == "agy"
             )
             argv = self._resolve(self._profile(config.ai, pid, True).command)
-        except (StopIteration, SettingsError):
+        except StopIteration, SettingsError:
             return dict(items=[], category="cli_not_found")
         try:
             self._reserve_cli("agy")
@@ -669,13 +676,15 @@ class AISessionService:
             getattr(config.ai.analysis, profile.cli),
             {"claude": "permission", "codex": "sandbox", "agy": "mode"}[profile.cli],
         )
-        new_only = ai_prompt.is_new_only(project.id)
+        new_only = config.ai.analysis.mcp_source == "legacy" and ai_prompt.is_new_only(project.id)
         prompt = ai_prompt.build_prompt(
             cli=profile.cli,
             work_item_id=ident,
             library_name=library.name,
             project_name=project.project,
-            prefix=ai_prompt.tool_prefix(profile.cli, self._prefix(config, profile.cli)),
+            prefix=ai_prompt.tool_prefix(
+                profile.cli, self._prefix(config, profile.cli), config.ai.analysis.mcp_source
+            ),
             new_only=new_only,
         )
         create = SessionCreate(
@@ -703,18 +712,18 @@ class AISessionService:
     async def prompt(self, work_items, ident, project_id, cli):
         project, library, _ = await work_items.snapshot(project_id, require_pat=False)
         config = await self.config.read()
-        new_only = ai_prompt.is_new_only(project.id)
+        new_only = config.ai.analysis.mcp_source == "legacy" and ai_prompt.is_new_only(project.id)
         text = ai_prompt.build_prompt(
             cli=cli,
             work_item_id=ident,
             library_name=library.name,
             project_name=project.project,
-            prefix=ai_prompt.tool_prefix(cli, self._prefix(config, cli)),
+            prefix=ai_prompt.tool_prefix(
+                cli, self._prefix(config, cli), config.ai.analysis.mcp_source
+            ),
             new_only=new_only,
         )
-        return dict(
-            prompt=text, warnings=[ai_prompt.NEW_ONLY_WARNING] if new_only else []
-        )
+        return dict(prompt=text, warnings=[ai_prompt.NEW_ONLY_WARNING] if new_only else [])
 
     async def _state(self, sid, state, reason=None, exit_code=None):
         await self.store.transition(sid, state, reason, exit_code)

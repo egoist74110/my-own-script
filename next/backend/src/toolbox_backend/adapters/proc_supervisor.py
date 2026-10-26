@@ -29,6 +29,28 @@ def process_identity(pid):
     return {"proc_start_time": line[:24], "executable": line[24:].strip()}
 
 
+def terminate_group(child, code=None, grace_s=3):
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(child, signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(child, 0)
+        except ProcessLookupError:
+            break
+        if code is None:
+            waited, result = os.waitpid(child, os.WNOHANG)
+            if waited:
+                code = os.waitstatus_to_exitcode(result)
+        time.sleep(0.02)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(child, signal.SIGKILL)
+    if code is None:
+        _, result = os.waitpid(child, 0)
+        code = os.waitstatus_to_exitcode(result)
+    return code
+
+
 def main():
     payload = json.loads(sys.stdin.buffer.readline(1 << 20))
     control, status = payload["control"], payload["status"]
@@ -112,24 +134,7 @@ def main():
                 # Any control message is stop; EOF also covers backend SIGKILL.
                 os.read(control, 4096)
                 break
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(child, signal.SIGTERM)
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(child, 0)
-            except ProcessLookupError:
-                break
-            if code is None:
-                waited, result = os.waitpid(child, os.WNOHANG)
-                if waited:
-                    code = os.waitstatus_to_exitcode(result)
-            time.sleep(0.02)
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(child, signal.SIGKILL)
-        if code is None:
-            _, result = os.waitpid(child, 0)
-            code = os.waitstatus_to_exitcode(result)
+        code = terminate_group(child, code)
         return code if code >= 0 else 128 - code
     except BaseException as exc:
         if status >= 0:

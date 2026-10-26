@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from toolbox_backend.domain.ai import AIConfig
+from toolbox_backend.domain.mcp import McpConfig
 from toolbox_backend.domain.telegram import TelegramConfig
 
 
@@ -221,7 +222,9 @@ class ImportState(StrictModel):
 
 
 class CredentialMeta(StrictModel):
-    kind: Literal["ado_pat", "telegram_bot", "telegram_ai_bot"] = "ado_pat"
+    kind: Literal[
+        "ado_pat", "telegram_bot", "telegram_ai_bot", "lark_app_secret", "figma_token"
+    ] = "ado_pat"
     ref: Id
     source: Literal["imported", "manual"]
     updated_at: str
@@ -230,7 +233,8 @@ class CredentialMeta(StrictModel):
 
 class Config(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    schema_version: Literal[3] = 3
+    schema_version: Literal[4] = 4
+    mcp: McpConfig = Field(default_factory=McpConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     revision: int = Field(default=0, ge=0)
@@ -247,6 +251,8 @@ class Config(StrictModel):
             key
             != {
                 "telegram_bot": "telegram_bot_token",
+                "lark_app_secret": f"lark_app_secret:{meta.ref}",
+                "figma_token": "figma_token",
                 "telegram_ai_bot": f"ai_bot_token:{meta.ref}",
             }.get(meta.kind, f"ado_pat:{meta.ref}")
             for key, meta in self.credentials.items()

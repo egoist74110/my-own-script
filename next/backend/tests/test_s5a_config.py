@@ -17,7 +17,7 @@ async def test_v2_snapshot_atomic_and_idempotent(tmp_path):
     (tmp_path / "config.json").write_bytes(original)
     store = ConfigStore(tmp_path)
     migrated = await store.initialize()
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 4
     assert migrated.imported.ai == {"targets": []}
     assert migrated.ai.model_extra["mystery"] == 17
     snapshots = list((tmp_path / "migrations").glob("config-v2-*.json"))

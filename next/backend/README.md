@@ -923,3 +923,63 @@ AI 槽位已启用则聚焦并路由输出，回复“已创建会话（#短id�
 
 `tests/test_s5c_*.py`（夹具 `tests/s5c_helpers.py`：按 token 区分的内存 Bot API + 替身 CLI）与
 `tests/independent/s5c/`。替身 `ai_fake.py` 新增关键字 TOOLS3/TOOLFAIL/MANYLINES 与 `agy models`。
+
+## S6-A：MCP 配置、ADO stdio 与自检
+
+配置升级为 schema v4：新增 `mcp.ado/lark/figma/runtime` 和
+`ai.analysis.mcp_source`（默认 `legacy`）。v3 迁移沿用持久快照、原子替换与 revision；
+旧 Lark/Figma 字段逐项校验，无效项回退该字段默认值，日志只记录字段名，
+`imported.*` 原文保留。迁移不确认 Lark 所有权、不自动启动第三方服务。
+包版本读取 `resources/mcp/package.json`：Lark 0.5.1、Figma 0.13.2；
+Node 下限 20.20.0、托管固定 v24.13.0。运行组件安装和 Lark/Figma 托管属于 S6-B。
+
+### 接口与接入
+
+所有接口仍经 Host/CORS/Bearer/BodyLimit；配置与凭据写请求携带 `revision`，冲突返回 409。
+
+- `GET /api/mcp`：ADO 配置、自检运行快照、runtime、包版本与 revision。
+- `PATCH /api/mcp/settings`：更新类型化 MCP 配置。
+- `PUT|DELETE /api/mcp/credentials/{lark_app_secret|figma_token}`：凭据只写，不读回。
+  PUT 使用 `{revision,value,app_id?,expiry_days?}`；DELETE 用 query revision/app_id。
+  新 Keychain service 为 `toolbox-next`，account 为 `lark_app_secret:<app_id>` 或 `figma_token`。
+  Figma 设置时间与有效期仅以元数据保存在 config 中；状态可经 `GET /api/credentials` 查询。
+- `POST /api/mcp/credentials/import-legacy`：`{revision,kinds,app_id?}` 显式只读导入旧 Keychain；
+  Lark 只导入旧 `lark_login_state.json` 的登录时间和 scope，不复制令牌或存储文件。
+  每 kind 独立提交，前一项成功、后一项失败时前一项保留，可查询状态并重试；旧条目不变。
+- `POST /api/mcp/ado/policy/import-legacy`：`{revision,path}` 从请求指定文件一次性导入策略基线，
+  不硬编码旧仓库路径、不覆盖已导入基线。工具评估叠加 `imported.ai` 的全局与项目规则。
+- `POST /api/mcp/ado/self-test`：`{timeout_s:15}`，上限 60 秒。通用 runner 经监督器 pipe 执行
+  initialize → initialized → tools/list；返回协议、工具名、耗时、错误码及脱敏 stderr 尾部。
+  stdout/stderr 独立读取，stderr 原始环形缓冲为 64 KiB；成功、失败、超时、取消统一收尾。
+- `GET /api/mcp/client-config?server=ado|lark|figma&cli=claude|codex|agy`：返回无凭据片段。
+  注册名 `toolbox_ado`、`toolbox_figma`、`lark`；不写任何 CLI 配置。
+
+ADO CLI 命令与自检相同：`<sys.executable> -m toolbox_backend.mcp.ado_server --data-dir <dir>`。
+数据目录须归当前用户所有、非符号链接、权限不宽于 0700；无效时 exit 2。
+server 支持三版 MCP 协议、七个读取/评估工具及默认隐藏的创建工具；每次调用必须显式给出
+library/project 名称或 ID，PAT 每次从新 Keychain 读取，不回落 UI active 配置。
+附件经 S2 同源/响应大小限制，缓存采用私有权限、O_NOFOLLOW、LRU 和 14 天过期规则。
+后端依赖不含 Pillow，附件结果明确标记跳过压缩。stdin EOF、TERM/INT、父进程变化均终止 server。
+
+切换分析来源：先在各 CLI 注册片段并完成自检，再 `PATCH /api/ai/settings` 提交
+`analysis.mcp_source="toolbox"` 与 `ack_cli_registered:true`；未确认返回 422。
+toolbox 来源三家 CLI 均用 `mcp__toolbox_ado__`，去掉新端独有项目警示；切回 legacy 保持旧行为。
+
+### 数据目录与测试替身
+
+```text
+<data-dir>/
+  config.json
+  migrations/config-v3-*.json
+  mcp/
+    ai_change_policy.yaml
+    ado-attachments/<library摘要>/<work-item>/<attachment摘要>_<安全文件名>
+    run/<server>/                 # 0700 专用空 cwd；拒绝已有 .env 等文件
+```
+
+自检环境在 S5 过滤基础上补全 PATH，删除父环境 NODE_OPTIONS、APP_ID/APP_SECRET、LARK_*、
+USER_ACCESS_TOKEN、FIGMA_*；ADO PAT 不经 argv/环境注入。
+`tests/test_s6_*.py` 与 `tests/independent/s6a/` 使用临时目录、内存凭据、S2 MockTransport、
+Python 假 stdio server（无响应、错误响应、退出、stderr 洪泛、忽略 TERM、孙进程、取消）。
+沿用 keyring/socket 守卫；不调用真实 Node/npm/AI CLI 或外部服务。沙箱禁止 `/bin/ps` 时，
+runner 测试仅替换身份探针，保留真实监督器与进程组回收；真实身份探针和 live HTTP/WS 须沙箱外复跑。

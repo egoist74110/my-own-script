@@ -120,6 +120,7 @@ class AgyAnalysis(Extensible):
 
 
 class AIAnalysis(Extensible):
+    mcp_source: Literal["legacy", "toolbox"] = "legacy"
     claude: ClaudeAnalysis = Field(default_factory=ClaudeAnalysis)
     codex: CodexAnalysis = Field(default_factory=CodexAnalysis)
     agy: AgyAnalysis = Field(default_factory=AgyAnalysis)

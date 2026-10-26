@@ -16,7 +16,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S3 任务执行 + R1 换皮 | integrated | 真实验收清单未授权 | [progress/S3.md](archive/progress/S3.md) |
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
-| S6 MCP 管理 | 合同已确认；**S6-0 done**；S6-A 待派 | Lark 切换未授权 | 本文件下方 |
+| S6 MCP 管理 | 合同已确认；S6-0 done；**S6-A integrated（`rewrite/next` 本地提交，未 push）**；S6-B/C 待派 | Lark 切换未授权 | 本文件下方 |
 | S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S5-E 集成，`1391e32`）：后端 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed（S5 集成验收时）。
@@ -74,8 +74,20 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 
 | finding_id | 级别 | 问题与核实 | 处置 |
 | --- | --- | --- | --- |
-| S6-LEAD-001 | major | 旧 `app_lark/lark_mcp_singleflight.js:74–78` 以请求字符串预过滤，`require("./oidc")` 不命中，服务模式下 `verifyAccessToken` 补丁从未生效且无提示（`require.cache` 探针复现；加 `oidc` 关键字后生效） | 新端补丁按解析后路径判定 + 结果标记，S6-B 补回归；旧应用不改（已决11） |
+| S6-LEAD-001 | major | 旧 `app_lark/lark_mcp_singleflight.js:74–78` 以请求字符串预过滤，`require("./oidc")` 不命中，服务模式下 `verifyAccessToken` 补丁从未生效且无提示（`require.cache` 探针复现；加 `oidc` 关键字后生效） | 用户 2026-10-26 原话：“旧应用不修 S6-LEAD-001，按已决11 等 S6 切换后由新端解决。” → 旧应用不热修；新端补丁按解析后路径判定 + 结果标记，S6-B 补“以相对路径 `./oidc` 加载”的回归 |
 | S6-LEAD-002 | minor | lark-mcp 授权失败日志写出 authorization code（`auth/handler/handler.js:53`） | 新端托管读任务脱敏；lark-mcp 自己的日志文件无法控制，记风险 |
 
 - 未测：`npm rebuild keytar` 的真实下载/编译；真实 Lark 登录、刷新、20038；Figma 真实 API 与限流；新 node 路径首次访问 `lark-mcp` Keychain 条目是否弹窗。
 - cleanup：scratchpad 临时安装目录（约 224 MB，含临时 HOME 与日志）已删除；无残留进程。
+
+### S6-A 后端派工与集成（2026-10-26，lead = Claude Sonnet 5.5 会话，actual effort unknown）
+
+- 输入 `rewrite/next @ 758ccea`。施工：codex exec（codex-cli 0.163.0），requested `gpt-6.1-sol`/medium，`-s workspace-write`，不联网；worktree `.local/worktrees/s6a`（detached `758ccea`）；请求/输出 `.local/dispatch/s6a/`（request.md、stdout.jsonl、stderr.log、exit.txt、last-message.txt；续接 resume1-request.md、stdout2.jsonl、last-message2.txt）。thread `01a175b3-e33a-7cc1-9ea2-0e207965d2ee`，actual model/effort unknown。测试子 agent `/root/s6a_tests`（requested gpt-6-luna/high，actual unknown）新增 `tests/independent/s6a/` 9 例；施工者自写 `tests/test_s6_{ado,config,http,prompt,runner}.py`。不做交叉审计。
+- 第 1 轮施工者按升级条件停下：既有替身 `lark_settings.yaml` 的 `domain: lark` 不是合法 https 域名，迁移 409。**lead 裁定（实施细节，不改合同）**：旧应用只有 `DEFAULT_DOMAIN=https://open.larksuite.com`，无 `lark` 简写；`imported.lark/figma` 迁入 `mcp.*` 时任一字段非法（domain/port/tools 等）回退该字段默认值，迁移不失败，日志只记字段名，`imported.*` 原样保留。第 2 轮（同 thread 续接；首次续接因给 `resume` 传了不支持的 `-s` 而 exit 2，未产生改动）补该规则回归（修前 13 failed、1 passed）、README S6-A 段并自检。
+- 对合同的解读（已写入请求）：Figma 自检路由与 wrapper 属 S6-B，S6-A 只交通用自检 runner（命令 spec 入参，假 server 覆盖）；策略基线导入路径由请求参数给出，代码不硬编码旧仓库路径。
+- 变更：38 个文件（`next/backend/src/**`、`tests/**`、`README.md`、`next/contracts/openapi.json`）：config v4 与规范化迁移；`domain/mcp.py`；`mcp/{ado_server,cache,policy,runner}.py`+`tools.json`；`api/mcp_*`、`services/mcp.py`；`proc_supervisor` 共享监督函数；`ai_prompt` 来源前缀切换与确认字段。既有断言变更共七处 `schema_version 3→4`：`test_s1_store.py:199`、`test_s4a_foundation.py:27`、`test_s5a_config.py:20`、`test_s5a_regressions.py:28`、`independent/s1/test_s1_store_contracts.py:142`、`independent/s4a/test_telegram_migration_acl_contract.py:102`、`test_s4_lead_fixes.py:12`（`CURRENT_SCHEMA_VERSION`）；其余断言未改。
+- 施工者沙箱内：分组 pytest 889 passed、311 项因端口/监督器 `PermissionError` not_run（交主控沙箱外）。
+- **lead 沙箱外验证（集成版本 = 758ccea + `integration.patch`，限定路径 binary patch，应用前 `git apply --check`、基线干净）**：`next/backend`：`.venv/bin/python -m pytest -q` exit 0，**1200 passed**（S5-E 基线 1136，+64）；`.venv/bin/ruff check .` All checks passed；`python -m toolbox_backend.contracts --check` exit 0；`git diff --check` exit 0。施工 worktree 版本全量曾 1 failed/1199 passed：`tests/independent/s5c/test_s5c_projection.py::test_flood_is_bounded_and_turn_still_completes`（`1508 < 1500` 计数断言，负载时序，与 S6 无关）；单独在 worktree 与基线各跑 2 次均过，集成版本全量过，记为偶发（未改）。
+- lead 抽查（非完整安全核对）：ado_server 三信号/ppid、写工具开关与 tools/list 过滤、cache `O_NOFOLLOW/O_EXCL/0600`、runner 环境剔除 `NODE_OPTIONS/APP_*` 与专用 cwd 均在代码中可见；**安全核对表与 resource-lifecycle 逐项核对留给 S6 集成验收（Opus）**。
+- not_run / 未测：前端（本包未改）；真实服务/Keychain/CLI/联网；Pillow 不在依赖中，附件图片压缩跳过；全局进程表零残留未核（沙箱）。S6-B 须补：Figma 自检路由、`./oidc` 相对路径补丁回归、keytar/安装 job 等。
+- cleanup：施工 worktree `.local/worktrees/s6a` 保留（S6-B 可复用，删除前问用户）；`/private/tmp/s6a-*.txt` 为施工者复跑清单；无已知残留进程；误启的一条挂起 shell（lead 命令笔误）已终止。

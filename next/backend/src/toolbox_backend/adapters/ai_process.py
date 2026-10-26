@@ -95,7 +95,7 @@ class SupervisedProcess:
         self._transports = []
 
     @classmethod
-    async def start(cls, argv, cwd, *, slave=None, stdio=False, path_extras=None):
+    async def start(cls, argv, cwd, *, slave=None, stdio=False, path_extras=None, env=None):
         control_r = control_w = status_r = status_w = -1
         io_fds = {}  # name -> fd for every descriptor this call has opened and not yet handed off
         proc = None
@@ -129,7 +129,9 @@ class SupervisedProcess:
             payload = dict(
                 argv=argv,
                 cwd=cwd,
-                env=child_environment(slave is not None, path_extras=path_extras),
+                env=env
+                if env is not None
+                else child_environment(slave is not None, path_extras=path_extras),
                 control=control_r,
                 status=status_w,
                 slave=slave,

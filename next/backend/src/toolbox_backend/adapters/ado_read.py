@@ -113,6 +113,7 @@ class AdoRead:
         seconds=15.0,
         media=False,
         clock: Callable | None = None,
+        content_type: str | None = None,
     ):
         if not pat:
             raise AdoFailure("no_credential", "未配置 PAT")
@@ -142,6 +143,7 @@ class AdoRead:
                         headers={
                             "Authorization": f"Basic {auth}",
                             "Accept": "*/*" if media else "application/json",
+                            **({"Content-Type": content_type} if content_type else {}),
                         },
                         timeout=httpx.Timeout(max(0.001, deadline - clock()), connect=5.0),
                     ) as response:

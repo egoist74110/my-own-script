@@ -24,7 +24,7 @@ async def test_v1_migration_is_disabled_durable_and_idempotent(tmp_path):
     path.write_text(original)
     store = ConfigStore(tmp_path)
     migrated = await store.initialize()
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 4
     assert not migrated.telegram.control.enabled
     assert migrated.telegram.owner.chat_id == "123"
     assert "telegram" not in migrated.imported.model_dump()

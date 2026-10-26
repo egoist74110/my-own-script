@@ -38,6 +38,7 @@ class ProfilePatch(RevisionRequest):
 
 
 class AISettingsPatch(RevisionRequest):
+    ack_cli_registered: bool = False
     selected_profile_id: str | None = None
     model_presets: ModelPresets | None = None
     defaults: AIDefaults | None = None

@@ -25,7 +25,7 @@ async def test_custom_migrations_cannot_remove_production_steps(tmp_path):
     store = ConfigStore(tmp_path)
     store.migrations = {0: lambda old: {**old, "schema_version": 1}}
     result = await store.initialize()
-    assert result.schema_version == 3 and result.revision == 5
+    assert result.schema_version == 4 and result.revision == 5
 
 
 def test_migration_disables_unknown_bot_slots():
