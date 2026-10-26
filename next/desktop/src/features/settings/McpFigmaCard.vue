@@ -7,7 +7,7 @@ import Tag from '@/components/Tag.vue'
 import TextField from '@/components/TextField.vue'
 import type { ClientConfig, FigmaMcpView, SelfTestResult } from './api'
 import { MCP_ERROR_MESSAGES } from './api'
-import { useMcp } from './useMcp'
+import { useMcpContext } from './useMcp'
 
 const props = defineProps<{
   figma?: FigmaMcpView
@@ -15,7 +15,7 @@ const props = defineProps<{
   writable?: boolean
 }>()
 
-const mcp = useMcp()
+const mcp = useMcpContext()
 
 const fg = computed(() => props.figma)
 

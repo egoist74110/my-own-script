@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted } from 'vue'
+import { computed, inject, onMounted, onUnmounted, provide } from 'vue'
 import Banner from '@/components/Banner.vue'
 import McpAdoCard from './McpAdoCard.vue'
 import McpFigmaCard from './McpFigmaCard.vue'
 import McpLarkCard from './McpLarkCard.vue'
 import { settingsContextKey } from './useSettings'
-import { useMcp } from './useMcp'
+import { mcpContextKey, useMcp } from './useMcp'
 
 const ctx = inject(settingsContextKey)!
 const mcp = useMcp()
+provide(mcpContextKey, mcp)
 
 onMounted(() => {
   ctx.mcpTabActive.value = true

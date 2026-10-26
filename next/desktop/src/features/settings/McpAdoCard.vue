@@ -9,7 +9,7 @@ import type { AdoMcp, ClientConfig, SelfTestResult } from './api'
 import { MCP_ERROR_MESSAGES } from './api'
 import McpAdoSourceSheet from './McpAdoSourceSheet.vue'
 import McpAdoWriteConfirmSheet from './McpAdoWriteConfirmSheet.vue'
-import { useMcp } from './useMcp'
+import { useMcpContext } from './useMcp'
 
 const props = defineProps<{
   ado: AdoMcp
@@ -18,7 +18,7 @@ const props = defineProps<{
   writable?: boolean
 }>()
 
-const mcp = useMcp()
+const mcp = useMcpContext()
 
 // --- 自检 ---
 const selfTestResult = computed<SelfTestResult | null>(() => mcp.adoTestResult.value)

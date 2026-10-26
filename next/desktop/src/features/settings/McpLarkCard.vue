@@ -9,7 +9,7 @@ import TextField from '@/components/TextField.vue'
 import type { PillState } from '@/components/pill'
 import type { LarkMcpView, RuntimeView } from './api'
 import McpLarkOwnershipSheet from './McpLarkOwnershipSheet.vue'
-import { useMcp } from './useMcp'
+import { useMcpContext } from './useMcp'
 
 const props = defineProps<{
   lark?: LarkMcpView
@@ -20,7 +20,7 @@ const props = defineProps<{
   writable?: boolean
 }>()
 
-const mcp = useMcp()
+const mcp = useMcpContext()
 
 // --- 状态映射 ---
 const lk = computed(() => props.lark)

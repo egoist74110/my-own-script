@@ -1,5 +1,5 @@
 // MCP 状态与操作 composable：WS 订阅 + 水位管理 + 快照单飞刷新 + 各操作独立状态与幂等请求
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, type InjectionKey } from 'vue'
 import { backendRuntimeKey } from '@/app/backend-runtime'
 import type { ApiClient } from '@/api/client'
 import type { EventEnvelope } from '@/api/events'
@@ -679,4 +679,15 @@ export function useMcp() {
     // Snippets
     fetchClientConfig,
   }
+}
+
+export type McpContext = ReturnType<typeof useMcp>
+export const mcpContextKey: InjectionKey<McpContext> = Symbol('mcpContext')
+
+export function useMcpContext(): McpContext {
+  const ctx = inject(mcpContextKey, null)
+  if (!ctx) {
+    throw new Error('mcpContextKey is not provided (must be used within McpTab)')
+  }
+  return ctx
 }

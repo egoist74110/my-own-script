@@ -1,7 +1,11 @@
 // S6-C 单测：设置页 MCP 分区三张卡（ADO / Lark / Figma）、凭据不留痕、所有权门禁、二次确认、WS 水位与卸载释放
-import { flushPromises } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { components } from '@/api/schema'
+import McpAdoCard from '@/features/settings/McpAdoCard.vue'
+import McpFigmaCard from '@/features/settings/McpFigmaCard.vue'
+import McpLarkCard from '@/features/settings/McpLarkCard.vue'
+import { mcpContextKey } from '@/features/settings/useMcp'
 import { boot } from './boot'
 import { FakeSocket, env, hello, resetSeq } from './helpers'
 import { json } from './settings-fake'
@@ -797,5 +801,147 @@ describe('S6-C: MCP 分区与三张卡单测', () => {
 
     expect(unsubSpy).toHaveBeenCalled()
     await b.done()
+  })
+
+  it('verified_by=executor, independent=false: 单实例收敛：挂载 MCP 页后 GET /api/mcp 恰 1 次，subscribeMcp 恰 1 次，卸载后 unsubscribeMcp 恰 1 次', async () => {
+    const fake = createS6CFake()
+    const b = await boot({ path: '/settings', fetchImpl: fake.fetchImpl })
+    b.sock.emit(hello())
+    await flushPromises()
+
+    const subSpy = vi.spyOn(b.runtime, 'subscribeMcp')
+    const unsubSpy = vi.spyOn(b.runtime, 'unsubscribeMcp')
+
+    // 切换到 MCP 页签
+    const tabs = b.wrapper.findAll('[role=tab]')
+    const mcpTab = tabs.find((t) => t.text().includes('MCP'))!
+    expect(mcpTab).toBeDefined()
+    await mcpTab.trigger('mousedown')
+    await flushPromises()
+    await flushPromises()
+
+    // 修复前：McpTab 与 3 张卡各自调用 useMcp()，共 4 次 GET /api/mcp 与 4 次 subscribeMcp
+    // 修复后：单实例下发，恰 1 次 GET /api/mcp 与 1 次 subscribeMcp
+    const mcpGetCalls = fake.calls.filter((c) => c.path === '/api/mcp' && c.method === 'GET')
+    expect(mcpGetCalls).toHaveLength(1)
+    expect(subSpy).toHaveBeenCalledTimes(1)
+
+    // 卸载组件树
+    b.wrapper.unmount()
+    await flushPromises()
+
+    // 修复前：4 次 unsubscribeMcp
+    // 修复后：恰 1 次 unsubscribeMcp
+    expect(unsubSpy).toHaveBeenCalledTimes(1)
+
+    await b.done()
+  })
+
+  it('verified_by=executor, independent=false: 单实例快照联动：卡片保存后 Tab 传给卡片的 props 与新快照一致且无需刷新页面', async () => {
+    const fake = createS6CFake({
+      lark: {
+        app_id: '',
+        domain: 'https://open.larksuite.com',
+        endpoint: 'http://localhost:3000/mcp',
+        port: 3000,
+        language: 'zh',
+        tools: '',
+        autostart: false,
+        scope_hint: '',
+        secret_configured: false,
+        keytar_available: true,
+        owner_confirmed_at: '2026-10-25T10:00:00Z',
+        state: 'stopped',
+        log_tail: '',
+        warnings: [],
+      },
+    })
+    const b = await openMcpTab(fake)
+
+    // 初始状态断言：因为 app_id 为空，从旧应用导入 Secret 按钮被禁用
+    const importBtn = b.wrapper.get('[data-testid="import-lark-secret-btn"]')
+    expect((importBtn.element as HTMLButtonElement).disabled).toBe(true)
+
+    // 在 Lark 卡片中填写新的 App ID 并点击保存服务设置
+    const appIdInput = b.wrapper.get('[data-testid="lark-app-id-input"] input')
+    await appIdInput.setValue('cli_new_app_999')
+    const saveBtn = b.wrapper.get('[data-testid="save-lark-settings-btn"]')
+    await saveBtn.trigger('click')
+    await flushPromises()
+
+    // 确认 PATCH 已发送且后端已返回
+    expect(fake.calls.some((c) => c.path === '/api/mcp/settings' && c.method === 'PATCH')).toBe(
+      true,
+    )
+
+    // 断言前后对比：
+    // 修复前：McpTab 维护独立的 useMcp 实例，Lark 卡片保存触发其自身私有 fetchSnapshot，
+    //        但 McpTab 依然保留旧快照（app_id: ''），因此下发给 Lark 卡片的 props.lark.app_id 仍为空，
+    //        importBtn 仍为 disabled=true（此断言在修复前必红）。
+    // 修复后：McpTab 与卡片共享单实例，卡片保存后 fetchSnapshot 更新共享快照，
+    //        McpTab 响应式下发新 props，importBtn 解锁为 disabled=false，无需刷新页面。
+    expect((importBtn.element as HTMLButtonElement).disabled).toBe(false)
+
+    await b.done()
+  })
+
+  it('verified_by=executor, independent=false: 卡片独立挂载门禁：缺失 mcpContextKey 注入时抛出明确错误，不静默新建实例', () => {
+    expect(() => {
+      mount(McpAdoCard, {
+        props: {
+          ado: {
+            allow_create_work_item: false,
+            attachment_cache_mb: 500,
+            attachment_max_mb: 25,
+            query_max_items: 200,
+          },
+        },
+      })
+    }).toThrow('mcpContextKey is not provided (must be used within McpTab)')
+
+    expect(() => {
+      mount(McpLarkCard, {})
+    }).toThrow('mcpContextKey is not provided (must be used within McpTab)')
+
+    expect(() => {
+      mount(McpFigmaCard, {})
+    }).toThrow('mcpContextKey is not provided (must be used within McpTab)')
+  })
+
+  it('verified_by=executor, independent=false: 卡片独立挂载注入：通过 provide(mcpContextKey) 成功注入时正常渲染', () => {
+    const mockMcp = {
+      snapshot: { value: null },
+      activeJob: { value: null },
+      loading: { value: false },
+      error: { value: null },
+      watermark: { value: 0 },
+      fetchSnapshot: vi.fn(),
+      adoTesting: { value: false },
+      adoTestResult: { value: null },
+      adoError: { value: null },
+      runAdoSelfTest: vi.fn(),
+      updateAdoSettings: vi.fn(),
+      switchAnalysisSource: vi.fn(),
+      fetchClientConfig: vi.fn().mockResolvedValue(null),
+    }
+
+    const wrapper = mount(McpAdoCard, {
+      props: {
+        ado: {
+          allow_create_work_item: false,
+          attachment_cache_mb: 500,
+          attachment_max_mb: 25,
+          query_max_items: 200,
+        },
+      },
+      global: {
+        provide: {
+          [mcpContextKey as symbol]: mockMcp,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="mcp-ado-card"]').exists()).toBe(true)
+    wrapper.unmount()
   })
 })

@@ -41,7 +41,6 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | CR-NEXT-003、CR-NEXT-005 | deferred | 旧应用内的问题，旧应用下线即消失 |
 | CR-NEXT-004 | open（待真实验收） | 见上 |
 | S0A-005 | deferred | 不读的 WS 客户端收不到 4408 关闭帧 |
-| S6-ACC-009 | deferred（待前端派工） | MCP 页 4 个 `useMcp()` 实例：4 次 GET、4 个订阅、状态分裂 |
 | S6-ACC-010 | deferred | mcp 事件历史存完整快照（含 log_tail），最坏约 64 MiB |
 | S6-ACC-011 | deferred / 接受 | 运行组件：`node --version` 探测不经监督器；下载无大小上限、取消不中断传输；SHASUMS 同源无 GPG；`.staging-*` 残留 |
 | S6-ACC-012 | deferred | Figma wrapper 生产代码保留 `_MCP_MEM_FIGMA` 测试入口 |
