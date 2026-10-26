@@ -35,6 +35,11 @@ from toolbox_backend.domain.services import ServicesConfig
 from toolbox_backend.mcp.runner import secure_directory
 
 DOMAIN = re.compile(r"https://[a-z0-9-]+(?:\.[a-z0-9-]+)*\.trycloudflare\.com", re.ASCII)
+# cloudflared prints the URL either bare or boxed ("<ts> INF |  https://x.trycloudflare.com  |").
+# Accept only those whole-line shapes so text embedded in other output never matches.
+DOMAIN_LINE = re.compile(
+    r"(?:\S+\s+(?:INF|INFO)\s+)?\|?\s*(" + DOMAIN.pattern + r")\s*\|?", re.ASCII
+)
 
 
 async def port_open(host, port):
@@ -297,8 +302,13 @@ class ServicesService:
         await asyncio.to_thread(record.log.write, line)
         record.view.log_tail_available = True
         # Match only an entire trimmed output line, never a token inside attacker text.
-        candidate = line.strip()
-        if DOMAIN.fullmatch(candidate) and record.view.url != candidate:
+        found = DOMAIN_LINE.fullmatch(line.strip())
+        candidate = found[1] if found else None
+        if (
+            candidate
+            and candidate != "https://api.trycloudflare.com"
+            and record.view.url != candidate
+        ):
             record.view.url = candidate
             self._emit()
 

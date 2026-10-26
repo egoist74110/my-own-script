@@ -66,6 +66,10 @@ async def test_custom_tunnel_holds_owned_group_and_accepts_last_valid_domain(tmp
         'print("https://one.trycloudflare.com", flush=True)\n'
         'print("https://two.trycloudflare.com", flush=True)\n'
         'print("evil https://spoof.trycloudflare.com", flush=True)\n'
+        'print("2026-10-26T06:00:00Z INF |  https://boxed.trycloudflare.com      |", flush=True)\n'
+        'print("2026-10-26T06:00:01Z INF Requesting https://api.trycloudflare.com", flush=True)\n'
+        'print("| https://api.trycloudflare.com |", flush=True)\n'
+        'print("2026-10-26T06:00:02Z ERR see https://spoof2.trycloudflare.com", flush=True)\n'
         "time.sleep(60)\n"
     )
     binary.chmod(0o700)
@@ -82,7 +86,7 @@ async def test_custom_tunnel_holds_owned_group_and_accepts_last_valid_domain(tmp
                 break
             await asyncio.sleep(0.05)
         assert snap.cloudflared.tunnels[0].state == "running"
-        assert snap.cloudflared.tunnels[0].url == "https://two.trycloudflare.com"
+        assert snap.cloudflared.tunnels[0].url == "https://boxed.trycloudflare.com"
         assert snap.cloudflared.tunnels[0].owned
         result = await service.set_protocol(
             ProtocolRequest(revision=snap.revision, protocol="quic")
@@ -90,7 +94,7 @@ async def test_custom_tunnel_holds_owned_group_and_accepts_last_valid_domain(tmp
         assert result.restart_required
         assert (await service.snapshot()).cloudflared.tunnels[
             0
-        ].url == "https://two.trycloudflare.com"
+        ].url == "https://boxed.trycloudflare.com"
         await service.delete_tunnel(snap.cloudflared.tunnels[0].id)
         assert not (await service.snapshot()).cloudflared.tunnels
     finally:
