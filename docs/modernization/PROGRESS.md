@@ -39,8 +39,16 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | CR-NEXT-003、CR-NEXT-005 | deferred | 旧应用内的问题，旧应用下线即消失 |
 | CR-NEXT-004 | open（待真实验收） | 见上 |
 | S0A-005 | deferred | 不读的 WS 客户端收不到 4408 关闭帧 |
-| S0A-006、S0A-007 | 待核后关闭 | S1-A 已实现 WS Origin 与请求体上限，账本未正式标 fixed |
-| S05-004 | open | 导航角标 aria、审批条 window 监听（原定 S5 顺带处理，未见关闭记录） |
+
+2026-10-26 主控核对代码后关闭（`rewrite/next @ 5ae038e`）：
+
+| finding_id | 状态 | 证据 |
+| --- | --- | --- |
+| S0A-006 | fixed（S1-A） | `api/ws.py:203-206`、`api/ai_routes.py:156` 无 Origin 或不在白名单即 1008 关闭；回归 `tests/test_s1_settings.py::test_no_origin_rejected_before_accept_without_network`、`tests/independent/s1/test_s1_live_boundaries.py::test_websocket_handshake_without_origin_is_rejected` |
+| S0A-007 | fixed（S1-A） | `api/middleware.py:66` 全局 `BodyLimit`（`app.py:268`，Host→CORS→Auth→BodyLimit），超限 413，覆盖 `/api/system/alert`；回归 `tests/independent/test_fault_http.py:210` |
+| S05-004 | obsolete | 导航角标已无 `aria-label` span，计数作为 `RouterLink` 文本读出（`components/Sidebar.vue:86-91`）；审批快捷键改由 `ChatView.vue` 处理，仅焦点在该会话内且有一条待审批时响应。旧 `components/ApprovalBar.vue` 仍挂 window 监听但已无引用（死代码，可删） |
+
+本次只核对代码与既有测试，未重跑测试。
 
 资源：施工 worktree 仅剩 `.local/worktrees/s5e`（删除前问用户）；`.local/cargo-target` 约 4 GB 等 git 忽略目录保留。
 
