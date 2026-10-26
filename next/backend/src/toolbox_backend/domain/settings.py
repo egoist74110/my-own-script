@@ -18,6 +18,7 @@ from pydantic import (
 
 from toolbox_backend.domain.ai import AIConfig
 from toolbox_backend.domain.mcp import McpConfig
+from toolbox_backend.domain.services import ServicesConfig
 from toolbox_backend.domain.telegram import TelegramConfig
 
 
@@ -233,7 +234,8 @@ class CredentialMeta(StrictModel):
 
 class Config(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    schema_version: Literal[4] = 4
+    schema_version: Literal[5] = 5
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)

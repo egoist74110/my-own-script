@@ -22,6 +22,7 @@ from toolbox_backend.api import (
     ai_routes,
     mcp_routes,
     routes,
+    services_routes,
     settings_routes,
     task_routes,
     telegram_routes,
@@ -36,6 +37,7 @@ from toolbox_backend.services.ai_sessions import AISessionService
 from toolbox_backend.services.events import EventHub
 from toolbox_backend.services.mcp import McpService
 from toolbox_backend.services.runs import RunService
+from toolbox_backend.services.services import ServicesService
 from toolbox_backend.services.settings import SettingsService
 from toolbox_backend.services.system import SystemService
 from toolbox_backend.services.tasks import TasksService
@@ -85,6 +87,7 @@ def create_app(
                 await app.state.config_store.update(config.revision, interrupted)
         except SettingsError:
             pass  # Exposed via GET /api/settings; never reset corrupt/unsupported files.
+        await app.state.services_service.initialize()
         await app.state.run_service.initialize()
         await app.state.ai_service.initialize()
         await app.state.telegram_service.initialize()
@@ -102,7 +105,9 @@ def create_app(
             finally:
                 try:
                     await asyncio.gather(
-                        app.state.ai_service.close(), app.state.mcp_service.close()
+                        app.state.ai_service.close(),
+                        app.state.mcp_service.close(),
+                        app.state.services_service.close(),
                     )
                 finally:
                     try:
@@ -157,6 +162,7 @@ def create_app(
         ado_http or AdoHTTP(),
     )
     app.state.mcp_service = McpService(app.state.settings_service, hub=hub)
+    app.state.services_service = ServicesService(store, hub)
     app.state.work_items_service = WorkItemsService(
         app.state.settings_service, ado_read or AdoRead()
     )
@@ -227,6 +233,7 @@ def create_app(
         work_items=app.state.work_items_service,
         ai=app.state.ai_service,
         mcp=app.state.mcp_service,
+        services=app.state.services_service,
         registry=registry,
     )
     app.state.telegram_ai_services = {}
@@ -261,6 +268,7 @@ def create_app(
         app.state.telegram_service.on_run_event(event)
 
     app.state.run_store.on_event = run_event
+    app.include_router(services_routes.router)
     app.include_router(mcp_routes.router)
     app.include_router(ai_routes.router)
     app.include_router(telegram_routes.router)

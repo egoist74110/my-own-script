@@ -32,6 +32,9 @@ class Subscriber:
         self.mcp_after: int | None = None
         self.mcp_replaying: list[SimpleNamespace] | None = None
         self.mcp_unsubscribed: bool = False
+        self.services_after = None
+        self.services_replaying = None
+        self.services_unsubscribed = False
 
 
 class EventHub:
@@ -41,6 +44,8 @@ class EventHub:
         self._subscribers: set[Subscriber] = set()
         self._mcp_seq = 0
         self._mcp_history: list[SimpleNamespace] = []
+        self._services_seq = 0
+        self._services_history = []
 
     @property
     def seq(self) -> int:
@@ -84,6 +89,7 @@ class EventHub:
 
     def publish_ai(self, event):
         from toolbox_backend.api.ai_schemas import AIEvent, AIEventData
+
         sid, seq = event["session_id"], event["session_seq"]
         for sub in tuple(self._subscribers):
             if sid not in sub.ai or seq <= sub.ai[sid]:
@@ -126,7 +132,34 @@ class EventHub:
                 self.enqueue(sub, event_cls, data)
         return mcp_seq
 
+    def publish_services(self, event_cls, data):
+        self._services_seq += 1
+        entry = SimpleNamespace(services_seq=self._services_seq, event_cls=event_cls, data=data)
+        self._services_history.append(entry)
+        self._services_history = self._services_history[-1024:]
+        for sub in tuple(self._subscribers):
+            if (
+                sub.services_after is None
+                or sub.services_unsubscribed
+                or entry.services_seq <= sub.services_after
+            ):
+                continue
+            if sub.services_replaying is not None:
+                if len(sub.services_replaying) >= self._queue_size:
+                    sub.overflowed.set()
+                    self._subscribers.discard(sub)
+                else:
+                    sub.services_replaying.append(entry)
+            else:
+                sub.services_after = entry.services_seq
+                self.enqueue(sub, event_cls, data)
+        return self._services_seq
+
     def _state(self, topic: str) -> SimpleNamespace:
+        if topic == "services":
+            return SimpleNamespace(
+                history=list(self._services_history), last_seq=self._services_seq
+            )
         if topic == "mcp":
             return SimpleNamespace(history=list(self._mcp_history), last_seq=self._mcp_seq)
         return SimpleNamespace(history=[], last_seq=0)

@@ -358,6 +358,60 @@
       "title": "AlertState",
       "type": "object"
     },
+    "BinariesView": {
+      "additionalProperties": false,
+      "properties": {
+        "cloudflared": {
+          "$ref": "#/$defs/BinaryInfo"
+        },
+        "code_server": {
+          "$ref": "#/$defs/BinaryInfo"
+        }
+      },
+      "title": "BinariesView",
+      "type": "object"
+    },
+    "BinaryInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed": {
+          "default": false,
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "found": {
+          "default": false,
+          "title": "Found",
+          "type": "boolean"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "title": "BinaryInfo",
+      "type": "object"
+    },
     "CheckpointPayload": {
       "properties": {
         "data": {
@@ -398,6 +452,60 @@
         "data"
       ],
       "title": "CheckpointPayload",
+      "type": "object"
+    },
+    "CloudflaredSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "max_tunnels": {
+          "default": 5,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Tunnels",
+          "type": "integer"
+        },
+        "protocol": {
+          "default": "http2",
+          "enum": [
+            "http2",
+            "quic"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        }
+      },
+      "title": "CloudflaredSettings",
+      "type": "object"
+    },
+    "CloudflaredView": {
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "$ref": "#/$defs/ServiceView"
+        },
+        "tunnels": {
+          "items": {
+            "$ref": "#/$defs/ServiceView"
+          },
+          "title": "Tunnels",
+          "type": "array"
+        }
+      },
+      "title": "CloudflaredView",
+      "type": "object"
+    },
+    "CodeServerSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "start_timeout_s": {
+          "default": 30,
+          "maximum": 120,
+          "minimum": 0.1,
+          "title": "Start Timeout S",
+          "type": "number"
+        }
+      },
+      "title": "CodeServerSettings",
       "type": "object"
     },
     "EffectIntent": {
@@ -1606,6 +1714,42 @@
       "title": "McpSubscribedEvent",
       "type": "object"
     },
+    "NetworkInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "lan_ip": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lan Ip"
+        },
+        "on_lan": {
+          "default": false,
+          "title": "On Lan",
+          "type": "boolean"
+        },
+        "vpn_ip": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vpn Ip"
+        }
+      },
+      "title": "NetworkInfo",
+      "type": "object"
+    },
     "NodeRuntime": {
       "additionalProperties": false,
       "properties": {
@@ -1852,6 +1996,286 @@
         }
       },
       "title": "RuntimeView",
+      "type": "object"
+    },
+    "ServiceBinaries": {
+      "additionalProperties": false,
+      "properties": {
+        "cloudflared": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cloudflared"
+        },
+        "code_server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code Server"
+        }
+      },
+      "title": "ServiceBinaries",
+      "type": "object"
+    },
+    "ServiceView": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error"
+        },
+        "log_tail_available": {
+          "default": false,
+          "title": "Log Tail Available",
+          "type": "boolean"
+        },
+        "owned": {
+          "default": false,
+          "title": "Owned",
+          "type": "boolean"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        },
+        "state": {
+          "default": "stopped",
+          "enum": [
+            "stopped",
+            "starting",
+            "running",
+            "stopping",
+            "failed",
+            "external",
+            "unhealthy"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "target_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Url"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "title": "ServiceView",
+      "type": "object"
+    },
+    "ServicesConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "binaries": {
+          "$ref": "#/$defs/ServiceBinaries"
+        },
+        "cloudflared": {
+          "$ref": "#/$defs/CloudflaredSettings"
+        },
+        "code_server": {
+          "$ref": "#/$defs/CodeServerSettings"
+        }
+      },
+      "title": "ServicesConfig",
+      "type": "object"
+    },
+    "ServicesSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "binaries": {
+          "$ref": "#/$defs/BinariesView"
+        },
+        "cloudflared": {
+          "$ref": "#/$defs/CloudflaredView"
+        },
+        "code_server": {
+          "$ref": "#/$defs/ServiceView"
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkInfo"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "settings": {
+          "$ref": "#/$defs/ServicesConfig"
+        }
+      },
+      "required": [
+        "code_server",
+        "cloudflared",
+        "network",
+        "binaries",
+        "settings",
+        "revision"
+      ],
+      "title": "ServicesSnapshot",
+      "type": "object"
+    },
+    "ServicesStatusData": {
+      "additionalProperties": false,
+      "properties": {
+        "services_seq": {
+          "minimum": 1,
+          "title": "Services Seq",
+          "type": "integer"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/ServicesSnapshot"
+        }
+      },
+      "required": [
+        "services_seq",
+        "snapshot"
+      ],
+      "title": "ServicesStatusData",
+      "type": "object"
+    },
+    "ServicesStatusEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ServicesStatusData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "services",
+          "default": "services",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "services.status",
+          "default": "services.status",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "ServicesStatusEvent",
+      "type": "object"
+    },
+    "ServicesSubscribedData": {
+      "additionalProperties": false,
+      "properties": {
+        "last_seq": {
+          "minimum": 0,
+          "title": "Last Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "last_seq"
+      ],
+      "title": "ServicesSubscribedData",
+      "type": "object"
+    },
+    "ServicesSubscribedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ServicesSubscribedData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "services",
+          "default": "services",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "services.subscribed",
+          "default": "services.subscribed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "ServicesSubscribedEvent",
       "type": "object"
     },
     "SettingsChangedData": {
@@ -2242,6 +2666,8 @@
       "mcp.subscribed": "#/$defs/McpSubscribedEvent",
       "run.event": "#/$defs/RunEvent",
       "run.subscribed": "#/$defs/RunSubscribedEvent",
+      "services.status": "#/$defs/ServicesStatusEvent",
+      "services.subscribed": "#/$defs/ServicesSubscribedEvent",
       "settings.changed": "#/$defs/SettingsChangedEvent",
       "system.alert": "#/$defs/SystemAlertEvent",
       "system.heartbeat": "#/$defs/SystemHeartbeatEvent",
@@ -2292,6 +2718,12 @@
     },
     {
       "$ref": "#/$defs/McpSubscribedEvent"
+    },
+    {
+      "$ref": "#/$defs/ServicesStatusEvent"
+    },
+    {
+      "$ref": "#/$defs/ServicesSubscribedEvent"
     }
   ],
   "title": "ToolboxEvent"

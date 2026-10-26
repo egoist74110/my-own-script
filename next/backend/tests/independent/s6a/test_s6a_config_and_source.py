@@ -35,7 +35,7 @@ async def test_v3_migration_normalizes_mcp_settings_and_preserves_import_snapsho
 
     store = ConfigStore(data_dir)
     migrated = await store.initialize()
-    assert migrated.schema_version == 4
+    assert migrated.schema_version == 5
     result = migrated.model_dump(mode="json", by_alias=True)
     assert result["imported"]["lark"] == original["imported"]["lark"]
     assert result["imported"]["figma"] == original["imported"]["figma"]

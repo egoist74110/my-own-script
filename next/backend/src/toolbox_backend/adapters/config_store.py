@@ -21,7 +21,7 @@ from toolbox_backend.logging_setup import contains_secret
 
 T = TypeVar("T")
 MigrationStep = Callable[[dict], dict]
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 def stamp() -> str:
@@ -82,12 +82,14 @@ class ConfigStore:
         # may upgrade an older version; no guessed v0 data shape or implicit reset.
         from toolbox_backend.domain.ai import config_v2_to_v3
         from toolbox_backend.domain.mcp import config_v3_to_v4
+        from toolbox_backend.domain.services import config_v4_to_v5
         from toolbox_backend.domain.telegram import config_v1_to_v2
 
         self.migrations = {
             1: config_v1_to_v2,
             2: config_v2_to_v3,
             3: config_v3_to_v4,
+            4: config_v4_to_v5,
             **(migrations or {}),
         }
         self.readonly_error: str | None = None
@@ -136,11 +138,11 @@ class ConfigStore:
         return await asyncio.to_thread(self._read)
 
     def _backup(self, original: bytes, version: int) -> None:
-        target = self.data_dir / "migrations" if version in (1, 2, 3) else self.data_dir
+        target = self.data_dir / "migrations" if version in (1, 2, 3, 4) else self.data_dir
         private_dir(target)
         prefix = (
             f"config-v{version}-{stamp().replace(':', '-')}"
-            if version in (1, 2, 3)
+            if version in (1, 2, 3, 4)
             else (f"config.json.bak-v{version}-{stamp().replace(':', '-')}-")
         )
         fd, filename = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=target)
@@ -161,9 +163,16 @@ class ConfigStore:
     def _initialize(self) -> Config:
         from toolbox_backend.domain.ai import config_v2_to_v3
         from toolbox_backend.domain.mcp import config_v3_to_v4
+        from toolbox_backend.domain.services import config_v4_to_v5
         from toolbox_backend.domain.telegram import config_v1_to_v2
 
-        migrations = {1: config_v1_to_v2, 2: config_v2_to_v3, 3: config_v3_to_v4, **self.migrations}
+        migrations = {
+            1: config_v1_to_v2,
+            2: config_v2_to_v3,
+            3: config_v3_to_v4,
+            4: config_v4_to_v5,
+            **self.migrations,
+        }
         try:
             # No infrastructure files for an empty/current/unsupported store. Migration
             # is explicit startup work; ordinary read() never upgrades or writes.

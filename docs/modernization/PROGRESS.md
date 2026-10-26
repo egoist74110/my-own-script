@@ -17,7 +17,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
-| S7 服务管理 | 合同已确认（12 项待决按推荐，「S7 已决」）；S7-0 已完成；用户 2026-10-26 决定 dsh 暂时砍掉（推迟出 S7，范围调整见合同），可派 S7-A（[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)） | 真实验收清单与服务所有权切换未授权 | — |
+| S7 服务管理 | 合同已确认；dsh 已推迟出 S7；**S7-A 后端已集成**（本地提交，见下记录），S7-C 前端待派（[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)） | 真实验收清单与服务所有权切换未授权 | — |
 | S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S6 集成验收，`6a00fc2` + 验收修复）：后端 **1242 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1141 passed / 81 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed。
@@ -84,3 +84,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - not_run：未跑任何自动化测试；真实 WS、命名隧道、quick tunnel、`cfargotunnel.com` 均未测。
 
 - 2026-10-26 用户：“dsh 暂时可以砍掉了，现在用不上。” S7 缩为 code-server + cloudflared quick tunnel + 网络信息 + 服务页 + TG 服务菜单；dsh/网关/命名隧道与两条凭据推迟，S7-A/B 合并为一个后端包；S7-0 的 dsh 结论保留备查。未改代码。
+
+### S7-A 后端集成（2026-10-26）
+
+- 角色：施工 codex exec，requested gpt-6.1-sol / medium（外层通道回执无法核验 actual，记 unknown；codex 自述 session `01a176d0-9e83-74a3-bb26-35f082475dbc`）；测试子 agent 传参 gpt-6-luna/high，新增 34 项独立用例（`tests/independent/s7a/`）；lead 集成：Sonnet 5.5，限定路径 binary patch 自 `.local/worktrees/s7a`（输入 `fa1385c`）。
+- 范围：config v5 `services`、`adapters/{net_info,service_runtime,service_logs}.py`、`services/services.py`、`/api/services*` 与 `services` WS 主题、TG owner 服务菜单、lifespan 并行收尾、契约重生成、README S7-A 段。既有断言仅 schema 4→5（9 处：test_s1_store:199、test_s4_lead_fixes:12、test_s4a_foundation:27、test_s5a_config:20、test_s5a_regressions:28、test_s6_config:19、independent/s1/test_s1_store_contracts:142、independent/s4a/…migration_acl_contract:102、independent/s6a/test_s6a_config_and_source:38）。
+- 主控核对：施工方沙箱内全量被阻断（PermissionError），主控沙箱外复跑：初次全量 4 failed/1303 passed；其中 3 项为 S7 引入——网络缓存后台循环在空闲后端启动时就 fork 真实 `ifconfig`，违反既有“空闲后端无子进程”断言（`test_fault_lifecycle` ×3）。**主控修复**：网络刷新改为首次 `snapshot()` 才惰性启动（`services/services.py`，测试 `test_s7_services.py` 增加“空闲无读取”断言），不改既有测试。修复后主工作区全量 **1307 passed**（472 秒）、ruff、`contracts --check`、`git diff --check` exit 0；S7 定向 80 passed。
+- 新发现 **S6-ACC-014（deferred，非 S7 引入）**：`services/mcp.py:634–638` 启动后只等补丁标记 5×20 ms，负载下 `test_s6b_lark.py::test_lark_health_probe_marks_unhealthy_after_3_failures` 间歇失败（主工作区无 S7 时也复现 1/4）；生产含义：慢机器上 Lark 启动会误报 `running_degraded`。建议另包把等待改成有界（如 ≤2 秒）事件等待。
+- 隔离：施工方披露早期一条 HTTP 用例可能触达真实 cloudflared 启动路径（已改为纯 DTO 测试）；主控核对：无 s7/code-server 残留进程，唯一的 cloudflared 是用户自己 ppid=1 的命名隧道（早于本会话，未动）。
+- not_run：真实 code-server/cloudflared、真实 `ifconfig`、TG 真实 Bot、Tauri 内走查；S7-C 前端未做。

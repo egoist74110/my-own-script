@@ -1039,3 +1039,41 @@ runner 测试仅替换身份探针，保留真实监督器与进程组回收；�
   仅提供 Lark MCP 启动/停止与状态刷新按钮（不含 AI CLI 注入，不提供 ADO/Figma 启动按钮）。
 - 后端 `lifespan` 关闭阶段使用 `asyncio.gather(ai_service.close(), mcp_service.close())` 并行回收子进程组，
   共享 3 秒宽限期，总关闭耗时控制在 5 秒预算内。
+
+## S7-A：服务管理
+
+配置 schema v5 只新增 `services`：`binaries.{code_server,cloudflared}`（已确认绝对路径或 null）、
+`code_server.start_timeout_s`（默认 30 秒）、`cloudflared.{protocol,max_tunnels}`（默认 http2、5）。
+v4 启动迁移先保存 `migrations/config-v4-*.json` 原字节快照，再原子替换；重复初始化不重复迁移。
+不新增凭据，不导入旧进程状态。dsh、网关及命名隧道推迟。
+
+HTTP 仍经过 Host/CORS/Bearer/BodyLimit，错误为 S1 `detail` 结构：
+
+- `GET /api/services`：缓存快照（code_server、cloudflared.global/tunnels、network、binaries、settings、revision）。
+- `PATCH /api/services/settings`：`{revision, services}`；端口、绑定及认证不属于可写配置。
+- `POST /api/services/import-legacy`：`{revision, path}`，只从指定 JSON 文件导入 `protocol` 枚举，不修改原件。
+- `POST /api/services/{code-server|cloudflared}/{start|stop}`：`{request_id?}`，立即返回过渡状态，UUID 在本后端会话内幂等。
+- `POST /api/services/cloudflared/tunnels`：`{target_url, ack_public:true, request_id?}`；仅允许显式端口的 localhost、127.0.0.1、[::1] HTTP/HTTPS 目标。
+- `DELETE /api/services/cloudflared/tunnels/{id}`：仅回收指定自定义隧道。
+- `POST /api/services/cloudflared/protocol`：`{revision, protocol}`；不自动重启，返回 `restart_required`。
+- `GET /api/services/{name}/logs?tail=65536`：脱敏日志尾，最多 64 KiB；自定义隧道名为 `cloudflared-<id>`。
+
+WS `/ws/events` 的 `services` 主题支持 subscribe/unsubscribe、after_seq、
+`services.status {services_seq,snapshot}` 与 `services.subscribed {last_seq}`；历史保留本次后端运行的最近 1024 条，
+队列溢出沿用 4408。状态查询不启动任何子进程，不等待启停锁。网络信息由固定 argv 的 ifconfig 每 5 秒刷新，
+只显示 utun 上的 10.254.* VPN 地址及 en 接口 RFC1918 LAN 地址，无默认路由回退。
+
+code-server 无额外参数启动；只提取其配置中的 auth/bind-addr，不解析密码值。不能证明 password 认证时拒绝启动。
+全局 quick tunnel 固定指向 code-server 端口，自定义目标还须明确确认公网暴露；域名只接受该进程输出的完整严格匹配行。
+服务使用 `SupervisedProcess`，后端失联由控制管道 EOF 触发监督器 TERM→3 秒→KILL；不会按端口或进程名杀进程。
+端口已占用标记 external，停止不影响外部实例。健康探测每 30 秒执行，code-server 连续三次端口失败显示 unhealthy，
+cloudflared 同时探测其回环目标端口，连续三次失败同样显示 unhealthy（不自动重启）。服务、MCP 与 AI 会话在 lifespan 中并行回收。
+
+数据目录仅新增 `services/run/`（工作目录）和 `services/logs/{code-server,cloudflared,cloudflared-<id>}.log`；
+日志 5 MiB × 2、0600，目录 0700，拒绝符号链接。运行状态与自定义目标不持久化。
+TG 主 Bot owner 菜单新增“服务”页及 `/services`，状态仅含状态、端口、域名、局域网地址与协议；
+自定义隧道先输入地址再点确认，VPN 显示“VPN 管理见 S8”。
+
+测试只使用临时配置、内存凭据与 Python 编写的 code-server/cloudflared/ifconfig 替身，PATH 仅含替身。
+`tests/test_s7_services.py`、`test_s7_ws_tg.py` 和 `tests/independent/s7a/` 覆盖无进程边界；
+`test_s7_processes.py` 覆盖端口、进程组、忽略 TERM、孙进程与后端 SIGKILL；沙箱拒绝进程组或监听时显式标记 not_run，须在沙箱外复跑。

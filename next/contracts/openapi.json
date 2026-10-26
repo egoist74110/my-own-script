@@ -582,6 +582,30 @@
         "title": "AIView",
         "type": "object"
       },
+      "ActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_public": {
+            "default": false,
+            "title": "Ack Public",
+            "type": "boolean"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "title": "ActionRequest",
+        "type": "object"
+      },
       "ActiveRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1137,6 +1161,58 @@
         "title": "Attachment",
         "type": "object"
       },
+      "BinariesView": {
+        "additionalProperties": false,
+        "properties": {
+          "cloudflared": {
+            "$ref": "#/components/schemas/BinaryInfo"
+          },
+          "code_server": {
+            "$ref": "#/components/schemas/BinaryInfo"
+          }
+        },
+        "title": "BinariesView",
+        "type": "object"
+      },
+      "BinaryInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "found": {
+            "default": false,
+            "title": "Found",
+            "type": "boolean"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "BinaryInfo",
+        "type": "object"
+      },
       "BindCodeResponse": {
         "properties": {
           "code": {
@@ -1544,6 +1620,60 @@
           "snippet"
         ],
         "title": "ClientConfig",
+        "type": "object"
+      },
+      "CloudflaredSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tunnels": {
+            "default": 5,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Tunnels",
+            "type": "integer"
+          },
+          "protocol": {
+            "default": "http2",
+            "enum": [
+              "http2",
+              "quic"
+            ],
+            "title": "Protocol",
+            "type": "string"
+          }
+        },
+        "title": "CloudflaredSettings",
+        "type": "object"
+      },
+      "CloudflaredView": {
+        "additionalProperties": false,
+        "properties": {
+          "global": {
+            "$ref": "#/components/schemas/ServiceView"
+          },
+          "tunnels": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceView"
+            },
+            "title": "Tunnels",
+            "type": "array"
+          }
+        },
+        "title": "CloudflaredView",
+        "type": "object"
+      },
+      "CodeServerSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "start_timeout_s": {
+            "default": 30,
+            "maximum": 120.0,
+            "minimum": 0.1,
+            "title": "Start Timeout S",
+            "type": "number"
+          }
+        },
+        "title": "CodeServerSettings",
         "type": "object"
       },
       "CodexAnalysis": {
@@ -4026,6 +4156,28 @@
         "title": "LastRunSummary",
         "type": "object"
       },
+      "LegacyImport": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "path"
+        ],
+        "title": "LegacyImport",
+        "type": "object"
+      },
       "LibraryCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4330,6 +4482,20 @@
           }
         },
         "title": "LoginMetadata",
+        "type": "object"
+      },
+      "LogsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "LogsResult",
         "type": "object"
       },
       "MCPSettingsPatch": {
@@ -4741,6 +4907,40 @@
           "revision"
         ],
         "title": "MutationResponse",
+        "type": "object"
+      },
+      "NetworkInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "lan_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lan Ip"
+          },
+          "on_lan": {
+            "default": false,
+            "title": "On Lan",
+            "type": "boolean"
+          },
+          "vpn_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vpn Ip"
+          }
+        },
+        "title": "NetworkInfo",
         "type": "object"
       },
       "NoCredentialErrorDetail": {
@@ -5529,6 +5729,30 @@
         "title": "PromptResponse",
         "type": "object"
       },
+      "ProtocolRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "enum": [
+              "http2",
+              "quic"
+            ],
+            "title": "Protocol",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "protocol"
+        ],
+        "title": "ProtocolRequest",
+        "type": "object"
+      },
       "ReceiptPayload": {
         "properties": {
           "owned": {
@@ -6261,6 +6485,171 @@
         "title": "SendResult",
         "type": "object"
       },
+      "ServiceBinaries": {
+        "additionalProperties": false,
+        "properties": {
+          "cloudflared": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloudflared"
+          },
+          "code_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Server"
+          }
+        },
+        "title": "ServiceBinaries",
+        "type": "object"
+      },
+      "ServiceView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "log_tail_available": {
+            "default": false,
+            "title": "Log Tail Available",
+            "type": "boolean"
+          },
+          "owned": {
+            "default": false,
+            "title": "Owned",
+            "type": "boolean"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "state": {
+            "default": "stopped",
+            "enum": [
+              "stopped",
+              "starting",
+              "running",
+              "stopping",
+              "failed",
+              "external",
+              "unhealthy"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Url"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "ServiceView",
+        "type": "object"
+      },
+      "ServicesConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "binaries": {
+            "$ref": "#/components/schemas/ServiceBinaries"
+          },
+          "cloudflared": {
+            "$ref": "#/components/schemas/CloudflaredSettings"
+          },
+          "code_server": {
+            "$ref": "#/components/schemas/CodeServerSettings"
+          }
+        },
+        "title": "ServicesConfig",
+        "type": "object"
+      },
+      "ServicesSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "binaries": {
+            "$ref": "#/components/schemas/BinariesView"
+          },
+          "cloudflared": {
+            "$ref": "#/components/schemas/CloudflaredView"
+          },
+          "code_server": {
+            "$ref": "#/components/schemas/ServiceView"
+          },
+          "network": {
+            "$ref": "#/components/schemas/NetworkInfo"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ServicesConfig"
+          }
+        },
+        "required": [
+          "code_server",
+          "cloudflared",
+          "network",
+          "binaries",
+          "settings",
+          "revision"
+        ],
+        "title": "ServicesSnapshot",
+        "type": "object"
+      },
       "SessionCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6557,6 +6946,25 @@
         "title": "SessionView",
         "type": "object"
       },
+      "SettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "services": {
+            "$ref": "#/components/schemas/ServicesConfig"
+          }
+        },
+        "required": [
+          "revision",
+          "services"
+        ],
+        "title": "SettingsPatch",
+        "type": "object"
+      },
       "SettingsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6613,6 +7021,25 @@
           "import"
         ],
         "title": "SettingsResponse",
+        "type": "object"
+      },
+      "SettingsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "restart_required": {
+            "default": false,
+            "title": "Restart Required",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "SettingsResult",
         "type": "object"
       },
       "SourceSnapshot": {
@@ -7847,6 +8274,39 @@
           "token"
         ],
         "title": "TokenRequest",
+        "type": "object"
+      },
+      "TunnelCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_public": {
+            "default": false,
+            "title": "Ack Public",
+            "type": "boolean"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "target_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Target Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_url"
+        ],
+        "title": "TunnelCreate",
         "type": "object"
       },
       "Update": {
@@ -11207,6 +11667,372 @@
           }
         },
         "summary": "Reconcile"
+      }
+    },
+    "/api/services": {
+      "get": {
+        "operationId": "snapshot_api_services_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Snapshot"
+      }
+    },
+    "/api/services/cloudflared/protocol": {
+      "post": {
+        "operationId": "protocol_api_services_cloudflared_protocol_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProtocolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Protocol"
+      }
+    },
+    "/api/services/cloudflared/tunnels": {
+      "post": {
+        "operationId": "create_tunnel_api_services_cloudflared_tunnels_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Tunnel"
+      }
+    },
+    "/api/services/cloudflared/tunnels/{identifier}": {
+      "delete": {
+        "operationId": "delete_tunnel_api_services_cloudflared_tunnels__identifier__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tunnel"
+      }
+    },
+    "/api/services/import-legacy": {
+      "post": {
+        "operationId": "import_legacy_api_services_import_legacy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Legacy"
+      }
+    },
+    "/api/services/settings": {
+      "patch": {
+        "operationId": "settings_api_services_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/services/{name}/logs": {
+      "get": {
+        "operationId": "logs_api_services__name__logs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "default": 65536,
+              "maximum": 65536,
+              "minimum": 1,
+              "title": "Tail",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logs"
+      }
+    },
+    "/api/services/{name}/start": {
+      "post": {
+        "operationId": "start_api_services__name__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "enum": [
+                "code-server",
+                "cloudflared"
+              ],
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start"
+      }
+    },
+    "/api/services/{name}/stop": {
+      "post": {
+        "operationId": "stop_api_services__name__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "enum": [
+                "code-server",
+                "cloudflared"
+              ],
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop"
       }
     },
     "/api/settings": {

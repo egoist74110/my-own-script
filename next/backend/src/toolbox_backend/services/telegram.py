@@ -78,6 +78,7 @@ class TelegramService:
         slot="main",
         ai=None,
         mcp=None,
+        services=None,
         registry=None,
         projector=None,
     ):
@@ -87,6 +88,7 @@ class TelegramService:
         self.credential_kind = "telegram_bot" if self.ai_id is None else "telegram_ai_bot"
         self.ai = ai
         self.mcp = mcp
+        self.services = services
         self.registry = registry if registry is not None else {}
         self.projector = projector
         self.focus = {}
@@ -802,6 +804,7 @@ class TelegramService:
                     ("系统操作", "system"),
                     ("工单", "wi"),
                     ("MCP", "mcp"),
+                    ("服务", "services"),
                 ]
             elif group:
                 if group.can_rollback:

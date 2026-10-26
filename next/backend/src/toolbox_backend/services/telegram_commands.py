@@ -21,6 +21,12 @@ LARK_STATE_LABELS = {
     "failed": "失败",
 }
 ERRORS = {
+    "tunnel_limit": "自定义隧道数量已达上限",
+    "tunnel_target_forbidden": "隧道仅允许已确认的本机回环地址",
+    "service_unsafe_config": "无法确认 code-server 密码认证安全，请在桌面端检查",
+    "service_binary_missing": "服务程序不可用，请在桌面端配置",
+    "service_port_in_use": "服务端口已被外部进程占用",
+    "service_busy": "服务正在执行其他操作，请稍后重试",
     "task_active": "任务已有活动运行",
     "resource_active": "发布资源正被其他运行占用",
     "busy": "忙，请稍后重试",
@@ -56,9 +62,11 @@ class TelegramDispatcher:
         from toolbox_backend.services.telegram_work_items import TelegramWorkItems
 
         self.service = service
+        self._service_inputs = {}
         self.work_items = TelegramWorkItems(self, work_items)
 
     def close(self):
+        self._service_inputs.clear()
         self.work_items.close()
 
     @staticmethod
@@ -475,19 +483,11 @@ class TelegramDispatcher:
         buttons = []
         if snap.lark.state in {"running", "running_degraded", "unhealthy", "starting"}:
             buttons.append(
-                [
-                    await self.button(
-                        update, "停止 Lark MCP", "mcp_lark_stop", {"action": "stop"}
-                    )
-                ]
+                [await self.button(update, "停止 Lark MCP", "mcp_lark_stop", {"action": "stop"})]
             )
         else:
             buttons.append(
-                [
-                    await self.button(
-                        update, "启动 Lark MCP", "mcp_lark_start", {"action": "start"}
-                    )
-                ]
+                [await self.button(update, "启动 Lark MCP", "mcp_lark_start", {"action": "start"})]
             )
         buttons.append([await self.button(update, "刷新状态", "menu", {"page": "mcp"})])
         await self.panel(update, "\n".join(lines), buttons)
@@ -509,6 +509,78 @@ class TelegramDispatcher:
         else:
             await mcp.stop_lark(req)
             await self.mcp_panel(update, notice="Lark MCP 已停止")
+        return "handled"
+
+    async def services_panel(self, update):
+        service = getattr(self.service, "services", None)
+        if service is None:
+            await self.panel(update, "服务不可用")
+            return
+        snap = await service.snapshot()
+        code, tunnel = snap.code_server, snap.cloudflared.global_
+        lines = [
+            f"code-server：{code.state} · 端口 {code.port or '待刷新'}",
+            f"全局隧道：{tunnel.state} · {tunnel.url or '域名待刷新'}",
+            f"协议：{snap.settings.cloudflared.protocol}",
+            f"局域网地址：{snap.network.lan_ip or '未连接'}",
+            "VPN 管理见 S8",
+        ]
+        buttons = []
+        for name, label, view in [
+            ("code-server", "code-server", code),
+            ("cloudflared", "全局隧道", tunnel),
+        ]:
+            action = "stop" if view.state in {"running", "unhealthy", "external"} else "start"
+            title = ("停止 " if action == "stop" else "启动 ") + label
+            kind = "svc_confirm" if name == "cloudflared" and action == "start" else "svc_action"
+            buttons.append(
+                [await self.button(update, title, kind, {"name": name, "action": action})]
+            )
+        for custom in snap.cloudflared.tunnels:
+            lines.append(f"自定义隧道：{custom.state} · {custom.url or '域名待刷新'}")
+            buttons.append(
+                [await self.button(update, "停止自定义隧道", "svc_delete", {"id": custom.id})]
+            )
+        buttons.append([await self.button(update, "新增自定义隧道", "svc_input", {})])
+        buttons.append([await self.button(update, "刷新状态", "menu", {"page": "services"})])
+        await self.panel(update, "\n".join(lines), buttons)
+
+    async def services_action(self, update, kind, payload, token):
+        import time
+
+        from toolbox_backend.adapters.service_runtime import validate_tunnel_target
+        from toolbox_backend.api.services_schemas import ActionRequest, TunnelCreate
+
+        service = self.service.services
+        if service is None:
+            return "ignored"
+        _, _, chat, user, _, _ = identities(update)
+        if kind == "svc_input":
+            self._service_inputs[(chat, user)] = time.monotonic() + 300
+            await self.panel(update, "请输入本机回环 HTTP/HTTPS 地址与端口（5 分钟内有效）")
+        elif kind == "svc_confirm":
+            button = await self.button(update, "确认公开到公网", "svc_action", payload)
+            await self.panel(update, "该地址将可被公网任何人访问，隧道本身无认证", [[button]])
+        elif kind == "svc_create":
+            validate_tunnel_target(payload["target_url"], True)
+            await service.create_tunnel(
+                TunnelCreate(
+                    target_url=payload["target_url"],
+                    ack_public=True,
+                    request_id=uuid.uuid5(TG_NAMESPACE, token),
+                )
+            )
+            await self.services_panel(update)
+        elif kind == "svc_delete":
+            await service.delete_tunnel(payload["id"])
+            await self.services_panel(update)
+        elif kind == "svc_action":
+            method = service.start if payload["action"] == "start" else service.stop
+            await method(
+                payload["name"],
+                ActionRequest(request_id=uuid.uuid5(TG_NAMESPACE, token), ack_public=True),
+            )
+            await self.services_panel(update)
         return "handled"
 
     async def callback(self, update):
@@ -553,6 +625,10 @@ class TelegramDispatcher:
             if role != "owner":
                 return "ignored"
             return await self.work_items.callback(update, kind, payload, token)
+        if kind.startswith("svc_"):
+            if role != "owner":
+                return "ignored"
+            return await self.services_action(update, kind, payload, token)
         if kind in {"mcp_lark_start", "mcp_lark_stop"}:
             if role != "owner":
                 return "ignored"
@@ -574,6 +650,8 @@ class TelegramDispatcher:
             await self.stops(update, payload.get("number", 0))
         elif page == "wi" and role == "owner":
             await self.work_items.projects(update)
+        elif page == "services" and role == "owner":
+            await self.services_panel(update)
         elif page == "mcp" and role == "owner":
             await self.mcp_panel(update)
         elif page == "status" and (role in {"owner", "legacy"} or group and group.can_status):
@@ -596,6 +674,26 @@ class TelegramDispatcher:
         try:
             if isinstance(callback, dict):
                 return await self.callback(update)
+            if command == "/services":
+                if role != "owner":
+                    return "ignored"
+                await self.services_panel(update)
+                return "handled"
+            _, _, chat, user, _, _ = identities(update)
+            if role == "owner" and (chat, user) in self._service_inputs:
+                import time
+
+                from toolbox_backend.adapters.service_runtime import validate_tunnel_target
+
+                expires = self._service_inputs.pop((chat, user))
+                if expires < time.monotonic() or command.startswith("/"):
+                    return "ignored"
+                target = validate_tunnel_target(update["message"].get("text", ""), True)
+                button = await self.button(
+                    update, "确认公开到公网", "svc_create", {"target_url": target}
+                )
+                await self.panel(update, "该地址将可被公网任何人访问，隧道本身无认证", [[button]])
+                return "handled"
             if command in {"/run", "/rollback", "/stop"}:
                 if command == "/rollback":
                     await self.tasks(update, rollback=True)

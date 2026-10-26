@@ -106,6 +106,10 @@ from toolbox_backend.api.mcp_schemas import (  # noqa: E402
     McpStatusEvent,
     McpSubscribedEvent,
 )
+from toolbox_backend.api.services_schemas import (  # noqa: E402
+    ServicesStatusEvent,
+    ServicesSubscribedEvent,
+)
 
 Event = Annotated[
     SystemHelloEvent
@@ -121,6 +125,8 @@ Event = Annotated[
     | AISubscribedEvent
     | McpStatusEvent
     | McpJobEvent
-    | McpSubscribedEvent,
+    | McpSubscribedEvent
+    | ServicesStatusEvent
+    | ServicesSubscribedEvent,
     Field(discriminator="type"),
 ]
