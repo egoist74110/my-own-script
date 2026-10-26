@@ -17,7 +17,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单与 Lark 所有权切换未授权；新补丁未在真实 lark-mcp 上运行 | [progress/S6.md](archive/progress/S6.md) |
-| S7 服务管理 | 合同草案待确认（[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)，12 项待决；未派工） | 真实验收清单与服务所有权切换未授权 | — |
+| S7 服务管理 | 合同已确认（12 项待决按推荐，「S7 已决」）；S7-0 已完成；待用户确认“外部 dsh 不复用”后派 S7-A（[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)） | 真实验收清单与服务所有权切换未授权 | — |
 | S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S6 集成验收，`6a00fc2` + 验收修复）：后端 **1242 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1141 passed / 81 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed。
@@ -76,3 +76,10 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 状态：合同草案，**待用户确认「S7 待决」**；确认前不派工，不授权 S7-0 本机核对、真实验收与服务所有权切换。
 - not_run：未重跑任何测试（只写文档）；dsh 围栏/`--trusted-host` 行为、真实 quick tunnel 日志格式、`cfargotunnel.com` 可访问性均未实测。
 - cleanup：无临时进程；草稿在会话 scratchpad，未留仓库。
+
+### S7 已决与 S7-0（2026-10-26）
+
+- 用户确认待决 1–12 全部按推荐（提交 `25faed1`）。S7-0 由主控本机执行（待决1授权）：临时 `DSH_HOME` + 随机端口 39517 仅回环起 `dsh web 0.2.0-rc.2` 两次，curl/socket 探测；结束后进程停止、端口与进程零残留、临时目录与含 token 的日志已删；未读 `~/.dsh`/真实配置、未联网登录、未网络监控。
+- 关键发现：**dsh 0.2.0 已有自带 token 认证**（启动打印 `?token=`，每次启动随机、不落盘；cookie `dsh-auth-*` 绑定 Host authority，30 天，SameSite=Strict），旧网关“dsh 无登录”前提与旧 API 路径 `host.describe` 均已失效（该路径现为 404）；`--trusted-host` 可用；围栏规则与 401 指纹见合同「S7-0 结论」。**WS 路径/认证方式未能确认**（探测空应答），留给 S7-B 与真实验收。
+- 合同修订：网关改为“用户认证 + 代持 dsh cookie”；外部已运行 dsh **不再复用**（拿不到其 token），改为 `external` 只读 + 409，待用户确认；Host 改写方案保留为默认。
+- not_run：未跑任何自动化测试；真实 WS、命名隧道、quick tunnel、`cfargotunnel.com` 均未测。

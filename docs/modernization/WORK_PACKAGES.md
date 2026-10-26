@@ -77,9 +77,28 @@
 - **code-server**：`--auth [password|none]`、`--bind-addr`、`--config`、`--user-data-dir`；**密码只能经 `$PASSWORD`/`$HASHED_PASSWORD` 或配置文件**（本就不在 argv）。新端因此无需读取、也不返回密码（待决4）。
 - **dsh `0.2.0-rc.2`**：`dsh web --help` 打印 `dsh --profile web`，选项 `--host --port --no-open --trusted-host <authority...>`（“/api browser-trust 围栏额外接受的 authority”，可重复）。→ **可能不再需要网关改写 `Host`/剥 `Origin`**（改为 `--trusted-host <隧道域名>` / LAN IP）；需 S7-0 联网外的本地实测核对（见下）。另：启动时会因 profile 插件版本不兼容在 stderr 打印大量跳过提示（日志需限量/脱敏，不影响启动）。
 
-### S7-0 待做（授权后，待决1）
+### S7-0 待做（已于 2026-10-26 完成，结论见下节「S7-0 结论」；以下为原计划）
 
 在 scratchpad 临时 `DSH_HOME` 与随机端口**本机**起 `dsh web`（不联网、不登录任何账号）核对：`--trusted-host` 能否让带隧道 Host/Origin 的请求通过围栏、WS 升级是否同理；围栏对 `Sec-Fetch-Site`/`Origin` 的精确规则；指纹 `__DSH_BOOT__` 是否仍在；`dsh web` 与 `dsh --profile web` 是否等价；`DSH_HOME` 隔离是否生效。结论写回本节；若 `--trusted-host` 可用，则网关**不再改写 Host/剥 Origin**（缩小特权面），否则按旧做法并强制 WS Origin 同主机校验。**联网部分**（真实 quick tunnel 日志格式、命名隧道 token 载荷、`cfargotunnel.com` 解析）不属于本切片开发前提，列入真实验收。
+
+### S7-0 结论（主控，2026-10-26；本节优先于上文 S7 各节与旧代码注释）
+
+方法：用户待决1授权。在会话 scratchpad 的临时 `DSH_HOME` + 空工作目录 + 随机端口 39517（仅回环）本机起 `dsh web 0.2.0-rc.2` 两次（第二次带 `--trusted-host dsh.example.com`），用 curl/socket 探测，结束后停进程、删临时目录、确认端口与进程零残留。未登录任何账号、未读 `~/.dsh`、未起 cloudflared/code-server；**未做网络监控**（仅观察到启动与探测无需任何登录/配置）。
+
+1. **dsh 0.2.0-rc.2 已有自带 token 认证——旧网关“dsh 无登录”的前提不再成立**：启动后 stdout 打印 `dsh web: http://127.0.0.1:<port>/?token=<T>`；无认证访问 `/` 回 **401 `text/plain`：`dsh web authentication required; reopen the URL printed by dsh web.`**，`/api/*` 回 401 `unauthorized`。`GET /?token=<T>` 回 303 并下发 `dsh-auth-<id>=v1.<base64 载荷>.<签名>`（`Max-Age` 30 天，`HttpOnly; SameSite=Strict`）；载荷为 `{version, authority, issuedAt, expiresAt}`，**cookie 绑定请求的 Host 权限（authority）**。**token 每次进程启动重新随机**，不落在 `DSH_HOME` 文件里（临时 home 下 grep 不到）。
+2. **围栏规则（可观察）**：`Host` 非回环且不在 `--trusted-host` 内 → 403；带 `Origin` 时其 host 须等于请求 `Host`（实测 `Origin: https://dsh.example.com` 对 `Host: dsh.example.com` 通过，scheme 不比较）；`Sec-Fetch-Site: cross-site` → 403；`same-origin` 通过。围栏通过后再看认证/路由（认证缺失 401，未知路径 404）。
+3. **`--trusted-host` 可用**：带 `--trusted-host dsh.example.com` 时，`Host: dsh.example.com` + token 登录成功，cookie 的 authority 变为 `dsh.example.com`；该 cookie 对回环 Host 无效（401）。
+4. **旧 API 路径已变**：`POST /api/host.describe` 在围栏与认证都通过时回 404（旧网关文档与验收口径里的 `host.describe`/`workspace.list` 不能再作判据）。真实 API/WS 路径本次**未能确认**：带有效 cookie 的 WS 升级探测（`/api/events.mux`、`/api/events.host`，连同不存在的 `/api/nope`）都是“空应答即断开”，无法区分；**WS 是否仍走 cookie、路径是什么，留给 S7-B 实现时用真实浏览器/客户端核对并写入测试，真实验收第 3 项必须覆盖**。
+5. **指纹变化**：`__DSH_BOOT__` 只出现在**已认证**的 `GET /` 页面里；未认证探测改用 **401 + 上述固定正文**作指纹（`GET /`，超时 2.5 秒，只读前 4 KiB）。`dsh web` 与 `dsh --profile web` 等价（help 同一 Usage）。`DSH_HOME` 隔离生效（临时 home 下生成 profiles/storages/credentials）。
+
+#### 结论带来的合同修订（覆盖上文冲突之处；除“外部 dsh 不复用”外均为主控实施细节裁决）
+
+- **网关改为“用户认证 + 代持 dsh 凭据”**：网关面向用户仍用 `dsh_gateway_key`（Basic + 网关自己的 cookie），通过后在**每个转发请求**里替换为 dsh 自己的 `Cookie: dsh-auth-…`；浏览器**永远拿不到** dsh token/cookie；入站 `Authorization`/`Cookie` 一律剥离。
+- **dsh token 的获取与传递**：后端读 dsh 子进程 stdout，按 `\?token=([A-Za-z0-9_-]{20,})` 取 token，**先注册进脱敏器、整行不写日志**，经启动 JSON（stdin）交给网关；网关启动时对上游做一次 `GET /?token=…`（Host=上游回环 `127.0.0.1:<port>`）换取 dsh cookie 并在内存持有；dsh 重启 → token 变 → 网关随之重启（编排已是“dsh→网关→隧道”顺序，换 dsh 必重启下游）；30 天过期不会在进程寿命内触发，401 时网关重取一次、仍失败回 502。token 不落盘、不进 argv、不进配置。
+- **Host/Origin 处理定稿**：默认沿用“改写 Host 为上游回环 + 经网关自己的 Origin 同主机校验后剥 Origin”（cookie 因此只需绑回环 authority，一份即可）；`--trusted-host` 透传方案（每个对外 Host 各一份 cookie、隧道域名需预知）**不作为 S7 默认**，仅记为后续收紧特权面的可选项。副作用沿用：持网关 key 者等同拿到 dsh 的“回环已认证”权限（settings/credentials 类方法），页面风险说明里如实写明。
+- **外部 dsh 不复用（主控裁决，待用户一句话确认，见报告）**：我们**无法获得外部已运行 dsh 的 token**（每次启动随机、不落盘、只打印在它自己的终端），因此网关无法代持认证。合同中“探活复用已在跑的 dsh、`external` 状态可挂网关/隧道”**改为**：配置端口（及 3080）上探测到 dsh 指纹或其他监听者 → 状态 `external`，**只读展示 + 409 `service_port_in_use`，不启动、不挂网关/隧道、不杀**，提示“请先停掉它，或把 dsh 端口改到别处”。旧端“复用”要保住的是**会话/模型/知识共享**——这由新起 dsh 使用同一 `DSH_HOME` 与 `project_dir`（待决10 必填）实现，不依赖复用进程。若用户宁可保留复用：备选是允许用户在页面“写入”外部 dsh 的登录 URL token（write-only 凭据 `dsh_web_token`，不持久到 Keychain、仅内存、过期即需重填），推迟到真实需要时再做。
+- **未认证探测不得带 token**；探测到的 401 正文用于判定“是 dsh”，不转发给任何调用方。
+- 因此同步修订：S7-B 自动验收中“dsh 复用（指纹命中=`external`，停止只断开网关/隧道）”改为“指纹命中/其他监听者=`external`，启动 409、不挂网关/隧道、替身毫发无损”；“dsh 新起”用例增加“token 行不进日志/事件/WS/argv，网关拿到 token 后换 cookie 成功，dsh 重启后网关随之重启并更换 cookie”，替身 dsh 须按 0.2.0 行为实现（stdout 打印 token URL、无认证 401 固定正文、cookie 绑定 authority、围栏三条）；真实验收第 3 项改为“新起的 dsh（同 `DSH_HOME`/`project_dir`，会话/模型在）+ 手机经 LAN/命名隧道：网关登录→页面可用→**真实 WS 通**（核对真实 WS 路径与认证方式）”；迁移清单“复用已在跑实例”移到“有意放弃（待确认）”；安全核对表第 4 条“外部实例只断开”改为“外部实例只读展示、不挂接”。
 
 ## S7 数据模型与访问边界（主控技术裁决；涉及取舍的见「S7 待决」，下文“推荐”按待决推荐写，确认后以「S7 已决」为准）
 
@@ -148,7 +167,7 @@ services:
 ### dsh 网关（新实现 `toolbox_backend/services/dsh_gateway.py`；独立进程，纯 asyncio）
 
 - 协议面（行为对齐旧网关已踩过的坑，**不照搬实现**）：HTTP/1.1 keep-alive 逐请求循环（Cloudflare 复用 origin 连接池，一个请求处理完不得卡住连接）；有 `Content-Length` 时按长度转发并留在连接上，无长度（SSE/chunked 响应）泵到 EOF；WS 升级双向管道；认证 = Basic（常量时间）+ `dsh_auth` cookie（`HMAC(进程随机 secret)`，`HttpOnly; SameSite=Lax`，经 HTTPS 隧道到达时加 `Secure`——依据 `X-Forwarded-Proto`/`CF-Visitor`；secret 随进程轮换）；WS 只认 cookie。
-- **与旧网关的加固差异**：① 请求解析用 `h11`（经 httpx 已在依赖，施工时显式声明）或同等严格解析：拒绝 `Transfer-Encoding` 与 `Content-Length` 同时出现/重复/非法值、请求体 chunked 要么正确解码要么 411/400、头 ≤64 KiB、体 ≤8 MiB（超限回 413 而不是继续转发）、空闲超时、最大并发连接数 64；② **认证失败限速**：每来源 IP 5 次/分钟后 429 并指数退避（全局另设总速率），不泄露“用户名/密钥哪个错”；③ **WS 握手校验 `Origin` 与 `Host` 同主机**（拒绝跨站页面借 cookie 开 WS）；④ `Host`/`Origin` 处理按 S7-0 结论：`--trusted-host` 可用则**透传**，否则改写 Host 并仅在上述 Origin 校验通过后剥 Origin；⑤ 转发时去掉入站 `Authorization`/`Cookie: dsh_auth` 后再交给上游（上游不需要也不应看到）；⑥ 不记录请求头/体，只记 方法+路径（脱敏 query）+状态码；⑦ 上游连接失败回 502 且不重试风暴；⑧ stdout 就绪行 `[dsh-gateway] listening <host>:<port>`，其余输出受限量。
+- **与旧网关的加固差异**：① 请求解析用 `h11`（经 httpx 已在依赖，施工时显式声明）或同等严格解析：拒绝 `Transfer-Encoding` 与 `Content-Length` 同时出现/重复/非法值、请求体 chunked 要么正确解码要么 411/400、头 ≤64 KiB、体 ≤8 MiB（超限回 413 而不是继续转发）、空闲超时、最大并发连接数 64；② **认证失败限速**：每来源 IP 5 次/分钟后 429 并指数退避（全局另设总速率），不泄露“用户名/密钥哪个错”；③ **WS 握手校验 `Origin` 与 `Host` 同主机**（拒绝跨站页面借 cookie 开 WS）；④ `Host`/`Origin` 处理按 S7-0 结论：改写 Host 为上游回环，仅在上述 Origin 校验通过后剥 Origin（`--trusted-host` 透传不作默认）；并**代持 dsh 自己的 token cookie**（浏览器不可见）；⑤ 转发时去掉入站 `Authorization`/`Cookie: dsh_auth` 后再交给上游（上游不需要也不应看到）；⑥ 不记录请求头/体，只记 方法+路径（脱敏 query）+状态码；⑦ 上游连接失败回 502 且不重试风暴；⑧ stdout 就绪行 `[dsh-gateway] listening <host>:<port>`，其余输出受限量。
 - 与后端的关系：网关进程不含后端代码路径中的凭据读取能力——只拿到自己的密钥；崩溃只影响 dsh 远程访问，后端据 `exited` 置 `failed`（不自动重启）。
 
 ### 安全核对表（施工与验收都按此）
