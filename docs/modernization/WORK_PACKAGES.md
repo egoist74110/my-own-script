@@ -25,6 +25,15 @@
 依据：ARCHITECTURE §2/§4/§5（进程所有权、单例资源切换）、MIGRATION_PLAN S7 行（D03：凭据不进 argv）、README D03、旧 `docs/capabilities/services.md`、S4 已决 1（主 Bot 切换等 S6–S8 菜单迁完）、S5 `adapters/proc_supervisor.py`、S6 McpService 的运行组件/端口预检/状态机/健康/日志脱敏做法。
 本合同覆盖：code-server 启停与只读状态、cloudflared 隧道（全局 quick tunnel、自定义 quick tunnel、dsh 命名隧道）、dsh web 启停/复用、dsh Basic Auth 网关（新实现）、网络地址展示（VPN IP 只读、局域网 IP）、桌面「服务」页、TG 主 Bot 的服务菜单、`services` 配置段与两条凭据。**不含**：VPN 连接/自愈/登录（S8；本切片只显示 VPN IP，TG 菜单里的 VPN 项先指向 S8）、主 Bot 所有权切换（S7/S8 验收后另议）、Windows、launchd 常驻、dsh 版本更新按钮（待决8）。
 
+## S7 范围调整（用户 2026-10-26：“dsh 暂时可以砍掉了，现在用不上”；本节优先于下文所有 S7 各节）
+
+- **推迟出 S7**：dsh 本体托管、dsh Basic Auth 网关、dsh 命名隧道（token 仅为 dsh 所用）、`dsh_gateway_key`/`dsh_tunnel_token` 两条凭据与导入、`key/generate|reveal`、`dsh/*` 与 `dsh/tunnel/*` 接口、`config.services.dsh` 与 `binaries.dsh`、dsh 相关 TG 菜单/页面卡片/错误码（`dsh_project_dir_unset`、`dsh_key_missing`、`tunnel_token_missing` 等）、待决3/5/6（dsh 部分）/7/8/10/11 与“外部 dsh 不复用”的确认（不再需要）。下文这些内容**保留作为将来恢复 dsh 时的设计依据**，S7 不施工、不验收、不测试。**S7-0 的 dsh 结论（自带 token 认证、`--trusted-host`、围栏规则、旧 API 路径失效、WS 未确认）同样保留备查。**
+- **S7 保留范围**：code-server 启停与只读状态（`auth`/`bind-addr` 只读解析、`auth:none`+非回环拒绝启动、端口占用=`external` 只读不杀）；cloudflared 全局 quick tunnel（固定指向 code-server 端口）与自定义 quick tunnel（目标仅回环、≤`max_tunnels`、`ack_public`）、协议偏好 http2|quic；网络信息（VPN IP 只读、局域网 IP）；`services` 配置段（v5，仅 `binaries.{code_server,cloudflared}`、`code_server`、`cloudflared`）；服务页（code-server 卡、cloudflared 卡、网络信息条）；TG 主 Bot 服务菜单（code-server、全局隧道、自定义隧道；VPN 项指向 S8）；`services` WS 主题。凭据：本范围**无新增 Keychain 凭据**（quick tunnel 不需要 token；code-server 密码仍不读取），因此无凭据 PUT/DELETE/import 接口，`import-legacy` 只剩“读取旧 `cloudflared_pref.json` 的协议偏好”。
+- 其余已决（2 生命周期随后端回收、4 不读 code-server 密码、9 TG 菜单不含密码、12 切换另行授权）照常适用；待决6 只剩“隧道不自动暴露”的含义：全局/自定义 quick tunnel 都是显式点击才起。
+- **分包合并**：原 S7-A + S7-B 的保留部分合并为单个后端包 **S7-A**（含 TG 菜单与关闭预算），不再有 S7-B；**S7-C 前端**保留（只做保留范围的页面）。派工顺序：S7-A（codex `gpt-6.1-sol` / medium 或 Gemini 4 `gemini-4-argon`）→ S7-C 在 S7-A 契约冻结后启动（agy `gemini-3.8-flash-high`）→ 集成验收。S7-0 已完成，无需再做。
+- 修订后的真实验收清单：仅保留原第 1、2、5 项（code-server 启停/`external`、真实 quick tunnel 与自定义隧道、TG 服务菜单与回收）；所有权切换步骤中去掉 dsh/3080/3081，仅保留 code-server（8080）与 cloudflared。
+- 对旧应用的影响：旧端 dsh 相关代码与服务照常留在旧应用里，新端不管。dsh 恢复时另起切片并重做 S7-0 之后的设计（须按 dsh 当时版本重新核对认证与 WS）。
+
 ## S7 旧应用事实核实（主控亲自只读核对）
 
 以下位置相对旧目录 `/Users/wesker/my-own-script`；是静态代码事实，不代表真实服务已验证。
@@ -199,7 +208,7 @@ services:
 - 结果：v4→v5 迁移；凭据两 kind 与旧 Keychain/`cloudflared_pref` 导入；`adapters/net_info.py`；`services/services.py`（状态机、单飞、`ServiceLifecycle`、读任务脱敏日志、健康、外部实例探测）；code-server 启停（config.yaml 只读解析、`service_unsafe_config`、端口 `external`）；cloudflared 全局/自定义隧道（目标校验、数量上限、域名提取、协议）；`GET /api/services`、settings/credentials/logs/start/stop/tunnels 路由；`services` WS 主题；契约重新生成；lifespan 接入与关闭预算。
 - 自动验收：后端 pytest/ruff/contracts exit 0，覆盖：迁移幂等与快照；端口被无关替身占用 → `external` 且停止不杀；`auth:none`+非回环拒绝；启动超时/提前退出/忽略 TERM/孙进程全部零残留；域名提取（有/无/多次/伪造行）；自定义隧道目标校验（非回环、userinfo、`localhost.evil.com`、IPv6、超限、无 ack）；后端 SIGKILL 后全部替身退出；状态查询在启动进行中立即返回且不起子进程；日志脱敏与 argv/env 无假密钥；网络信息解析（有/无 VPN、多网卡、不回退默认路由）；shutdown 预算 ≤5 秒（与 MCP、AI 会话并存）。
 
-## S7-B：后端——dsh、网关、命名隧道、密钥、TG
+## S7-B：后端——dsh、网关、命名隧道、密钥、TG（**dsh 部分已推迟，见「S7 范围调整」；TG 菜单并入 S7-A，本包不派工**）
 
 - 依赖：S7-A 集成、S7-0 结论。write_scope 同上；测试员仅 `tests/independent/s7b/`。
 - 结果：dsh 启动/复用探活/`project_dir`/`DSH_HOME`/PATH；新网关进程（见加固清单）；命名隧道（`TUNNEL_TOKEN`）；`dsh/start|stop|tunnel`、`key/generate|reveal`；编排与回滚；TG 服务菜单（见下）；`services` 页所需的 DTO 补全。
@@ -267,3 +276,4 @@ services:
 - 本确认解除派工门禁；**不**授权真实 code-server/cloudflared/dsh 启动（S7-0 的本机替身/临时目录核对除外）、联网、读取真实配置/凭据（`~/.config/*`、`~/.dsh`、Keychain）、服务所有权切换、修改旧应用，也不授权真实验收清单（均另行授权）。合同中“按待决N”均由以上已决收敛，施工者不得选择备选路径。
 - 派工顺序：S7-0（主控）→ S7-A（codex `gpt-6.1-sol` / medium，或 Gemini 4 `gemini-4-argon`，额度不足换下一候选）→ S7-B（同会话续接）；S7-C（agy `gemini-3.8-flash-high`，`--sandbox`）在 S7-A 契约冻结后可与 S7-B 并行；最后 S7 集成验收。
 - lead 模型（用户偏好）：S7-0 与集成验收的安全核对用 Opus；S7-A/B/C 派工、集成与常规验收可由 Sonnet 担任 lead。
+- **范围调整（用户 2026-10-26）**：“dsh 暂时可以砍掉了，现在用不上”。dsh、网关、命名隧道及相关凭据/待决推迟出 S7，S7-A/B 合并为单个后端包，见「S7 范围调整」；12 项待决的其余决定不变。
