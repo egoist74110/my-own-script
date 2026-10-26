@@ -17,7 +17,8 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单与 Lark 所有权切换未授权；新补丁未在真实 lark-mcp 上运行 | [progress/S6.md](archive/progress/S6.md) |
-| S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
+| S7 服务管理 | 合同草案待确认（[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)，12 项待决；未派工） | 真实验收清单与服务所有权切换未授权 | — |
+| S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S6 集成验收，`6a00fc2` + 验收修复）：后端 **1242 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1141 passed / 81 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed。
 
@@ -56,3 +57,22 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 本次只核对代码与既有测试，未重跑测试。
 
 资源：施工 worktree 仅剩 `.local/worktrees/s5e`（删除前问用户）；`s6a/s6b/s6c` 经用户 2026-10-26 同意已删除（删除前核对：未提交内容均已在 `8b6e446`/`9ffedba`/`6a00fc2` 中，唯一差异是集成时去掉的文件尾空行）；`.local/cargo-target` 约 4 GB 等 git 忽略目录保留。
+
+## S7 合同草案（2026-10-26）
+
+- 角色：主控（lead）；requested_model：Sonnet 5.5（用户 2026-10-26 偏好：lead 用 Sonnet），actual_model：Sonnet 5.5（会话系统提示自述，无提供方回执，按 AGENT_WORKFLOW §6 记 unknown 级证据）；runtime_identity：Claude Code 子会话（由 `local_a90c239b-00bd-44ea-9321-f65d58b591a4` 的上级会话派出）。
+- 输入：新版 `rewrite/next @ 7dd246b`；旧版 `main @ 885d186`；AGENTS/AGENT_WORKFLOW/PROGRESS/MIGRATION_PLAN/ARCHITECTURE、旧 `docs/capabilities/services.md`、归档 S4 已决 1、S6 合同（结构样板与 McpService 做法）。
+- 只读核对范围：旧 `app_ado/services_panel.py`、`dsh_gateway.py`、`ui/services_tab.py`、`vpn_ip.py`、`tg_control.py`（svc 回调）、`tg_help_inline.py`（服务菜单）、`secrets.py`（dsh 条目）；新端 `adapters/proc_supervisor.py`、`services/mcp.py`/`telegram_commands.py` 结构、`domain/settings.py` 版本、`pyproject.toml` 依赖。确认上述旧文件在 `git status` 中无未提交改动。**未**读真实配置/凭据（`~/.config/*`、`~/.dsh`、Keychain）、未启动任何服务、未联网、未改旧应用。对本机已装 `cloudflared tunnel run --help`、`code-server --help`、`dsh web --help` 各跑一次（仅打印帮助；dsh 的 help 会加载 profile 并在 stderr 打印插件不兼容提示，未起服务）。
+- 关键新发现（详见合同「S7 旧应用事实核实」）：
+  1. 旧端服务全部 detached 常驻、靠 pid+端口/正则签名找回——与新架构“退出即回收”相反，是 S7 最大的取舍（待决2）。
+  2. `codeserver_stop` 会杀监听该端口的任意进程；cloudflared 按未转义 `pgrep -f` 前缀匹配，`:5173` 会命中 `:51730`；`_kill_pid` KILL 后不等待也不核对身份。
+  3. 密钥/密码外泄面：code-server 明文密码与 dsh 网关密钥进入 UI/TG 状态文本，`dsh_start` 结果经 TG 发送密钥。
+  4. D03 具体点：网关 `--key`、命名隧道 `--token` 进 argv，启动还经 `sh -c` 命令串。**本机 `--help` 确认 cloudflared 支持 `TUNNEL_TOKEN`/`TUNNEL_TOKEN_FILE`**，可去掉 argv 凭据。
+  5. 网关 `0.0.0.0`、无失败限速、手写 HTTP 解析（不处理请求体 chunked）、Host 改写 + Origin 剥离且无 WS Origin 校验、cookie 无 `Secure`；旧 `services.md` “放行 WS”的描述与代码（WS 只认 cookie）不符。
+  6. **dsh `0.2.0-rc.2` 提供 `--trusted-host`**，可能取代网关的 Host/Origin 改写、缩小特权面（待 S7-0 本机实测，待决1）。
+  7. 自定义隧道目标不限回环、无数量上限/确认；命名隧道“域名”实为 `<id>.cfargotunnel.com`（路由 CNAME 目标），疑似并非可访问地址（待真实验收，待决11）；网关端口漂移会使隧道路由 502；`npx -y`/`npm install -g` 运行时联网。
+  8. 新端无任何 S7 代码；config 当前 v4，S7 将升 v5；S4 已决 1 要求 S7/S8 菜单迁完才切主 Bot，故 TG 服务菜单（待决9）不能砍。
+- 产物：[WORK_PACKAGES.md「S7」](WORK_PACKAGES.md)（事实核实、架构五问、config v5、凭据、托管、网关、HTTP/WS、安全核对表、S7-0/A/B/C 分包与模型分工、集成验收、真实验收清单、所有权切换步骤、12 项待决）。
+- 状态：合同草案，**待用户确认「S7 待决」**；确认前不派工，不授权 S7-0 本机核对、真实验收与服务所有权切换。
+- not_run：未重跑任何测试（只写文档）；dsh 围栏/`--trusted-host` 行为、真实 quick tunnel 日志格式、`cfargotunnel.com` 可访问性均未实测。
+- cleanup：无临时进程；草稿在会话 scratchpad，未留仓库。
