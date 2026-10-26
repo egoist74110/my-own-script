@@ -10,8 +10,8 @@
 | [迁移计划](../modernization/MIGRATION_PLAN.md) | 两个文件夹、切片 S0..S9、搬完标准、旧阶段 1 风险处置 |
 | `next/` | 新产品代码根目录（`rewrite/next` 分支） |
 | [协作规范](../modernization/AGENT_WORKFLOW.md) | 模型/档位、权限、署名、委派、非阻塞交叉审计 |
-| [工作包](../modernization/WORK_PACKAGES.md) | 阶段 0/1 范围、依赖、验收和回退 |
-| [进度账本](../modernization/PROGRESS.md) | 实际状态、署名、验证、未测和审计发现 |
+| [工作包](../modernization/WORK_PACKAGES.md) | 当前切片合同；已完成切片与阶段 0/1 在 [archive](../modernization/archive/README.md) |
+| [进度账本](../modernization/PROGRESS.md) | 切片状态总表、跨切片待办、当前切片记录；逐轮历史在 archive |
 | `scripts/modernization_baseline.py` | 标准库只读采集；默认 JSON 到 stdout，可选受限 import probe |
 | `tests/test_modernization_characterization.py` | 五个已知缺陷的离线 current_behavior 证据；不表示安全通过 |
 

@@ -1,6 +1,6 @@
 # TOOLBOX 桌面壳（Tauri 2）
 
-Rust 薄壳：窗口、菜单栏托盘、关窗常驻、单实例，并拉起 / 监督 / 回收 Python 后端。不含业务逻辑。接口以 `docs/modernization/WORK_PACKAGES.md`「S0 已定接口」为准。
+Rust 薄壳：窗口、菜单栏托盘、关窗常驻、单实例，并拉起 / 监督 / 回收 Python 后端。不含业务逻辑。接口以 `docs/modernization/archive/work-packages/S0.md`「S0 已定接口」为准。
 
 ## 结构
 

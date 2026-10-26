@@ -108,4 +108,4 @@ next/desktop/src/
 - 字体：系统字体（-apple-system / SF Pro + PingFang SC），编号用 SF Mono；正文 13px、详情正文 14px、详情标题 22px。不再使用 Oxanium、切角、斜切、印章、能量条。
 - 色彩：浅色以白/系统灰为底，唯一强调色系统蓝 #0A63D6；深色参照 C（#0E0F11 底，#17181B 面板）。
 - 空、读取中、出错状态必须有设计，换皮验收在 1440×900 下截图与画布对照。
-- 设计源码快照：`design/b-native/`（含任务、设置、AI 会话与组件清单）；施工合同：WORK_PACKAGES R1。
+- 设计源码快照：`design/b-native/`（含任务、设置、AI 会话与组件清单）；施工合同：[archive/work-packages/R1.md](archive/work-packages/R1.md)。

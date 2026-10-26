@@ -25,7 +25,9 @@
 - 施工者可以自主决定范围内的局部实现，不改变已接受的需求、架构或接口。
 - 遇到旧代码与事实不符，先提供证据；可以由主控修正包内实施细节，不把每次调整都转给用户。
 - 共享模型、配置迁移和公共接口的更改由主控排序，调用方随同切换；不长期保留两套执行路径。
-- 阶段 0/1 包见 [WORK_PACKAGES.md](WORK_PACKAGES.md)，当前状态只认 [PROGRESS.md](PROGRESS.md)。
+- 当前切片合同见 [WORK_PACKAGES.md](WORK_PACKAGES.md)，当前状态只认 [PROGRESS.md](PROGRESS.md)；已完成切片在 [archive/](archive/README.md)。
+- **按需读取（省上下文）**：接手时只读 PROGRESS 全文（状态总表 + 跨切片待办 + 当前切片）与 WORK_PACKAGES 中当前切片相关的小节（先 `grep -n '^#\+ '` 列标题，再按行号读）。归档文件只在需要引用某个已决小节时打开对应的一个文件、读那一节，不整份通读。
+- **切片收尾归档**：切片集成验收结论写定后，主控把该切片的合同与账本记录原样移入 `archive/work-packages/<切片>.md`、`archive/progress/<切片>.md`（相对链接改为 `../../`），更新 archive/README 索引，在 PROGRESS 状态总表留一行、把未关闭项并入「跨切片待办」。
 
 ## 3. 委派与并行
 

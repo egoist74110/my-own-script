@@ -1,7 +1,7 @@
 # toolbox-backend (S0 / S1 / S2 / S3 / S4-A)
 
 TOOLBOX next 的本地后端进程：FastAPI + uvicorn，Python >= 3.14，uv 管理依赖（`uv.lock` 入库）。
-接口合同见仓库 `docs/modernization/WORK_PACKAGES.md` 的 S0、S1、S2 及「S1-A 主控裁决」。
+接口合同见仓库 `docs/modernization/archive/work-packages/` 下 S0–S5 各文件（含 S1.md「S1-A 主控裁决」）；当前切片在 `docs/modernization/WORK_PACKAGES.md`。
 
 ## 分层
 
