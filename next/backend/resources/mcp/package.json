@@ -1,0 +1,12 @@
+{
+  "name": "toolbox-mcp-runtime",
+  "private": true,
+  "description": "Pinned npm packages for TOOLBOX next MCP management (S6). Installed by the explicit runtime install job with npm ci; never resolved at run time.",
+  "engines": {
+    "node": ">=20.20.0"
+  },
+  "dependencies": {
+    "@larksuiteoapi/lark-mcp": "0.5.1",
+    "figma-developer-mcp": "0.13.2"
+  }
+}

@@ -16,7 +16,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S3 任务执行 + R1 换皮 | integrated | 真实验收清单未授权 | [progress/S3.md](archive/progress/S3.md) |
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
-| S6 MCP 管理 | 合同已确认（11 项按推荐）；S6-0 进行中 | Lark 切换未授权 | 本文件下方 |
+| S6 MCP 管理 | 合同已确认；**S6-0 done**；S6-A 待派 | Lark 切换未授权 | 本文件下方 |
 | S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S5-E 集成，`1391e32`）：后端 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed（S5 集成验收时）。
@@ -63,3 +63,19 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 ### S6 合同确认（2026-10-26）
 
 - 用户原答复“S6 待决 1–11 全部按推荐，写入 S6 已决并提交，然后做 S6-0。”；WORK_PACKAGES「S6 已决」已写入（revision 11）。主控 Claude Opus 5.5 会话（actual effort unknown）。
+
+### S6-0 协议与版本核对（2026-10-26，主控）
+
+- 主控 Claude Opus 5.5 会话（actual effort unknown），无子 agent。输入 `rewrite/next @ c8f0668`。授权依据：S6 已决 1。
+- 做了什么：会话 scratchpad 临时前缀 `npm install --ignore-scripts`（仅 npm registry）两包最新版；`lark-mcp --help`/`mcp|login|logout --help`、`figma-developer-mcp --help`；读 lark-mcp 源码；离线运行：旧 Lark 补丁加载探针、`lark-mcp mcp -m streamable --oauth`（假 app id/secret，随机端口）健康探针与 SIGTERM、figma `--stdio` 握手 + `tools/list`（假 key、遥测关）。全部以临时 HOME 运行，`keytar` 用假模块拦截，未访问真实 Keychain、未登录、未调 Lark/Figma API；真实 `~/Library/Logs/lark-mcp-nodejs` 无今日新文件。
+- 结论写入 WORK_PACKAGES「S6-0 结论」13 条；锁文件 `next/backend/resources/mcp/{package.json,package-lock.json}`（lark-mcp 0.5.1、figma-developer-mcp 0.13.2，238 包）。
+- 对合同的影响（已写入结论，优先于上文）：login 用 `APP_SECRET` 环境变量即可；子进程 cwd 改为专用空目录（防 `.env` 注入）；保留 `--debug` 并脱敏 authorization code；`refresh_failing` 不依赖 20038；Node 下限 20.20.0、托管固定 v24.13.0；keytar 需 `npm rebuild keytar`（GitHub Releases 预编译，registry 之外唯一联网点）且存储不可用要标 degraded；登录窗口实为 60 秒；Figma 必须关遥测并显式 `--image-dir`。
+- 新发现：
+
+| finding_id | 级别 | 问题与核实 | 处置 |
+| --- | --- | --- | --- |
+| S6-LEAD-001 | major | 旧 `app_lark/lark_mcp_singleflight.js:74–78` 以请求字符串预过滤，`require("./oidc")` 不命中，服务模式下 `verifyAccessToken` 补丁从未生效且无提示（`require.cache` 探针复现；加 `oidc` 关键字后生效） | 新端补丁按解析后路径判定 + 结果标记，S6-B 补回归；旧应用不改（已决11） |
+| S6-LEAD-002 | minor | lark-mcp 授权失败日志写出 authorization code（`auth/handler/handler.js:53`） | 新端托管读任务脱敏；lark-mcp 自己的日志文件无法控制，记风险 |
+
+- 未测：`npm rebuild keytar` 的真实下载/编译；真实 Lark 登录、刷新、20038；Figma 真实 API 与限流；新 node 路径首次访问 `lark-mcp` Keychain 条目是否弹窗。
+- cleanup：scratchpad 临时安装目录（约 224 MB，含临时 HOME 与日志）已删除；无残留进程。

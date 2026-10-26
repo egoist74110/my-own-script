@@ -178,9 +178,32 @@ ai.analysis.mcp_source: "legacy" | "toolbox"   # 默认 legacy（待决4）
 - 测试只用临时数据目录、内存凭据、**替身**：Python 写的假 stdio MCP server（正常、无响应、错响应、提前退出、大量 stderr、忽略 TERM、派生孙进程）、假 `node`/假 lark-mcp（`GET /mcp` 405、login 成功/失败/挂起、打印 argv/env、补丁标记缺失）、假 npm、假 ADO（S2 MockTransport）；**禁止调用真实 node/npx/npm/lark-mcp/figma-developer-mcp/claude/codex/agy**（PATH 只含替身目录，命中即失败）；沿用 conftest keyring/socket 守卫；端口用例用随机端口，沙箱拒绝时主控沙箱外跑。
 - 禁止：按进程名 kill、裸 git stash、删除/放宽既有测试、仓库内留报告、改旧应用、读真实配置/凭据/CLI 配置/lark-mcp 存储、联网（S6-0 与安装 job 的真实执行除外，均需授权）。
 
-## S6-0：协议与版本核对（主控；待决1 授权后，S6-B 前）
+## S6-0：协议与版本核对（主控；已完成 2026-10-26，结论见下）
 
 在 scratchpad 临时前缀 `npm install` 当前最新的 `@larksuiteoapi/lark-mcp` 与 `figma-developer-mcp`（联网仅 npm registry），不登录、不调真实 API：记录版本与 engines；`lark-mcp mcp --help`/`login --help`/`logout --help`、`figma-developer-mcp --help`；核对 `login` 是否支持 Secret 经环境变量、`--debug` 日志是否会写令牌值（读源码）、补丁目标（`ensureGetUserAccessToken`、`authStore.storeToken/removeToken`、`LarkOIDC2OAuthServerProvider.verifyAccessToken`）在该版本是否存在且签名一致、figma 是否仍用全局 fetch。结论写回本节并生成锁文件；与本合同不符时先改合同再派工。
+
+### S6-0 结论（主控，2026-10-26；本节优先于上文 S6 各节与旧代码注释）
+
+环境：scratchpad 临时前缀 `npm install --ignore-scripts`（仅 npm registry），系统 Node v24.13.0；运行 `--help` 与离线握手时 HOME 指向临时目录、`keytar` 用 `--require` 假模块拦截（不碰真实 Keychain），APP_ID/Secret/FIGMA_API_KEY 均为假值，未登录、未调真实 API。
+
+1. **版本与锁定**：`@larksuiteoapi/lark-mcp` 最新仍为 **0.5.1**（与旧补丁编写版本相同），engines `node>=20.0.0`，bin `dist/cli.js`；`figma-developer-mcp` 最新 **0.13.2**（旧端为 0.12），engines `node>=20.20.0`，bin `dist/bin.js`；均 MIT。锁文件已生成：`next/backend/resources/mcp/package.json`（两包精确版本）+ `package-lock.json`（lockfileVersion 3，238 个包，`resolved` 全部为 registry.npmjs.org 且带 integrity）。
+2. **Node**：两包要求取高者 `>=20.20.0`；旧端内置 v20.18.1 不满足 figma。检测按此下限判定；托管下载的固定版本定为 **v24.13.0**（本机已用它跑通两包）。
+3. **Secret 不进 argv**：`lark-mcp` 的 `mcp` 与 `login` 都把 `APP_ID/APP_SECRET/LARK_DOMAIN/LARK_TOOLS/LARK_TOKEN_MODE/USER_ACCESS_TOKEN` 环境变量并入选项（`utils/constants.js:23–30`、`cli.js:43,90`）→ login 与 mcp 一样只经环境变量 `APP_SECRET` 传 Secret，**不需要 `-s`**。子进程环境须显式去掉这组变量里除 `APP_SECRET` 以外的、来自父环境的值。
+4. **`.env` 注入面**：lark-mcp 启动即 `dotenv.config()`（读 cwd 的 `.env`），figma 以 `override:true` 读 cwd 的 `.env`（可覆盖 `FIGMA_API_KEY`）→ 两者子进程 **cwd 必须是新端专用空目录**（`<data-dir>/mcp/run/<lark|figma>/`，0700），不得继承 CLI 的项目目录。
+5. **`--debug` 与日志**：源码中**没有任何 `logger.debug` 调用**；`--debug` 只把级别从 WARN 降到 DEBUG，从而写出 INFO 行。INFO/DEBUG 只写 lark-mcp 自己的日志文件 `~/Library/Logs/lark-mcp-nodejs/lark-mcp-YYYY-MM-DD.log`（保留 7 天），stderr 只有 WARN/ERROR。令牌在日志中只以 `Boolean(...)` 出现；授权 URL（含 client_id/state/code_challenge）会写入；**授权失败时会写出 authorization code**（`auth/handler/handler.js:53`、`handler-local.js:55`，一次性、短时有效）。裁决：**保留 `--debug`**（刷新成功标记只在 INFO 级），托管读任务对 `code=`/`code:` 后的值与 `Bearer` 值脱敏。
+6. **令牌状态标记**（待决8）：刷新成功 = `Successfully refreshed token`（INFO，只在 lark-mcp 自己的日志文件）；失败 = `Token refresh failed:`（ERROR，同时到 stderr）。20038 只有在 HTTP 200 + 业务码时才出现在文本中（`Token parse failed: invalid response: 20038, …`）；非 2xx 时响应体被打成 `[object Object]`。裁决：任何 `Token refresh failed` 即 `refresh_failing`，不以 20038 为必要条件。
+7. **补丁目标**：`LarkMcpTool.prototype.ensureGetUserAccessToken`（`mcp-tool/mcp-tool.js:92`）、`authStore.storeToken/removeToken`（`auth/store.js:116,122`，`authStore` 为单例，原型方法）、`LarkOIDC2OAuthServerProvider.prototype.verifyAccessToken`（`auth/provider/oidc.js:158`，`async (token)`）均存在且签名与旧补丁一致。
+8. **旧补丁缺陷（新发现，S6-LEAD-001）**：旧 `lark_mcp_singleflight.js` 用**请求字符串**预过滤（含 `lark-mcp`/`mcp-tool`/`auth` 才解析），而 OIDC provider 由 `auth/provider/index.js` 以 `require("./oidc")` 加载，不命中 → **服务模式下 verifyAccessToken 补丁从未生效，且不打印 skip/failed**（主控以 `require.cache` 探针在 `mcp -m streamable --oauth` 下复现：oidc 已加载、`__sfPatched=false`；预过滤加 `oidc` 后为 true，三条补丁日志齐全）。旧端同样受影响（npx 解析到的也是 0.5.1），可能是“过期后需要重登”的原因之一。新补丁：按 `Module._resolveFilename` 后的路径判定（不按请求字符串预过滤），并输出合同要求的 `[toolbox-lark-patch] <name>=applied|skipped|failed` 标记；S6-B 回归须覆盖“以相对路径 `./oidc` 加载”的场景。旧应用不改（已决11），只记账。
+9. **keytar 原生模块**：lark-mcp 依赖 `keytar@7.9.0`（安装脚本 `prebuild-install || node-gyp rebuild`，N-API v3）。`authStore` 在 require 时即初始化存储并访问 Keychain；keytar 不可用时只打印 WARN 并**静默退回内存存储**（令牌重启即失）。裁决：安装 job 用 `npm ci --ignore-scripts` 后**单独 `npm rebuild keytar`**（预编译包从 GitHub Releases 下载，失败退回本机 node-gyp 编译；本机有 Xcode）——这是 npm registry 之外唯一的联网目标，仍只在你点“安装运行组件”时发生；`protobufjs` 的安装脚本只做版本提示，跳过。Lark 启动时 stderr 出现 `Builtin User Access Token Store will be disabled` → 状态 `running_degraded`（文案“令牌存储不可用，重启后需重登”）。未验证：`npm rebuild keytar` 实际下载与编译（超出本次 registry-only 授权，留到 S6 真实验收）。
+10. **Keychain 访问提示风险**：`lark-mcp`/`encryption-key` 条目由旧端所用的 node 二进制创建；新端换用别的 node 路径时，macOS 可能在首次访问弹出钥匙串授权。写入真实验收清单第 3 项与所有权切换步骤 4 的注意事项，不在代码里规避。
+11. **登录窗口**：`login` 内部固定等待 **60 秒**（`cli/login-handler.js` `timeout=60000`，CLI 不可配），超时 exit 1；后端 300 秒上限仅作外层兜底，桌面提示“请在 60 秒内完成浏览器授权”。登录完成判定靠轮询存储，存储不可用时登录必然失败（见 9）。
+12. **健康探针**：`mcp -m streamable --oauth` 冷启动约 1.25 秒后 `GET /mcp` 返回 **405**，`/.well-known/oauth-authorization-server` 返回 200；SIGTERM 后 1 秒内退出。合同的“任意 HTTP 响应 = 在监听”成立。
+13. **Figma 0.13.2**：
+    - 默认开启 PostHog 遥测（`us.i.posthog.com`）→ wrapper 必须传 `--no-telemetry` 并设 `FRAMELINK_TELEMETRY=off`、`DO_NOT_TRACK=1`；测试断言 argv/env 含这三项。
+    - 图片下载默认写子进程 cwd → wrapper 以 `--image-dir <CLI 启动 wrapper 时的 cwd>` 显式保持旧行为（写入项目目录），子进程 cwd 仍用第 4 条的空目录。
+    - 仍用全局 `fetch`（ESM 自由引用），旧 `figma_mcp_concurrency.js` 的 `globalThis.fetch` 包装可沿用；设置代理环境变量时它会 `setGlobalDispatcher`，不影响包装。离线握手通过：协议 `2025-06-18`，工具 `get_figma_data`、`download_figma_images`，stdin EOF 后 exit 0；限流路径未在真实 API 上验证。
+    - 凭据只读 `FIGMA_API_KEY`/`FIGMA_OAUTH_TOKEN` 环境变量或 `--figma-api-key`；新端只用环境变量。
+
 
 ## S6-A：后端——config v4、凭据、ADO MCP server、自检、接入片段、分析来源切换
 
