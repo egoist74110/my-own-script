@@ -51,6 +51,27 @@ export type CodexAnalysis = S['CodexAnalysis']
 export type CodexDefaults = S['CodexDefaults']
 export type ModelPresets = S['ModelPresets']
 
+export type MCPSnapshot = S['MCPSnapshot']
+export type AdoMcp = S['AdoMcp']
+export type FigmaMcp = S['FigmaMcp']
+export type FigmaMcpView = S['FigmaMcpView']
+export type LarkMcp = S['LarkMcp']
+export type LarkMcpView = S['LarkMcpView']
+export type LarkPatchStatus = S['LarkPatchStatus']
+export type LarkTokenStatus = S['LarkTokenStatus']
+export type LarkOwnershipRequest = S['LarkOwnershipRequest']
+export type LarkActionRequest = S['LarkActionRequest']
+export type RuntimeView = S['RuntimeView']
+export type Runtime = S['Runtime']
+export type NodeRuntime = S['NodeRuntime']
+export type McpJobView = S['McpJobView']
+export type MCPSettingsPatch = S['MCPSettingsPatch']
+export type ClientConfig = S['ClientConfig']
+export type SelfTestRequest = S['SelfTestRequest']
+export type SelfTestResult = S['SelfTestResult']
+export type CredentialPut = S['CredentialPut']
+export type CredentialImport = S['CredentialImport']
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -77,7 +98,9 @@ function toApiError(status: number, body: unknown): ApiError {
     const message =
       typeof d.message === 'string' && d.message
         ? d.message
-        : (TELEGRAM_ERROR_MESSAGES[code] ?? `请求失败（HTTP ${status}）`)
+        : (MCP_ERROR_MESSAGES[code] ??
+          TELEGRAM_ERROR_MESSAGES[code] ??
+          `请求失败（HTTP ${status}）`)
     return new ApiError(status, code, message, d)
   }
   return new ApiError(status, 'unknown', `请求失败（HTTP ${status}）`)
@@ -125,6 +148,21 @@ export const CATEGORY_TEXT: Record<ConnectionResult['category'], string> = {
   network: '网络不可达',
   bad_response: '响应格式异常',
   no_credential: '尚未保存 PAT',
+}
+
+export const MCP_ERROR_MESSAGES: Record<string, string> = {
+  mcp_busy: '操作正在进行中或服务运行中，请稍后重试（运行中修改端口或 App ID 请先停止服务）',
+  mcp_port_in_use: '端口已被占用，请检查旧应用或其他进程是否正在使用该端口',
+  mcp_runtime_missing: '缺少运行组件，请先安装 Node / npm 运行组件',
+  lark_owner_unconfirmed: '请先确认 Lark MCP 所有权（旧应用已停止）',
+  lark_not_configured: '未配置 Lark App ID 或 App Secret',
+  mcp_self_test_failed: 'MCP 自检失败',
+  revision_conflict: '配置已被修改，请刷新后重试',
+  not_found: '未找到指定条目',
+  no_credential: '未配置凭据',
+  store_unavailable: '配置存储不可用',
+  store_busy: '配置存储正忙',
+  validation_error: '输入格式不正确',
 }
 
 export const TELEGRAM_ERROR_MESSAGES: Record<string, string> = {

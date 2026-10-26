@@ -422,6 +422,7 @@ async function onSaveSettings() {
 
   const patchBody = {
     selected_profile_id: selectedProfileId.value || null,
+    ack_cli_registered: false,
     defaults: {
       claude: {
         ...(aiData.value?.defaults?.claude ?? {}),
@@ -442,6 +443,7 @@ async function onSaveSettings() {
       },
     },
     analysis: {
+      mcp_source: aiData.value?.analysis?.mcp_source ?? 'legacy',
       claude: {
         ...(aiData.value?.analysis?.claude ?? {}),
         permission: claudeAnalysis.value,

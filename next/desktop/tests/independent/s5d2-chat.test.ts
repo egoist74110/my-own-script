@@ -50,7 +50,7 @@ export function fxEvent(
   seq: number,
   kind: string,
   payload: Fx,
-  ts = '2026-10-24T09:00:00Z',
+  ts = new Date().toISOString(),
 ): Fx {
   return { session_id: sid, session_seq: seq, ts, kind, payload }
 }

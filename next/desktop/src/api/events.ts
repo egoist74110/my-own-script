@@ -9,6 +9,12 @@ export interface RunSubscribedData {
   last_seq: number
 }
 
+export type MCPSnapshot = components['schemas']['MCPSnapshot']
+export type McpJobView = components['schemas']['McpJobView']
+export interface McpSubscribedData {
+  last_seq: number
+}
+
 export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
 export interface TelegramStatusEventData {
@@ -97,6 +103,9 @@ export interface EventClientOptions {
   onAiJob?: (data: AIJobData, envelope: EventEnvelope) => void
   onAiSubscribed?: (data: AISubscribedData, envelope: EventEnvelope) => void
   onAiEvent?: (data: AIEventData, envelope: EventEnvelope) => void
+  onMcpStatus?: (data: MCPSnapshot, envelope: EventEnvelope) => void
+  onMcpJob?: (data: McpJobView, envelope: EventEnvelope) => void
+  onMcpSubscribed?: (data: McpSubscribedData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -199,6 +208,23 @@ export class EventClient {
       type: 'unsubscribe',
       topic: 'ai',
       ...(sessionId ? { session_id: sessionId } : {}),
+    })
+  }
+
+  /** 订阅 mcp 主题 */
+  subscribeMcp(afterSeq = 0): boolean {
+    return this.send({
+      type: 'subscribe',
+      topic: 'mcp',
+      after_seq: afterSeq,
+    })
+  }
+
+  /** 退订 mcp 主题 */
+  unsubscribeMcp(): boolean {
+    return this.send({
+      type: 'unsubscribe',
+      topic: 'mcp',
     })
   }
 
@@ -326,6 +352,15 @@ export class EventClient {
         this.opts.onAiSubscribed?.(parsed.data as unknown as AISubscribedData, parsed)
       } else if (parsed.type === 'ai.event') {
         this.opts.onAiEvent?.(parsed.data as unknown as AIEventData, parsed)
+      }
+    }
+    if (parsed.topic === 'mcp') {
+      if (parsed.type === 'mcp.status') {
+        this.opts.onMcpStatus?.(parsed.data as unknown as MCPSnapshot, parsed)
+      } else if (parsed.type === 'mcp.job') {
+        this.opts.onMcpJob?.(parsed.data as unknown as McpJobView, parsed)
+      } else if (parsed.type === 'mcp.subscribed') {
+        this.opts.onMcpSubscribed?.(parsed.data as unknown as McpSubscribedData, parsed)
       }
     }
     this.opts.onEvent?.(parsed)

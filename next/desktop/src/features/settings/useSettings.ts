@@ -98,6 +98,7 @@ export function useSettingsContext() {
   })
   const telegramTabActive = ref(false)
   const aiTabActive = ref(false)
+  const mcpTabActive = ref(false)
   const ai = useQuery({
     queryKey: [...QK, 'ai'],
     enabled: computed(() => online.value && aiTabActive.value),
@@ -791,6 +792,7 @@ export function useSettingsContext() {
     telegramTabActive,
     ai,
     aiTabActive,
+    mcpTabActive,
     tasks,
     writable,
     revision,

@@ -521,6 +521,280 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Snapshot */
+        get: operations["snapshot_api_mcp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/ado/policy/import-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Policy */
+        post: operations["import_policy_api_mcp_ado_policy_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/ado/self-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Self Test */
+        post: operations["self_test_api_mcp_ado_self_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/client-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Client Config */
+        get: operations["client_config_api_mcp_client_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/credentials/import-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Credentials */
+        post: operations["import_credentials_api_mcp_credentials_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/credentials/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Credential */
+        put: operations["put_credential_api_mcp_credentials__kind__put"];
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_api_mcp_credentials__kind__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/figma/self-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Figma Self Test */
+        post: operations["figma_self_test_api_mcp_figma_self_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Job */
+        post: operations["cancel_job_api_mcp_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login Lark */
+        post: operations["login_lark_api_mcp_lark_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/login/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Lark Login */
+        post: operations["cancel_lark_login_api_mcp_lark_login_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout Lark */
+        post: operations["logout_lark_api_mcp_lark_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/ownership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Lark Ownership */
+        post: operations["confirm_lark_ownership_api_mcp_lark_ownership_post"];
+        /** Revoke Lark Ownership */
+        delete: operations["revoke_lark_ownership_api_mcp_lark_ownership_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Lark */
+        post: operations["start_lark_api_mcp_lark_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/lark/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Lark */
+        post: operations["stop_lark_api_mcp_lark_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/runtime/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Runtime */
+        post: operations["install_runtime_api_mcp_runtime_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch */
+        patch: operations["patch_api_mcp_settings_patch"];
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -1419,6 +1693,12 @@ export interface components {
             agy?: components["schemas"]["AgyAnalysis"];
             claude?: components["schemas"]["ClaudeAnalysis"];
             codex?: components["schemas"]["CodexAnalysis"];
+            /**
+             * Mcp Source
+             * @default legacy
+             * @enum {string}
+             */
+            mcp_source: "legacy" | "toolbox";
         } & {
             [key: string]: unknown;
         };
@@ -1548,6 +1828,11 @@ export interface components {
         };
         /** AISettingsPatch */
         AISettingsPatch: {
+            /**
+             * Ack Cli Registered
+             * @default false
+             */
+            ack_cli_registered: boolean;
             analysis?: components["schemas"]["AIAnalysis"] | null;
             defaults?: components["schemas"]["AIDefaults"] | null;
             mcp_tool_prefix?: components["schemas"]["McpToolPrefix"] | null;
@@ -1606,6 +1891,29 @@ export interface components {
         ActivityResponse: {
             /** Items */
             items: components["schemas"]["ActivityItem"][];
+        };
+        /** AdoMcp */
+        AdoMcp: {
+            /**
+             * Allow Create Work Item
+             * @default false
+             */
+            allow_create_work_item: boolean;
+            /**
+             * Attachment Cache Mb
+             * @default 500
+             */
+            attachment_cache_mb: number;
+            /**
+             * Attachment Max Mb
+             * @default 25
+             */
+            attachment_max_mb: number;
+            /**
+             * Query Max Items
+             * @default 200
+             */
+            query_max_items: number;
         };
         /** AdoRequestErrorDetail */
         AdoRequestErrorDetail: {
@@ -1851,6 +2159,27 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ClientConfig */
+        ClientConfig: {
+            /**
+             * Cli
+             * @enum {string}
+             */
+            cli: "claude" | "codex" | "agy";
+            /** Config */
+            config: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Name */
+            name: string;
+            /**
+             * Server
+             * @enum {string}
+             */
+            server: "ado" | "lark" | "figma";
+            /** Snippet */
+            snippet: string;
+        };
         /** CodexAnalysis */
         CodexAnalysis: {
             /**
@@ -1944,6 +2273,33 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** CredentialImport */
+        CredentialImport: {
+            /** App Id */
+            app_id?: string | null;
+            /** Kinds */
+            kinds: ("lark_app_secret" | "figma_token")[];
+            /** Revision */
+            revision: number;
+        };
+        /** CredentialPut */
+        CredentialPut: {
+            /** App Id */
+            app_id?: string | null;
+            /**
+             * Expiry Days
+             * @default 90
+             * @enum {integer}
+             */
+            expiry_days: 1 | 7 | 30 | 90;
+            /** Revision */
+            revision: number;
+            /**
+             * Value
+             * Format: password
+             */
+            value: string;
+        };
         /** CredentialStatus */
         CredentialStatus: {
             /** Account */
@@ -1953,7 +2309,7 @@ export interface components {
              * @default ado_pat
              * @enum {string}
              */
-            kind: "ado_pat" | "telegram_bot" | "telegram_ai_bot";
+            kind: "ado_pat" | "telegram_bot" | "telegram_ai_bot" | "lark_app_secret" | "figma_token";
             /** Present */
             present: boolean | null;
             /** Ref */
@@ -2103,6 +2459,63 @@ export interface components {
             delete_webhook: boolean;
             /** Revision */
             revision: number;
+        };
+        /** FigmaMcp */
+        FigmaMcp: {
+            /**
+             * Expiry Days
+             * @default 90
+             * @enum {integer}
+             */
+            expiry_days: 1 | 7 | 30 | 90;
+            /**
+             * Max Concurrency
+             * @default 1
+             */
+            max_concurrency: number;
+            /**
+             * Max Retry
+             * @default 4
+             */
+            max_retry: number;
+            /**
+             * Min Interval Ms
+             * @default 350
+             */
+            min_interval_ms: number;
+            /** Token Set At */
+            token_set_at?: string | null;
+        };
+        /** FigmaMcpView */
+        FigmaMcpView: {
+            /**
+             * Expiry Days
+             * @default 90
+             * @enum {integer}
+             */
+            expiry_days: 1 | 7 | 30 | 90;
+            /**
+             * Max Concurrency
+             * @default 1
+             */
+            max_concurrency: number;
+            /**
+             * Max Retry
+             * @default 4
+             */
+            max_retry: number;
+            /**
+             * Min Interval Ms
+             * @default 350
+             */
+            min_interval_ms: number;
+            /**
+             * Token Configured
+             * @default false
+             */
+            token_configured: boolean;
+            /** Token Set At */
+            token_set_at?: string | null;
         };
         /** FlowInput */
         FlowInput: {
@@ -2396,6 +2809,184 @@ export interface components {
             target_index?: number | null;
         };
         JsonValue: unknown;
+        /** LarkActionRequest */
+        LarkActionRequest: {
+            /** Request Id */
+            request_id?: string | null;
+            /** Timeout S */
+            timeout_s?: number | null;
+        };
+        /** LarkMcp */
+        LarkMcp: {
+            /**
+             * App Id
+             * @default
+             */
+            app_id: string;
+            /**
+             * Autostart
+             * @default false
+             */
+            autostart: boolean;
+            /**
+             * Domain
+             * @default https://open.larksuite.com
+             */
+            domain: string;
+            /**
+             * Language
+             * @default zh
+             * @enum {string}
+             */
+            language: "zh" | "en";
+            login?: components["schemas"]["LoginMetadata"];
+            /** Owner Confirmed At */
+            owner_confirmed_at?: string | null;
+            /**
+             * Port
+             * @default 3000
+             */
+            port: number;
+            /**
+             * Scope Hint
+             * @default offline_access docx:document wiki:wiki drive:drive
+             */
+            scope_hint: string;
+            /**
+             * Tools
+             * @default preset.doc.default,docx.v1.documentBlock.list,drive.v1.media.batchGetTmpDownloadUrl
+             */
+            tools: string;
+        };
+        /** LarkMcpView */
+        LarkMcpView: {
+            /**
+             * App Id
+             * @default
+             */
+            app_id: string;
+            /**
+             * Autostart
+             * @default false
+             */
+            autostart: boolean;
+            /**
+             * Domain
+             * @default https://open.larksuite.com
+             */
+            domain: string;
+            /**
+             * Endpoint
+             * @default http://localhost:19320/mcp
+             */
+            endpoint: string;
+            /**
+             * Keytar Available
+             * @default true
+             */
+            keytar_available: boolean;
+            /**
+             * Language
+             * @default zh
+             * @enum {string}
+             */
+            language: "zh" | "en";
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Log Tail
+             * @default
+             */
+            log_tail: string;
+            login?: components["schemas"]["LoginMetadata"];
+            /** Owner Confirmed At */
+            owner_confirmed_at?: string | null;
+            patches?: components["schemas"]["LarkPatchStatus"];
+            /** Pid */
+            pid?: number | null;
+            /**
+             * Port
+             * @default 3000
+             */
+            port: number;
+            /**
+             * Scope Hint
+             * @default offline_access docx:document wiki:wiki drive:drive
+             */
+            scope_hint: string;
+            /**
+             * Secret Configured
+             * @default false
+             */
+            secret_configured: boolean;
+            /**
+             * State
+             * @default stopped
+             * @enum {string}
+             */
+            state: "stopped" | "starting" | "running" | "running_degraded" | "unhealthy" | "stopping" | "logging_in" | "failed";
+            token_status?: components["schemas"]["LarkTokenStatus"];
+            /**
+             * Tools
+             * @default preset.doc.default,docx.v1.documentBlock.list,drive.v1.media.batchGetTmpDownloadUrl
+             */
+            tools: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** LarkOwnershipRequest */
+        LarkOwnershipRequest: {
+            /**
+             * Ack Old App Stopped
+             * @default false
+             */
+            ack_old_app_stopped: boolean;
+            /** Request Id */
+            request_id?: string | null;
+            /** Revision */
+            revision?: number | null;
+        };
+        /** LarkPatchStatus */
+        LarkPatchStatus: {
+            /**
+             * All Applied
+             * @default false
+             */
+            all_applied: boolean;
+            /**
+             * Auth Store
+             * @default unknown
+             * @enum {string}
+             */
+            auth_store: "applied" | "skipped" | "failed" | "unknown";
+            /**
+             * Mcp Tool
+             * @default unknown
+             * @enum {string}
+             */
+            mcp_tool: "applied" | "skipped" | "failed" | "unknown";
+            /**
+             * Oidc
+             * @default unknown
+             * @enum {string}
+             */
+            oidc: "applied" | "skipped" | "failed" | "unknown";
+        };
+        /** LarkTokenStatus */
+        LarkTokenStatus: {
+            /** Last Event At */
+            last_event_at?: string | null;
+            /** Logged In At */
+            logged_in_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * State
+             * @default unknown
+             * @enum {string}
+             */
+            state: "ok" | "refresh_failing" | "unknown";
+        };
         /** LastRunSummary */
         LastRunSummary: {
             /** Created At */
@@ -2503,6 +3094,73 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** LoginMetadata */
+        LoginMetadata: {
+            /** Logged In At */
+            logged_in_at?: string | null;
+            /** Scope */
+            scope?: string | null;
+        };
+        /** MCPSettingsPatch */
+        MCPSettingsPatch: {
+            ado?: components["schemas"]["AdoMcp"] | null;
+            figma?: components["schemas"]["FigmaMcp"] | null;
+            lark?: components["schemas"]["LarkMcp"] | null;
+            mcp?: components["schemas"]["McpConfig"] | null;
+            /** Revision */
+            revision: number;
+            runtime?: components["schemas"]["Runtime"] | null;
+        };
+        /** MCPSnapshot */
+        MCPSnapshot: {
+            active_job?: components["schemas"]["McpJobView"] | null;
+            ado: components["schemas"]["AdoMcp"];
+            figma?: components["schemas"]["FigmaMcpView"];
+            lark?: components["schemas"]["LarkMcpView"];
+            /** Managed Node Version */
+            managed_node_version: string;
+            /** Node Min Version */
+            node_min_version: string;
+            /** Revision */
+            revision: number;
+            runtime: components["schemas"]["RuntimeView"];
+            /** Self Test Running */
+            self_test_running: boolean;
+        };
+        /** McpConfig */
+        McpConfig: {
+            ado?: components["schemas"]["AdoMcp"];
+            figma?: components["schemas"]["FigmaMcp"];
+            lark?: components["schemas"]["LarkMcp"];
+            runtime?: components["schemas"]["Runtime"];
+        };
+        /** McpJobView */
+        McpJobView: {
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Kind
+             * @default runtime_install
+             * @constant
+             */
+            kind: "runtime_install";
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /** Started At */
+            started_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "completed" | "failed" | "cancelled";
+        };
         /**
          * McpToolPrefix
          * @description Registered MCP tool-name prefixes for the work-item analysis prompt (S5-B increment).
@@ -2593,6 +3251,19 @@ export interface components {
         /** NoCredentialErrorResponse */
         NoCredentialErrorResponse: {
             detail: components["schemas"]["NoCredentialErrorDetail"];
+        };
+        /** NodeRuntime */
+        NodeRuntime: {
+            /** Path */
+            path?: string | null;
+            /**
+             * Source
+             * @default none
+             * @enum {string}
+             */
+            source: "detected" | "managed" | "none";
+            /** Version */
+            version?: string | null;
         };
         /** Notify */
         Notify: {
@@ -2693,6 +3364,13 @@ export interface components {
             stage_ids: number[];
             /** Target Index */
             target_index: number;
+        };
+        /** PolicyImport */
+        PolicyImport: {
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: number;
         };
         /** PollerView */
         PollerView: {
@@ -3000,6 +3678,93 @@ export interface components {
             task_snapshot: components["schemas"]["TaskSnapshot"];
             /** Updated At */
             updated_at: string;
+        };
+        /** Runtime */
+        Runtime: {
+            node?: components["schemas"]["NodeRuntime"];
+            /** Packages */
+            packages?: {
+                [key: string]: string;
+            };
+        };
+        /** RuntimeInstallRequest */
+        RuntimeInstallRequest: {
+            /**
+             * Force Node
+             * @default false
+             */
+            force_node: boolean;
+            /** Request Id */
+            request_id?: string | null;
+        };
+        /** RuntimeView */
+        RuntimeView: {
+            /**
+             * Figma Package Ready
+             * @default false
+             */
+            figma_package_ready: boolean;
+            /**
+             * Keytar Ready
+             * @default false
+             */
+            keytar_ready: boolean;
+            /**
+             * Lark Package Ready
+             * @default false
+             */
+            lark_package_ready: boolean;
+            node?: components["schemas"]["NodeRuntime"];
+            /** Packages */
+            packages?: {
+                [key: string]: string;
+            };
+            /**
+             * Packages Installed
+             * @default false
+             */
+            packages_installed: boolean;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** SelfTestRequest */
+        SelfTestRequest: {
+            /**
+             * Timeout S
+             * @default 15
+             */
+            timeout_s: number;
+        };
+        /** SelfTestResult */
+        SelfTestResult: {
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Ok
+             * @default false
+             */
+            ok: boolean;
+            /** Protocol Version */
+            protocol_version?: string | null;
+            /** Server Name */
+            server_name?: string | null;
+            /**
+             * Stderr Tail
+             * @default
+             */
+            stderr_tail: string;
+            /** Tools */
+            tools?: string[];
         };
         /** SendMessage */
         SendMessage: {
@@ -4893,6 +5658,589 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshot_api_mcp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+        };
+    };
+    import_policy_api_mcp_ado_policy_import_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    self_test_api_mcp_ado_self_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    client_config_api_mcp_client_config_get: {
+        parameters: {
+            query: {
+                server: "ado" | "lark" | "figma";
+                cli: "claude" | "codex" | "agy";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_credentials_api_mcp_credentials_import_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_credential_api_mcp_credentials__kind__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "lark_app_secret" | "figma_token";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_api_mcp_credentials__kind__delete: {
+        parameters: {
+            query: {
+                revision: number;
+                app_id?: string | null;
+            };
+            header?: never;
+            path: {
+                kind: "lark_app_secret" | "figma_token";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    figma_self_test_api_mcp_figma_self_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_mcp_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_lark_api_mcp_lark_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_lark_login_api_mcp_lark_login_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_lark_api_mcp_lark_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_lark_ownership_api_mcp_lark_ownership_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LarkOwnershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_lark_ownership_api_mcp_lark_ownership_delete: {
+        parameters: {
+            query?: {
+                revision?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_lark_api_mcp_lark_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_lark_api_mcp_lark_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LarkActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_runtime_api_mcp_runtime_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RuntimeInstallRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_api_mcp_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPSettingsPatch"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

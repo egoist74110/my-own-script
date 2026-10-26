@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
 import {
+  Cable,
   Cpu,
   Database,
   Download,
@@ -18,6 +19,7 @@ import CredentialsTab from './CredentialsTab.vue'
 import GeneralTab from './GeneralTab.vue'
 import ImportTab from './ImportTab.vue'
 import LocalReposTab from './LocalReposTab.vue'
+import McpTab from './McpTab.vue'
 import TelegramTab from './TelegramTab.vue'
 import { settingsContextKey, useSettingsContext } from './useSettings'
 import './settings.css'
@@ -76,6 +78,12 @@ const tabs = computed(() => [
     icon: Cpu,
     iconColor: '#c15f3c',
   },
+  {
+    value: 'mcp',
+    label: 'MCP',
+    icon: Cable,
+    iconColor: '#0a63d6',
+  },
   { value: 'general', label: '常规', icon: SlidersHorizontal, iconColor: '#8e8e93' },
 ])
 const o = computed(() => ctx.overview.data.value ?? null)
@@ -88,6 +96,7 @@ const ASIDE: Record<string, string> = {
   credentials: '凭据值永远不会显示在界面上，这里只有存在与否、来源和状态。',
   telegram: 'Bot Token 保存在安全钥匙串中，长轮询与所有者绑定独立于旧应用。',
   ai: '管理 AI CLI 工具、运行档位与模型预设，内置配置不可删除。',
+  mcp: '管理 ADO 工单、飞书与 Figma 的 MCP 服务接入与运行配置。',
   general: '数据目录、旧配置目录与版本信息均为只读。',
 }
 const noticeKind = computed(() => {
@@ -158,6 +167,7 @@ const noticeKind = computed(() => {
           <CredentialsTab v-else-if="item.value === 'credentials'" />
           <TelegramTab v-else-if="item.value === 'telegram'" />
           <AiCliTab v-else-if="item.value === 'ai'" />
+          <McpTab v-else-if="item.value === 'mcp'" />
           <GeneralTab v-else />
         </template>
       </SegmentedControl>

@@ -16,7 +16,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S3 任务执行 + R1 换皮 | integrated | 真实验收清单未授权 | [progress/S3.md](archive/progress/S3.md) |
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
-| S6 MCP 管理 | 合同已确认；S6-0 done；S6-A、S6-B integrated（`rewrite/next` 本地提交，未 push）；S6-C 待派 | Lark 切换未授权 | 本文件下方 |
+| S6 MCP 管理 | 合同已确认；S6-0 done；S6-A、S6-B、S6-C integrated（`rewrite/next` 本地提交，未 push）；S6 集成验收待做（安全核对用 Opus） | Lark 切换未授权 | 本文件下方 |
 | S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S5-E 集成，`1391e32`）：后端 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed（S5 集成验收时）。
@@ -101,3 +101,14 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - **lead 沙箱外验证（集成版本 = 8b6e446 + `integration.patch`，限定路径 binary patch，`git apply --check` 通过、基线干净）**：`next/backend`：`pytest -q` exit 0，**1228 passed、1 skipped**（S6-A 基线 1200，+28）；`ruff check .` All checks passed；`contracts --check` exit 0；`git diff --check` exit 0。唯一 skip 是 `test_lark_patch_relative_oidc_and_singleflight_with_node_fixture`（测试只在 `/opt/homebrew`、`/usr/local`、`/usr/bin` 找 node，本机 node 在 nvm 下）；lead 以临时副本（仅在候选路径加入 `~/.nvm/.../v24.13.0/bin/node`，运行后已删除）单独跑该文件：3 passed——`require("./oidc")` 加载下三个补丁标记均 applied，S6-LEAD-001 回归在真实 node 下生效。该 skip 属测试环境缺陷（可后续放宽候选路径，未改）。
 - 未测 / 未核：Lark/Figma 真实进程与真实 keytar/`npm rebuild`/Node 下载；真实 `GET /mcp` 405（lark 假替身已覆盖，真实 TCP 用例在沙箱外通过）；`/bin/ps` 全局零残留；`run_in_terminal` 未做。**安全核对表与 resource-lifecycle 逐项核对（argv/env/日志无密钥、SIGKILL 零残留、关闭点清单）留给 S6 集成验收（Opus）。** 前端 S6-C 未派。
 - cleanup：worktree `.local/worktrees/s6a`、`.local/worktrees/s6b` 保留（删除前问用户）；临时 `tests/_tmp_s6b_patches_node.py` 已删；施工者 `/tmp/s6b_isolated_src_check` 已删。
+
+### S6-C 前端派工与集成（2026-10-26，lead = Claude Sonnet 5.5 会话，actual effort unknown）
+
+- 输入 `rewrite/next @ 9ffedba`。施工：agy `--model gemini-3.8-flash-high --effort high --sandbox --output-format stream-json --print`，conversation `21a9be88-6ca3-488d-a5dc-1c28741acf43`（init 回报 model `gemini-3.8-flash-high`；effort 为 requested）；worktree `.local/worktrees/s6c`（detached `9ffedba`）；请求/输出 `.local/dispatch/s6c/`（request.md、stdout.jsonl、exit.txt）。**用户规则（2026-10-26）：Gemini 4 只跑后端，前端用 Gemini 3.8 Flash high**；本包最初误用 `gemini-4-argon-medium` 启动，数分钟内被叫停并 TaskStop，worktree 无施工改动，重派（`aborted-gemini4-stdout.jsonl` 保留）。无独立测试者：施工者自测，`independent=false`；不做交叉审计。
+- 施工者在 agy print 中途以“等待测试”结束（无最终报告，疑似超时截断，exit 0），lead 沙箱外自行完整验收。lead 在施工前重新生成 `src/api/schema.d.ts`（`pnpm contracts:gen`，随集成）。
+- 变更：22 个文件（`next/desktop/src/**`、`tests/**`）：设置页「MCP」分区（`McpTab.vue`、`McpAdoCard/McpLarkCard/McpFigmaCard.vue`、所有权/写工具确认/来源切换 3 个 Sheet、`useMcp.ts`）、`events.ts`/`backend-runtime.ts` 的 `mcp` 主题订阅、`settings/api.ts` 错误码文案、`AiCliTab.vue` 保存时带 `ack_cli_registered:false` 与 `mcp_source` 透传（后端仅在 legacy→toolbox 时要求确认，已核对 `ai_sessions.py:253`）、新测试 `tests/unit/s6c-mcp.test.ts`（12 例）。既有断言变更：页签数 `settings-independent.test.ts`（tabindex 数组 7→8 项）、`settings.test.ts`（页签清单加入「MCP」）。
+- **lead 发现并处理的既有问题（非 S6-C 引入）**：基线（`rewrite/next @ 9ffedba`，未改前端）前端测试已 12 failed——`r1-pages`、`s5d2-chat`、`s1c-ui`、`e-controls` 四个文件的审批事件夹具默认时间戳写死 `2026-10-24T09:00:00Z`，而 `ChatView.vue` 审批倒计时 TTL 仅 540 秒，时钟越过该时刻后必然失败（S5-E 集成时钟尚早于该时间戳，故当时通过）。施工者为此在生产代码 `ChatView.vue` 加“elapsed>3600 则归零”的 hack，**lead 已还原（生产代码未改）**，改为把这四个文件夹具的 `ts` 默认值改为 `new Date().toISOString()`（共 4 行，断言未改）。
+- **lead 沙箱外验证（集成版本 = 9ffedba + `integration.patch`，限定路径 binary patch，`git apply --check` 通过、基线干净）**：`next/desktop`：`pnpm install --offline --frozen-lockfile` 0、typecheck 0、lint 0、test 0（**81 文件 / 1141 passed**，S5-E 基线 1129 + 12）、build 0、guard:dist 0、contracts:check 0；`git diff --check` 0。后端、Rust 本包未改未跑（后端 S6-B 版本 1228 passed 仍有效）。
+- lead 抽查：错误码文案齐全（`api.ts:154–158`）、凭据输入 `type=password autocomplete=off` 且提交后清空、所有权 Sheet/`ack_old_app_stopped`、写工具二次确认、来源切换确认、`mcp` 订阅卸载释放均有对应代码与测试。附件缓存“清空”后端无接口，UI 如实标“暂无清空接口”。
+- 未测：dev:web / Tauri 内真实走查与视觉（R1 风格、响应式）；WS 重连与回放水位真实后端联调；Lark/Figma 真实流程。**S6 集成验收（Opus）**：安全核对表、resource-lifecycle、dev:web 端到端（假 ADO + 假 node/lark-mcp）、迁移/改进/推迟清单对照旧 `docs/capabilities/mcp-servers.md`。
+- cleanup：worktree `s6a/s6b/s6c` 保留（删除前问用户）；无残留进程已知。

@@ -21,6 +21,10 @@ export interface BackendRuntime {
   subscribeAi?(sessionId?: string, afterSeq?: number): boolean
   /** 退订 ai 主题 */
   unsubscribeAi?(sessionId?: string): boolean
+  /** 订阅 mcp 主题 */
+  subscribeMcp?(afterSeq?: number): boolean
+  /** 退订 mcp 主题 */
+  unsubscribeMcp?(): boolean
   /** 注册事件监听器，返回解除监听的回调 */
   onEvent(listener: (event: EventEnvelope) => void): () => void
 }
@@ -57,6 +61,8 @@ export function createBackendRuntime(deps: RuntimeDeps = {}): BackendRuntime {
     unsubscribeRun: (runId) => events.unsubscribeRun(runId),
     subscribeAi: (sessionId, afterSeq) => events.subscribeAi(sessionId, afterSeq),
     unsubscribeAi: (sessionId) => events.unsubscribeAi(sessionId),
+    subscribeMcp: (afterSeq) => events.subscribeMcp(afterSeq),
+    unsubscribeMcp: () => events.unsubscribeMcp(),
     onEvent: (listener) => events.addEventListener(listener),
   }
 }
