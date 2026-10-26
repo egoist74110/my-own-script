@@ -156,7 +156,7 @@ def create_app(
         settings.legacy_config_dir,
         ado_http or AdoHTTP(),
     )
-    app.state.mcp_service = McpService(app.state.settings_service)
+    app.state.mcp_service = McpService(app.state.settings_service, hub=hub)
     app.state.work_items_service = WorkItemsService(
         app.state.settings_service, ado_read or AdoRead()
     )
@@ -226,6 +226,7 @@ def create_app(
         transport=telegram_transport,
         work_items=app.state.work_items_service,
         ai=app.state.ai_service,
+        mcp=app.state.mcp_service,
         registry=registry,
     )
     app.state.telegram_ai_services = {}

@@ -4,11 +4,22 @@ import re
 import uuid
 from datetime import UTC, datetime
 
+from toolbox_backend.api.mcp_schemas import LarkActionRequest
 from toolbox_backend.api.task_schemas import PreflightRequest, StartRequest
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.telegram import acl_validity, numeric
 
 TG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "toolbox-next:telegram")
+LARK_STATE_LABELS = {
+    "stopped": "已停止",
+    "starting": "启动中",
+    "running": "运行中",
+    "running_degraded": "降级运行",
+    "unhealthy": "不健康",
+    "stopping": "停止中",
+    "logging_in": "登录中",
+    "failed": "失败",
+}
 ERRORS = {
     "task_active": "任务已有活动运行",
     "resource_active": "发布资源正被其他运行占用",
@@ -26,6 +37,11 @@ ERRORS = {
     "validation_error": "任务不可执行或权限已变化",
     "unsafe_repository": "仓库未通过安全检查",
     "ado_request_failed": "远端请求失败，请稍后重试",
+    "lark_owner_unconfirmed": "请先在桌面端确认飞书 MCP 所有权",
+    "lark_not_configured": "请先配置飞书 MCP App ID 与 App Secret",
+    "mcp_runtime_missing": "缺少 Node.js 或 MCP 运行组件，请先在桌面端安装",
+    "mcp_port_in_use": "飞书 MCP 端口已被占用",
+    "mcp_busy": "飞书 MCP 正在执行其他操作，请稍后重试",
 }
 
 
@@ -430,6 +446,66 @@ class TelegramDispatcher:
         await self.panel(update, text)
         return "handled"
 
+    async def mcp_panel(self, update, *, notice: str | None = None):
+        mcp = getattr(self.service, "mcp", None)
+        if mcp is None:
+            await self.panel(update, "MCP 服务不可用")
+            return
+        snap = await mcp.snapshot()
+        self.service.ensure_attached()
+        ado_status = "允许建单" if snap.ado.allow_create_work_item else "只读"
+        figma_status = "已配置 Token" if snap.figma.token_configured else "未配置 Token"
+        lark_label = LARK_STATE_LABELS.get(snap.lark.state, snap.lark.state)
+        owner_label = "已确认" if snap.lark.owner_confirmed_at else "未确认"
+        lines = []
+        if notice:
+            lines.append(notice)
+        token_state = snap.lark.token_status.state
+        lines.extend(
+            [
+                "MCP 状态",
+                f"ADO：{ado_status}（stdio 按需）",
+                f"Figma：{figma_status}（stdio 按需）",
+                (
+                    f"Lark：{lark_label} · 端口 {snap.lark.port}"
+                    f" · 所有权 {owner_label} · 令牌 {token_state}"
+                ),
+            ]
+        )
+        buttons = []
+        if snap.lark.state in {"running", "running_degraded", "unhealthy", "starting"}:
+            buttons.append(
+                [
+                    await self.button(
+                        update, "停止 Lark MCP", "mcp_lark_stop", {"action": "stop"}
+                    )
+                ]
+            )
+        else:
+            buttons.append(
+                [
+                    await self.button(
+                        update, "启动 Lark MCP", "mcp_lark_start", {"action": "start"}
+                    )
+                ]
+            )
+        buttons.append([await self.button(update, "刷新状态", "menu", {"page": "mcp"})])
+        await self.panel(update, "\n".join(lines), buttons)
+
+    async def mcp_action(self, update, kind: str, token: str):
+        mcp = getattr(self.service, "mcp", None)
+        if mcp is None:
+            await self.panel(update, "MCP 服务不可用")
+            return "handled"
+        req = LarkActionRequest(request_id=uuid.uuid5(TG_NAMESPACE, token))
+        if kind == "mcp_lark_start":
+            await mcp.start_lark(req)
+            await self.mcp_panel(update, notice="Lark MCP 已启动")
+        else:
+            await mcp.stop_lark(req)
+            await self.mcp_panel(update, notice="Lark MCP 已停止")
+        return "handled"
+
     async def callback(self, update):
         _, callback, chat, user, _, _ = identities(update)
         token = callback.get("data")
@@ -472,6 +548,10 @@ class TelegramDispatcher:
             if role != "owner":
                 return "ignored"
             return await self.work_items.callback(update, kind, payload, token)
+        if kind in {"mcp_lark_start", "mcp_lark_stop"}:
+            if role != "owner":
+                return "ignored"
+            return await self.mcp_action(update, kind, token)
         page = payload.get("page")
         if page == "tasks":
             await self.tasks(update)
@@ -489,6 +569,8 @@ class TelegramDispatcher:
             await self.stops(update, payload.get("number", 0))
         elif page == "wi" and role == "owner":
             await self.work_items.projects(update)
+        elif page == "mcp" and role == "owner":
+            await self.mcp_panel(update)
         elif page == "status" and (role in {"owner", "legacy"} or group and group.can_status):
             await self.panel(update, await self.service.status_text(role, group, chat))
         elif page == "system" and role == "owner":
@@ -528,6 +610,11 @@ class TelegramDispatcher:
                 if role != "owner":
                     return "ignored"
                 await self.work_items.command(update)
+                return "handled"
+            if command == "/mcp":
+                if role != "owner":
+                    return "ignored"
+                await self.mcp_panel(update)
                 return "handled"
             if command.startswith("/") and re.fullmatch(r"/[a-z0-9_]{1,32}", command):
                 config = await self.service.config_store.read()

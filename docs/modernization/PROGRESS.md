@@ -16,7 +16,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S3 任务执行 + R1 换皮 | integrated | 真实验收清单未授权 | [progress/S3.md](archive/progress/S3.md) |
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
-| S6 MCP 管理 | 合同已确认；S6-0 done；**S6-A integrated（`rewrite/next` 本地提交，未 push）**；S6-B/C 待派 | Lark 切换未授权 | 本文件下方 |
+| S6 MCP 管理 | 合同已确认；S6-0 done；S6-A、S6-B integrated（`rewrite/next` 本地提交，未 push）；S6-C 待派 | Lark 切换未授权 | 本文件下方 |
 | S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S5-E 集成，`1391e32`）：后端 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed（S5 集成验收时）。
@@ -91,3 +91,13 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - lead 抽查（非完整安全核对）：ado_server 三信号/ppid、写工具开关与 tools/list 过滤、cache `O_NOFOLLOW/O_EXCL/0600`、runner 环境剔除 `NODE_OPTIONS/APP_*` 与专用 cwd 均在代码中可见；**安全核对表与 resource-lifecycle 逐项核对留给 S6 集成验收（Opus）**。
 - not_run / 未测：前端（本包未改）；真实服务/Keychain/CLI/联网；Pillow 不在依赖中，附件图片压缩跳过；全局进程表零残留未核（沙箱）。S6-B 须补：Figma 自检路由、`./oidc` 相对路径补丁回归、keytar/安装 job 等。
 - cleanup：施工 worktree `.local/worktrees/s6a` 保留（S6-B 可复用，删除前问用户）；`/private/tmp/s6a-*.txt` 为施工者复跑清单；无已知残留进程；误启的一条挂起 shell（lead 命令笔误）已终止。
+
+### S6-B 后端派工与集成（2026-10-26，lead = Claude Sonnet 5.5 会话，actual effort unknown）
+
+- 输入 `rewrite/next @ 8b6e446`。**用户因额度紧张指定**施工改用 Gemini 4（不再用 codex）且不派测试子 agent：agy `--model gemini-4-argon-medium --effort medium --sandbox --output-format stream-json --print`，conversation `28c0b751-f866-4301-842b-8e005018cd72`（init 事件回报 model `gemini-4-argon-medium`，其余 actual 视为 agy 回执；effort 以 requested 为准）；worktree `.local/worktrees/s6b`（detached `8b6e446`）；请求/输出 `.local/dispatch/s6b/`（request.md、stdout.jsonl、exit.txt；续接 resume1-request.md、stdout2.jsonl、exit2.txt）。回退候选：Sonnet 5.5（未用到）。无独立测试子 agent：施工者自测，`verified_by=executor, independent=false`；不做交叉审计。
+- 第 1 轮（约 88 分钟）施工者自报全部通过（沙箱内）；lead 沙箱外全量：3 failed、1216 passed、1 skipped、7 errors。原因：①`mcp/runtime.py` 模块级 `LOCKED_PACKAGES = package_versions()` 导入期读 `resources/mcp/package.json`，`test_fault_contracts.py` 拷贝 `src` 到临时目录无 resources → 契约故障套件 1 failed + 7 errors；②`test_lark_login_busy_cancel_timeout_success_logout_and_token_status` 稳定 409 `mcp_port_in_use`；③`test_lark_health_probe_marks_unhealthy_after_3_failures` 全量中时序不稳（健康循环硬编码 sleep、未用注入的 `svc.health_sleep`）。这些在施工者沙箱（禁 loopback connect、`/bin/ps`）内不可见。
+- 第 2 轮（同会话续接，约 107 分钟）修复；lead 复跑 `test_fault_contracts.py` 与全量均通过。
+- 变更：13 个已修改 + 新增 10 个文件（`mcp/{runtime,lark_logs,figma_wrapper}.py`、`resources/mcp/{lark_mcp_patches,figma_mcp_concurrency}.js`、`services/mcp.py`、`api/mcp_*`、`ws.py`/`events.py`/`domain/models.py`（`mcp` 主题）、`services/telegram{,_commands}.py`、README、`next/contracts/{openapi,events.schema}.json`、`tests/test_s6b_{figma,lark,patches,runtime,ws_tg}.py`）。既有断言：无变更。lead 修正 `git diff --check` 的 3 处文件尾空行（纯空白）。
+- **lead 沙箱外验证（集成版本 = 8b6e446 + `integration.patch`，限定路径 binary patch，`git apply --check` 通过、基线干净）**：`next/backend`：`pytest -q` exit 0，**1228 passed、1 skipped**（S6-A 基线 1200，+28）；`ruff check .` All checks passed；`contracts --check` exit 0；`git diff --check` exit 0。唯一 skip 是 `test_lark_patch_relative_oidc_and_singleflight_with_node_fixture`（测试只在 `/opt/homebrew`、`/usr/local`、`/usr/bin` 找 node，本机 node 在 nvm 下）；lead 以临时副本（仅在候选路径加入 `~/.nvm/.../v24.13.0/bin/node`，运行后已删除）单独跑该文件：3 passed——`require("./oidc")` 加载下三个补丁标记均 applied，S6-LEAD-001 回归在真实 node 下生效。该 skip 属测试环境缺陷（可后续放宽候选路径，未改）。
+- 未测 / 未核：Lark/Figma 真实进程与真实 keytar/`npm rebuild`/Node 下载；真实 `GET /mcp` 405（lark 假替身已覆盖，真实 TCP 用例在沙箱外通过）；`/bin/ps` 全局零残留；`run_in_terminal` 未做。**安全核对表与 resource-lifecycle 逐项核对（argv/env/日志无密钥、SIGKILL 零残留、关闭点清单）留给 S6 集成验收（Opus）。** 前端 S6-C 未派。
+- cleanup：worktree `.local/worktrees/s6a`、`.local/worktrees/s6b` 保留（删除前问用户）；临时 `tests/_tmp_s6b_patches_node.py` 已删；施工者 `/tmp/s6b_isolated_src_check` 已删。

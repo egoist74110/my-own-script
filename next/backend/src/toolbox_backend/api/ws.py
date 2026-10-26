@@ -156,6 +156,44 @@ async def _subscribe_ai(ws, sub, frame):
         raise
 
 
+async def _subscribe_mcp(ws, sub, frame):
+    from toolbox_backend.api.mcp_schemas import McpSubscribedData, McpSubscribedEvent
+
+    after = frame.get("after_seq", 0)
+    if type(after) is not int or after < 0:
+        raise ValueError("invalid subscription")
+    hub = ws.app.state.hub
+    sub.mcp_unsubscribed = False
+    sub.mcp_after = after
+    sub.mcp_replaying = []
+    try:
+        state = hub._state("mcp")
+        watermark = state.last_seq
+        if after > watermark:
+            raise ValueError("future cursor")
+        for item in state.history:
+            if item.mcp_seq <= after:
+                continue
+            if item.mcp_seq > watermark:
+                break
+            await _run_enqueue(hub, sub, item.event_cls, item.data)
+            sub.mcp_after = item.mcp_seq
+        await _run_enqueue(
+            hub, sub, McpSubscribedEvent, McpSubscribedData(last_seq=watermark)
+        )
+        pending = sub.mcp_replaying
+        while pending:
+            item = pending.pop(0)
+            if item.mcp_seq > (sub.mcp_after or 0):
+                await _run_enqueue(hub, sub, item.event_cls, item.data)
+                sub.mcp_after = item.mcp_seq
+        sub.mcp_replaying = None
+    except BaseException:
+        sub.mcp_after = None
+        sub.mcp_replaying = None
+        raise
+
+
 async def _drain_incoming(ws: WebSocket, sub=None) -> None:
     while True:
         message = await ws.receive()
@@ -174,11 +212,19 @@ async def _drain_incoming(ws: WebSocket, sub=None) -> None:
             continue
         if (
             not isinstance(frame, dict)
-            or frame.get("topic") not in {"run", "ai"}
+            or frame.get("topic") not in {"run", "ai", "mcp"}
             or frame.get("type") not in {"subscribe", "unsubscribe"}
         ):
             continue
         try:
+            if frame.get("topic") == "mcp":
+                if frame.get("type") == "subscribe":
+                    await _subscribe_mcp(ws, sub, frame)
+                else:
+                    sub.mcp_unsubscribed = True
+                    sub.mcp_after = None
+                    sub.mcp_replaying = None
+                continue
             if frame.get("topic") == "ai":
                 if frame.get("type") == "subscribe":
                     await _subscribe_ai(ws, sub, frame)

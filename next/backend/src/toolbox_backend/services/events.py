@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
+from types import SimpleNamespace
 
 from pydantic import BaseModel
 
@@ -28,6 +29,9 @@ class Subscriber:
         self.ai_replaying: dict[str, list[dict]] = {}
         self.runs: dict[str, int] = {}
         self.replaying: dict[str, list[dict]] = {}
+        self.mcp_after: int | None = None
+        self.mcp_replaying: list[SimpleNamespace] | None = None
+        self.mcp_unsubscribed: bool = False
 
 
 class EventHub:
@@ -35,6 +39,8 @@ class EventHub:
         self._queue_size = queue_size
         self._seq = 0
         self._subscribers: set[Subscriber] = set()
+        self._mcp_seq = 0
+        self._mcp_history: list[SimpleNamespace] = []
 
     @property
     def seq(self) -> int:
@@ -92,6 +98,38 @@ class EventHub:
             else:
                 sub.ai[sid] = seq
                 self.enqueue(sub, AIEvent, AIEventData(**event))
+
+    def publish_mcp(self, event_cls: type[BaseModel], data: BaseModel) -> int:
+        self._mcp_seq += 1
+        mcp_seq = self._mcp_seq
+        ev_type = event_cls.model_fields["type"].default
+        entry = SimpleNamespace(
+            mcp_seq=mcp_seq,
+            event=ev_type,
+            event_cls=event_cls,
+            data=data,
+        )
+        self._mcp_history.append(entry)
+        if len(self._mcp_history) > 1024:
+            self._mcp_history = self._mcp_history[-1024:]
+        for sub in tuple(self._subscribers):
+            if sub.mcp_after is None or sub.mcp_unsubscribed or mcp_seq <= sub.mcp_after:
+                continue
+            if sub.mcp_replaying is not None:
+                if len(sub.mcp_replaying) >= self._queue_size:
+                    sub.overflowed.set()
+                    self._subscribers.discard(sub)
+                else:
+                    sub.mcp_replaying.append(entry)
+            else:
+                sub.mcp_after = mcp_seq
+                self.enqueue(sub, event_cls, data)
+        return mcp_seq
+
+    def _state(self, topic: str) -> SimpleNamespace:
+        if topic == "mcp":
+            return SimpleNamespace(history=list(self._mcp_history), last_seq=self._mcp_seq)
+        return SimpleNamespace(history=[], last_seq=0)
 
     def _fan_out(self, payload: str) -> None:
         for sub in tuple(self._subscribers):

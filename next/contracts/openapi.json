@@ -2522,6 +2522,62 @@
         "title": "FigmaMcp",
         "type": "object"
       },
+      "FigmaMcpView": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry_days": {
+            "default": 90,
+            "enum": [
+              1,
+              7,
+              30,
+              90
+            ],
+            "title": "Expiry Days",
+            "type": "integer"
+          },
+          "max_concurrency": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Concurrency",
+            "type": "integer"
+          },
+          "max_retry": {
+            "default": 4,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max Retry",
+            "type": "integer"
+          },
+          "min_interval_ms": {
+            "default": 350,
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Min Interval Ms",
+            "type": "integer"
+          },
+          "token_configured": {
+            "default": false,
+            "title": "Token Configured",
+            "type": "boolean"
+          },
+          "token_set_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Set At"
+          }
+        },
+        "title": "FigmaMcpView",
+        "type": "object"
+      },
       "FlowInput": {
         "additionalProperties": false,
         "properties": {
@@ -3555,6 +3611,38 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LarkActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "timeout_s": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout S"
+          }
+        },
+        "title": "LarkActionRequest",
+        "type": "object"
+      },
       "LarkMcp": {
         "additionalProperties": false,
         "properties": {
@@ -3617,6 +3705,271 @@
           }
         },
         "title": "LarkMcp",
+        "type": "object"
+      },
+      "LarkMcpView": {
+        "additionalProperties": false,
+        "properties": {
+          "app_id": {
+            "default": "",
+            "pattern": "^[A-Za-z0-9_-]{0,128}$",
+            "title": "App Id",
+            "type": "string"
+          },
+          "autostart": {
+            "default": false,
+            "title": "Autostart",
+            "type": "boolean"
+          },
+          "domain": {
+            "default": "https://open.larksuite.com",
+            "title": "Domain",
+            "type": "string"
+          },
+          "endpoint": {
+            "default": "http://localhost:19320/mcp",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "keytar_available": {
+            "default": true,
+            "title": "Keytar Available",
+            "type": "boolean"
+          },
+          "language": {
+            "default": "zh",
+            "enum": [
+              "zh",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "log_tail": {
+            "default": "",
+            "title": "Log Tail",
+            "type": "string"
+          },
+          "login": {
+            "$ref": "#/components/schemas/LoginMetadata"
+          },
+          "owner_confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Confirmed At"
+          },
+          "patches": {
+            "$ref": "#/components/schemas/LarkPatchStatus"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "port": {
+            "default": 3000,
+            "maximum": 65535.0,
+            "minimum": 1024.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "scope_hint": {
+            "default": "offline_access docx:document wiki:wiki drive:drive",
+            "maxLength": 4096,
+            "title": "Scope Hint",
+            "type": "string"
+          },
+          "secret_configured": {
+            "default": false,
+            "title": "Secret Configured",
+            "type": "boolean"
+          },
+          "state": {
+            "default": "stopped",
+            "enum": [
+              "stopped",
+              "starting",
+              "running",
+              "running_degraded",
+              "unhealthy",
+              "stopping",
+              "logging_in",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "token_status": {
+            "$ref": "#/components/schemas/LarkTokenStatus"
+          },
+          "tools": {
+            "default": "preset.doc.default,docx.v1.documentBlock.list,drive.v1.media.batchGetTmpDownloadUrl",
+            "title": "Tools",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "LarkMcpView",
+        "type": "object"
+      },
+      "LarkOwnershipRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ack_old_app_stopped": {
+            "default": false,
+            "title": "Ack Old App Stopped",
+            "type": "boolean"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "title": "LarkOwnershipRequest",
+        "type": "object"
+      },
+      "LarkPatchStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "all_applied": {
+            "default": false,
+            "title": "All Applied",
+            "type": "boolean"
+          },
+          "auth_store": {
+            "default": "unknown",
+            "enum": [
+              "applied",
+              "skipped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Auth Store",
+            "type": "string"
+          },
+          "mcp_tool": {
+            "default": "unknown",
+            "enum": [
+              "applied",
+              "skipped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Mcp Tool",
+            "type": "string"
+          },
+          "oidc": {
+            "default": "unknown",
+            "enum": [
+              "applied",
+              "skipped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Oidc",
+            "type": "string"
+          }
+        },
+        "title": "LarkPatchStatus",
+        "type": "object"
+      },
+      "LarkTokenStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_event_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event At"
+          },
+          "logged_in_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged In At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "state": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "refresh_failing",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "LarkTokenStatus",
         "type": "object"
       },
       "LastRunSummary": {
@@ -4047,8 +4400,24 @@
       "MCPSnapshot": {
         "additionalProperties": false,
         "properties": {
+          "active_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpJobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ado": {
             "$ref": "#/components/schemas/AdoMcp"
+          },
+          "figma": {
+            "$ref": "#/components/schemas/FigmaMcpView"
+          },
+          "lark": {
+            "$ref": "#/components/schemas/LarkMcpView"
           },
           "managed_node_version": {
             "title": "Managed Node Version",
@@ -4063,7 +4432,7 @@
             "type": "integer"
           },
           "runtime": {
-            "$ref": "#/components/schemas/Runtime"
+            "$ref": "#/components/schemas/RuntimeView"
           },
           "self_test_running": {
             "title": "Self Test Running",
@@ -4098,6 +4467,69 @@
           }
         },
         "title": "McpConfig",
+        "type": "object"
+      },
+      "McpJobView": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "runtime_install",
+            "default": "runtime_install",
+            "title": "Kind",
+            "type": "string"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "started_at"
+        ],
+        "title": "McpJobView",
         "type": "object"
       },
       "McpToolPrefix": {
@@ -5634,6 +6066,79 @@
           }
         },
         "title": "Runtime",
+        "type": "object"
+      },
+      "RuntimeInstallRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "force_node": {
+            "default": false,
+            "title": "Force Node",
+            "type": "boolean"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "title": "RuntimeInstallRequest",
+        "type": "object"
+      },
+      "RuntimeView": {
+        "additionalProperties": false,
+        "properties": {
+          "figma_package_ready": {
+            "default": false,
+            "title": "Figma Package Ready",
+            "type": "boolean"
+          },
+          "keytar_ready": {
+            "default": false,
+            "title": "Keytar Ready",
+            "type": "boolean"
+          },
+          "lark_package_ready": {
+            "default": false,
+            "title": "Lark Package Ready",
+            "type": "boolean"
+          },
+          "node": {
+            "$ref": "#/components/schemas/NodeRuntime"
+          },
+          "packages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Packages",
+            "type": "object"
+          },
+          "packages_installed": {
+            "default": false,
+            "title": "Packages Installed",
+            "type": "boolean"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "RuntimeView",
         "type": "object"
       },
       "SelfTestRequest": {
@@ -9924,6 +10429,453 @@
           }
         },
         "summary": "Put Credential"
+      }
+    },
+    "/api/mcp/figma/self-test": {
+      "post": {
+        "operationId": "figma_self_test_api_mcp_figma_self_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Figma Self Test"
+      }
+    },
+    "/api/mcp/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_mcp_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job"
+      }
+    },
+    "/api/mcp/lark/login": {
+      "post": {
+        "operationId": "login_lark_api_mcp_lark_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Lark"
+      }
+    },
+    "/api/mcp/lark/login/cancel": {
+      "post": {
+        "operationId": "cancel_lark_login_api_mcp_lark_login_cancel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Lark Login"
+      }
+    },
+    "/api/mcp/lark/logout": {
+      "post": {
+        "operationId": "logout_lark_api_mcp_lark_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout Lark"
+      }
+    },
+    "/api/mcp/lark/ownership": {
+      "delete": {
+        "operationId": "revoke_lark_ownership_api_mcp_lark_ownership_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Lark Ownership"
+      },
+      "post": {
+        "operationId": "confirm_lark_ownership_api_mcp_lark_ownership_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LarkOwnershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Lark Ownership"
+      }
+    },
+    "/api/mcp/lark/start": {
+      "post": {
+        "operationId": "start_lark_api_mcp_lark_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Lark"
+      }
+    },
+    "/api/mcp/lark/stop": {
+      "post": {
+        "operationId": "stop_lark_api_mcp_lark_stop_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LarkActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Lark"
+      }
+    },
+    "/api/mcp/runtime/install": {
+      "post": {
+        "operationId": "install_runtime_api_mcp_runtime_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RuntimeInstallRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Runtime"
       }
     },
     "/api/mcp/settings": {

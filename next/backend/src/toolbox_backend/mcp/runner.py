@@ -79,6 +79,7 @@ class CommandSpec:
     name: str
     argv: list[str]
     path_extras: list[str] | None = None
+    env_extras: dict[str, str] | None = None
 
 
 async def run_self_test(spec: CommandSpec, data_dir: Path, *, timeout_s=15):
@@ -155,8 +156,11 @@ async def run_self_test(spec: CommandSpec, data_dir: Path, *, timeout_s=15):
         cwd = prepare_run_directory(data_dir, spec.name)
         # Reserve the 2s EOF grace + supervisor's 3s TERM grace + wait margin.
         async with asyncio.timeout(max(0.05, timeout_s - 6.7)):
+            env = mcp_environment(path_extras=spec.path_extras)
+            if spec.env_extras:
+                env.update(spec.env_extras)
             owner = await SupervisedProcess.start(
-                spec.argv, str(cwd), stdio=True, env=mcp_environment(path_extras=spec.path_extras)
+                spec.argv, str(cwd), stdio=True, env=env
             )
             tasks.extend([asyncio.create_task(read_stdout()), asyncio.create_task(read_stderr())])
             await send(

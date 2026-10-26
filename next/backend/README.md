@@ -983,3 +983,59 @@ USER_ACCESS_TOKEN、FIGMA_*；ADO PAT 不经 argv/环境注入。
 Python 假 stdio server（无响应、错误响应、退出、stderr 洪泛、忽略 TERM、孙进程、取消）。
 沿用 keyring/socket 守卫；不调用真实 Node/npm/AI CLI 或外部服务。沙箱禁止 `/bin/ps` 时，
 runner 测试仅替换身份探针，保留真实监督器与进程组回收；真实身份探针和 live HTTP/WS 须沙箱外复跑。
+
+## S6-B：Node/npm 运行组件、Lark 托管、Figma Wrapper、WS 与 TG
+
+### Node/npm 运行组件（`toolbox_backend/mcp/runtime.py`）
+
+- 检测顺序：`config.mcp.runtime.node.path`（用户确认路径）→ `<data-dir>/mcp/runtime/`（托管安装目录）
+  → 系统/Homebrew/fnm/旧应用只读 bootstrap（`~/.config/my-own-script/node`）；版本门槛 `>= 20.20.0`。
+- 安装任务（`POST /api/mcp/runtime/install`、`POST /api/mcp/jobs/{job_id}/cancel`）：
+  1. 从 `nodejs.org/dist/v24.13.0/` 下载对应架构 tar.gz 与 `SHASUMS256.txt`，校验 SHA-256，使用
+     `tarfile.extractall(..., filter="data")` 安全解包到 `<data-dir>/mcp/runtime/`（拒绝路径穿越与危险链接）。
+  2. 将仓库内锁定的 `resources/mcp/{package.json,package-lock.json}` 暂存到 `<data-dir>/mcp/packages/`，
+     经 `SupervisedProcess` 执行 `npm ci --ignore-scripts --prefix <data-dir>/mcp/packages`，随后仅对原生依赖执行
+     `npm rebuild keytar --prefix <data-dir>/mcp/packages`。
+  3. 总超时 600 秒，支持取消并回收进程组；输出经 `redact_mcp` 脱敏并截断至 `<= 256 KiB`；进度通过 WS `mcp.job` 推送。
+
+### Lark 托管状态机与补丁（`services/mcp.py`、`mcp/lark_logs.py`、`resources/mcp/lark_mcp_patches.js`）
+
+- 状态枚举：`stopped | starting | running | running_degraded | unhealthy | stopping | logging_in | failed`。
+- 所有权门禁：`POST /api/mcp/lark/ownership`（需 `{ack_old_app_stopped: true}`）、`DELETE /api/mcp/lark/ownership`（需已停止）。
+  未确认所有权时 `start/stop/login/logout` 均返回 `409 lark_owner_unconfirmed`；未配 Secret 返回 `409 lark_not_configured`；
+  缺少运行组件返回 `409 mcp_runtime_missing`；端口被占用返回 `409 mcp_port_in_use`；启停/登录/登出互斥返回 `409 mcp_busy`。
+  所有写动作支持 `request_id` 幂等。
+- 监督启动：经 `SupervisedProcess` 启动 `<node> <packages>/node_modules/@larksuiteoapi/lark-mcp/dist/cli.js mcp ... --debug`，
+  `cwd` 固定为 `<data-dir>/mcp/run/lark/`（0700 空目录）；`APP_SECRET` 仅通过环境变量传入（绝不进入 `argv`），
+  剔除父进程 `APP_ID/LARK_*/USER_ACCESS_TOKEN`，`NODE_OPTIONS` 固定为 `--require <resources>/lark_mcp_patches.js`。
+- 补丁与降级：`lark_mcp_patches.js` 通过 `Module._resolveFilename` 解析后的真实路径匹配 `mcp-tool/mcp-tool.js`、
+  `auth/store.js`、`auth/utils/oidc.js`（修复相对路径 `require("./oidc")` 不命中的问题），并向 stderr 打印
+  `[toolbox-lark-patch] <name>=applied|skipped|failed`。任一补丁非 `applied` 或出现
+  `Builtin User Access Token Store will be disabled` 时进入 `running_degraded` 并附带告警。
+- 就绪与健康探测：启动后每 250 ms 向 `127.0.0.1:<port>` 发送 `GET /mcp`（任意 HTTP 响应状态如 405 均视为就绪），
+  最长 15 秒；运行期每 30 秒探测一次，连续 3 次失败转 `unhealthy`。
+- 日志与令牌状态推断：逐行经 `redact_mcp`（含 `code=`/`code:`、`Bearer`、`u-`/`ur-` 及已登记密钥）写入
+  `<data-dir>/mcp/logs/lark-mcp.log`（5 MiB × 2 轮换，权限 `0600`）。令牌状态仅根据 `mcp.lark.login.logged_in_at`
+  与日志中的 `Successfully refreshed token` / `Token refresh failed` 推断 `ok | refresh_failing | unknown`，
+  不解密 `storage.json`、不读 `lark-mcp-nodejs` Keychain。
+- 登录与登出：`POST /api/mcp/lark/login`（300 秒外层超时，`POST /api/mcp/lark/login/cancel` 可取消；若服务运行中先停机并在成功后恢复）、
+  `POST /api/mcp/lark/logout`（60 秒超时，清理 `mcp.lark.login` 元数据并提示旧 CLI bearer 已失效）。
+
+### Figma Wrapper 与自检（`mcp/figma_wrapper.py`、`resources/mcp/figma_mcp_concurrency.js`）
+
+- CLI 入口：`python -m toolbox_backend.mcp.figma_wrapper --data-dir <data-dir>`。
+- 从新 Keychain `toolbox-next` 读取 `figma_token`（缺失向 stderr 打印提示并 `exit 2`），
+  以 `--image-dir <调用者原始 cwd>` 启动 `figma-developer-mcp/dist/bin.js --stdio --no-telemetry`，
+  子进程 `cwd` 固定为 `<data-dir>/mcp/run/figma/`；环境注入 `FIGMA_API_KEY`、`FRAMELINK_TELEMETRY=off`、
+  `DO_NOT_TRACK=1`、并发/退避参数及 `NODE_OPTIONS=--require <resources>/figma_mcp_concurrency.js`。
+- 复用 `proc_supervisor` 共享函数监听三信号（stdin EOF、SIGTERM/SIGINT、父进程 ppid 变化）并回收子进程组。
+- `POST /api/mcp/figma/self-test` 复用 S6-A 通用 stdio runner 对 wrapper 执行握手与 `tools/list`。
+
+### WS `mcp` 主题、Telegram `/mcp` 与并行关闭预算
+
+- WS `/ws/events` 新增 `mcp` 主题（`subscribe` / `unsubscribe`）：支持 `after_seq` 历史回放、`mcp.subscribed {last_seq}`
+  水位回执与实时 `mcp.status` / `mcp.job` 推送；慢客户端溢出按 4408 关闭。
+- Telegram 主机器人新增私聊 owner 专属 `/mcp` 指令与主菜单 `MCP` 按钮：展示 ADO / Figma / Lark 状态摘要，
+  仅提供 Lark MCP 启动/停止与状态刷新按钮（不含 AI CLI 注入，不提供 ADO/Figma 启动按钮）。
+- 后端 `lifespan` 关闭阶段使用 `asyncio.gather(ai_service.close(), mcp_service.close())` 并行回收子进程组，
+  共享 3 秒宽限期，总关闭耗时控制在 5 秒预算内。

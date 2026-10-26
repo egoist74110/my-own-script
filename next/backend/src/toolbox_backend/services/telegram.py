@@ -77,6 +77,7 @@ class TelegramService:
         work_items=None,
         slot="main",
         ai=None,
+        mcp=None,
         registry=None,
         projector=None,
     ):
@@ -85,6 +86,7 @@ class TelegramService:
         self.token_account = TOKEN_ACCOUNT if self.ai_id is None else f"ai_bot_token:{self.ai_id}"
         self.credential_kind = "telegram_bot" if self.ai_id is None else "telegram_ai_bot"
         self.ai = ai
+        self.mcp = mcp
         self.registry = registry if registry is not None else {}
         self.projector = projector
         self.focus = {}
@@ -799,6 +801,7 @@ class TelegramService:
                     ("停止", "stop"),
                     ("系统操作", "system"),
                     ("工单", "wi"),
+                    ("MCP", "mcp"),
                 ]
             elif group:
                 if group.can_rollback:
@@ -819,7 +822,7 @@ class TelegramService:
                 await self.reply(update, await self.status_text(role, group, chat))
             else:
                 return "ignored"
-        elif command in {"/vpn", "/cc", "/mcp", "/svc", "/service", "/cancelrollback"}:
+        elif command in {"/vpn", "/cc", "/svc", "/service", "/cancelrollback"}:
             await self.reply(update, "该功能尚未迁移到新应用")
         else:
             result = await self.dispatcher.dispatch(update, command, role, group)
