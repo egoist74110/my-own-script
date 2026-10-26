@@ -1,7 +1,7 @@
 # 工作包（阶段 0/1 与新产品切片）
 
 - plan_id: modernization-20261021
-- revision: 10（2026-10-23 S5 十项待决按推荐确认；此前 9：S5 AI 开发合同草案）
+- revision: 11（2026-10-26 S6 十一项待决按推荐确认；此前 10：S5 十项待决按推荐确认）
 - 2026-10-26：S0–S5、R1 与阶段 0/1 的合同已原样移入 [archive/](archive/README.md)；本文件只保留当前切片。
 - base: c349243286d27ae82943a4381951f9f3b041b7d1 + 账本所列用户修改
 - executor_autonomy: standard
@@ -17,9 +17,9 @@
 
 合同中引用的已归档小节（如「S0 已定接口」「S1-A 主控裁决」「协议核对结论」、S4/S5 所有权切换步骤）按 [archive/README.md](archive/README.md) 的「常被引用的小节」表定位，只读对应文件的那一节。
 
-# S6：MCP 管理（合同草案，待用户确认；确认前不派工）
+# S6：MCP 管理（用户已确认，2026-10-26）
 
-状态：**待用户确认「S6 待决」**。输入调查基线：新版 `rewrite/next @ 2a92606`，旧版 `main @ 885d186`（旧目录有用户未提交改动，均不在 MCP 相关文件内；只读）。本轮未读真实配置/凭据/CLI 配置（`~/.config/my-own-script`、Keychain、`~/.claude*`、`~/.codex`、`~/.gemini`、`~/Library/Application Support/lark-mcp-nodejs` 均未读），未连真实 ADO/Lark/Figma，未启动旧应用 MCP、node/npx。
+状态：**已确认**（见「S6 已决」）；S6-0 由主控先做，结论写入「S6-0」节后派 S6-A。输入调查基线：新版 `rewrite/next @ 2a92606`，旧版 `main @ 885d186`（旧目录有用户未提交改动，均不在 MCP 相关文件内；只读）。本轮未读真实配置/凭据/CLI 配置（`~/.config/my-own-script`、Keychain、`~/.claude*`、`~/.codex`、`~/.gemini`、`~/Library/Application Support/lark-mcp-nodejs` 均未读），未连真实 ADO/Lark/Figma，未启动旧应用 MCP、node/npx。
 依据：ARCHITECTURE §2/§4/§5（Lark 刷新所有权）、MIGRATION_PLAN S6 行与 §4（WP-14→S6）、README D08/D13、WP-14、WP-16、旧 `docs/MCP_SERVER_GUIDELINES.md`、`docs/MCP_PROMPT_RULES.md`、S1 凭据与导入、S2 出站读取与附件同源规则、S4 TelegramService、S5 `adapters/proc_supervisor.py` 与工单 AI 分析。
 本合同覆盖：ADO 工单 MCP server（新端实现）、Lark MCP（共享 streamable HTTP 单实例 + OAuth 登录/登出 + 刷新补丁）、Figma MCP（stdio wrapper + 限流补丁）、Node 运行时与 npm 包、各 CLI 接入片段、S5 工单 AI 分析切到新 ADO MCP、Lark 刷新所有权切换步骤。**不含**：`ai_policy` 编辑界面（仍推迟）、主 Bot 所有权切换（S7/S8 前另议）、Windows、launchd 常驻。
 
@@ -224,7 +224,7 @@ ai.analysis.mcp_source: "legacy" | "toolbox"   # 默认 legacy（待决4）
 5. 观察：闲置超过 2 小时后首次调用成功；新端令牌状态无 refresh_failing。
 6. 回退：新端停止 → 撤销所有权 → 旧应用启动。共享存储下令牌连续，无需重登（待决6 选 B 时需在旧端重登）。
 
-## S6 待决（推荐方案在前；确认后写入「S6 已决」）
+## S6 待决（已决，保留选项以便追溯；备选均不实施）
 
 技术已定（无需拍板）：后端经 `proc_supervisor` 持有所有 MCP 相关进程并在被强杀时回收；stdio“启动”改为有界自检、不留常驻；ADO server 不回落 UI active_\*、附件缓存迁到数据目录并设上限；凭据不进 argv、环境只加必需变量；lark-mcp 端口预检；补丁结果标记与 degraded 状态；不新增 SQLite；运行时不 `npx -y`；新端不解密 storage.json 之外的取舍见下。
 
@@ -241,3 +241,10 @@ ai.analysis.mcp_source: "legacy" | "toolbox"   # 默认 legacy（待决4）
 | 9 | Node 与 npm 包 | **优先用已装 Node；npm 包按仓库锁文件显式“安装运行组件”到数据目录**（联网只在你点安装时；Node 需下载时校验 SHA256）；运行时不联网 | 沿用 `npx -y <包>@<锁定版本>`：免安装步骤，但每次冷启动可能联网、经 npx→npm 多层进程 |
 | 10 | TG 主 Bot 的 MCP 菜单 | **只做 owner 的状态查看 + Lark 启停**（不含注入、不含 ADO/Figma“启动”，它们改为自检） | 不提供 TG MCP 菜单：只能在桌面操作 |
 | 11 | Lark 切换时机与旧应用 | **S6 验收通过后按上面步骤另行授权切换；不改旧应用代码**（靠端口预检互斥 + 步骤约束旧端不再登录/登出） | 在旧应用热修：检测到新端已接管时禁用 Lark 卡片按钮（更防误操作，但要改旧应用并验证） |
+
+## S6 已决
+
+- 用户 2026-10-26 原答复：**“S6 待决 1–11 全部按推荐，写入 S6 已决并提交，然后做 S6-0。”** 确认十一项：1 授权主控在派 S6-B 前于 scratchpad 临时前缀联网 `npm install` 两个包、跑 `--help`、读源码核对（不登录、不调真实 API）；2 ADO MCP 为 stdio，每个 CLI 会话 spawn 新端 `toolbox_ado`；3 `ado_create_work_item` 保留、默认关闭，MCP 页二次确认后打开，关闭时不在工具列表；4 新名字 `toolbox_ado`/`toolbox_figma` 与旧注册并存，`ai.analysis.mcp_source` 默认 `legacy`，用户自检后手动切换、可切回；5 变更策略基线显式按钮一次性从旧仓库 `config/ai_change_policy.yaml` 只读导入，再叠加 `imported.ai`，编辑界面仍推迟；6 Lark 令牌沿用 lark-mcp 全局存储（A），所有权 = 谁在运行进程；7 不移植 Bearer 注入，新端不写 `~/.claude*`、`~/.codex`、`~/.gemini`；8 令牌状态只用登录时间 + 日志刷新/20038 标记推断，不读 lark-mcp Keychain、不解密 `storage.json`；9 优先已装 Node，npm 包按仓库锁文件显式“安装运行组件”，Node 下载校验 SHA256，运行时不联网；10 TG 主 Bot MCP 菜单只做 owner 状态查看 + Lark 启停；11 S6 验收通过后按步骤另行授权切换 Lark，不改旧应用代码。
+- 本确认解除派工门禁；**不**授权 Lark 所有权切换、真实 ADO/Figma/Lark 调用、读取真实配置/凭据/CLI 配置/lark-mcp 存储、修改旧应用，也不授权真实验收清单（均另行授权）。
+- 派工顺序：S6-0（主控）→ S6-A（codex `gpt-6.1-sol` / medium）→ S6-B（同会话续接）；S6-C（agy `gemini-3.8-flash-high`，`--sandbox`）在 S6-A 契约冻结后可与 S6-B 并行；最后 S6 集成验收。
+- lead 模型（用户 2026-10-26 偏好）：S6-0 与 S6 集成验收的安全核对用 Opus；S6-A/B/C 派工、集成与常规验收可由 Sonnet 担任 lead。

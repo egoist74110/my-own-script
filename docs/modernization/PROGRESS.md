@@ -16,7 +16,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S3 任务执行 + R1 换皮 | integrated | 真实验收清单未授权 | [progress/S3.md](archive/progress/S3.md) |
 | S4 Telegram | integrated | 测试 Bot 真实验收未授权；主 Bot 切换推迟到 S6–S8（S4 已决1） | [progress/S4.md](archive/progress/S4.md) |
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
-| S6 MCP 管理 | 合同草案，**待用户确认 11 项待决**，未派工 | — | 本文件下方 |
+| S6 MCP 管理 | 合同已确认（11 项按推荐）；S6-0 进行中 | Lark 切换未授权 | 本文件下方 |
 | S7 服务管理 / S8 VPN / S9 交付 | not_started | — | — |
 
 最近一次集成版本全量（S5-E 集成，`1391e32`）：后端 **1136 passed**、ruff、contracts --check；前端 frozen install/typecheck/lint/test **1129 passed / 80 文件**/build/guard:dist/contracts:check；Rust `cargo test --offline` 36 passed（S5 集成验收时）。
@@ -59,3 +59,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 关键新发现：①ADO/Figma 的应用“启动”进程不服务任何客户端（CLI 各自 spawn stdio）；②Lark 登录把 App Secret 放进 argv（`app_lark/mcp_server_manager.py:333–337`）；③lark-mcp 令牌存储是全局 `storage.json`，新旧应用天然共用；④Bearer 注入把 UAT 明文写进三家 CLI 配置；⑤Node 下载无校验、解包无过滤；⑥lark-mcp/figma 包未锁版本（D13）。
 - 合同写入 WORK_PACKAGES「S6」：架构五问、config v4、凭据、ADO server、stdio 有界自检（D08）、Lark 托管与端口预检/补丁标记、Figma wrapper、Node/npm、接入片段与 S5 分析来源切换、HTTP/WS、安全核对表、S6-0/A/B/C 分包、集成验收、真实验收清单、Lark 所有权切换步骤、待决 11 项。
 - 状态：S6 **待用户确认待决**，未派工。
+
+### S6 合同确认（2026-10-26）
+
+- 用户原答复“S6 待决 1–11 全部按推荐，写入 S6 已决并提交，然后做 S6-0。”；WORK_PACKAGES「S6 已决」已写入（revision 11）。主控 Claude Opus 5.5 会话（actual effort unknown）。
