@@ -10,10 +10,17 @@ from toolbox_backend.domain.settings import StrictModel
 from toolbox_backend.domain.vpn import VpnConfig
 
 
+class VpnClientView(StrictModel):
+    installed: bool
+    running: bool
+    app_name: str | None = None
+    version: str | None = None
+
+
 class VpnSnapshot(StrictModel):
     connected: bool
     ip: str | None
-    client: dict
+    client: VpnClientView
     credentials: dict[Literal["password", "totp_secret"], bool]
     permissions: dict[Literal["screen_recording", "accessibility"], str]
     settings: VpnConfig
@@ -52,6 +59,10 @@ class ManualMfaResult(StrictModel):
     accepted: bool
 
 
+class BrowserProfileCleared(StrictModel):
+    cleared: bool
+
+
 class VpnRunRequest(StrictModel):
     request_id: UUID | None = None
     max_rung: Literal[0, 1, 2, 3] | None = None
@@ -82,25 +93,48 @@ class VpnRunEventData(StrictModel):
     event: str | None = None
     error_code: str | None = None
     ip: str | None = None
+    vpn_seq: int = Field(ge=1)
+
+
+class VpnRunBrief(StrictModel):
+    run_id: str
+    state: str
+    rung: int
+
+
+class VpnStatusData(StrictModel):
+    connected: bool
+    ip: str | None = None
+    client: VpnClientView | None = None
+    current_run: VpnRunBrief | None = None
+    vpn_seq: int = Field(ge=1)
+
+
+class VpnMfaRequiredData(StrictModel):
+    run_id: str
+    expires_in_s: int = Field(ge=1)
+    vpn_seq: int = Field(ge=1)
 
 
 class _VpnEvent(StrictModel):
     seq: int = Field(ge=0)
     ts: datetime
     topic: Literal["vpn"] = "vpn"
-    data: dict
 
 
 class VpnStatusEvent(_VpnEvent):
     type: Literal["vpn.status"] = "vpn.status"
+    data: VpnStatusData
 
 
 class VpnRunEvent(_VpnEvent):
     type: Literal["vpn.run"] = "vpn.run"
+    data: VpnRunEventData
 
 
 class VpnMfaRequiredEvent(_VpnEvent):
     type: Literal["vpn.mfa_required"] = "vpn.mfa_required"
+    data: VpnMfaRequiredData
 
 
 class VpnSubscribedData(StrictModel):

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from toolbox_backend.api.settings_schemas import MutationResponse
 from toolbox_backend.api.vpn_schemas import (
+    BrowserProfileCleared,
     CredentialConfigured,
     CredentialWrite,
     LegacyCredentialsImport,
@@ -86,3 +87,9 @@ async def runs(request: Request):
 @router.get("/runs/{run_id}", response_model=VpnRunView)
 async def run(run_id: str, request: Request):
     return request.app.state.vpn_service.get_run(run_id)
+
+
+@router.delete("/browser-profile", response_model=BrowserProfileCleared)
+async def clear_browser_profile(request: Request):
+    cleared = await request.app.state.vpn_service.clear_browser_profile()
+    return BrowserProfileCleared(cleared=cleared)

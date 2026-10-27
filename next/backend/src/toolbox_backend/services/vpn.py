@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import shutil
 import time
 from datetime import UTC, datetime
 from typing import Protocol
@@ -129,7 +130,7 @@ class VpnService:
         current = {
             "connected": bool(connected),
             "ip": ip,
-            "client": client or {},
+            "client": client or None,
             "current_run": (
                 {"run_id": run.run_id, "state": run.state, "rung": run.rung} if run else None
             ),
@@ -145,6 +146,18 @@ class VpnService:
             if self._active:
                 raise SettingsError("vpn_busy", "VPN 运行期间不能修改设置", 409)
             return await self.store.update(body.revision, lambda c: setattr(c, "vpn", body.vpn))
+
+    async def clear_browser_profile(self):
+        async with self._gate:
+            if self._active and self._active["state"] in {"queued", "running", "cancelling"}:
+                raise SettingsError("vpn_busy", "VPN 运行期间不能清除浏览器数据", 409)
+            target = self.store.data_dir / "vpn" / "chrome-profile"
+            if target.is_symlink():
+                raise SettingsError("vpn_profile_unsafe", "浏览器数据目录不安全", 409)
+            existed = target.exists()
+            if existed:
+                await asyncio.to_thread(shutil.rmtree, target)
+            return existed
 
     def write_credential(self, kind, value):
         if self._active:

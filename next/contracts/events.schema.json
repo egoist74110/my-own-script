@@ -2654,6 +2654,49 @@
       "title": "TelegramStatusEvent",
       "type": "object"
     },
+    "VpnClientView": {
+      "additionalProperties": false,
+      "properties": {
+        "app_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "App Name"
+        },
+        "installed": {
+          "title": "Installed",
+          "type": "boolean"
+        },
+        "running": {
+          "title": "Running",
+          "type": "boolean"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "installed",
+        "running"
+      ],
+      "title": "VpnClientView",
+      "type": "object"
+    },
     "VpnCredentialConfigured": {
       "additionalProperties": false,
       "properties": {
@@ -2714,13 +2757,37 @@
       "title": "VpnCredentialConfiguredData",
       "type": "object"
     },
+    "VpnMfaRequiredData": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_in_s": {
+          "minimum": 1,
+          "title": "Expires In S",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "vpn_seq": {
+          "minimum": 1,
+          "title": "Vpn Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "expires_in_s",
+        "vpn_seq"
+      ],
+      "title": "VpnMfaRequiredData",
+      "type": "object"
+    },
     "VpnMfaRequiredEvent": {
       "additionalProperties": false,
       "properties": {
         "data": {
-          "additionalProperties": true,
-          "title": "Data",
-          "type": "object"
+          "$ref": "#/$defs/VpnMfaRequiredData"
         },
         "seq": {
           "minimum": 0,
@@ -2753,13 +2820,35 @@
       "title": "VpnMfaRequiredEvent",
       "type": "object"
     },
+    "VpnRunBrief": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "rung": {
+          "title": "Rung",
+          "type": "integer"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "state",
+        "rung"
+      ],
+      "title": "VpnRunBrief",
+      "type": "object"
+    },
     "VpnRunEvent": {
       "additionalProperties": false,
       "properties": {
         "data": {
-          "additionalProperties": true,
-          "title": "Data",
-          "type": "object"
+          "$ref": "#/$defs/VpnRunEventData"
         },
         "seq": {
           "minimum": 0,
@@ -2792,13 +2881,137 @@
       "title": "VpnRunEvent",
       "type": "object"
     },
+    "VpnRunEventData": {
+      "additionalProperties": false,
+      "properties": {
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "event": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event"
+        },
+        "ip": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ip"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "run_seq": {
+          "minimum": 1,
+          "title": "Run Seq",
+          "type": "integer"
+        },
+        "rung": {
+          "title": "Rung",
+          "type": "integer"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "vpn_seq": {
+          "minimum": 1,
+          "title": "Vpn Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_seq",
+        "state",
+        "rung",
+        "vpn_seq"
+      ],
+      "title": "VpnRunEventData",
+      "type": "object"
+    },
+    "VpnStatusData": {
+      "additionalProperties": false,
+      "properties": {
+        "client": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VpnClientView"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "connected": {
+          "title": "Connected",
+          "type": "boolean"
+        },
+        "current_run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VpnRunBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ip": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ip"
+        },
+        "vpn_seq": {
+          "minimum": 1,
+          "title": "Vpn Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connected",
+        "vpn_seq"
+      ],
+      "title": "VpnStatusData",
+      "type": "object"
+    },
     "VpnStatusEvent": {
       "additionalProperties": false,
       "properties": {
         "data": {
-          "additionalProperties": true,
-          "title": "Data",
-          "type": "object"
+          "$ref": "#/$defs/VpnStatusData"
         },
         "seq": {
           "minimum": 0,

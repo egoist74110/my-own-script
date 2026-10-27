@@ -1267,6 +1267,20 @@
         "title": "BotView",
         "type": "object"
       },
+      "BrowserProfileCleared": {
+        "additionalProperties": false,
+        "properties": {
+          "cleared": {
+            "title": "Cleared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cleared"
+        ],
+        "title": "BrowserProfileCleared",
+        "type": "object"
+      },
       "CheckResponse": {
         "properties": {
           "exit_code": {
@@ -8641,6 +8655,47 @@
         "title": "VpnClient",
         "type": "object"
       },
+      "VpnClientView": {
+        "additionalProperties": false,
+        "properties": {
+          "app_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Name"
+          },
+          "installed": {
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "installed",
+          "running"
+        ],
+        "title": "VpnClientView",
+        "type": "object"
+      },
       "VpnConfig": {
         "additionalProperties": false,
         "properties": {
@@ -8908,9 +8963,7 @@
         "additionalProperties": false,
         "properties": {
           "client": {
-            "additionalProperties": true,
-            "title": "Client",
-            "type": "object"
+            "$ref": "#/components/schemas/VpnClientView"
           },
           "connected": {
             "title": "Connected",
@@ -15236,6 +15289,24 @@
           }
         },
         "summary": "Status"
+      }
+    },
+    "/api/vpn/browser-profile": {
+      "delete": {
+        "operationId": "clear_browser_profile_api_vpn_browser_profile_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileCleared"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Browser Profile"
       }
     },
     "/api/vpn/connect": {

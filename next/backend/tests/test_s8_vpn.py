@@ -249,3 +249,31 @@ async def test_manual_mfa_requires_matching_pending_run_and_accepts_code(tmp_pat
     assert login.code == "123456"
     assert service.get_run(run.run_id).error_code == "vpn_not_connected"
     await service.close()
+
+
+@pytest.mark.asyncio
+async def test_clear_browser_profile_removes_directory_and_refuses_symlink(tmp_path):
+    store = ConfigStore(tmp_path)
+    await store.initialize()
+    service = VpnService(
+        store,
+        MemoryCredentials(),
+        FakeLegacy(),
+        FakeClient(),
+        EventHub(),
+        window_automation=None,
+        login_runner=None,
+    )
+    assert await service.clear_browser_profile() is False
+    profile = tmp_path / "vpn" / "chrome-profile"
+    profile.mkdir(parents=True)
+    (profile / "Cookies").write_text("x")
+    assert await service.clear_browser_profile() is True
+    assert not profile.exists()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    profile.symlink_to(outside)
+    with pytest.raises(SettingsError) as exc:
+        await service.clear_browser_profile()
+    assert exc.value.code == "vpn_profile_unsafe"
+    assert outside.exists()
