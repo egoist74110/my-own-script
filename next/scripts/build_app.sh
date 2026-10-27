@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# End-to-end offline build pipeline for TOOLBOX.app:
+#   1. sync_version.py --check
+#   2. frontend: pnpm install --frozen-lockfile --offline + pnpm build (or --skip-frontend if dist exists)
+#   3. build_runtime.sh
+#   4. pnpm tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
+#   5. copy bundle to next/build/out/TOOLBOX.app
+#   6. optional: --sign adhoc | --sign identity
+#   7. verify_app.sh next/build/out/TOOLBOX.app
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
+DESKTOP="$REPO/next/desktop"
+BUILD_DIR="${TOOLBOX_BUILD_DIR:-$REPO/next/build}"
+OUT_DIR="${TOOLBOX_OUT_DIR:-$BUILD_DIR/out}"
+
+SKIP_FRONTEND=0
+SIGN_MODE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-frontend)
+      SKIP_FRONTEND=1
+      shift
+      ;;
+    --sign)
+      if [ $# -lt 2 ]; then
+        echo "error: --sign requires an argument (adhoc | identity)" >&2
+        exit 2
+      fi
+      case "$2" in
+        adhoc|identity)
+          SIGN_MODE="$2"
+          ;;
+        *)
+          echo "error: invalid --sign mode '$2' (expected adhoc or identity)" >&2
+          exit 2
+          ;;
+      esac
+      shift 2
+      ;;
+    --sign=*)
+      val="${1#--sign=}"
+      case "$val" in
+        adhoc|identity)
+          SIGN_MODE="$val"
+          ;;
+        *)
+          echo "error: invalid --sign mode '$val' (expected adhoc or identity)" >&2
+          exit 2
+          ;;
+      esac
+      shift
+      ;;
+    -h|--help)
+      echo "usage: build_app.sh [--skip-frontend] [--sign adhoc|identity]" >&2
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "[build_app] step 1/6: checking version consistency..."
+python3 "$HERE/sync_version.py" --root "$REPO" --check
+
+echo "[build_app] step 2/6: preparing frontend dist..."
+if [ "$SKIP_FRONTEND" -eq 1 ]; then
+  if [ ! -f "$DESKTOP/dist/index.html" ]; then
+    echo "error: --skip-frontend specified, but $DESKTOP/dist/index.html does not exist." >&2
+    exit 1
+  fi
+  echo "[build_app] skipping frontend build (reusing existing $DESKTOP/dist)"
+else
+  (
+    cd "$DESKTOP"
+    pnpm install --frozen-lockfile --offline
+    pnpm build
+  )
+fi
+
+echo "[build_app] step 3/6: building relocatable Python runtime..."
+bash "$HERE/build_runtime.sh"
+
+echo "[build_app] step 4/6: building Tauri .app bundle (offline)..."
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO/.local/cargo-target}"
+export CARGO_NET_OFFLINE=true
+
+# Blank beforeBuildCommand via merged overlay so Tauri reuses the already-built dist/ without re-running pnpm build
+OVERLAY_JSON="$BUILD_DIR/tauri.build.overlay.json"
+mkdir -p "$BUILD_DIR"
+python3 - "$DESKTOP/src-tauri/tauri.bundle.conf.json" "$OVERLAY_JSON" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+bundle_conf = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+bundle_conf.setdefault("build", {})["beforeBuildCommand"] = ""
+Path(sys.argv[2]).write_text(json.dumps(bundle_conf, indent=2) + "\n", encoding="utf-8")
+PYEOF
+
+(
+  cd "$DESKTOP"
+  pnpm tauri build --bundles app --config "$OVERLAY_JSON"
+)
+
+BUILT_APP="$CARGO_TARGET_DIR/release/bundle/macos/TOOLBOX.app"
+if [ ! -d "$BUILT_APP" ]; then
+  echo "error: expected Tauri bundle output not found at $BUILT_APP" >&2
+  exit 1
+fi
+
+echo "[build_app] step 5/6: copying bundle to $OUT_DIR/TOOLBOX.app..."
+mkdir -p "$OUT_DIR"
+OUT_APP="$OUT_DIR/TOOLBOX.app"
+rm -rf "$OUT_APP"
+cp -R "$BUILT_APP" "$OUT_APP"
+
+if [ -n "$SIGN_MODE" ]; then
+  echo "[build_app] signing $OUT_APP (--$SIGN_MODE)..."
+  bash "$HERE/sign_app.sh" "--$SIGN_MODE" "$OUT_APP"
+fi
+
+echo "[build_app] step 6/6: verifying $OUT_APP..."
+bash "$HERE/verify_app.sh" "$OUT_APP"
+
+echo "[build_app] complete: $OUT_APP"

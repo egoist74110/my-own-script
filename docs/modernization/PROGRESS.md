@@ -19,7 +19,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
 | S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
-| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A 已集成，S9-B/C 待派 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
+| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B 已集成，S9-C 待派 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -132,3 +132,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 只读发现（交 S9-B）：后端按 `Path(__file__).resolve().parents[3] / "resources/mcp"` 定位 MCP 资源（`mcp/runtime.py:32`、`mcp/figma_wrapper.py:99`、`services/mcp.py:567`、`domain/mcp.py:22`），在 wheel 安装态会落到 `Resources/backend/lib/python3.14/resources/mcp`，**打包后失效**，S9-B 须统一资源定位（脚本与 `package.json`）。
 - 开放项：`minimumSystemVersion` 待 S9-B 实测；版本现为 Tauri `1.0.0`、Cargo/package.json `0.0.0`、pyproject `0.1.0`，同步与校验归 S9-B。
 - not_run：真实 `.app` 打包、运行时启动、GUI、签名/公证。
+
+### S9-B 构建、版本同步与签名脚本（2026-10-27）
+
+- worker：agy `gemini-4-argon-medium`（codex 额度用完后改派；无提供方回执，actual unknown）；基线 `25fd4f4`，补丁备份 `.local/dispatch/s9b/integration.patch`，worktree 已删。worker 沙箱不能 `chmod`/跑完整 cargo，主控补做。
+- 变更：`next/scripts/{build_runtime,build_app,verify_app,sign_app,notarize_app,make_dmg}.sh`、`sync_version.py`、`README.md`、`tests/`（13 个 unittest）；`src-tauri/entitlements.plist`（空）；叠加配置去掉独立 `mcp` 映射（后端资源按 `parents[3]/resources/mcp` 落在运行时内，构建脚本复制到 `lib/python3.14/resources/mcp`）；版本同步到 `1.0.0`（`Cargo.toml/lock`、`package.json`、`pyproject.toml`、`uv.lock`、`__init__.py`、`contracts/openapi.json`）。
+- 主控修正（真实构建暴露）：① `uv pip install --target` 产生带绝对 shebang 的 `site-packages/bin/*`，构建时删除；② 路径泄露白名单补充 `_sysconfig*`、`*.dist-info/sboms/`、`task_git.py`（S3 的 forbidden_roots 保护，非运行时依赖）；③ **ad-hoc 签名加 `--options runtime` 会因库验证（无 Team ID）拒绝加载内置 `.so`**，ad-hoc 去掉 hardened runtime（回归断言已加），`--identity` 下是否需要 `disable-library-validation` 留待真实签名实测；④ `bundle.macOS.minimumSystemVersion` 设为 `13.5`（`verify_app.sh` 扫 176 个 Mach-O 的最大 minos，来自 Playwright 自带 node），`bundle_config.rs` 断言由“无该键”改为“等于 13.5”。
+- 主控验证（沙箱外）：脚本单元测试 13 OK、`bash -n` 全过（`shellcheck` 本机未安装，not_run）、`sync_version --check` 1.0.0；Rust fmt/clippy/test **40 passed**；后端全量 **1455 passed / 2 skipped / 2 failed**（均为已知间歇：S6-ACC-014 与 s5c flood），ruff、contracts --check 通过；前端 `contracts:check`、typecheck 通过；**真实本地构建** `build_app.sh --skip-frontend --sign adhoc` exit 0：布局、无 `/Users/` 泄露、拷到另一路径可启动并 `/health` 200、退出码 0、只读运行目录未新增文件、`codesign --verify --deep --strict` 通过；`make_dmg.sh` 产出 DMG 133 MiB、zip 96 MiB；无残留进程。
+- **体积发现**：整包 294 MB（spike 估算 71 MB），其中 `playwright/` 138 MB（Python Playwright 自带 node 驱动，S8 引入，运行必需）；DMG 140 MB / zip 100 MB，对 Tauri updater 的下载体积有影响。可选后续：裁剪驱动内非必需文件（需实测）、或差分更新；待用户定是否处理。
+- not_run：Developer ID 签名、公证、Gatekeeper/quarantine 首启、`stapler`、TCC 授权跨更新保留、`disable-library-validation` 是否需要（均需真实证书与授权）。未测前端 `pnpm build` 之外的 GUI 启动（`verify_app.sh` 只验后端启动，未打开窗口）。

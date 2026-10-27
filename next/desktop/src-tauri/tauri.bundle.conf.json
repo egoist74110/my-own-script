@@ -1,8 +1,10 @@
 {
   "bundle": {
     "resources": {
-      "../../build/app-resources/backend": "backend",
-      "../../build/app-resources/mcp": "mcp"
+      "../../build/app-resources/backend": "backend"
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.5"
     }
   }
 }

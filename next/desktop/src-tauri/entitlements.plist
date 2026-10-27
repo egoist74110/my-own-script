@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Minimal Hardened Runtime entitlements for TOOLBOX.app.
+  JIT (com.apple.security.cs.allow-jit / allow-unsigned-executable-memory) and
+  library-validation (com.apple.security.cs.disable-library-validation) exceptions
+  are intentionally NOT preset here: only add an exception if real Developer ID signing
+  verification proves it is required, and document the exact reason per entry.
+-->
+<plist version="1.0">
+<dict/>
+</plist>
