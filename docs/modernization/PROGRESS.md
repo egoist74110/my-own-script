@@ -87,3 +87,21 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 结果：结论与合同修订已写入 [WORK_PACKAGES.md「S8-0 结论」](WORK_PACKAGES.md)；要点：补依赖 ApplicationServices；窗口 owner name=`Check Point SASE`（按 PID 筛）；headless/headed 手法全通过（捕获事件会重复触发需去重）；Chrome 自成进程组但随管道 EOF 自行退出，三种强杀场景零残留，仍保留精确 PID 兜底；Chrome 新 profile 自行外联 Google，加禁后台联网参数；可派 S8-A。
 - 清理：本任务启动的 Chrome/worker 均已回收，`ps` 无残留；scratchpad 临时 profile 保留。
 - not_run：未重跑仓库测试（只改文档）；新品牌 SSO 页面/真实窗口 OCR/授权后权限行为均未实测。
+
+## S8-A/B/C 施工与集成验收（2026-10-27）
+
+- 角色：主控（lead）；requested/actual：Sonnet 5.5（会话系统提示自述，无提供方回执）。后端 worker：codex `gpt-6.1-sol` medium（命令行指定，无提供方回执，actual 记 unknown）；前端 worker：agy `gemini-3.8-flash-high`（同上）。安全只读核对：Opus 子 agent（requested=opus，actual unknown）。
+- 提交（本地，未 push）：S8-A `583410c`；契约缺口修复 `036bde6`（typed vpn WS 事件/client 视图、`DELETE /api/vpn/browser-profile`）；S8-B + S8-C `c902c2c`（含 worker cwd `Path` 未序列化的修复）。
+- 验证（沙箱外，主控亲跑）：S8 子集 149 passed / 2 skipped（`real_chrome` 需 `-m real_chrome`）；`real_chrome`（回环假页，headless+headed）2 passed，无 Chrome 残留；ruff、契约 `--check` 通过；前端 typecheck/lint/test(1173)/build/guard:dist/contracts:check 全过。全量后端 pytest（不带 -x）：1439 passed、2 skipped（`real_chrome`）、1 failed——失败的是已知间歇用例 `test_s6b_lark.py::test_lark_health_probe_marks_unhealthy_after_3_failures`（S6-ACC-014，与 S8 无关）。
+- 主控修掉的问题：worker `cwd` 为 `Path` 导致 JSON 序列化失败（真实 worker 起不来，被沙箱跳过的测试暴露）；`real_chrome` 测试两处错误期望（scheme 小写、回环页导航与 cookie max-age）；前端 3 个测试（Teleport 的 Sheet 需从 body 查、s7c 无密码断言排除 VPN 卡）。
+- Opus 只读安全核对结论：**无严重缺陷，有条件通过**。秘密外泄、进程回收（无 pkill/shell=True，信号仅限校验 PID+lstart+profile 的对象）、深链（scheme 枚举，不可投递任意 URL）、鉴权/单飞/DELETE 路径安全均未发现问题。待处理：
+  | 级别 | 项 | 状态 |
+  |---|---|---|
+  | 中 M1 | worker 环境未剔除 `PLAYWRIGHT_*`/`NODE_OPTIONS`（合同要求）`adapters/vpn_browser.py:259-265` | open |
+  | 中 M2 | 已连接时 `relogin` 不会真重登（档 A 见隧道即成功）`services/vpn.py:460-475,517` | open |
+  | 中 M3 | TG `/vpn on` 缺“需先在桌面端配置”判断，忙时 `vpn_busy` 被吞、无回复 `telegram_commands.py:527,668`、`telegram.py:688` | open |
+  | 低 L1 | worker cwd 用 data_dir 而非 `<data-dir>/vpn/run/` 0700（已知） | open |
+  | 低 L2–L10 | 深链固定投 6 次不提前停；OCR 截屏矩形可能含上层窗口（推测）；窗口自动化报错直接终止不进档 C；同步写日志可抛错；登记文件元素不校验；import-legacy fields 绕过运行中 409；`close()` 超时抛 TimeoutError；PUT 的 TOTP 种子不校验；客户端控制按 PATH 解析 ps/open/osascript（推测） | open，记账 |
+- 未做/not_run：真实 SSO（新品牌页面/选择器）、真实窗口 OCR/点击、真实 NSWorkspace 深链、权限授权后的行为、真实客户端 A/B 档、前端 dev:web/Tauri 人工走查；均需用户授权的真实验收。安全核对未覆盖前端 S8-C、`proc_supervisor` 内部、`uv.lock` 逐包。
+- 资源：worktree `.local/worktrees/s5e/s7a/s7c/s8a/s8b/s8c` 保留，删除前问用户。
+- 状态：S8 三包已集成；集成验收待 M1–M3 修复或用户明确接受；真实验收、所有权切换、主 Bot 切换仍未授权。
