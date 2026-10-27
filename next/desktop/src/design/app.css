@@ -8,6 +8,12 @@ body,
   margin: 0;
   height: 100%;
 }
+/* 文档本身永不滚动：长页面内部各自滚动；否则聚焦/scrollIntoView 会把整壳顶出窗口，露出下方白底 */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 body {
   background-color: var(--bg-window);
   color: var(--ink);
