@@ -18,8 +18,8 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S5 AI 开发（含 S5-E） | integrated；集成验收通过 | 真实验收清单与三个 AI 机器人切换未授权 | [progress/S5.md](archive/progress/S5.md) |
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
-| S8 VPN | 合同草案待确认（[WORK_PACKAGES.md「S8」](WORK_PACKAGES.md)，10 项待决；未派工） | 真实验收清单、所有权切换与主 Bot 切换未授权 | — |
-| S9 交付 | not_started | — | — |
+| S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
+| S9 交付 | 合同草案待确认（[WORK_PACKAGES.md「S9」](WORK_PACKAGES.md)，11 项待决；未派工） | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -112,3 +112,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 变更：`adapters/vpn_browser.py`、`services/{events,telegram_commands,vpn}.py`、`tests/test_vpn_lifecycle_s8b.py`（新增用例，旧断言未改）、`tests/test_telegram_vpn_s8d.py`（新）。
 - 主控验证（沙箱外）：全量后端 pytest 1455 passed / 2 skipped / 2 failed；失败为已知 S6-ACC-014 与 `tests/independent/s5c/test_s5c_projection.py::test_flood_is_bounded_and_turn_still_completes`（全量负载下偶发，单独连跑 3 次均 12 passed，与 VPN 无关，记为新的间歇项）；ruff 通过。
 - 仍 open：L1–L10、真实验收（见上节）。
+
+## S9 合同草案（2026-10-27）
+
+- 角色：主控（lead）；requested/actual：Sonnet 5.5（会话系统提示自述，无提供方回执）；无子 agent、无派工。输入：`rewrite/next @ 3cae809`、旧版 `main @ 885d186`。
+- 只读核对：旧 `BUILD_MAC_APP.md`、`pack_mac_app.sh`、`pack_mac_dmg.sh`、`release_github.sh`、`app_ado/release_updater.py`；已装旧 `.app` 的 `codesign -dv`/`spctl -a`；`security find-identity`、`notarytool --version`；新端 `tauri.conf.json`、`Cargo.toml`、`backend.rs`、`pyproject.toml`、`next/spikes/packaging/`、后端外部可执行依赖。未读凭据/Keychain 内容，未联网，未构建/签名/公证/发布，未改旧应用。
+- 关键发现：旧 `.app` 是依赖仓库 `.venv` 的未签名包装；旧更新器只打开下载页、不校验；本机 **0 个可用签名身份**；打包态后端命令解析尚不存在；屏幕录制/辅助功能授权绑定宿主 `.app` 签名身份，ad-hoc 签名会使授权随更新失效；“自包含”只能指 Python 运行时与后端依赖（code-server/cloudflared/Node/AI CLI 仍为用户自装）；bundle id/应用名仍是占位（ARCHITECTURE §8 未决）。
+- 产物：[WORK_PACKAGES.md「S9」](WORK_PACKAGES.md)（事实核实、架构五问、打包布局、S9-A/B/C 分包与模型分工、集成验收、真实验收清单、11 项待决）。
+- 状态：合同草案，**待用户确认「S9 待决」**；确认前不派工，不授权签名/公证/发布/旧应用下线。
+- not_run：未重跑测试（只写文档）；签名/公证/Gatekeeper 首启开销、运行时接入 tauri bundle 均未实测。

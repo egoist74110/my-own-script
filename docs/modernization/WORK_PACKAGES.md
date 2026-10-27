@@ -17,7 +17,7 @@
 
 合同中引用的已归档小节（如「S0 已定接口」「S1-A 主控裁决」「协议核对结论」、S4/S5 所有权切换步骤）按 [archive/README.md](archive/README.md) 的「常被引用的小节」表定位，只读对应文件的那一节。
 
-当前切片：**S8 VPN**（合同草案，待用户确认「S8 待决」，见下文「S8」；S7 已于 2026-10-26 集成验收并归档到 [archive/work-packages/S7.md](archive/work-packages/S7.md)）。确认前不派工。
+当前切片：**S9 交付**（合同草案，待用户确认「S9 待决」，见文末「S9」；S8 已于 2026-10-27 集成验收（有条件通过，见 PROGRESS），未归档；S7 已于 2026-10-26 集成验收并归档到 [archive/work-packages/S7.md](archive/work-packages/S7.md)）。确认前不派工。
 
 # S8：VPN（合同草案，2026-10-26，待用户确认「S8 待决」）
 
@@ -260,3 +260,101 @@ vpn:
 - 用户 2026-10-26 原答复：**“S8 待决 1–10 全部按推荐，写入 S8 已决并提交，然后做 S8-0。”** 确认十项：1 授权主控做 S8-0（本机只读探测 + Playwright 驱动系统 Chrome 打开本地假页，不访问真实站点、不登录、不点客户端）并授权联网一次 `uv lock` 解析/下载 `playwright`、`pyobjc-framework-Quartz/Vision/Cocoa`（darwin 标记），运行时不再 `pip install`；2 窗口自动化保留，默认 `off`，页面显式选 `connect`/`connect_update` 才启用（需先授予屏幕录制/辅助功能，会移动真实鼠标，页面说明）；3 Playwright（锁定版本）驱动系统 Chrome，放在受监督 worker 子进程里；4 档 B 只做 AppleScript 优雅退出，超时后对身份核对过的精确 PID 发一次 TERM，仍在则报 `client_stuck`，不 SIGKILL、不按名杀；5 TOTP 导入接口收导出文本/单条 otpauth URI（服务端不读路径、不删文件），多匹配须明确选择；6 无种子时桌面支持手输令牌（TG 不支持）；7 新端用全新 Chrome profile，提供“忘记此浏览器”，不复制旧端 profile；8 不做自动看门狗，仅手动/TG 触发；9 运行记录内存最近 20 条；10 S8 验收通过后按步骤另行授权切换，不改旧应用代码，主 Bot 切换另行授权。
 - 本确认解除派工门禁；**不**授权真实 SSO 登录、点击/退出/重启真实客户端、读取真实配置/凭据/Ente 导出、联网访问任何真实 VPN/SSO 站点、所有权切换、主 Bot 切换、修改旧应用，也不授权真实验收清单（均另行授权）。依赖变更的联网仅限 `uv` 解析/下载上述包。合同中“按待决N”均由以上已决收敛，施工者不得选择备选路径。
 - 派工顺序：S8-0（主控）→ S8-A（codex `gpt-6.1-sol` / medium，或 Gemini 4 `gemini-4-argon`）→ S8-B（同会话续接）；S8-C（agy `gemini-3.8-flash-high`，`--sandbox`）在 S8-A 契约冻结后可与 S8-B 并行；最后 S8 集成验收。lead：S8-0 与集成验收的安全核对用 Opus，其余可由 Sonnet 担任。
+
+# S9：交付（合同草案，2026-10-27，待用户确认「S9 待决」）
+
+状态：**草案，未确认，不派工**。输入基线：`rewrite/next @ 3cae809`（S0–S8 已集成），旧版 `main @ 885d186`（只读）。本轮只读：旧 `BUILD_MAC_APP.md`、`pack_mac_app.sh`、`pack_mac_dmg.sh`、`release_github.sh`、`app_ado/release_updater.py`；已装旧 `.app` 的 `codesign -dv`/`spctl -a`；本机 `security find-identity`、`notarytool` 版本；新端 `tauri.conf.json`、`Cargo.toml`、`backend.rs`、`pyproject.toml`、`next/spikes/packaging/`（S0-D spike）、后端对外部可执行文件的依赖。**未**读任何凭据/Keychain 内容，未联网，未构建、未签名、未公证、未发布、未改旧应用。
+依据：ARCHITECTURE §5/§7/§8、MIGRATION_PLAN S9 行（D14、D16）、S0-D spike 结论、各切片的所有权切换步骤（S4/S6/S7/S8）。
+
+## S9 事实核实
+
+### 旧端交付现状（决定“要替换什么”）
+- 旧 `.app` 是**轻量包装**：`Contents/MacOS/launcher` 去调仓库 `.venv` 的 Python，**不自包含**，换机器或移动仓库即失效（`BUILD_MAC_APP.md`）。
+- **完全未签名**：`codesign -dv` 为 “not signed at all”，`spctl` 为 rejected（本机已装 1.1.3 (42)，靠用户手动放行运行）。
+- DMG 由 `hdiutil create -format UDZO` 简单打包，无背景、无公证；发布走 `release_github.sh`（`gh release create/upload`，tag `v<版本>`，版本来自 `app_version.py`，pre-commit hook 每次提交自动递增，发布脚本会提交并 `git push` 版本号）。
+- 更新器 `app_ado/release_updater.py`（67 行）：调 GitHub API 取最新 Release 的 `.dmg` 资源链接，**只打开浏览器下载页**，不校验签名/摘要、不替换应用。D16 即指此类旧更新器/空占位。
+
+### 新端现状
+- Tauri 2 壳：`productName=TOOLBOX`，`identifier=dev.toolbox.next`（占位，ARCHITECTURE §8 “新应用名称与 bundle id”**未决**），`version=0.0.0`（Cargo/package.json/tauri.conf 各自 0.0.0；后端 `pyproject` 0.1.0），`bundle.targets=["app"]`，无签名/updater/外部资源配置。
+- `backend.rs`：开发默认拉 `<repo>/next/backend/.venv/bin/python -m toolbox_backend --dev`（cwd `next/backend`），`TOOLBOX_BACKEND_CMD` 可整体覆盖；**尚无“打包态”命令解析**（`.app/Contents/Resources` 内的运行时）。握手/监督/回收契约已定且测试覆盖，打包不应改它。
+- S0-D spike（Apple M4，CPython 3.14.8，PyInstaller 6.22.3）：方案 A python-build-standalone（含 pyc）解压 61.7 MB、zip 22.7 MB，热启动到 READY 约 0.27 s，新副本首跑 0.83 s；方案 B PyInstaller 31.2 MB、zip 17.0 MB，0.33 s / 1.05 s；两者可重定位、无非系统动态库、退出码 0 无残留。热启动差异不显著，zip 体积差约 6 MB；spike 倾向 A（可维护、同一解释器可复用）。**未测**：签名/公证（A 里每个 `.so`/可执行逐个签名）、Gatekeeper 首启开销、运行时接入 tauri bundle。
+- 后端对外部程序的依赖（**不在内置范围，按现状探测**）：`git`、`ifconfig`、`ps`/`open`/`osascript`（系统自带）；`code-server`、`cloudflared`（用户自装，设置页探测/手填路径）；MCP 用的 Node/npm（后端从旧配置目录 `node/` 与 PATH 探测，`resources/mcp/*.js` 是随包补丁）；AI CLI（claude/codex/agy，用户自装）。因此“自包含”只指 **Python 运行时与后端依赖**，不含这些外部工具。
+- 本机无可用签名身份：`security find-identity -v -p codesigning` → **0 valid identities**；`xcrun notarytool` 存在（1.1.3）。签名/公证所需的 Apple Developer ID 证书与公证凭据**用户是否拥有未知**，我不读取、不索取、不输入任何凭据。
+- 新增事实（S8-0）：屏幕录制/辅助功能的授权**属于启动后端的宿主 `.app` 的签名身份**。打包后若只是 ad-hoc 签名，每次更新 cdhash 变化会使 TCC 授权失效（窗口自动化需重新授权）；稳定的 Developer ID 签名则授权可跨更新保留。这是“是否签名”不只是 Gatekeeper 问题的原因。
+
+### 旧应用下线前提
+旧应用下线 = 各所有权切换均已完成并验收：S4（主 Bot/三个 AI 机器人）、S6（Lark 刷新所有权，**用户已搁置**）、S7（code-server/cloudflared）、S8（VPN）。任一未切换，旧应用就仍是该能力的所有者，不能下线。
+
+## S9 数据模型与访问边界
+
+### 架构五问
+1. **所有权**：打包态下后端仍由 Tauri 壳唯一监督（契约不变）；运行时在 `.app/Contents/Resources/backend/` 只读，数据与日志在用户数据目录，**绝不写入 `.app` 内**（签名后只读，pyc 必须随包预编译）。
+2. **状态与持久化**：版本号单一来源；更新器只持有“当前版本/待装版本/校验结果”，不持久化凭据；更新中断后旧版必须仍可运行。
+3. **失败与回收**：更新失败/中断/校验不通过 → 保留旧版并提示；不得出现新旧两份壳同时监督后端（单实例插件已在）。
+4. **访问边界**：更新源只允许一个配置的 HTTPS 源（GitHub Releases）；下载物必须过签名/摘要校验才可安装；更新不接受页面传入的 URL。
+5. **可观测与取消**：更新检查/下载/安装为一个带取消的运行；日志不含 token、不含完整下载预签名 URL。
+
+### 打包布局（推荐方案 A，定案以待决3 为准）
+```text
+TOOLBOX.app/Contents/
+  MacOS/toolbox-desktop            Tauri 壳
+  Resources/backend/               python-build-standalone 运行时 + 锁定依赖 wheel + 后端包（含预编译 pyc，裁剪清单沿用 spike）
+  Resources/mcp/                   figma/lark 补丁脚本与 package.json（现 `resources/mcp`）
+```
+- 打包态命令：`Resources/backend/bin/python3.14 -m toolbox_backend`（无 `--dev`），壳在“打包态”按 bundle 路径解析，`TOOLBOX_BACKEND_CMD` 仍可覆盖（仅调试）；开发态行为不变。
+- 构建脚本由 spike 正式化为 `next/scripts/build_app.sh`（锁定依赖、裁剪、预编译、复制进 bundle）；**不得 `pip install` 联网到运行时**，依赖由 `uv.lock` 导出并可重复构建。
+- 签名：先签运行时内全部 `.so`/可执行，再签 `bin/python3.14`，再签壳，最后签 `.app`（hardened runtime + 必要 entitlements：JIT/library validation 取最小集，实测后定）；公证用 `notarytool submit --wait` 并 `stapler staple`。**无证书时只产出未签名/ad-hoc 构建用于本机验证，明确标注不可分发。**
+- 更新：推荐 Tauri updater 插件 + GitHub Releases 的静态清单（`latest.json`），更新包用 Tauri 自己的更新签名密钥（与 Apple 证书无关，私钥由用户保管，不入库）。
+
+## S9 通用合同与模型分工
+
+- **派工门禁**：用户确认本合同与「S9 待决」；主控写入「S9 已决」并提交输入 SHA。
+- 模型分工（用户偏好）：**后端/脚本/Rust 施工 codex exec `gpt-6.1-sol` / medium（workspace-write、不联网）**或 Gemini 4（仅后端）；**前端更新提示 UI 用 agy `gemini-3.8-flash-high`**、`--sandbox`、`--print=`；lead 用 Sonnet；签名/公证/安全验收用 Opus；不做交叉审计；每包至多一个测试员。额度不足换下一候选；实际型号运行前核验，不可验证记 unknown。
+- 每包 worktree `.local/worktrees/s9{a,b,c}`，detached 自输入 SHA；施工者不 commit；主控核对 diff 与沙箱外测试后以限定路径 binary patch 集成。
+- 禁止：联网（构建依赖用已锁定缓存/离线）、读 Keychain/证书私钥、真实签名/公证/发布/`gh release`/`git push`、改旧应用、读真实配置。真实签名/公证/发布属真实验收，另行授权。
+
+### S9-A：Rust 壳——打包态后端解析与 bundle 配置（codex）
+- `backend.rs` 增加“打包态”命令解析（按可执行文件相对路径定位 `Resources/backend`；不存在则回退开发态；覆盖变量保留），单测覆盖路径解析与回退，握手/监督/回收契约与既有测试不变。
+- `tauri.conf.json`：`bundle.resources` 引入运行时与 `mcp/`、`minimumSystemVersion`、版本号单一来源（见待决 11）、`identifier`/`productName` 按待决 2。
+- 不含签名与更新。
+
+### S9-B：构建与签名脚本（codex）
+- 把 spike 正式化为可重复构建：运行时构建（锁定依赖、裁剪、预编译）、拷入 bundle、`verify_app.sh`（检查 bundle 布局、无绝对路径泄露、可重定位、启动握手 + 退出无残留、`codesign --verify --deep --strict` 在有签名时执行）。
+- 签名/公证脚本**只读取环境变量或钥匙串中已存在的 profile 名**，不接触凭据值；无证书时脚本明确退出并说明；提供 ad-hoc 本机验证模式（标注不可分发）。
+- DMG/zip 产物脚本（`hdiutil`/`ditto`），版本号写入文件名；不含发布。
+
+### S9-C：更新机制（codex 壳/后端 + agy 前端）
+- Tauri updater 插件集成与最小权限 capability；更新源固定配置；检查/下载/安装为带取消的运行，事件进 WS（沿用 events.schema 规范）；失败保留旧版。
+- 前端：设置页“关于/更新”卡（当前版本、检查更新、下载进度、取消、失败文案、重启安装；无页面传入 URL）。
+- 本包只在**本地假更新源**（回环静态服务器 + 自签更新包）下验证，不连真实 GitHub。
+
+## S9 集成验收（主控）
+
+- 后端/前端/Rust 全量检查与 S8 同级（含 `cargo test`、`cargo clippy -D warnings`）；构建产物检查：`verify_app.sh` 全过。
+- 主控亲自核对（含 Opus 核对）：`.app` 内无可写数据路径、签名顺序与 entitlements 最小、更新校验失败路径保留旧版、无凭据进 argv/日志/产物、构建可重复（两次产物布局一致）。
+- 本机验证（不签名/ad-hoc）：从临时目录拷贝运行 `.app` → 握手 → 退出无残留；隔离后端移动到另一路径仍可启动（可重定位）；本地假更新源走通检查→下载→校验失败/成功两条路径。
+- PROGRESS 列 迁移 / 改进 / 有意推迟（含 D14、D16 对照）。
+
+### 真实验收清单（仅用户另行授权；本合同提交不执行）
+1. 用你提供的 Developer ID 签名 + 公证（上传 Apple，联网）；`spctl -a -vv` 通过；加 quarantine 属性后首启 Gatekeeper 通过。
+2. 真实 `/Applications` 位置首启、关窗常驻、托盘、⌘Q 退出回收；屏幕录制/辅助功能授权在一次更新后是否保留。
+3. 真实 GitHub Release 发布与客户端更新一次（需授权 `gh`/push，且用测试 tag）。
+4. 旧应用与新应用并存、按各切片所有权切换步骤逐项切换后，旧应用下线（修改旧应用/删除旧 `.app` 均另行授权）。
+
+## S9 待决（草案；每项给推荐与备选影响）
+
+技术已定（无需拍板）：运行时只读放在 `Contents/Resources`，数据目录不进 bundle；打包态由壳唯一监督后端；构建不联网、依赖由 `uv.lock` 锁定；更新必须校验，失败保留旧版；真实签名/公证/发布不在本合同自动执行。
+
+| 编号 | 需要拍板 | 推荐 | 备选与影响 |
+| --- | --- | --- | --- |
+| 1 | 是否用 Apple Developer ID 签名 + 公证 | **是**（稳定签名身份才能让屏幕录制/辅助功能授权跨更新保留，也避免每次手动放行）；证书与公证凭据由你自己配置在钥匙串，我只用 profile 名 | A：仅 ad-hoc（零成本，但每次更新授权失效、首启需手动放行，只适合个人自用）；B：先不签名，S9 只交付可签名的流水线，等有证书再签 |
+| 2 | 新应用名称与 bundle id | **沿用 `TOOLBOX` / `dev.toolbox.next`？** 请你定最终值——它决定数据目录、TCC 授权身份与 Keychain 命名，发布后更名等于迁移 | 先沿用占位、发布前改一次：S9 内可改，已有开发数据需手动迁移；上线后再改代价最大 |
+| 3 | 内置 Python 运行时 | **A python-build-standalone**（可维护，依赖即 wheel，zip 比 B 多约 6 MB） | B PyInstaller：体积更小，但隐式导入需维护、新依赖易漏收集 |
+| 4 | Node（MCP 用）是否内置 | **不内置**，沿用现有探测并在设置页提示；列为有意推迟 | 内置 Node：真正自包含，但体积 +~100 MB、要随 Node 安全更新、MCP 补丁需随之核对 |
+| 5 | 更新机制 | **Tauri updater + GitHub Releases 静态清单**（带更新签名；私钥你保管、不入库） | A：沿用旧式“检查最新 Release 并打开下载页”（最简单，无自动替换，也不校验）；B：不做应用内更新，手动 DMG |
+| 6 | 分发形态与架构 | **DMG（UDZO）+ updater 用 zip；仅 arm64**（本机 Apple Silicon） | 通用二进制（arm64+x86_64）：兼容 Intel Mac，但运行时与签名工作量/体积翻倍，需 Intel 机器验证 |
+| 7 | 旧应用下线时机 | **各切片所有权切换全部完成并验收后**另行授权下线（S6 Lark 切换被你搁置，所以下线可能晚于 S9）；S9 不改旧应用 | 先在 S9 就下线旧应用的更新器/占位（D16 清理）：需改旧代码，要你授权；会让旧版用户失去更新提示 |
+| 8 | 版本号单一来源 | **以 `tauri.conf.json` 为准，构建脚本同步 Cargo/package.json/pyproject 并校验一致**；不再用 pre-commit 自动递增 | 沿用 hook 递增：每次提交 +1，噪声大且与发布版本不一致 |
+| 9 | 开机自启/launchd 无界面常驻 | **S9 不做**（ARCHITECTURE §8 未决项维持未决） | 做登录项：增加 `SMAppService` 授权与退出语义，需单独设计 |
+| 10 | 真实签名/公证/发布授权 | **S9 施工与本机验证不做，真实验收清单你另行授权时再逐项做**；全程不 `git push`、不 `gh release` | 授权主控在你在场时一次走完签名→公证→发布测试 tag |
+| 11 | 版本起点 | **首个对外版本 `1.0.0`**（旧应用最近 1.1.3 (42)，新版用新版本线，避免被旧更新器误判为“更新”或“降级”） | 延续 `1.x`（如 `1.2.0`）：版本线连续，但新旧并存期旧更新器可能提示新应用 |
