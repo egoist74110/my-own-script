@@ -126,3 +126,38 @@ def install_ai_cli_guard():
             setattr(os, name, fn)
 
     return restore
+
+
+def install_vpn_native_guard():
+    """Child interpreters cannot start a browser, open a deep link or touch the screen."""
+    from toolbox_backend.adapters import vpn_browser
+    from toolbox_backend.adapters.window_automation import MacNative
+
+    originals = []
+
+    def blocked(*args, **kwargs):
+        violation("native.vpn")
+
+    async def blocked_async(*args, **kwargs):
+        blocked()
+
+    def replace(owner, name, value):
+        originals.append((owner, name, getattr(owner, name)))
+        setattr(owner, name, value)
+
+    replace(vpn_browser, "open_callback", blocked_async)
+    for name in ("windows", "safe_to_click", "candidates", "click"):
+        replace(MacNative, name, blocked)
+    try:
+        from playwright._impl._browser_type import BrowserType
+    except ImportError:
+        pass
+    else:
+        replace(BrowserType, "launch", blocked_async)
+        replace(BrowserType, "launch_persistent_context", blocked_async)
+
+    def restore():
+        for owner, name, original in reversed(originals):
+            setattr(owner, name, original)
+
+    return restore

@@ -1601,6 +1601,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vpn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_vpn_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/browser-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Clear Browser Profile */
+        delete: operations["clear_browser_profile_api_vpn_browser_profile_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect */
+        post: operations["connect_api_vpn_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/credentials/import-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Legacy */
+        post: operations["import_legacy_api_vpn_credentials_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/credentials/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Credential */
+        put: operations["put_credential_api_vpn_credentials__kind__put"];
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_api_vpn_credentials__kind__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/relogin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Relogin */
+        post: operations["relogin_api_vpn_relogin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["runs_api_vpn_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run */
+        get: operations["run_api_vpn_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_vpn_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/runs/{run_id}/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mfa */
+        post: operations["mfa_api_vpn_runs__run_id__mfa_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Settings */
+        patch: operations["settings_api_vpn_settings_patch"];
+        trace?: never;
+    };
+    "/api/vpn/totp/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Totp */
+        post: operations["import_totp_api_vpn_totp_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-items": {
         parameters: {
             query?: never;
@@ -2257,6 +2462,11 @@ export interface components {
             /** Username */
             username: string | null;
         };
+        /** BrowserProfileCleared */
+        BrowserProfileCleared: {
+            /** Cleared */
+            cleared: boolean;
+        };
         /** CheckResponse */
         CheckResponse: {
             /** Exit Code */
@@ -2486,6 +2696,11 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** CredentialConfigured */
+        CredentialConfigured: {
+            /** Configured */
+            configured: boolean;
+        };
         /** CredentialImport */
         CredentialImport: {
             /** App Id */
@@ -2551,6 +2766,11 @@ export interface components {
              * @enum {string}
              */
             source: "imported" | "manual" | "unknown";
+        };
+        /** CredentialWrite */
+        CredentialWrite: {
+            /** Value */
+            value: string;
         };
         /** DefinitionIdentity */
         DefinitionIdentity: {
@@ -3219,6 +3439,16 @@ export interface components {
              */
             status: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "unknown";
         };
+        /** LegacyCredentialsImport */
+        LegacyCredentialsImport: {
+            /**
+             * Fields
+             * @default false
+             */
+            fields: boolean;
+            /** Kinds */
+            kinds: ("vpn_password" | "vpn_totp_secret")[];
+        };
         /** LegacyImport */
         LegacyImport: {
             /** Path */
@@ -3351,6 +3581,16 @@ export interface components {
             runtime: components["schemas"]["RuntimeView"];
             /** Self Test Running */
             self_test_running: boolean;
+        };
+        /** ManualMfa */
+        ManualMfa: {
+            /** Code */
+            code: string;
+        };
+        /** ManualMfaResult */
+        ManualMfaResult: {
+            /** Accepted */
+            accepted: boolean;
         };
         /** McpConfig */
         McpConfig: {
@@ -4619,6 +4859,13 @@ export interface components {
              */
             token: string;
         };
+        /** TotpImport */
+        TotpImport: {
+            /** Index */
+            index?: number | null;
+            /** Text */
+            text: string;
+        };
         /** TunnelCreate */
         TunnelCreate: {
             /**
@@ -4691,6 +4938,173 @@ export interface components {
         /** ValidationErrorResponse */
         ValidationErrorResponse: {
             detail: components["schemas"]["ValidationErrorDetail"];
+        };
+        /** VpnClient */
+        VpnClient: {
+            /** App Name */
+            app_name?: string | null;
+            /**
+             * Bundle Id
+             * @default com.safervpn.osx.smb
+             */
+            bundle_id: string;
+            /**
+             * Url Scheme
+             * @default CheckPointSASE
+             * @enum {string}
+             */
+            url_scheme: "HarmonySASE" | "CheckPointSASE";
+        };
+        /** VpnClientView */
+        VpnClientView: {
+            /** App Name */
+            app_name?: string | null;
+            /** Installed */
+            installed: boolean;
+            /** Running */
+            running: boolean;
+            /** Version */
+            version?: string | null;
+        };
+        /** VpnConfig */
+        VpnConfig: {
+            /** Chrome Path */
+            chrome_path?: string | null;
+            client?: components["schemas"]["VpnClient"];
+            login?: components["schemas"]["VpnLogin"];
+            /**
+             * Login Timeout S
+             * @default 75
+             */
+            login_timeout_s: number;
+            /**
+             * Max Run S
+             * @default 480
+             */
+            max_run_s: number;
+            /**
+             * Rung Timeout S
+             * @default 30
+             */
+            rung_timeout_s: number;
+            /**
+             * Tunnel Prefix
+             * @default 10.254.
+             */
+            tunnel_prefix: string;
+            /**
+             * Window Automation
+             * @default off
+             * @enum {string}
+             */
+            window_automation: "off" | "connect" | "connect_update";
+        };
+        /** VpnLogin */
+        VpnLogin: {
+            /**
+             * Email
+             * @default
+             */
+            email: string;
+            /**
+             * Headless
+             * @default true
+             */
+            headless: boolean;
+            /**
+             * Residency
+             * @default US Data Residency
+             * @enum {string}
+             */
+            residency: "US Data Residency" | "EU Data Residency" | "India Data Residency" | "Australia Data Residency" | "CA Data Residency";
+            /**
+             * Totp Filter
+             * @default Perimeter
+             */
+            totp_filter: string;
+            /**
+             * Workspace
+             * @default
+             */
+            workspace: string;
+        };
+        /** VpnRunList */
+        VpnRunList: {
+            /** Items */
+            items: components["schemas"]["VpnRunView"][];
+        };
+        /** VpnRunRequest */
+        VpnRunRequest: {
+            /**
+             * Allow Login
+             * @default true
+             */
+            allow_login: boolean;
+            /** Max Rung */
+            max_rung?: (0 | 1 | 2 | 3) | null;
+            /** Request Id */
+            request_id?: string | null;
+        };
+        /** VpnRunView */
+        VpnRunView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code?: string | null;
+            /** Events */
+            events?: {
+                [key: string]: unknown;
+            }[];
+            /** Ip */
+            ip?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Rung
+             * @default 0
+             */
+            rung: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** VpnSettingsPatch */
+        VpnSettingsPatch: {
+            /** Revision */
+            revision: number;
+            vpn: components["schemas"]["VpnConfig"];
+        };
+        /** VpnSnapshot */
+        VpnSnapshot: {
+            client: components["schemas"]["VpnClientView"];
+            /** Connected */
+            connected: boolean;
+            /** Credentials */
+            credentials: {
+                [key: string]: boolean;
+            };
+            current_run?: components["schemas"]["VpnRunView"] | null;
+            /** Ip */
+            ip: string | null;
+            /** Permissions */
+            permissions: {
+                [key: string]: string;
+            };
+            /** Revision */
+            revision: number;
+            settings: components["schemas"]["VpnConfig"];
         };
         /** WhitelistRequest */
         WhitelistRequest: {
@@ -9276,6 +9690,394 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    status_api_vpn_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnSnapshot"];
+                };
+            };
+        };
+    };
+    clear_browser_profile_api_vpn_browser_profile_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileCleared"];
+                };
+            };
+        };
+    };
+    connect_api_vpn_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VpnRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_legacy_api_vpn_credentials_import_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegacyCredentialsImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_credential_api_vpn_credentials__kind__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialConfigured"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_api_vpn_credentials__kind__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialConfigured"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relogin_api_vpn_relogin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VpnRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    runs_api_vpn_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnRunList"];
+                };
+            };
+        };
+    };
+    run_api_vpn_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_vpn_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VpnRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mfa_api_vpn_runs__run_id__mfa_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualMfa"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualMfaResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_api_vpn_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VpnSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_totp_api_vpn_totp_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialConfigured"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

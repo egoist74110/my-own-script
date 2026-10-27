@@ -24,6 +24,53 @@ export interface ServicesSubscribedData {
   last_seq: number
 }
 
+export interface VpnClientView {
+  installed: boolean
+  running: boolean
+  app_name?: string | null
+  version?: string | null
+}
+
+export interface VpnRunBrief {
+  run_id: string
+  state: string
+  rung: number
+}
+
+export interface VpnStatusData {
+  connected: boolean
+  ip?: string | null
+  client?: VpnClientView | null
+  current_run?: VpnRunBrief | null
+  vpn_seq: number
+}
+
+export interface VpnRunEventData {
+  run_id: string
+  run_seq: number
+  state: string
+  rung: number
+  event?: string | null
+  error_code?: string | null
+  ip?: string | null
+  vpn_seq: number
+}
+
+export interface VpnMfaRequiredData {
+  run_id: string
+  expires_in_s: number
+  vpn_seq: number
+}
+
+export interface VpnSubscribedData {
+  last_seq: number
+}
+
+export interface VpnCredentialConfiguredData {
+  kind: 'vpn_password' | 'vpn_totp_secret'
+  configured: boolean
+}
+
 export type ConnectionState = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
 export interface TelegramStatusEventData {
@@ -117,6 +164,11 @@ export interface EventClientOptions {
   onMcpSubscribed?: (data: McpSubscribedData, envelope: EventEnvelope) => void
   onServicesStatus?: (data: ServicesStatusData, envelope: EventEnvelope) => void
   onServicesSubscribed?: (data: ServicesSubscribedData, envelope: EventEnvelope) => void
+  onVpnStatus?: (data: VpnStatusData, envelope: EventEnvelope) => void
+  onVpnRun?: (data: VpnRunEventData, envelope: EventEnvelope) => void
+  onVpnMfaRequired?: (data: VpnMfaRequiredData, envelope: EventEnvelope) => void
+  onVpnCredential?: (data: VpnCredentialConfiguredData, envelope: EventEnvelope) => void
+  onVpnSubscribed?: (data: VpnSubscribedData, envelope: EventEnvelope) => void
   /** 超过此时间没收到任何事件视为连接已死（后端心跳间隔 5s）。 */
   staleAfterMs?: number
   backoff?: { initialMs: number; maxMs: number }
@@ -253,6 +305,23 @@ export class EventClient {
     return this.send({
       type: 'unsubscribe',
       topic: 'services',
+    })
+  }
+
+  /** 订阅 vpn 主题 */
+  subscribeVpn(afterSeq = 0): boolean {
+    return this.send({
+      type: 'subscribe',
+      topic: 'vpn',
+      after_seq: afterSeq,
+    })
+  }
+
+  /** 退订 vpn 主题 */
+  unsubscribeVpn(): boolean {
+    return this.send({
+      type: 'unsubscribe',
+      topic: 'vpn',
     })
   }
 
@@ -396,6 +465,19 @@ export class EventClient {
         this.opts.onServicesStatus?.(parsed.data as unknown as ServicesStatusData, parsed)
       } else if (parsed.type === 'services.subscribed') {
         this.opts.onServicesSubscribed?.(parsed.data as unknown as ServicesSubscribedData, parsed)
+      }
+    }
+    if (parsed.topic === 'vpn') {
+      if (parsed.type === 'vpn.status') {
+        this.opts.onVpnStatus?.(parsed.data as unknown as VpnStatusData, parsed)
+      } else if (parsed.type === 'vpn.run') {
+        this.opts.onVpnRun?.(parsed.data as unknown as VpnRunEventData, parsed)
+      } else if (parsed.type === 'vpn.mfa_required') {
+        this.opts.onVpnMfaRequired?.(parsed.data as unknown as VpnMfaRequiredData, parsed)
+      } else if (parsed.type === 'vpn.credentials') {
+        this.opts.onVpnCredential?.(parsed.data as unknown as VpnCredentialConfiguredData, parsed)
+      } else if (parsed.type === 'vpn.subscribed') {
+        this.opts.onVpnSubscribed?.(parsed.data as unknown as VpnSubscribedData, parsed)
       }
     }
     this.opts.onEvent?.(parsed)

@@ -29,6 +29,10 @@ export interface BackendRuntime {
   subscribeServices?(afterSeq?: number): boolean
   /** 退订 services 主题 */
   unsubscribeServices?(): boolean
+  /** 订阅 vpn 主题 */
+  subscribeVpn?(afterSeq?: number): boolean
+  /** 退订 vpn 主题 */
+  unsubscribeVpn?(): boolean
   /** 注册事件监听器，返回解除监听的回调 */
   onEvent(listener: (event: EventEnvelope) => void): () => void
 }
@@ -69,6 +73,8 @@ export function createBackendRuntime(deps: RuntimeDeps = {}): BackendRuntime {
     unsubscribeMcp: () => events.unsubscribeMcp(),
     subscribeServices: (afterSeq) => events.subscribeServices(afterSeq),
     unsubscribeServices: () => events.unsubscribeServices(),
+    subscribeVpn: (afterSeq) => events.subscribeVpn(afterSeq),
+    unsubscribeVpn: () => events.unsubscribeVpn(),
     onEvent: (listener) => events.addEventListener(listener),
   }
 }

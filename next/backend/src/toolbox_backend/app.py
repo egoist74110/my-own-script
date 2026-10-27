@@ -95,6 +95,7 @@ def create_app(
         await app.state.services_service.initialize()
         await app.state.run_service.initialize()
         await app.state.ai_service.initialize()
+        await app.state.vpn_service.initialize()
         await app.state.telegram_service.initialize()
         for ai_slot in app.state.telegram_ai_services.values():
             await ai_slot.initialize()

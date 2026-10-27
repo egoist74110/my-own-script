@@ -90,6 +90,23 @@ export type ProtocolRequest = S['ProtocolRequest']
 export type LegacyImport = S['LegacyImport']
 export type SettingsPatch = S['SettingsPatch']
 
+export type VpnSnapshot = S['VpnSnapshot']
+export type VpnConfig = S['VpnConfig']
+export type VpnClient = S['VpnClient']
+export type VpnLogin = S['VpnLogin']
+export type VpnClientView = S['VpnClientView']
+export type VpnRunView = S['VpnRunView']
+export type VpnRunList = S['VpnRunList']
+export type VpnRunRequest = S['VpnRunRequest']
+export type VpnSettingsPatch = S['VpnSettingsPatch']
+export type BrowserProfileCleared = S['BrowserProfileCleared']
+export type CredentialWrite = S['CredentialWrite']
+export type CredentialConfigured = S['CredentialConfigured']
+export type LegacyCredentialsImport = S['LegacyCredentialsImport']
+export type TotpImport = S['TotpImport']
+export type ManualMfa = S['ManualMfa']
+export type ManualMfaResult = S['ManualMfaResult']
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -241,4 +258,53 @@ export const TELEGRAM_TOKEN_REGEX = /^\d{5,16}:[A-Za-z0-9_-]{30,64}$/
 
 export function isTelegramTokenValid(token: string): boolean {
   return TELEGRAM_TOKEN_REGEX.test(token.trim())
+}
+
+export const VPN_ERROR_MESSAGES: Record<string, string> = {
+  vpn_busy: 'VPN 正在运行中或操作正在进行中，请稍后重试',
+  vpn_client_missing: '未检测到 Check Point SASE 客户端，请先安装客户端',
+  vpn_not_configured: 'VPN 凭据未配置，请先设置密码与 TOTP 种子',
+  vpn_mfa_required: '需要输入 MFA 动态令牌',
+  vpn_mfa_timeout: 'MFA 动态令牌输入超时',
+  totp_ambiguous: '找到多个 TOTP 项目，请选择要导入的一项',
+  totp_unsupported: '不支持的 TOTP 格式（仅支持 RFC 6238 6位/30秒/SHA1）',
+  window_permission_missing:
+    '缺少窗口自动化权限（屏幕录制或辅助功能），权限归属启动后端的宿主应用，请在 macOS 系统设置中授权后重启后端',
+  client_stuck: '客户端退出超时或无响应',
+  max_run_exceeded: 'VPN 连接超时，已达到单次运行最大时限',
+  login_selector_missing: '登录页面元素未找到或页面结构发生变更',
+  login_credentials_rejected: '用户名或密码被拒绝，请检查 VPN 凭据',
+  login_mfa_rejected: 'MFA 令牌校验失败，请重试',
+  login_timeout: '登录流程等待超时',
+  login_callback_not_captured: '未捕获到登录成功回调深链',
+  vpn_not_implemented: '该功能在当前后端版本中尚未实现（等待 S8-B 登录 worker 与窗口自动化集成）',
+  vpn_profile_unsafe: 'Chrome 配置目录为符号链接或存在安全风险，已拒绝操作',
+  revision_conflict: '配置已被修改，请刷新后重试',
+  validation_error: '输入格式不正确',
+  not_found: '指定的运行记录或条目不存在',
+  store_unavailable: '配置存储不可用',
+  store_busy: '配置存储正忙',
+}
+
+export const VPN_RUNG_LABELS: Record<number, string> = {
+  0: '检查已连接',
+  1: '档 A：启动客户端',
+  2: '档 B：重启客户端',
+  3: '档 C：浏览器 SSO 登录',
+}
+
+export const VPN_EVENT_LABELS: Record<string, string> = {
+  rung0_connected: '已检测到 VPN 隧道连接，直接使用现有连接',
+  rungA_open: '正在尝试打开客户端应用',
+  rungB_restart: '正在重启客户端应用',
+  window_connect: '正在客户端窗口中尝试点击 Connect',
+  window_update: '检测到客户端更新提示，正在处理更新',
+  rungC_login: '正在启动浏览器执行 SSO 登录',
+  waiting_connection: '正在等待 VPN 隧道建立连接',
+  done: 'VPN 连接已成功建立',
+}
+
+export function vpnErrorMessage(code?: string | null, fallback = 'VPN 操作失败'): string {
+  if (!code) return fallback
+  return VPN_ERROR_MESSAGES[code] || `${fallback}（错误码：${code}）`
 }

@@ -1082,6 +1082,37 @@ TG 主 Bot owner 菜单新增“服务”页及 `/services`，状态仅含状态
 
 配置 schema v6 在 `vpn` 段保存客户端 bundle id、隧道前缀、登录字段、自动化模式与超时；v5→v6 初始化会先留存原始快照，再原子替换。VPN 密码和 TOTP 种子只写入 `toolbox-next` 凭据后端，状态接口只返回是否已配置。旧 Keychain 导入为显式只读操作。
 
-TOTP 导入请求接收不超过 1 MiB 的文本或 `otpauth://` URI；服务端仅在内存解析并要求调用方选择多条匹配项。计算使用标准库 RFC 6238 SHA1/6 位/30 秒。VPN 运行使用单飞任务、幂等 request_id、取消与总时限，最多保留 20 条内存记录。客户端控制使用固定 argv 与 bundle id；登录和窗口自动化当前留有 S8-B 接缝，占位实现明确返回 `vpn_not_implemented`。
+TOTP 导入请求接收不超过 1 MiB 的文本或 `otpauth://` URI；服务端仅在内存解析并要求调用方选择多条匹配项。计算使用标准库 RFC 6238 SHA1/6 位/30 秒。VPN 运行使用单飞任务、幂等 request_id、取消与总时限，最多保留 20 条内存记录。客户端控制使用固定 argv 与 bundle id；本工作包预留登录和窗口自动化接缝，真实默认实现见 S8-B，不可用时占位实现明确返回 `vpn_not_implemented`。
 
 HTTP 路由为 `/api/vpn*`，WebSocket 主题为 `vpn`，TG `/vpn status|on` 仅 owner 可用。`vpn/logs/vpn.log` 限 5 MiB 并保留一个轮转文件，目录 0700、日志 0600，拒绝符号链接。状态读取每次直读网络接口；运行收尾与应用关闭会释放 VPN 任务。
+
+## S8-B：VPN 登录 worker 与窗口自动化
+
+macOS 且依赖可用时，VPN 服务默认使用受 `proc_supervisor` 监督的登录 worker 和原生窗口适配器；
+其他平台或缺少依赖时保留明确返回 `vpn_not_implemented` 的占位实现。后端启动时读取本数据目录的
+`vpn/chrome-processes.json`，只清扫 PID、启动时间和 profile 参数均匹配、且 PID 是进程组组长的记录；
+运行取消、超时、异常和成功均关闭控制管道，并并行关闭 worker 与清扫记录的 Chrome 组。
+清扫只对已核实的组 TERM，等待 3 秒后重新核实身份再 KILL，不按进程名称清扫。
+
+worker 只从 stdin JSON 接收凭据并通过 stdout 输出不超过 64 KiB 的白名单 JSON 事件。
+MFA 请求经现有服务计算 TOTP，或通过 `vpn.mfa_required` 与 MFA 路由等待桌面输入 120 秒，
+首次提交后最多再试两次。登录入口与选择器集中在品牌表中；当前两品牌均沿用旧 Perimeter81 入口，
+真实品牌页面、选择器和跳转仍待授权验收。CDP 两种导航事件只保留首条匹配配置 scheme 的回调；
+深链经 NSWorkspace 交付，不进入 argv，间隔 8 秒、最多 6 次。
+
+系统 Chrome 使用全新 `vpn/chrome-profile`（0700），不复制旧端 cookie；关闭后台联网、组件更新和同步等
+启动参数会减少 Chrome 后台外联，但不能保证第三方浏览器完全不外联。真实登录页自身也需要出站访问。
+“忘记此浏览器”沿用 profile 删除路由，运行期间拒绝删除。无 TOTP 种子时强制有头；有种子时按配置选择。
+
+窗口模式仍默认 `off`。权限状态在后端进程只读探测：授权对象是启动后端的终端或宿主应用，授权后需重启后端。
+开启后按客户端主进程 owner PID、layer 0 和在屏状态筛选窗口，OCR 帧与文字只在内存中处理。
+点击前再次检查窗口归属、前台应用和鼠标位于客户端窗口内；会移动真实鼠标。
+每次运行最多 8 次、同文案最多 2 次，禁止 Cancel/Skip/Disconnect/Connected to/Change Network 等文案；
+需要截屏的轮询最多每 30 秒重新唤出客户端一次。缺权限或窗口不可用会显式返回错误。
+
+测试默认禁止真实浏览器、NSWorkspace 交付和屏幕/点击操作。普通 worker、driver、窗口和 MFA 用例均使用替身。
+`tests/test_vpn_process_s8b.py` 使用 Python 替身验证正常取消、忽略 TERM、独立进程组孙进程和后端 SIGKILL 后启动清扫；
+沙箱拒绝身份读取或进程组时记为 `not_run`，需在沙箱外复跑。
+仅显式 `.venv/bin/python -m pytest -q -m real_chrome tests/test_vpn_real_chrome_s8b.py` 才会运行两个系统 Chrome 用例，
+使用随机回环端口、`s8probe://`、临时 profile 和关闭的本地代理阻断非回环浏览器请求，最后关闭并清扫浏览器与 profile。
+这些用例不交付真实深链，也不执行原生窗口操作。

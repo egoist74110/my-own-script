@@ -20,6 +20,45 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 READY_TIMEOUT_S = 20
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_chrome: opt-in system Chrome tests on loopback with a temporary profile"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.option.markexpr.strip() == "real_chrome":
+        return
+    skip = pytest.mark.skip(reason="real Chrome requires explicit -m real_chrome")
+    for item in items:
+        if item.get_closest_marker("real_chrome"):
+            item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def vpn_native_isolation(monkeypatch, request):
+    from toolbox_backend.adapters import vpn_browser
+    from toolbox_backend.adapters.window_automation import MacNative
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("native VPN screen/click/URL delivery is forbidden in tests")
+
+    async def forbidden_async(*args, **kwargs):
+        forbidden()
+
+    monkeypatch.setattr(vpn_browser, "open_callback", forbidden_async)
+    for name in ("windows", "safe_to_click", "candidates", "click"):
+        monkeypatch.setattr(MacNative, name, forbidden)
+    if not request.node.get_closest_marker("real_chrome"):
+        try:
+            from playwright._impl._browser_type import BrowserType
+        except ImportError:
+            pass
+        else:
+            monkeypatch.setattr(BrowserType, "launch", forbidden_async)
+            monkeypatch.setattr(BrowserType, "launch_persistent_context", forbidden_async)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def isolation(tmp_path_factory):
     root = tmp_path_factory.mktemp("s1-isolation")
@@ -198,9 +237,10 @@ def wait_until(predicate, timeout: float, interval: float = 0.05) -> bool:
     return predicate()
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def ai_cli_isolation():
     from tests.guards import install_ai_cli_guard
+
     restore = install_ai_cli_guard()
     try:
         yield

@@ -1,0 +1,1 @@
+"""Isolated VPN browser worker."""

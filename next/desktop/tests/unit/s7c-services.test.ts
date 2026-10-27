@@ -760,12 +760,15 @@ describe('S7-C: 服务分区单测', () => {
     const fake = createS7CFake()
     const b = await openServicesTab(fake)
 
-    const html = b.wrapper.html()
+    // VPN 卡（S8-C）有只写凭据输入，不在 S7 服务卡的检查范围内
+    const clone = b.wrapper.element.cloneNode(true) as HTMLElement
+    clone.querySelector('[data-testid="vpn-card"]')?.remove()
+    const html = clone.outerHTML
 
     // 页面任何位置不得出现密码 / token 输入或展示
     expect(html).not.toMatch(/password/i)
     expect(html).not.toMatch(/token/i)
-    expect(b.wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(clone.querySelector('input[type="password"]')).toBeNull()
 
     // 本包不含 dsh，页面上不得出现任何 dsh 元素
     expect(html).not.toMatch(/\bdsh\b/i)

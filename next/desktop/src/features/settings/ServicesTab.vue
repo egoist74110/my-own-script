@@ -4,12 +4,17 @@ import Banner from '@/components/Banner.vue'
 import CloudflaredCard from './CloudflaredCard.vue'
 import CodeServerCard from './CodeServerCard.vue'
 import NetworkBar from './NetworkBar.vue'
+import VpnCard from './VpnCard.vue'
 import { settingsContextKey } from './useSettings'
 import { servicesContextKey, useServices } from './useServices'
+import { vpnContextKey, useVpn } from './useVpn'
 
 const ctx = inject(settingsContextKey, null)
 const services = useServices()
 provide(servicesContextKey, services)
+
+const vpn = useVpn()
+provide(vpnContextKey, vpn)
 
 const snapshot = computed(() => services.snapshot.value)
 const codeServer = computed(() => snapshot.value?.code_server)
@@ -29,6 +34,13 @@ const cloudflaredSettings = computed(() => snapshot.value?.settings?.cloudflared
 
     <!-- 顶部网络信息条：VPN IP、局域网 IP（只读，缺失显示“未检测到”，复制按钮） -->
     <NetworkBar :network="network" />
+
+    <!-- VPN 卡 -->
+    <VpnCard
+      :snapshot="vpn.snapshot.value"
+      :busy="ctx?.busy.value"
+      :writable="ctx?.writable.value"
+    />
 
     <!-- code-server 卡 -->
     <CodeServerCard

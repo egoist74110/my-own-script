@@ -3,8 +3,10 @@
 import asyncio
 import contextlib
 import shutil
+import sys
 import time
 from datetime import UTC, datetime
+from importlib.util import find_spec
 from typing import Protocol
 from uuid import uuid4
 
@@ -16,6 +18,7 @@ from toolbox_backend.adapters.vpn_totp import parse_totp_import, totp
 from toolbox_backend.api.vpn_schemas import VpnRunView, VpnSnapshot
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.logging_setup import register_secret
+from toolbox_backend.mcp.runner import validate_data_dir
 
 
 class ClientPort(Protocol):
@@ -53,6 +56,10 @@ def now():
     return datetime.now(UTC)
 
 
+def native_available(*modules):
+    return sys.platform == "darwin" and all(find_spec(module) for module in modules)
+
+
 class VpnService:
     def __init__(
         self,
@@ -74,6 +81,18 @@ class VpnService:
             client,
             hub,
         )
+        if login_runner is None and native_available("playwright", "AppKit", "Foundation"):
+            from toolbox_backend.adapters.vpn_browser import ProcessLoginRunner
+
+            login_runner = ProcessLoginRunner(
+                store.data_dir, client, path_extras=path_extras, on_event=self._login_event
+            )
+        if window_automation is None and native_available(
+            "Quartz", "Vision", "AppKit", "ApplicationServices"
+        ):
+            from toolbox_backend.adapters.window_automation import WindowAutomation as NativeWindow
+
+            window_automation = NativeWindow(store, client)
         self.login_runner = login_runner or UnimplementedLoginRunner()
         self.window_automation = window_automation or UnimplementedWindowAutomation()
         self.network_reader, self.path_extras = network_reader or read_network, path_extras
@@ -90,6 +109,21 @@ class VpnService:
     @property
     def active(self):
         return self._active is not None
+
+    async def initialize(self):
+        initialize = getattr(self.login_runner, "initialize", None)
+        if initialize is not None:
+            await initialize()
+
+    def _login_event(self, event):
+        if self._active is None:
+            return
+        if event["event"] == "step":
+            self._emit(self._active, "login_" + event["step"])
+            if event["step"] == "delivery" and "attempt" in event:
+                self.log.write(f"callback scheme={event['scheme']} attempt={event['attempt']}")
+        elif event["event"] == "captured":
+            self._emit(self._active, "login_captured")
 
     def _credential(self, key):
         try:
@@ -152,8 +186,18 @@ class VpnService:
             if self._active and self._active["state"] in {"queued", "running", "cancelling"}:
                 raise SettingsError("vpn_busy", "VPN 运行期间不能清除浏览器数据", 409)
             target = self.store.data_dir / "vpn" / "chrome-profile"
-            if target.is_symlink():
+            if (
+                self.store.data_dir.is_symlink()
+                or target.parent.is_symlink()
+                or target.is_symlink()
+            ):
                 raise SettingsError("vpn_profile_unsafe", "浏览器数据目录不安全", 409)
+            try:
+                validate_data_dir(self.store.data_dir)
+            except FileNotFoundError:
+                return False
+            except ValueError:
+                raise SettingsError("vpn_profile_unsafe", "浏览器数据目录不安全", 409) from None
             existed = target.exists()
             if existed:
                 await asyncio.to_thread(shutil.rmtree, target)
@@ -254,7 +298,9 @@ class VpnService:
     async def request_mfa(self, record):
         seed = self._credential("vpn_totp_secret")
         if seed:
-            return totp(seed, time.time())
+            code = totp(seed, time.time())
+            register_secret(code)
+            return code
         future = asyncio.get_running_loop().create_future()
         record["mfa_future"] = future
         if hasattr(self.hub, "publish_vpn"):
@@ -457,6 +503,16 @@ class VpnService:
                             deadline = max(deadline, time.monotonic() + config.max_run_s)
                             timeout_scope.reschedule(
                                 asyncio.get_running_loop().time() + config.max_run_s
+                            )
+                        if outcome in {"connect", "update"}:
+                            self._emit(record, "waiting_connection")
+                            record["ip"] = await self._wait_connected(
+                                record,
+                                min(
+                                    deadline,
+                                    time.monotonic()
+                                    + (180 if outcome == "update" else config.rung_timeout_s),
+                                ),
                             )
                     if not record["ip"] and record["allow_login"] and max_rung >= 3:
                         await self._stage(record, 3, "rungC_login")
