@@ -56,7 +56,8 @@ provide(inspectorHostKey, inspectorHost)
 <style scoped>
 .shell {
   display: flex;
-  height: 100vh;
+  /* 100% 而非 100vh：Tauri/WKWebView（Overlay 标题栏、窗口缩放后）的 vh 可能与实际窗口不一致，导致壳只占一截 */
+  height: 100%;
   background: var(--bg-window);
   /* clip 而非 hidden：hidden 仍是可滚动容器，聚焦边缘控件时会把整壳滚走 */
   overflow: clip;
