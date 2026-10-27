@@ -36,16 +36,20 @@ fi
 [ -d "$DEST_DIR" ] || { echo "error: install dir not found: $DEST_DIR" >&2; exit 1; }
 DEST_APP="$DEST_DIR/TOOLBOX.app"
 
-# Quit the installed app via its own quit event (coordinated backend shutdown); never pkill.
-if pgrep -f "$DEST_APP/Contents/MacOS/toolbox-desktop" >/dev/null 2>&1; then
-  echo "[install_local] quitting running TOOLBOX..."
-  osascript -e 'tell application id "dev.toolbox.next" to quit' >/dev/null 2>&1 || true
-  for _ in $(seq 1 40); do
-    pgrep -f "$DEST_APP/Contents/MacOS/toolbox-desktop" >/dev/null 2>&1 || break
+# Quit the installed app: SIGTERM to its exact main-process PID(s) takes the app's own coordinated
+# shutdown path (same as tray "退出": backend stopped first). Never pkill by name.
+APP_BIN="$DEST_APP/Contents/MacOS/toolbox-desktop"
+app_pids() { pgrep -f "$APP_BIN" 2>/dev/null || true; }
+PIDS="$(app_pids)"
+if [ -n "$PIDS" ]; then
+  echo "[install_local] quitting running TOOLBOX (SIGTERM: $(echo $PIDS))..."
+  for pid in $PIDS; do kill -TERM "$pid" 2>/dev/null || true; done
+  for _ in $(seq 1 60); do
+    [ -z "$(app_pids)" ] && break
     sleep 0.5
   done
-  if pgrep -f "$DEST_APP/Contents/MacOS/toolbox-desktop" >/dev/null 2>&1; then
-    echo "error: TOOLBOX is still running after 20s; quit it manually (Cmd+Q) and re-run with --skip-build." >&2
+  if [ -n "$(app_pids)" ]; then
+    echo "error: TOOLBOX is still running after 30s; quit it manually (Cmd+Q) and re-run with --skip-build." >&2
     exit 1
   fi
 fi

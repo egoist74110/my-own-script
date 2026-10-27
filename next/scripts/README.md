@@ -116,4 +116,4 @@ export TOOLBOX_PBS_PYTHON_HOME="$(cd "$(dirname "$PY_BIN")/.." && pwd -P)"
 bash next/scripts/install_local.sh --open
 ```
 
-完整构建（含前端）→ 通过应用自身的退出事件优雅退出正在运行的 TOOLBOX（不 `pkill`）→ 覆盖 `/Applications/TOOLBOX.app` → 打开。`--skip-build` 复用 `next/build/out/TOOLBOX.app`，`--dest <dir>` 换安装目录。仅限本机，产物为 ad-hoc 签名，不可分发。
+完整构建（含前端）→ 对正在运行的 TOOLBOX 主进程精确 PID 发 SIGTERM（走应用自己的协调关闭，不按名字 `pkill`）→ 覆盖 `/Applications/TOOLBOX.app` → 打开。`--skip-build` 复用 `next/build/out/TOOLBOX.app`，`--dest <dir>` 换安装目录。仅限本机，产物为 ad-hoc 签名，不可分发。
