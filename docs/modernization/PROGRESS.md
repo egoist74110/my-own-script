@@ -141,3 +141,5 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 主控验证（沙箱外）：脚本单元测试 13 OK、`bash -n` 全过（`shellcheck` 本机未安装，not_run）、`sync_version --check` 1.0.0；Rust fmt/clippy/test **40 passed**；后端全量 **1455 passed / 2 skipped / 2 failed**（均为已知间歇：S6-ACC-014 与 s5c flood），ruff、contracts --check 通过；前端 `contracts:check`、typecheck 通过；**真实本地构建** `build_app.sh --skip-frontend --sign adhoc` exit 0：布局、无 `/Users/` 泄露、拷到另一路径可启动并 `/health` 200、退出码 0、只读运行目录未新增文件、`codesign --verify --deep --strict` 通过；`make_dmg.sh` 产出 DMG 133 MiB、zip 96 MiB；无残留进程。
 - **体积发现**：整包 294 MB（spike 估算 71 MB），其中 `playwright/` 138 MB（Python Playwright 自带 node 驱动，S8 引入，运行必需）；DMG 140 MB / zip 100 MB，对 Tauri updater 的下载体积有影响。可选后续：裁剪驱动内非必需文件（需实测）、或差分更新；待用户定是否处理。
 - not_run：Developer ID 签名、公证、Gatekeeper/quarantine 首启、`stapler`、TCC 授权跨更新保留、`disable-library-validation` 是否需要（均需真实证书与授权）。未测前端 `pnpm build` 之外的 GUI 启动（`verify_app.sh` 只验后端启动，未打开窗口）。
+
+- 2026-10-27：用户授权一次性联网（crates.io）下载 `tauri-plugin-updater` 及传递依赖；主控已执行（v2.14.0，Cargo.lock +46 crate，离线 clippy/test 通过）；接口冻结见 WORK_PACKAGES「S9-C 追加决定与接口冻结」；S9-C 分 shell/ui 两包并行派工。

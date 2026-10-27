@@ -365,3 +365,33 @@ TOOLBOX.app/Contents/
 - 本确认解除派工门禁；**不**授权真实签名、公证（联网上传 Apple）、读取证书/钥匙串私钥、发布/`gh release`/push、修改或下线旧应用、改 bundle id/应用名、联网访问真实更新源。无证书时本机只做未签名/ad-hoc 验证，产物标注不可分发。
 - 派工顺序：S9-A（codex `gpt-6.1-sol` / medium，Rust 壳打包态解析）→ S9-B（构建与签名脚本）与 S9-C（更新机制，壳/后端用 codex，前端用 agy `gemini-3.8-flash-high`）在 S9-A 契约冻结后可并行；最后 S9 集成验收（签名/公证/安全核对用 Opus）。
 - S9-A 取舍（主控裁决）：版本起点按待决 11 把 `tauri.conf.json` 的 `version` 设为 `1.0.0`；Cargo.toml/package.json/pyproject 版本同步与一致性校验属 S9-B；运行时与 `mcp/` 资源通过**构建时叠加配置 `tauri.bundle.conf.json`**（`tauri build --config`）引入，不写入默认 `tauri.conf.json`，使 `cargo test`/开发态不依赖尚未构建的资源目录；`minimumSystemVersion` 暂不设置，留待 S9-B 实测后定（记为开放项）。
+
+### S9-C 追加决定与接口冻结（2026-10-27）
+
+- 用户 2026-10-27 原答复：**“授权：主控可一次性联网（crates.io）下载 tauri-plugin-updater 及传递依赖，写入 Cargo.lock 后其余全程离线；然后派 S9-C。”** 主控已执行：`cargo add tauri-plugin-updater@2`（v2.14.0）+ `cargo fetch`，Cargo.lock 新增 46 个 crate（均来自 crates.io，无既有 crate 版本变化；含 `minisign-verify 0.3.0`、`rustls 0.23.46`、`ring 0.17.14`、`zip 4.6.1`、`tar 0.4.46` 等，`windows_*`/`jni`/`schannel` 为其它平台专用），离线 `cargo clippy`/`test` 通过。此授权**仅限**该依赖；不含 pnpm/PyPI 联网、真实更新源、真实 GitHub。
+- 不新增 JS 依赖：前端经自有 Tauri 命令调用，不用 `@tauri-apps/plugin-updater`。
+- 更新源与公钥**无真值**（待用户提供 GitHub 仓库与 `tauri signer generate` 的公钥）：默认配置与默认构建**不含** updater 配置，应用显示 `disabled`；真值只经构建时叠加配置注入（`--updater-config <file>`），仓库内只放带占位的示例文件。
+- 接口冻结（壳与前端共用；壳是唯一实现者，前端只消费）：
+
+```text
+UpdateStatus {
+  state: "disabled" | "idle" | "checking" | "up_to_date" | "available" | "downloading" | "ready" | "error",
+  current_version: string,                   // 来自 tauri.conf.json（1.0.0）
+  available_version: string | null,
+  notes: string | null,                      // 纯文本，≤2000 字符，截断
+  progress: { downloaded: number, total: number | null } | null,   // 仅 downloading
+  error_code: null | "update_not_configured" | "update_unsupported_dev" | "update_busy"
+              | "update_check_failed" | "update_download_failed" | "update_signature_invalid"
+              | "update_install_failed" | "update_cancelled",
+  checked_at: number | null                   // Unix 秒
+}
+命令（Tauri invoke，错误为字符串 error_code）：
+  update_status()   -> UpdateStatus          // 只读快照
+  update_check()    -> UpdateStatus          // idle/up_to_date/error → checking；运行中返回 update_busy
+  update_install()  -> UpdateStatus          // 仅 available 可调：下载（可取消）→ 签名校验 → 安装 → ready；否则 update_busy/状态错误
+  update_cancel()   -> UpdateStatus          // 仅 checking/downloading 有效；其它状态原样返回
+  update_restart()  -> ()                    // 仅 ready：协调关闭后端后重启应用；否则报错
+事件：update://status（载荷 = UpdateStatus；progress 事件每秒 ≤5 次）
+```
+- 语义：单运行互斥；失败/取消/校验不通过保留旧版（不安装）；`disabled` 表示未配置更新源或开发态（`update_not_configured` / `update_unsupported_dev`，二者之一写在 error_code，state 仍为 `disabled`）；日志与状态里**不得出现完整更新 URL 或签名**（只记主机名）；更新源只来自构建配置，命令不接受任何 URL 参数；endpoint 须 HTTPS（回环 http 仅测试叠加配置的 `dangerousInsecureTransportProtocol`，不得进出货配置）。
+- 分包：**S9-C-shell**（Rust 壳 + 脚本，agy `gemini-4-argon-medium`，`--sandbox`；仅 `next/desktop/src-tauri/**`、`next/scripts/**`）与 **S9-C-ui**（前端，agy `gemini-3.8-flash-high`，`--effort high --sandbox`；仅 `next/desktop/src/**`、`next/desktop/tests/unit/**`）互不重叠，可并行；前端用假的 invoke/event 做单测，不依赖壳实现。
