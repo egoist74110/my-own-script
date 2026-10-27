@@ -60,6 +60,16 @@ class EventHub:
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
+    @property
+    def vpn_subscriber_count(self) -> int:
+        """Connected WS clients able to receive VPN MFA requests."""
+        return sum(
+            sub.vpn_after is not None
+            and not sub.vpn_unsubscribed
+            and not sub.overflowed.is_set()
+            for sub in self._subscribers
+        )
+
     def publish(self, event_cls: type[BaseModel], data: BaseModel) -> int:
         """Build, serialize and fan out one event. Never blocks; slow subscribers are dropped."""
         self._seq = seq = self._seq + 1

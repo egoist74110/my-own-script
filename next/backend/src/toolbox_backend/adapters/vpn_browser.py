@@ -261,7 +261,9 @@ class ProcessLoginRunner:
         environment = {
             key: value
             for key, value in environment.items()
-            if not any(secret in value for secret in sensitive)
+            if not key.upper().startswith("PLAYWRIGHT_")
+            and key.upper() not in {"NODE_OPTIONS", "DEBUG"}
+            and not any(secret in value for secret in sensitive)
         }
         owner = await self.process_factory(
             [sys.executable, "-m", "toolbox_backend.vpn.login_worker"],

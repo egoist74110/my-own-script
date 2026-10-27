@@ -132,6 +132,11 @@ class VpnService:
             raise SettingsError("credential_backend_error", "凭据后端访问失败", 502) from None
         return value
 
+    def telegram_login_ready(self):
+        return bool(self._credential("vpn_totp_secret")) or bool(
+            getattr(self.hub, "vpn_subscriber_count", 0)
+        )
+
     async def snapshot(self):
         config = await self.store.read()
         info = await self.network_reader(
@@ -438,7 +443,8 @@ class VpnService:
             with contextlib.suppress(Exception):
                 net = await self._probe(record["config"])
                 if net.vpn_ip != record["ip"]:
-                    record["ip"] = net.vpn_ip
+                    if not record["relogin"]:
+                        record["ip"] = net.vpn_ip
                     self._publish_status(bool(net.vpn_ip), net.vpn_ip, run=self._public(record))
             try:
                 await asyncio.wait_for(record["cancel"].wait(), timeout=1.5)
@@ -465,7 +471,7 @@ class VpnService:
                     app = self.client.resolve(bundle)
                     if not app:
                         raise SettingsError("vpn_client_missing", "VPN 客户端未安装", 409)
-                    if max_rung >= 1:
+                    if not record["relogin"] and max_rung >= 1:
                         await self._stage(record, 1, "rungA_open")
                         await self.client.open(bundle)
                         ip = await self._wait_connected(
@@ -473,7 +479,7 @@ class VpnService:
                         )
                         if ip:
                             record["ip"] = ip
-                    if not record["ip"] and max_rung >= 2:
+                    if not record["relogin"] and not record["ip"] and max_rung >= 2:
                         await self._stage(record, 2, "rungB_restart")
                         await self.client.restart(bundle, allow_term=True)
                         await self.client.open(bundle)
@@ -483,11 +489,16 @@ class VpnService:
                         if ip:
                             record["ip"] = ip
                     mode = config.window_automation
-                    if not record["ip"] and mode == "off":
+                    if not record["relogin"] and not record["ip"] and mode == "off":
                         self._emit(
                             record, "window_connect", error_code="skipped:window_automation_off"
                         )
-                    elif not record["ip"] and mode != "off" and max_rung >= 2:
+                    elif (
+                        not record["relogin"]
+                        and not record["ip"]
+                        and mode != "off"
+                        and max_rung >= 2
+                    ):
                         perms = await self.window_automation.permissions()
                         if any(
                             value is not True and value != "granted" for value in perms.values()

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -65,6 +66,95 @@ class Owner:
 
     async def close(self):
         self.closed = True
+
+
+async def test_worker_environment_excludes_browser_injection(tmp_path, monkeypatch):
+    blocked = {"PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_CUSTOM_FLAG", "NODE_OPTIONS", "DEBUG"}
+    for key in blocked:
+        monkeypatch.setenv(key, "s8-test-value")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    environments = []
+
+    async def factory(argv, cwd, **kwargs):
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", "import json,os; print(json.dumps(dict(os.environ)))",
+            cwd=cwd, env=kwargs["env"], stdout=asyncio.subprocess.PIPE,
+        )
+        output, _ = await asyncio.wait_for(process.communicate(), 2)
+        assert process.returncode == 0
+        environments.append(json.loads(output))
+        return Owner([encode_event("done")])
+
+    runner = ProcessLoginRunner(
+        tmp_path, Client(), process_factory=factory, registry=Registry(), path_extras=[]
+    )
+    await runner.run(VpnConfig(), "S8_FAKE_PASSWORD", None, asyncio.Event(), None)
+    assert blocked.isdisjoint(environments[0])
+    assert environments[0]["PATH"] == "/usr/bin:/bin"
+    assert environments[0]["HOME"] == str(tmp_path)
+
+
+@pytest.mark.parametrize("relogin", [True, False])
+async def test_existing_tunnel_only_shortcuts_normal_connect(tmp_path, relogin):
+    started, release = asyncio.Event(), asyncio.Event()
+    probes_after_login = []
+    login_finished = False
+
+    class Store:
+        data_dir = tmp_path
+
+        async def read(self):
+            return SimpleNamespace(vpn=VpnConfig(window_automation="connect"), revision=0)
+
+    class Login:
+        async def run(self, *args):
+            nonlocal login_finished
+            started.set()
+            await release.wait()
+            login_finished = True
+
+    class NoNativeActions(Client):
+        async def open(self, bundle):
+            pytest.fail("relogin must go directly to login")
+
+        async def restart(self, bundle, **kwargs):
+            pytest.fail("relogin must go directly to login")
+
+    async def network(**kwargs):
+        probes_after_login.append(login_finished)
+        await asyncio.sleep(0)
+        return NetworkInfo(vpn_ip="10.254.0.9")
+
+    credentials = MemoryCredentials()
+    credentials.set("vpn_password", "S8_FAKE_PASSWORD")
+    service = VpnService(
+        Store(), credentials, None, NoNativeActions(), None,
+        login_runner=Login(), network_reader=network,
+    )
+    try:
+        run = await service.start(relogin=relogin)
+        task = service._task
+        if relogin:
+            waiter = asyncio.create_task(started.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    [waiter, task], timeout=1, return_when=asyncio.FIRST_COMPLETED
+                )
+                assert waiter in done, "existing tunnel bypassed LoginRunner"
+                assert service.get_run(run.run_id).state == "running"
+            finally:
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+                release.set()
+        await asyncio.wait_for(task, 1)
+        assert service.get_run(run.run_id).state == "succeeded"
+        assert started.is_set() == relogin
+        if relogin:
+            assert any(probes_after_login), "success requires a probe after login completes"
+    finally:
+        release.set()
+        await service.close()
 
 
 async def test_runner_only_sends_credentials_via_stdin_and_handles_mfa(tmp_path, monkeypatch):

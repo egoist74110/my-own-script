@@ -97,11 +97,18 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - Opus 只读安全核对结论：**无严重缺陷，有条件通过**。秘密外泄、进程回收（无 pkill/shell=True，信号仅限校验 PID+lstart+profile 的对象）、深链（scheme 枚举，不可投递任意 URL）、鉴权/单飞/DELETE 路径安全均未发现问题。待处理：
   | 级别 | 项 | 状态 |
   |---|---|---|
-  | 中 M1 | worker 环境未剔除 `PLAYWRIGHT_*`/`NODE_OPTIONS`（合同要求）`adapters/vpn_browser.py:259-265` | open |
-  | 中 M2 | 已连接时 `relogin` 不会真重登（档 A 见隧道即成功）`services/vpn.py:460-475,517` | open |
-  | 中 M3 | TG `/vpn on` 缺“需先在桌面端配置”判断，忙时 `vpn_busy` 被吞、无回复 `telegram_commands.py:527,668`、`telegram.py:688` | open |
+  | 中 M1 | worker 环境未剔除 `PLAYWRIGHT_*`/`NODE_OPTIONS`（合同要求）`adapters/vpn_browser.py:259-265` | fixed（S8-D） |
+  | 中 M2 | 已连接时 `relogin` 不会真重登（档 A 见隧道即成功）`services/vpn.py:460-475,517` | fixed（S8-D，relogin 直进档 C，登录后重探测隧道；不证明隧道曾重建） |
+  | 中 M3 | TG `/vpn on` 缺“需先在桌面端配置”判断，忙时 `vpn_busy` 被吞、无回复 `telegram_commands.py:527,668`、`telegram.py:688` | fixed（S8-D，命令与菜单共用前置检查；修前忙时回泛化“操作失败”而非完全静默） |
   | 低 L1 | worker cwd 用 data_dir 而非 `<data-dir>/vpn/run/` 0700（已知） | open |
   | 低 L2–L10 | 深链固定投 6 次不提前停；OCR 截屏矩形可能含上层窗口（推测）；窗口自动化报错直接终止不进档 C；同步写日志可抛错；登记文件元素不校验；import-legacy fields 绕过运行中 409；`close()` 超时抛 TimeoutError；PUT 的 TOTP 种子不校验；客户端控制按 PATH 解析 ps/open/osascript（推测） | open，记账 |
 - 未做/not_run：真实 SSO（新品牌页面/选择器）、真实窗口 OCR/点击、真实 NSWorkspace 深链、权限授权后的行为、真实客户端 A/B 档、前端 dev:web/Tauri 人工走查；均需用户授权的真实验收。安全核对未覆盖前端 S8-C、`proc_supervisor` 内部、`uv.lock` 逐包。
 - 资源：worktree `.local/worktrees/s5e/s7a/s7c/s8a/s8b/s8c` 保留，删除前问用户。
 - 状态：S8 三包已集成；集成验收待 M1–M3 修复或用户明确接受；真实验收、所有权切换、主 Bot 切换仍未授权。
+
+### S8-D 修复 M1–M3（2026-10-27）
+
+- worker：codex `gpt-6.1-sol` medium（无提供方回执，actual unknown）；基线 `50ae4a4`，worktree `.local/worktrees/s8d`，限定路径补丁集成；每项先写失败回归并留修前失败证据。
+- 变更：`adapters/vpn_browser.py`、`services/{events,telegram_commands,vpn}.py`、`tests/test_vpn_lifecycle_s8b.py`（新增用例，旧断言未改）、`tests/test_telegram_vpn_s8d.py`（新）。
+- 主控验证（沙箱外）：全量后端 pytest 1455 passed / 2 skipped / 2 failed；失败为已知 S6-ACC-014 与 `tests/independent/s5c/test_s5c_projection.py::test_flood_is_bounded_and_turn_still_completes`（全量负载下偶发，单独连跑 3 次均 12 passed，与 VPN 无关，记为新的间歇项）；ruff 通过。
+- 仍 open：L1–L10、真实验收（见上节）。

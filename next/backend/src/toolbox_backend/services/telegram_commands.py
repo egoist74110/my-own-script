@@ -525,10 +525,32 @@ class TelegramDispatcher:
             )
             return "handled"
         if action == "on":
-            await vpn.start(request_id=uuid.uuid5(TG_NAMESPACE, str(update.get("update_id"))))
-            await self.panel(update, "已开始")
-            return "handled"
+            return await self.vpn_start(update, str(update.get("update_id")))
         await self.panel(update, "用法：/vpn status 或 /vpn on；断开请在客户端中操作")
+        return "handled"
+
+    async def vpn_start(self, update, token):
+        vpn = getattr(self.service, "vpn", None)
+        if vpn is None:
+            await self.panel(update, "VPN 服务不可用")
+            return "handled"
+        try:
+            if not vpn.telegram_login_ready():
+                await self.panel(update, "请先在桌面端配置 VPN（TOTP 种子）")
+                return "handled"
+            await vpn.start(request_id=uuid.uuid5(TG_NAMESPACE, token))
+        except SettingsError as exc:
+            if not exc.code.startswith("vpn_"):
+                raise
+            text = {
+                "vpn_busy": "VPN 正在执行其他操作，请稍后重试",
+                "vpn_not_configured": "请先在桌面端配置 VPN 凭据",
+                "vpn_client_missing": "VPN 客户端未安装，请先在桌面端安装",
+                "vpn_mfa_required": "请在桌面端输入 VPN 验证码",
+            }.get(exc.code, "VPN 操作失败，请在桌面端检查配置或稍后重试")
+            await self.panel(update, text)
+            return "handled"
+        await self.panel(update, "已开始")
         return "handled"
 
     async def services_panel(self, update):
@@ -668,9 +690,7 @@ class TelegramDispatcher:
         if kind == "vpn_connect":
             if role != "owner":
                 return "ignored"
-            await self.service.vpn.start(request_id=uuid.uuid5(TG_NAMESPACE, token))
-            await self.panel(update, "已开始")
-            return "handled"
+            return await self.vpn_start(update, token)
         page = payload.get("page")
         if page == "tasks":
             await self.tasks(update)
