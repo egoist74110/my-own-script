@@ -192,3 +192,9 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - F1：新增 `make_update_artifact.sh`（从签名后的 `out/TOOLBOX.app` 重打 tar.gz，私钥只读环境变量；ad-hoc/未签名拒绝 exit 2，`--allow-unsigned` 仅本地测试）；README/manifest 流程同步，`build_app.sh` 末尾提示 cargo 产物的 tar.gz 不可发布。F4：新增 `validate_updater_config.py`，拒绝 `dangerousInsecureTransportProtocol`、非 https、占位 endpoint/公钥（exit 2）。F5：`verify_app.sh` 主进程已退但进程组残留时按记录的 PGID `killpg`。F7：`build_runtime.sh` 的 `rm -rf` 路径防护，叠加配置资源映射随实际 RUNTIME_OUT 改写。脚本 unittest **23 OK**（+5）。
 - 主控复验：前端/Rust/脚本全量如上；真实 `build_app.sh --skip-frontend --sign adhoc` 再次 exit 0 且 verify 全过；`make_update_artifact.sh` 对 ad-hoc 包正确拒绝；无残留进程。
 - not_run：`pnpm tauri signer sign` 靠环境变量取私钥仅按 Tauri v2 文档假设、未实测；真实 Developer ID 签名/公证后的更新包链路；ShellCheck。F8–F13 仍 deferred。
+
+### S9 验收更正：打包应用白屏（2026-10-27，用户安装 DMG 后发现）
+
+- **现象**：安装 `TOOLBOX-1.0.0-arm64.dmg` 后窗口纯白。**根因（主控确认）**：`next/scripts/tests/test_scripts.py` 里 build_app 的单元测试用假 `pnpm`，其 `mkdir -p dist; echo '<html></html>' > dist/index.html` 写进了**真实** `next/desktop/dist`；我在验收里先跑 pnpm build、再跑脚本 unittest、再 `--skip-frontend` 构建，于是把空页面打进了应用（上一节“真实构建复验通过”的 DMG 实际是白屏包）。`verify_app.sh` 只验后端启动，未覆盖前端，因此没发现。该缺陷自 `78efbec` 起就存在。
+- **修复**：`build_app.sh` 增加 `TOOLBOX_DESKTOP_DIR` 覆盖，并在打包前强制检查 `dist/index.html` 含 `<script` 且 `dist/assets/*.js` 存在，否则 exit 1；测试改为使用临时 desktop 目录（不再碰真实 dist），新增 `test_build_app_rejects_stub_frontend_dist`。脚本 unittest **24 OK**（跑完后真实 dist 保持完好）。已重新构建并重打 DMG（`next/build/dist/`），二进制内可见 `assets/index-*` 引用。
+- **教训/开放项**：此前“真实验收”只覆盖后端启动，GUI 从未被打开——正是用户在场的 GUI 人工体验项所补出的缺陷；建议后续在 `verify_app.sh` 之外补一个不碰真实数据目录的窗口冒烟（not_run）。新 DMG 的窗口内容仍待用户确认。

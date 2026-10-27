@@ -12,7 +12,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-DESKTOP="$REPO/next/desktop"
+DESKTOP="${TOOLBOX_DESKTOP_DIR:-$REPO/next/desktop}"
 BUILD_DIR="${TOOLBOX_BUILD_DIR:-$REPO/next/build}"
 OUT_DIR="${TOOLBOX_OUT_DIR:-$BUILD_DIR/out}"
 
@@ -107,6 +107,14 @@ else
     pnpm install --frozen-lockfile --offline
     pnpm build
   )
+fi
+
+# The Tauri bundle embeds dist/ verbatim; an empty or stub page ships as a white window and
+# verify_app.sh (backend-only) cannot catch it, so refuse such a dist here.
+if ! grep -q '<script' "$DESKTOP/dist/index.html" 2>/dev/null \
+  || ! find "$DESKTOP/dist/assets" -name '*.js' -type f 2>/dev/null | grep -q .; then
+  echo "error: $DESKTOP/dist is not a real frontend build (index.html without <script> or no assets/*.js); run 'pnpm build' first." >&2
+  exit 1
 fi
 
 echo "[build_app] step 3/6: building relocatable Python runtime..."

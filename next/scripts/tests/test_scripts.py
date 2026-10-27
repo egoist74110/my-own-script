@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -538,8 +539,9 @@ class TestShellScripts(unittest.TestCase):
                 fake_bin / "pnpm",
                 "#!/usr/bin/env bash\n"
                 "echo \"$*\" >> \"" + str(pnpm_log) + "\"\n"
-                "mkdir -p dist\n"
-                "echo '<html></html>' > dist/index.html\n"
+                "mkdir -p dist/assets\n"
+                "echo '<html><script type=module src=/assets/a.js></script></html>' > dist/index.html\n"
+                "echo '//' > dist/assets/a.js\n"
                 "exit 0\n",
             )
             pbs_home = tmp / "pbs-python"
@@ -571,6 +573,14 @@ class TestShellScripts(unittest.TestCase):
             env["TOOLBOX_OUT_DIR"] = str(out_dir)
             env["CARGO_TARGET_DIR"] = str(cargo_target)
             env["TOOLBOX_VERIFY_HTTP_GET"] = str(fake_http)
+            # Never let the fake pnpm touch the real next/desktop/dist (it once shipped a blank window).
+            fake_desktop = tmp / "desktop"
+            (fake_desktop / "src-tauri").mkdir(parents=True)
+            shutil.copy(
+                REPO_ROOT / "next/desktop/src-tauri/tauri.bundle.conf.json",
+                fake_desktop / "src-tauri/tauri.bundle.conf.json",
+            )
+            env["TOOLBOX_DESKTOP_DIR"] = str(fake_desktop)
 
             res_ok = subprocess.run(
                 ["bash", str(script), "--updater-config", str(updater_cfg)],
@@ -585,7 +595,7 @@ class TestShellScripts(unittest.TestCase):
             self.assertEqual(overlay_data["bundle"]["createUpdaterArtifacts"], True)
             expected_key = os.path.relpath(
                 os.path.abspath(build_dir / "app-resources/backend"),
-                os.path.abspath(REPO_ROOT / "next/desktop/src-tauri"),
+                os.path.abspath(fake_desktop / "src-tauri"),
             )
             self.assertEqual(overlay_data["bundle"]["resources"], {expected_key: "backend"})
             self.assertEqual(overlay_data["bundle"]["macOS"]["minimumSystemVersion"], "13.5")
@@ -594,6 +604,21 @@ class TestShellScripts(unittest.TestCase):
                 overlay_data["plugins"]["updater"]["endpoints"],
                 ["https://example.com/latest.json"],
             )
+
+    def test_build_app_rejects_stub_frontend_dist(self) -> None:
+        script = SCRIPTS_DIR / "build_app.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            desktop = tmp / "desktop"
+            (desktop / "dist").mkdir(parents=True)
+            (desktop / "dist/index.html").write_text("<html></html>\n", encoding="utf-8")
+            env = dict(os.environ, TOOLBOX_DESKTOP_DIR=str(desktop), TOOLBOX_BUILD_DIR=str(tmp / "build"))
+            res = subprocess.run(
+                ["bash", str(script), "--skip-frontend", "--sign", "adhoc"],
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(res.returncode, 1, msg=res.stdout + res.stderr)
+            self.assertIn("not a real frontend build", res.stderr)
 
     def test_build_app_rejects_unsafe_updater_configs_exit_2(self) -> None:
         script = SCRIPTS_DIR / "build_app.sh"
