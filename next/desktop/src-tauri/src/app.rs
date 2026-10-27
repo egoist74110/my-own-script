@@ -84,8 +84,7 @@ fn begin_quit(app: &AppHandle) {
 }
 
 fn repo_root() -> PathBuf {
-    // <repo>/next/desktop/src-tauri -> <repo>. Packaged builds are decided by
-    // the S0-D spike and are not fixed here.
+    // Development fallback only; this path need not exist in packaged builds.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
@@ -139,7 +138,8 @@ pub fn run() {
             }
             tray.build(app)?;
 
-            let command = BackendCommand::dev(
+            let command = BackendCommand::packaged(
+                &std::env::current_exe()?,
                 &repo_root(),
                 std::env::var("TOOLBOX_BACKEND_CMD").ok().as_deref(),
             )?;

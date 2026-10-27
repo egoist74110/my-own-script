@@ -68,3 +68,21 @@ cd next/desktop && pnpm tauri build --debug --no-bundle
 ## 给主控合并的前端侧内容
 
 见施工报告：`next/desktop/package.json` 需要 `@tauri-apps/cli`（dev）、`@tauri-apps/api`、脚本 `"tauri": "tauri"`，以及 `dev` / `build` 脚本（`tauri.conf.json` 的 `beforeDevCommand` / `beforeBuildCommand` 分别调用 `pnpm dev` / `pnpm build`，`devUrl` 为 `http://localhost:1420`，`frontendDist` 为 `../dist`）。
+
+## 打包态后端解析
+
+壳通过 `BackendCommand::packaged` 统一解析启动命令，顺序如下：
+
+1. `TOOLBOX_BACKEND_CMD` 去除首尾空白后非空：沿用开发态的 shell 风格引号拆分与 cwd 行为，整体覆盖 program/args；引号不平衡仍报错。
+2. 否则检查 `<壳可执行文件目录>/../Resources/backend/bin/python3.14`。存在时，以该 Python 执行 `-m toolbox_backend`（无 `--dev`），cwd 为 `Resources/backend`，追加 `PYTHONDONTWRITEBYTECODE=1`、`PYTHONNOUSERSITE=1`，避免写入签名 bundle 的 pyc 或读取用户 site-packages。打包态不要求编译时仓库路径存在。
+3. Python 不存在时回退现有 `dev()` 命令；空白覆盖变量视为未设置。
+
+构建暂存目录约定为 `next/build/app-resources/{backend,mcp}`：`backend` 放完整 Python 运行时、锁定依赖和后端 wheel（pyc 由构建阶段预编译），`mcp` 放补丁脚本与包清单。准备好资源后，从 `next/desktop` 执行：
+
+```bash
+pnpm tauri build --config src-tauri/tauri.bundle.conf.json
+```
+
+叠加配置的资源源路径相对 `src-tauri/`，分别为 `../../build/app-resources/backend`、`../../build/app-resources/mcp`，映射到 `.app/Contents/Resources/backend`、`.app/Contents/Resources/mcp`。默认 `tauri.conf.json` 不引用暂存资源，开发态与 `cargo test` 无需预先构建它们。此命令仅说明叠加配置用法；构建与签名流程由 S9-B 提供。
+
+`tauri.conf.json` 的版本起点为 `1.0.0`；Cargo/package.json/pyproject 的版本同步与一致性校验留给 S9-B。`minimumSystemVersion` 暂不设置，待 S9-B 实测。

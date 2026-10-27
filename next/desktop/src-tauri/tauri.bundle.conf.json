@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "../../build/app-resources/backend": "backend",
+      "../../build/app-resources/mcp": "mcp"
+    }
+  }
+}

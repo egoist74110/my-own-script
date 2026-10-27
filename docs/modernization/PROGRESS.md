@@ -19,7 +19,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
 | S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
-| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A 施工中 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
+| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A 已集成，S9-B/C 待派 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -123,3 +123,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - not_run：未重跑测试（只写文档）；签名/公证/Gatekeeper 首启开销、运行时接入 tauri bundle 均未实测。
 
 - 2026-10-27：用户确认 S9 待决 1–11 全部按推荐（原答复见 WORK_PACKAGES「S9 已决」），解除派工门禁；不授权真实签名/公证/发布/旧应用下线。
+
+### S9-A 打包态后端解析（2026-10-27）
+
+- worker：codex `gpt-6.1-sol` medium（无提供方回执，actual unknown）；基线 `c848ca1`，worktree 已删（补丁备份 `.local/dispatch/s9a/integration.patch`）。首轮因我写错叠加配置的资源映射键（`../build` 相对 `src-tauri/` 落在 `next/desktop/build`）被 worker 按“合同与事实不符”停下，主控裁决改为 `../../build/app-resources/{backend,mcp}` 后同会话续接完成。
+- 变更（均在 `next/desktop/src-tauri/`）：`backend.rs` 新增 `BackendCommand::packaged`（覆盖变量 → `Contents/Resources/backend/bin/python3.14 -m toolbox_backend`（无 `--dev`，env 追加 `PYTHONDONTWRITEBYTECODE=1`/`PYTHONNOUSERSITE=1`，cwd=`Resources/backend`）→ 开发态），`app.rs` 改调该入口；`tauri.bundle.conf.json`（仅叠加，默认配置不引用暂存资源）；`tauri.conf.json` version `1.0.0`；README 一节；`tests/backend_command.rs`、`tests/bundle_config.rs` 共 4 个新测试（修前 E0599 / 1 failed）。既有断言无变更。
+- 主控验证（沙箱外）：`cargo fmt --check`、`cargo clippy --all-targets --offline -D warnings`、`cargo test --offline` **40 passed**（既有 36 + 新 4）、`git diff --check` 全过。
+- 只读发现（交 S9-B）：后端按 `Path(__file__).resolve().parents[3] / "resources/mcp"` 定位 MCP 资源（`mcp/runtime.py:32`、`mcp/figma_wrapper.py:99`、`services/mcp.py:567`、`domain/mcp.py:22`），在 wheel 安装态会落到 `Resources/backend/lib/python3.14/resources/mcp`，**打包后失效**，S9-B 须统一资源定位（脚本与 `package.json`）。
+- 开放项：`minimumSystemVersion` 待 S9-B 实测；版本现为 Tauri `1.0.0`、Cargo/package.json `0.0.0`、pyproject `0.1.0`，同步与校验归 S9-B。
+- not_run：真实 `.app` 打包、运行时启动、GUI、签名/公证。

@@ -225,6 +225,30 @@ impl BackendCommand {
         self
     }
 
+    /// Resolve override, bundled runtime beside the executable, then dev mode.
+    /// `repo_root` is only a development fallback; it need not exist in a bundle.
+    pub fn packaged(
+        executable: &Path,
+        repo_root: &Path,
+        override_cmd: Option<&str>,
+    ) -> Result<Self, String> {
+        if override_cmd.is_some_and(|raw| !raw.trim().is_empty()) {
+            return Self::dev(repo_root, override_cmd);
+        }
+        if let Some(contents) = executable.parent().and_then(Path::parent) {
+            let backend = contents.join("Resources/backend");
+            let python = backend.join("bin/python3.14");
+            if python.exists() {
+                return Ok(Self::new(python)
+                    .args(["-m", "toolbox_backend"])
+                    .cwd(backend)
+                    .env("PYTHONDONTWRITEBYTECODE", "1")
+                    .env("PYTHONNOUSERSITE", "1"));
+            }
+        }
+        Self::dev(repo_root, override_cmd)
+    }
+
     /// Dev-mode command: `<repo>/next/backend/.venv/bin/python -m toolbox_backend --dev`
     /// with cwd `<repo>/next/backend`; `override_cmd` (the value of
     /// `TOOLBOX_BACKEND_CMD`, shell-style quoting) replaces program and args.
