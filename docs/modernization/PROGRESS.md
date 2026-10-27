@@ -19,7 +19,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
 | S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
-| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B、S9-C 已集成，待 S9 集成验收与真实验收 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
+| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B、S9-C 已集成，S9 集成验收有条件通过（2026-10-27，见文末「S9 集成验收」：F1 发布前必修，F2–F7 open），待真实验收 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -154,3 +154,32 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - 主控验证（沙箱外）：Rust fmt/clippy `-D warnings`/test **53 passed**（既有 40 + updater 11 + bundle_config 新增 2）；脚本 unittest **OK**（既有 13 + 新 5）、`bash -n` 全过、`sync_version --check` 1.0.0；前端 typecheck、lint、test **1194 passed / 84 文件**（1173 + 新 21）、build、guard:dist、contracts:check 全过；`git diff --check` 通过。
 - **真实验收项（本包均未做）**：真实更新源与 minisign 更新签名（需用户提供 GitHub 仓库、`tauri signer generate` 公钥、`TAURI_SIGNING_PRIVATE_KEY`）；打包态真实下载/校验/替换 `.app` 与重启；更新后协调关闭后端无残留；GUI 人工体验。`shellcheck` 本机未安装 not_run。
 - 开放项：更新包体积（Playwright node 驱动 138 MB，DMG 140 MB/zip 100 MB）；签名后是否需要 `disable-library-validation`；Developer ID 签名/公证/Gatekeeper/TCC 跨更新保留。
+
+## S9 集成验收（2026-10-27）
+
+- 角色：主控（lead，Sonnet 5.5，无提供方回执）；基线 `rewrite/next @ 78efbec`；Opus 只读安全核对用 Agent（`model: opus`，完整报告 `side-session-notes/…/s9-opus-audit.md`，未改文件、未联网）。只验收，未派施工包，**未改任何代码**。
+- **结论：有条件通过**（本机自用/开发验收通过；对外分发前须先修 S9-F1，建议同时修 F2/F3/F4）。
+- 验证（沙箱外）：
+  - 后端 pytest **1455 passed / 2 skipped / 2 failed**：`test_s6b_lark.py::test_lark_health_probe_marks_unhealthy_after_3_failures`（已知）与 `tests/test_s7_processes.py::test_backend_sigkill_reclaims_code_tunnels_and_grandchild`（**新间歇项**：单独重跑 `-k sigkill` 一次过一次败，失败为 `code-pid` 文件尚未写出的时序竞态；S9 对后端仅改版本号，与 S9 无关；已知的 s5c flood 本轮未出现）。ruff、`contracts --check` 通过。
+  - 前端 typecheck/lint（0 error，9 个既有 warning）/test **1194 passed / 84 文件**/build/guard:dist/contracts:check 全过。
+  - Rust fmt、clippy `-D warnings`、test **53 passed**（8+3+3+9+19+11）。脚本 unittest 18 OK、`sync_version --check` 1.0.0、`bash -n` 全过、`git diff --check` 干净。
+  - **真实构建复验**：`build_app.sh --skip-frontend --sign adhoc` exit 0 且 `verify_app.sh` 全过（布局、0 路径泄露、另一路径启动、/health 200、退出码 0、只读、`codesign --verify`、176 个 Mach-O 最低系统 13.5）；`make_dmg.sh` 成功（DMG 132 MB、zip 113 MB、.app 291 MB）；无残留进程。**注意**：首次构建两次失败于 `futures_macro` 的 `E0463`——共享 `.local/cargo-target` 里 release 的 `futures-macro` 产物陈旧/损坏（普通 `cargo build --release` 同样复现），`cargo clean --release -p futures-macro -p futures-util` 后正常；根因未明（疑似此前被中断的构建），属本机缓存问题而非源码缺陷，但干净机器上的首次 release 构建**未测**。
+- Opus 发现表：
+
+| 编号 | 级别 | 位置 | 摘要 | 状态 |
+| --- | --- | --- | --- | --- |
+| S9-F1 | 高（仅真实发布） | `build_app.sh:145,154-162`、`README.md:82-103` | updater 的 `.app.tar.gz`/`.sig` 取自**未签名**的 cargo 产物，而非签名/公证后的 `out/TOOLBOX.app`；按 README 发布会让自动更新装上无 Developer ID/公证的包 | open（发布前必修：签名公证 staple 后重打 tar.gz，再 `tauri signer sign`，再生成清单） |
+| S9-F2 | 中（主控读码确认 `updater.rs:524-577,610-626`） | `updater.rs` | 安装阶段状态仍为 Downloading 且 `cancel_tx=None`，`update_cancel` 被接受并广播 Available/cancelled，但安装继续并最终发 Ready，违反“取消保留旧版” | open（建议：进入安装时同锁置 installing 标记，安装阶段 cancel 原样返回快照；先写失败回归） |
+| S9-F3 | 低 | `UpdateCard.vue:25-28`、`useUpdate.ts:132-173`、`updater.rs:363` | ready 时“检查更新”可点，后端报错后前端把本地状态改 error，“重启”按钮消失 | open |
+| S9-F4 | 低 | `build_app.sh:117-141` | 合并 `--updater-config` 不校验非 https/`dangerousInsecureTransportProtocol`/占位公钥；release 下非 https endpoint 会使插件初始化 panic（推导） | open |
+| S9-F5 | 低 | `verify_app.sh:268-297` | 主进程已退而进程组残留时 finally 不 `killpg` | open |
+| S9-F6 | 低（推测） | `backend.rs:243-246` | 打包态未清 `PYTHONPATH/PYTHONHOME/PYTHONSTARTUP`（终端启动 .app 时可混入） | open |
+| S9-F7 | 低 | `build_runtime.sh:29`、`tauri.bundle.conf.json:4` | `rm -rf "$RUNTIME_OUT"` 无路径防护；设置 `TOOLBOX_BUILD_DIR/RUNTIME_OUT` 时资源路径写死不一致 | open |
+| S9-F8–F13 | 信息 | — | F8 插件 debug 日志含完整 URL（现无日志后端，接日志时须过滤 `tauri_plugin_updater`）；F9 verify 测试钩子经 argv 传临时 token；F10 README 让 export 私钥/口令；F11 合同写 zip、实际 updater 用 tar.gz；F12 `check()` 允许从 Available 发起；F13 `--timestamp` 需联网、entitlements 为空须真实签名时实测 | deferred |
+
+  Opus 清单：①②④⑤⑥⑨⑩ 通过；③ 有保留（F2）；⑦ 有保留（F1/F5/F7）；⑧ 有保留（F6）。无凭据泄漏、无 URL 注入、权限仅新增 5 个 `allow-update-*`、Cargo.lock 新增 46 个 crate 全部来自 crates.io 带 checksum、无既有 crate 版本变化。Opus 未核对 `tests/**` 与真实签名/公证行为。
+- **迁移 / 改进 / 有意推迟**（对照 D14、D16）：
+  - 已做（D14 打包交付）：自包含 python-build-standalone 运行时 + 后端 wheel 依赖锁定安装；可重定位且无 `/Users/` 泄露；构建/校验/签名/公证/DMG 脚本流水线（内层先于外层、不 `--deep`、公证只读 `TOOLBOX_NOTARY_PROFILE`）；版本单一来源 `tauri.conf.json` 并校验一致；打包态后端解析与开发态回退；失败时 `verify_app.sh` 清理启动的后端。D16：旧更新器“只开浏览器、不校验”被 Tauri updater（minisign 校验、可取消、协调关闭后重启、默认 disabled）取代。
+  - 待做：F1–F7 修复；真实更新源与更新签名密钥；Developer ID 签名、公证、staple、Gatekeeper；旧应用下线与旧更新器/空占位清理（改旧代码，需另行授权，S9 不改旧应用）。
+  - 有意推迟：不内置 Node/code-server/cloudflared/AI CLI（沿用探测与设置页提示）；不做开机自启；仅 arm64；差分更新；包体积优化。
+- **开放项（not_run，均需真实证书/授权）**：Developer ID 签名、公证、Gatekeeper/quarantine 首启、TCC（屏幕录制/辅助功能）授权跨更新保留、`disable-library-validation` 是否需要、打包态真实下载/校验/替换与重启、更新后后端无残留、GUI 人工体验（未启动打包后的 `.app` 窗口）；`shellcheck` 本机未安装；更新包体积（Playwright node 驱动 138 MB，整包 291–294 MB，DMG 132–140 MB/zip 100–113 MB）；S8 遗留低级项 L1–L10；已知间歇测试（S6-ACC-014 lark 健康探测、s5c flood、新增 s7 sigkill 时序）；bundle id/应用名仍为占位 `dev.toolbox.next`/`TOOLBOX`；干净机器首次 release 构建（见上 futures-macro）。
