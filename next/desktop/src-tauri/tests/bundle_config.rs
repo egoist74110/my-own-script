@@ -42,3 +42,65 @@ fn bundle_overlay_maps_staging_resources_without_affecting_development() {
         .pointer("/bundle/macOS/minimumSystemVersion")
         .is_none());
 }
+
+#[test]
+fn default_config_excludes_updater_and_example_overlay_is_valid() {
+    let tauri_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let default_text = std::fs::read_to_string(tauri_dir.join("tauri.conf.json")).unwrap();
+    let default: serde_json::Value = serde_json::from_str(&default_text).unwrap();
+    assert!(!default_text.contains("updater"));
+    assert!(default.pointer("/plugins/updater").is_none());
+    assert!(default.pointer("/bundle/createUpdaterArtifacts").is_none());
+
+    let bundle_overlay: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tauri_dir.join("tauri.bundle.conf.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(bundle_overlay
+        .pointer("/bundle/createUpdaterArtifacts")
+        .is_none());
+    assert!(bundle_overlay.pointer("/plugins/updater").is_none());
+
+    let example: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tauri_dir.join("tauri.updater.conf.example.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(example["bundle"]["createUpdaterArtifacts"], true);
+    assert_eq!(
+        example["plugins"]["updater"]["pubkey"],
+        "REPLACE_WITH_MINISIGN_PUBLIC_KEY"
+    );
+    assert_eq!(
+        example["plugins"]["updater"]["endpoints"],
+        serde_json::json!(["https://github.com/OWNER/REPO/releases/latest/download/latest.json"])
+    );
+}
+
+#[test]
+fn capabilities_main_json_adds_only_five_updater_commands() {
+    let tauri_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cap: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tauri_dir.join("capabilities/main.json")).unwrap(),
+    )
+    .unwrap();
+    let perms = cap["permissions"].as_array().unwrap();
+    let string_perms: Vec<&str> = perms.iter().filter_map(|p| p.as_str()).collect();
+    assert_eq!(
+        string_perms,
+        vec![
+            "allow-backend-connection",
+            "allow-backend-status",
+            "allow-update-status",
+            "allow-update-check",
+            "allow-update-install",
+            "allow-update-cancel",
+            "allow-update-restart",
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "core:window:allow-start-dragging",
+            "core:window:allow-toggle-maximize",
+        ]
+    );
+    assert_eq!(perms.len(), string_perms.len() + 1);
+    assert_eq!(perms.last().unwrap()["identifier"], "opener:allow-open-url");
+}

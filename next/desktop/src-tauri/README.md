@@ -6,15 +6,19 @@ Rust 薄壳：窗口、菜单栏托盘、关窗常驻、单实例，并拉起 / 
 
 ```text
 src-tauri/
-  Cargo.toml / build.rs        build.rs 用 AppManifest 只登记 2 个页面命令
+  Cargo.toml / build.rs        build.rs 用 AppManifest 只登记 7 个页面命令（2 个后端 + 5 个更新）
   tauri.conf.json              identifier dev.toolbox.next, productName TOOLBOX, Overlay 标题栏, CSP
-  capabilities/main.json       最小权限：两个后端命令 + 事件监听 + 窗口拖拽
+  tauri.bundle.conf.json       打包态叠加配置（resources 映射与 minimumSystemVersion）
+  tauri.updater.conf.example.json  更新器占位叠加配置示例（默认构建不引用）
+  capabilities/main.json       最小权限：后端命令 + 更新命令 + 事件监听 + 窗口拖拽
   icons/                       自绘占位图标（方框 + 橙色横条，非原作标志）
   src/main.rs                  入口，仅调用 lib::run()
   src/lib.rs
   src/backend.rs               监督器（无 GUI，可单测）
+  src/updater.rs               应用内更新状态机与 tauri-plugin-updater 适配（可注入假源单测）
   src/app.rs                   Tauri 装配：命令、托盘、关窗隐藏、Dock 重开、退出协调
   tests/supervisor.rs          监督器集成测试（替身后端）
+  tests/updater.rs             更新状态机集成测试（假 UpdateSource，无网络）
   tests/fixtures/fake_backend.py   替身后端（不监听端口，只模拟握手/崩溃/忽略 SIGTERM 等）
 ```
 
@@ -86,3 +90,24 @@ pnpm tauri build --config src-tauri/tauri.bundle.conf.json
 叠加配置的资源源路径相对 `src-tauri/`，为 `../../build/app-resources/backend`，映射到 `.app/Contents/Resources/backend`。默认 `tauri.conf.json` 不引用暂存资源，开发态与 `cargo test` 无需预先构建它们。此命令仅说明叠加配置用法；构建与签名流程由 S9-B 提供。
 
 `tauri.conf.json` 的版本起点为 `1.0.0`；Cargo/package.json/pyproject 的版本同步与一致性校验留给 S9-B。`minimumSystemVersion` 暂不设置，待 S9-B 实测。
+
+## 应用内更新（`updater.rs`）
+
+- **状态机与事件**：
+  - 事件 `update://status` 与命令返回统一载荷 `UpdateStatus`：`{state, current_version, available_version, notes, progress, error_code, checked_at}`（`state` ∈ `disabled | idle | checking | up_to_date | available | downloading | ready | error`）。
+  - 单运行互斥（并发 `update_check` / `update_install` 返回 `"update_busy"`）；`notes` 纯文本截断至 ≤2000 字符；状态与日志脱敏，绝不记录完整更新 URL 或签名（日志仅记主机名）。
+  - 下载进度事件节流至 ≤5 次/秒（200 ms 间隔）。
+- **页面命令（最小权限登记于 `build.rs` 与 `capabilities/main.json`）**：
+  - `update_status() -> UpdateStatus`：只读快照。
+  - `update_check() -> UpdateStatus`：从 `idle | up_to_date | error | available` 进入 `checking`，完成后转 `available`、`up_to_date` 或 `error(update_check_failed)`。
+  - `update_install() -> UpdateStatus`：仅在 `available` 可调用，进入 `downloading` → 签名校验与安装 → 成功转 `ready`；下载失败（`update_download_failed`）、签名无效（`update_signature_invalid`）、安装失败（`update_install_failed`）或取消（`update_cancelled`）均**不安装、保留旧版**并回到可重试的 `available` 状态。
+  - `update_cancel() -> UpdateStatus`：仅在 `checking` 或 `downloading` 生效，通过取消令牌中断并标记 `update_cancelled`（分别回到 `idle` 或 `available`）；其余状态原样返回快照。
+  - `update_restart() -> ()`：仅在 `ready` 可调用；先复用壳的协调关闭（`supervisor.shutdown().await` 回收后端进程组），再调用 `app.restart()`。
+- **为何不用 `download_and_install`**：
+  - `Update::download_and_install` 将下载流与解压替换捆绑在同一异步调用中；一旦开始就无法在下载阶段安全取消而不触碰安装步骤。拆分为先 `Update::download`（配合 `tokio::select!` 监听取消令牌 + 进度节流回调，内部完成 minisign 签名校验）再 `Update::install(bytes)`，可保证下载期间随时取消且绝不写入或替换现有 `.app`。
+- **禁用条件与插件条件注册**：
+  - 默认 `tauri.conf.json` 不含 `plugins.updater`：此时 `state = "disabled"`、`error_code = "update_not_configured"`。由于 `tauri-plugin-updater` 2.14.0 的 `Config` 反序列化要求必填 `pubkey: String`（无 `#[serde(default)]`），缺配置时无条件注册插件会在 `Plugin::initialize` 阶段报错崩溃；因此 `app.rs` 在 `setup` 中先用 `has_updater_plugin_config(&app.config().plugins)` 检查，仅当配置存在且非空时才调用 `app.handle().plugin(tauri_plugin_updater::Builder::new().build())`。
+  - 开发态（非打包态，沿用 `BackendCommand::packaged` 同一判据：设置了 `TOOLBOX_BACKEND_CMD` 或 `Contents/Resources/backend/bin/python3.14` 不存在）：`state = "disabled"`、`error_code = "update_unsupported_dev"`。
+  - `disabled` 状态下 `update_check` / `update_install` 不发任何网络请求，直接返回当前 `disabled` 快照。
+- **叠加配置示例**：
+  - 仓库提供 `src-tauri/tauri.updater.conf.example.json`（含占位 `pubkey`、`endpoints` 及 `bundle.createUpdaterArtifacts: true`），默认构建不引用；正式构建通过 `next/scripts/build_app.sh --updater-config <file>` 叠加合并。

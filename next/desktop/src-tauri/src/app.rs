@@ -15,8 +15,14 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, State as TauriState, WindowEvent, Wry,
 };
 
-use crate::backend::{
-    BackendCommand, Connection, State, Status, Supervisor, SupervisorConfig, STATUS_EVENT,
+use crate::{
+    backend::{
+        BackendCommand, Connection, State, Status, Supervisor, SupervisorConfig, STATUS_EVENT,
+    },
+    updater::{
+        has_updater_plugin_config, resolve_disabled_reason, TauriUpdateSource, UpdateCoordinator,
+        UpdateStatus, UPDATE_STATUS_EVENT,
+    },
 };
 
 const MAIN_WINDOW: &str = "main";
@@ -26,7 +32,8 @@ const MENU_QUIT: &str = "quit";
 
 struct AppState {
     supervisor: Arc<Supervisor>,
-    /// Set by the first quit request; later requests are no-ops.
+    updater: UpdateCoordinator,
+    /// Set by the first quit/restart request; later requests are no-ops.
     quitting: AtomicBool,
 }
 
@@ -45,6 +52,39 @@ async fn backend_connection(state: TauriState<'_, AppState>) -> Result<Connectio
 #[tauri::command]
 fn backend_status(state: TauriState<'_, AppState>) -> Status {
     state.supervisor.status()
+}
+
+/// Read-only in-app updater status snapshot.
+#[tauri::command]
+fn update_status(state: TauriState<'_, AppState>) -> UpdateStatus {
+    state.updater.status()
+}
+
+/// Trigger an update check (`idle/up_to_date/error -> checking`).
+#[tauri::command]
+async fn update_check(state: TauriState<'_, AppState>) -> Result<UpdateStatus, String> {
+    let updater = state.updater.clone();
+    updater.check().await
+}
+
+/// Download, verify signature, and install an available update (`available -> downloading -> ready`).
+#[tauri::command]
+async fn update_install(state: TauriState<'_, AppState>) -> Result<UpdateStatus, String> {
+    let updater = state.updater.clone();
+    updater.install().await
+}
+
+/// Cancel an in-flight update check or download (`checking/downloading -> update_cancelled`).
+#[tauri::command]
+fn update_cancel(state: TauriState<'_, AppState>) -> UpdateStatus {
+    state.updater.cancel()
+}
+
+/// Coordinate backend shutdown and restart into the newly installed version (`ready` only).
+#[tauri::command]
+async fn update_restart(state: TauriState<'_, AppState>) -> Result<(), String> {
+    let updater = state.updater.clone();
+    updater.restart().await
 }
 
 fn status_label(s: &Status) -> String {
@@ -83,6 +123,16 @@ fn begin_quit(app: &AppHandle) {
     });
 }
 
+/// Coordinated shutdown followed by `app.restart()`, sharing the `quitting` guard with `begin_quit`
+/// so backend supervision is always cleanly stopped before the new process replaces this one.
+async fn coordinated_restart(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let _ = state.quitting.swap(true, Ordering::SeqCst);
+    let supervisor = state.supervisor.clone();
+    supervisor.shutdown().await;
+    app.restart();
+}
+
 fn repo_root() -> PathBuf {
     // Development fallback only; this path need not exist in packaged builds.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -94,7 +144,15 @@ pub fn run() {
             show_main_window(app);
         }))
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![backend_connection, backend_status])
+        .invoke_handler(tauri::generate_handler![
+            backend_connection,
+            backend_status,
+            update_status,
+            update_check,
+            update_install,
+            update_cancel,
+            update_restart,
+        ])
         .on_window_event(|window, event| {
             // Closing the window only hides it; the backend keeps running.
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -138,11 +196,10 @@ pub fn run() {
             }
             tray.build(app)?;
 
-            let command = BackendCommand::packaged(
-                &std::env::current_exe()?,
-                &repo_root(),
-                std::env::var("TOOLBOX_BACKEND_CMD").ok().as_deref(),
-            )?;
+            let current_exe = std::env::current_exe()?;
+            let override_cmd = std::env::var("TOOLBOX_BACKEND_CMD").ok();
+            let command =
+                BackendCommand::packaged(&current_exe, &repo_root(), override_cmd.as_deref())?;
             let mut cfg = SupervisorConfig::new(command);
             let handle = app.handle().clone();
             cfg.on_status = Some(Arc::new(move |status: &Status| {
@@ -154,8 +211,42 @@ pub fn run() {
             // Supervisor::start needs a Tokio context.
             let supervisor =
                 tauri::async_runtime::block_on(async move { Arc::new(Supervisor::start(cfg)) });
+
+            // Register `tauri-plugin-updater` only when `plugins.updater` is configured:
+            // `tauri_plugin_updater::Config` requires `pubkey: String` without `#[serde(default)]`,
+            // so unconditionally registering the plugin panics on default builds without updater config.
+            let disabled_reason = resolve_disabled_reason(
+                &app.config().plugins,
+                &current_exe,
+                override_cmd.as_deref(),
+            );
+            if has_updater_plugin_config(&app.config().plugins) {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+            let current_version = app.package_info().version.to_string();
+            let update_source = Arc::new(TauriUpdateSource::new(app.handle().clone()));
+            let emit_handle = app.handle().clone();
+            let restart_handle = app.handle().clone();
+            let updater = UpdateCoordinator::new(
+                current_version,
+                disabled_reason,
+                update_source,
+                Arc::new(move |status: &UpdateStatus| {
+                    let _ = emit_handle.emit(UPDATE_STATUS_EVENT, status);
+                }),
+                Arc::new(|line| eprintln!("[toolbox] {line}")),
+                Arc::new(move || {
+                    let h = restart_handle.clone();
+                    Box::pin(async move {
+                        coordinated_restart(h).await;
+                    })
+                }),
+            );
+
             app.manage(AppState {
                 supervisor,
+                updater,
                 quitting: AtomicBool::new(false),
             });
 

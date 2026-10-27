@@ -456,6 +456,144 @@ class TestShellScripts(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 2)
 
+    def test_build_app_updater_config_validation_and_overlay_merge(self) -> None:
+        script = SCRIPTS_DIR / "build_app.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            missing_cfg = tmp / "nonexistent.updater.json"
+
+            # 1. Missing argument after --updater-config -> exit 2
+            res_no_arg = subprocess.run(
+                ["bash", str(script), "--updater-config"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res_no_arg.returncode, 2)
+
+            # 2. Non-existent file -> exit 2
+            res_missing = subprocess.run(
+                ["bash", str(script), "--updater-config", str(missing_cfg)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res_missing.returncode, 2)
+
+            res_missing_eq = subprocess.run(
+                ["bash", str(script), f"--updater-config={missing_cfg}"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res_missing_eq.returncode, 2)
+
+            # 3. Valid updater config merges into overlay JSON
+            updater_cfg = tmp / "updater.json"
+            updater_cfg.write_text(
+                '{\n'
+                '  "bundle": {\n'
+                '    "createUpdaterArtifacts": true\n'
+                '  },\n'
+                '  "plugins": {\n'
+                '    "updater": {\n'
+                '      "pubkey": "TEST_PUBKEY",\n'
+                '      "endpoints": ["https://example.com/latest.json"]\n'
+                '    }\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            fake_bin = tmp / "bin"
+            pnpm_log = tmp / "pnpm.log"
+            build_dir = tmp / "build"
+            out_dir = tmp / "out"
+            cargo_target = tmp / "cargo-target"
+
+            # Prepare fake built .app so step 4 succeeds and stops at fake verify_app or finishes
+            built_app = cargo_target / "release/bundle/macos/TOOLBOX.app"
+            (built_app / "Contents/MacOS").mkdir(parents=True, exist_ok=True)
+            (built_app / "Contents/MacOS/toolbox-desktop").write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 16)
+            (built_app / "Contents/MacOS/toolbox-desktop").chmod(0o755)
+            py_bin = built_app / "Contents/Resources/backend/bin/python3.14"
+            py_bin.parent.mkdir(parents=True, exist_ok=True)
+            sys_py = "/usr/bin/python3" if Path("/usr/bin/python3").is_file() else "python3"
+            _write_exec(
+                py_bin,
+                f"#!{sys_py}\n"
+                "import json, os, sys\n"
+                "sys.stdout.write('TOOLBOX_READY ' + json.dumps({'v': 1, 'port': 54321, 'token': 't', 'pid': os.getpid()}) + '\\n')\n"
+                "sys.stdout.flush()\n"
+                "sys.stdin.read()\n"
+                "sys.exit(0)\n",
+            )
+            mcp_dir = built_app / "Contents/Resources/backend/lib/python3.14/resources/mcp"
+            mcp_dir.mkdir(parents=True, exist_ok=True)
+            for fname in (
+                "figma_mcp_concurrency.js",
+                "lark_mcp_patches.js",
+                "package.json",
+                "package-lock.json",
+            ):
+                (mcp_dir / fname).write_text("// ok\n", encoding="utf-8")
+
+            _write_exec(
+                fake_bin / "pnpm",
+                "#!/usr/bin/env bash\n"
+                "echo \"$*\" >> \"" + str(pnpm_log) + "\"\n"
+                "mkdir -p dist\n"
+                "echo '<html></html>' > dist/index.html\n"
+                "exit 0\n",
+            )
+            pbs_home = tmp / "pbs-python"
+            _write_exec(pbs_home / "bin/python3.14", "#!/usr/bin/env bash\nexit 0\n")
+            (pbs_home / "lib/python3.14/site-packages").mkdir(parents=True, exist_ok=True)
+            _write_exec(
+                fake_bin / "uv",
+                "#!/usr/bin/env bash\n"
+                "for ((i=1; i<=$#; i++)); do\n"
+                "  if [ \"${!i}\" = \"-o\" ]; then\n"
+                "    next=$((i+1))\n"
+                "    echo \"fastapi==0.159.1\" > \"${!next}\"\n"
+                "  fi\n"
+                "done\n"
+                "exit 0\n",
+            )
+            fake_http = _write_exec(
+                fake_bin / "fake_http_get",
+                "#!/usr/bin/env bash\nexit 0\n",
+            )
+            _write_exec(fake_bin / "codesign", "#!/usr/bin/env bash\nexit 0\n")
+            _write_exec(fake_bin / "vtool", "#!/usr/bin/env bash\necho '    minos 13.5'\nexit 0\n")
+
+            env = dict(os.environ)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '/usr/bin:/bin')}"
+            env["TOOLBOX_PBS_PYTHON_HOME"] = str(pbs_home)
+            env["TOOLBOX_BUILD_DIR"] = str(build_dir)
+            env["TOOLBOX_RUNTIME_OUT"] = str(build_dir / "app-resources/backend")
+            env["TOOLBOX_OUT_DIR"] = str(out_dir)
+            env["CARGO_TARGET_DIR"] = str(cargo_target)
+            env["TOOLBOX_VERIFY_HTTP_GET"] = str(fake_http)
+
+            res_ok = subprocess.run(
+                ["bash", str(script), "--updater-config", str(updater_cfg)],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res_ok.returncode, 0, msg=res_ok.stdout + res_ok.stderr)
+
+            import json
+            overlay_data = json.loads((build_dir / "tauri.build.overlay.json").read_text(encoding="utf-8"))
+            self.assertEqual(overlay_data["bundle"]["createUpdaterArtifacts"], True)
+            self.assertEqual(
+                overlay_data["bundle"]["resources"]["../../build/app-resources/backend"],
+                "backend",
+            )
+            self.assertEqual(overlay_data["bundle"]["macOS"]["minimumSystemVersion"], "13.5")
+            self.assertEqual(overlay_data["plugins"]["updater"]["pubkey"], "TEST_PUBKEY")
+            self.assertEqual(
+                overlay_data["plugins"]["updater"]["endpoints"],
+                ["https://example.com/latest.json"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ OUT_DIR="${TOOLBOX_OUT_DIR:-$BUILD_DIR/out}"
 
 SKIP_FRONTEND=0
 SIGN_MODE=""
+UPDATER_CONFIG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,8 +54,24 @@ while [ $# -gt 0 ]; do
       esac
       shift
       ;;
+    --updater-config)
+      if [ $# -lt 2 ] || [ -z "$2" ]; then
+        echo "error: --updater-config requires a file path" >&2
+        exit 2
+      fi
+      UPDATER_CONFIG="$2"
+      shift 2
+      ;;
+    --updater-config=*)
+      UPDATER_CONFIG="${1#--updater-config=}"
+      if [ -z "$UPDATER_CONFIG" ]; then
+        echo "error: --updater-config requires a file path" >&2
+        exit 2
+      fi
+      shift
+      ;;
     -h|--help)
-      echo "usage: build_app.sh [--skip-frontend] [--sign adhoc|identity]" >&2
+      echo "usage: build_app.sh [--skip-frontend] [--sign adhoc|identity] [--updater-config <file>]" >&2
       exit 0
       ;;
     *)
@@ -63,6 +80,11 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+if [ -n "$UPDATER_CONFIG" ] && [ ! -f "$UPDATER_CONFIG" ]; then
+  echo "error: updater config file not found: $UPDATER_CONFIG" >&2
+  exit 2
+fi
 
 echo "[build_app] step 1/6: checking version consistency..."
 python3 "$HERE/sync_version.py" --root "$REPO" --check
@@ -92,13 +114,29 @@ export CARGO_NET_OFFLINE=true
 # Blank beforeBuildCommand via merged overlay so Tauri reuses the already-built dist/ without re-running pnpm build
 OVERLAY_JSON="$BUILD_DIR/tauri.build.overlay.json"
 mkdir -p "$BUILD_DIR"
-python3 - "$DESKTOP/src-tauri/tauri.bundle.conf.json" "$OVERLAY_JSON" <<'PYEOF'
+python3 - "$DESKTOP/src-tauri/tauri.bundle.conf.json" "$OVERLAY_JSON" "$UPDATER_CONFIG" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
+
+def deep_merge(base: dict, extra: dict) -> dict:
+    for key, val in extra.items():
+        if isinstance(val, dict) and isinstance(base.get(key), dict):
+            deep_merge(base[key], val)
+        else:
+            base[key] = val
+    return base
+
+
 bundle_conf = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 bundle_conf.setdefault("build", {})["beforeBuildCommand"] = ""
+updater_path = sys.argv[3]
+if updater_path:
+    updater_conf = json.loads(Path(updater_path).read_text(encoding="utf-8"))
+    if not isinstance(updater_conf, dict):
+        raise SystemExit("error: updater config must be a JSON object")
+    deep_merge(bundle_conf, updater_conf)
 Path(sys.argv[2]).write_text(json.dumps(bundle_conf, indent=2) + "\n", encoding="utf-8")
 PYEOF
 

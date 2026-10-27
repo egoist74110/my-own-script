@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
 import Tag from '@/components/Tag.vue'
+import UpdateCard from './UpdateCard.vue'
 import { settingsContextKey } from './useSettings'
 
-const ctx = inject(settingsContextKey)!
-const o = computed(() => ctx.overview.data.value ?? null)
+const ctx = inject(settingsContextKey, null)
+const o = computed(() => ctx?.overview.data.value ?? null)
 </script>
 
 <template>
@@ -42,6 +43,9 @@ const o = computed(() => ctx.overview.data.value ?? null)
           }}</Tag>
         </dd>
       </dl>
+
+      <!-- 关于与更新卡 -->
+      <UpdateCard :busy="ctx?.busy.value" />
     </template>
   </div>
 </template>

@@ -19,7 +19,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
 | S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
-| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B 已集成，S9-C 待派 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
+| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B、S9-C 已集成，待 S9 集成验收与真实验收 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -143,3 +143,14 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - not_run：Developer ID 签名、公证、Gatekeeper/quarantine 首启、`stapler`、TCC 授权跨更新保留、`disable-library-validation` 是否需要（均需真实证书与授权）。未测前端 `pnpm build` 之外的 GUI 启动（`verify_app.sh` 只验后端启动，未打开窗口）。
 
 - 2026-10-27：用户授权一次性联网（crates.io）下载 `tauri-plugin-updater` 及传递依赖；主控已执行（v2.14.0，Cargo.lock +46 crate，离线 clippy/test 通过）；接口冻结见 WORK_PACKAGES「S9-C 追加决定与接口冻结」；S9-C 分 shell/ui 两包并行派工。
+
+### S9-C 应用内更新（2026-10-27）
+
+- worker：壳 agy `gemini-4-argon-medium`、前端 agy `gemini-3.8-flash-high`（均无提供方回执，actual unknown；codex 额度用完后改派），基线 `1422b6e`，补丁备份 `.local/dispatch/s9c-{shell,ui}/integration.patch`，两个 worktree 已删。我首次启动 shell worker 时误用后台子进程（无完成通知），发现后按精确 PID 终止该孤儿进程、确认 worktree 未改，再以 `run_in_background` 重启。
+- 依赖：用户授权一次性联网（crates.io）；主控 `cargo add tauri-plugin-updater@2` + `cargo fetch`，`tauri-plugin-updater 2.14.0`，Cargo.lock +46 crate、无既有 crate 版本变化（`1422b6e`）。
+- 壳：`src/updater.rs`（`UpdateSource` 可注入 trait + `UpdateCoordinator` 状态机 + 真实 `TauriUpdateSource`：`check` → `download`（带进度、可取消、含 minisign 校验）→ `install`，**不用 download_and_install**）；5 个命令（`update_status/check/install/cancel/restart`）与最小权限；`update://status` 事件；`update_restart` 先走协调关闭再重启。**源码核实结论：`tauri-plugin-updater` 的 `Config.pubkey` 无 serde default，`plugins.updater` 缺失时插件初始化会失败并 panic，故仅在配置有效（pubkey 与 endpoints 非空）时才在 `setup` 里注册插件**；默认构建/开发态显示 `disabled`（`update_not_configured` / `update_unsupported_dev`）。`tauri.updater.conf.example.json`（占位）、`build_app.sh --updater-config`、`make_update_manifest.py`（`latest.json` 生成，仅标准库）。
+- 前端：`useUpdate.ts`、`UpdateCard.vue`（挂在 `GeneralTab.vue`），非 Tauri 环境降级为只读 `disabled`；notes 纯文本、无 URL 输入框、重启需二次确认。
+- 主控修正：壳测试 `FakeSource` 的 `Default`、`CheckMode` 可派生（clippy）；前端测试的 mock 类型/未用导入、Prettier 格式、4 处文案断言与界面实际文案不符（改断言）、`.available-version` 把强调色用作文字色违反既有设计令牌测试（改为 `--ink`）。worker 在沙箱内无法跑 cargo/pnpm，全部验证由主控沙箱外完成。
+- 主控验证（沙箱外）：Rust fmt/clippy `-D warnings`/test **53 passed**（既有 40 + updater 11 + bundle_config 新增 2）；脚本 unittest **OK**（既有 13 + 新 5）、`bash -n` 全过、`sync_version --check` 1.0.0；前端 typecheck、lint、test **1194 passed / 84 文件**（1173 + 新 21）、build、guard:dist、contracts:check 全过；`git diff --check` 通过。
+- **真实验收项（本包均未做）**：真实更新源与 minisign 更新签名（需用户提供 GitHub 仓库、`tauri signer generate` 公钥、`TAURI_SIGNING_PRIVATE_KEY`）；打包态真实下载/校验/替换 `.app` 与重启；更新后协调关闭后端无残留；GUI 人工体验。`shellcheck` 本机未安装 not_run。
+- 开放项：更新包体积（Playwright node 驱动 138 MB，DMG 140 MB/zip 100 MB）；签名后是否需要 `disable-library-validation`；Developer ID 签名/公证/Gatekeeper/TCC 跨更新保留。
