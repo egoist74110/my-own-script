@@ -109,3 +109,11 @@ export TOOLBOX_PBS_PYTHON_HOME="$(cd "$(dirname "$PY_BIN")/.." && pwd -P)"
      ```
 6. **上传至 GitHub Releases**（需人手或另行授权后使用 `gh release`）：
    - 将 `TOOLBOX-<version>-arm64.dmg`，以及 `next/build/dist/` 下的 `TOOLBOX.app.tar.gz` 与 `latest.json` 一并上传至对应 GitHub Release（`v<version>`）。
+
+## 本机一键安装（自用，ad-hoc）
+
+```bash
+bash next/scripts/install_local.sh --open
+```
+
+完整构建（含前端）→ 通过应用自身的退出事件优雅退出正在运行的 TOOLBOX（不 `pkill`）→ 覆盖 `/Applications/TOOLBOX.app` → 打开。`--skip-build` 复用 `next/build/out/TOOLBOX.app`，`--dest <dir>` 换安装目录。仅限本机，产物为 ad-hoc 签名，不可分发。
