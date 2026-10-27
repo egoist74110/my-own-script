@@ -23,8 +23,7 @@ def _projection(response: httpx.Response) -> dict:
     value = response.json()
     result = {key: value[key] for key in ("control", "owner", "notify", "acl")}
     result["acl"]["members"] = [
-        {key: item[key] for key in item if key != "id"}
-        for item in result["acl"]["members"]
+        {key: item[key] for key in item if key != "id"} for item in result["acl"]["members"]
     ]
     return result
 
@@ -99,7 +98,7 @@ telegram_acl_members:
         assert _projection(first) == direct_projection
         config = await migrated.app.state.config_store.read()
         dumped = config.model_dump(mode="json", by_alias=True)
-        assert dumped["schema_version"] == 5
+        assert dumped["schema_version"] == 6
         assert "telegram" not in dumped["imported"]
         assert dumped["telegram"]["control"]["enabled"] is False
         assert dumped["telegram"]["owner"]["chat_id"] == "5001"

@@ -230,6 +230,40 @@ async def _subscribe_services(ws, sub, frame):
         raise
 
 
+async def _subscribe_vpn(ws, sub, frame):
+    from toolbox_backend.api.vpn_schemas import VpnSubscribedData, VpnSubscribedEvent
+
+    after = frame.get("after_seq", 0)
+    if type(after) is not int or after < 0:
+        raise ValueError("invalid subscription")
+    hub = ws.app.state.hub
+    sub.vpn_unsubscribed = False
+    sub.vpn_after = after
+    sub.vpn_replaying = []
+    try:
+        state = hub._state("vpn")
+        watermark = state.last_seq
+        if after > watermark:
+            raise ValueError("future cursor")
+        for entry in state.history:
+            if entry.vpn_seq <= after:
+                continue
+            await _run_enqueue(hub, sub, entry.event_cls, entry.data)
+            sub.vpn_after = entry.vpn_seq
+        await _run_enqueue(hub, sub, VpnSubscribedEvent, VpnSubscribedData(last_seq=watermark))
+        pending = sub.vpn_replaying
+        while pending:
+            entry = pending.pop(0)
+            if entry.vpn_seq > sub.vpn_after:
+                await _run_enqueue(hub, sub, entry.event_cls, entry.data)
+                sub.vpn_after = entry.vpn_seq
+        sub.vpn_replaying = None
+    except BaseException:
+        sub.vpn_after = None
+        sub.vpn_replaying = None
+        raise
+
+
 async def _drain_incoming(ws: WebSocket, sub=None) -> None:
     while True:
         message = await ws.receive()
@@ -248,7 +282,7 @@ async def _drain_incoming(ws: WebSocket, sub=None) -> None:
             continue
         if (
             not isinstance(frame, dict)
-            or frame.get("topic") not in {"run", "ai", "mcp", "services"}
+            or frame.get("topic") not in {"run", "ai", "mcp", "services", "vpn"}
             or frame.get("type") not in {"subscribe", "unsubscribe"}
         ):
             continue
@@ -260,6 +294,14 @@ async def _drain_incoming(ws: WebSocket, sub=None) -> None:
                     sub.services_unsubscribed = True
                     sub.services_after = None
                     sub.services_replaying = None
+                continue
+            if frame.get("topic") == "vpn":
+                if frame.get("type") == "subscribe":
+                    await _subscribe_vpn(ws, sub, frame)
+                else:
+                    sub.vpn_unsubscribed = True
+                    sub.vpn_after = None
+                    sub.vpn_replaying = None
                 continue
             if frame.get("topic") == "mcp":
                 if frame.get("type") == "subscribe":

@@ -69,6 +69,11 @@ def create_app(
     task_executor=None,
     task_git: GitAdapter | None = None,
     telegram_transport=None,
+    vpn_client=None,
+    vpn_network_reader=None,
+    vpn_login_runner=None,
+    vpn_window_automation=None,
+    vpn_path_extras=None,
 ) -> FastAPI:
     register_secret(settings.token)
 
@@ -108,6 +113,7 @@ def create_app(
                         app.state.ai_service.close(),
                         app.state.mcp_service.close(),
                         app.state.services_service.close(),
+                        app.state.vpn_service.close(),
                     )
                 finally:
                     try:
@@ -163,6 +169,20 @@ def create_app(
     )
     app.state.mcp_service = McpService(app.state.settings_service, hub=hub)
     app.state.services_service = ServicesService(store, hub)
+    from toolbox_backend.adapters.vpn_client import ClientController
+    from toolbox_backend.services.vpn import VpnService
+
+    app.state.vpn_service = VpnService(
+        store,
+        credentials or UnavailableCredentials(),
+        legacy_credentials or UnavailableCredentials(),
+        vpn_client or ClientController(path_extras=vpn_path_extras),
+        hub,
+        login_runner=vpn_login_runner,
+        window_automation=vpn_window_automation,
+        network_reader=vpn_network_reader,
+        path_extras=vpn_path_extras,
+    )
     app.state.work_items_service = WorkItemsService(
         app.state.settings_service, ado_read or AdoRead()
     )
@@ -234,6 +254,7 @@ def create_app(
         ai=app.state.ai_service,
         mcp=app.state.mcp_service,
         services=app.state.services_service,
+        vpn=app.state.vpn_service,
         registry=registry,
     )
     app.state.telegram_ai_services = {}
@@ -252,6 +273,7 @@ def create_app(
     app.state.ai_projector = projector
     for service in registry.values():
         service.projector = projector
+    app.state.vpn_service.on_complete = app.state.telegram_service.notify_vpn
 
     def ai_event(event):
         hub.publish_ai(event)
@@ -277,10 +299,17 @@ def create_app(
     app.include_router(routes.router)
     app.include_router(ws.router)
     app.include_router(settings_routes.router)
+    from toolbox_backend.api import vpn_routes
+
+    app.include_router(vpn_routes.router)
 
     # add_middleware prepends: the last one added is outermost.
     # Resulting order: Host -> CORS -> Auth -> BodyLimit -> routes.
-    app.add_middleware(BodyLimit, max_body_bytes=settings.max_body_bytes)
+    app.add_middleware(
+        BodyLimit,
+        max_body_bytes=settings.max_body_bytes,
+        path_limits={"/api/vpn/totp/import": (1 << 20) + 1024},
+    )
     app.add_middleware(BearerAuth, token=settings.token)
     app.add_middleware(
         CORSMiddleware,

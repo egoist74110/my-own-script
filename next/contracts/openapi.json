@@ -1930,6 +1930,20 @@
         "title": "Control",
         "type": "object"
       },
+      "CredentialConfigured": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "CredentialConfigured",
+        "type": "object"
+      },
       "CredentialImport": {
         "additionalProperties": false,
         "properties": {
@@ -2128,6 +2142,22 @@
           "source"
         ],
         "title": "CredentialView",
+        "type": "object"
+      },
+      "CredentialWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "CredentialWrite",
         "type": "object"
       },
       "DefinitionIdentity": {
@@ -4156,6 +4186,34 @@
         "title": "LastRunSummary",
         "type": "object"
       },
+      "LegacyCredentialsImport": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "default": false,
+            "title": "Fields",
+            "type": "boolean"
+          },
+          "kinds": {
+            "items": {
+              "enum": [
+                "vpn_password",
+                "vpn_totp_secret"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Kinds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds"
+        ],
+        "title": "LegacyCredentialsImport",
+        "type": "object"
+      },
       "LegacyImport": {
         "additionalProperties": false,
         "properties": {
@@ -4614,6 +4672,35 @@
           "self_test_running"
         ],
         "title": "MCPSnapshot",
+        "type": "object"
+      },
+      "ManualMfa": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[0-9]{6}$",
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ManualMfa",
+        "type": "object"
+      },
+      "ManualMfaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "ManualMfaResult",
         "type": "object"
       },
       "McpConfig": {
@@ -8276,6 +8363,35 @@
         "title": "TokenRequest",
         "type": "object"
       },
+      "TotpImport": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "text": {
+            "maxLength": 1048576,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TotpImport",
+        "type": "object"
+      },
       "TunnelCreate": {
         "additionalProperties": false,
         "properties": {
@@ -8491,6 +8607,380 @@
           "detail"
         ],
         "title": "ValidationErrorResponse",
+        "type": "object"
+      },
+      "VpnClient": {
+        "additionalProperties": false,
+        "properties": {
+          "app_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Name"
+          },
+          "bundle_id": {
+            "default": "com.safervpn.osx.smb",
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "url_scheme": {
+            "default": "CheckPointSASE",
+            "enum": [
+              "HarmonySASE",
+              "CheckPointSASE"
+            ],
+            "title": "Url Scheme",
+            "type": "string"
+          }
+        },
+        "title": "VpnClient",
+        "type": "object"
+      },
+      "VpnConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "chrome_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chrome Path"
+          },
+          "client": {
+            "$ref": "#/components/schemas/VpnClient"
+          },
+          "login": {
+            "$ref": "#/components/schemas/VpnLogin"
+          },
+          "login_timeout_s": {
+            "default": 75,
+            "maximum": 300.0,
+            "minimum": 30.0,
+            "title": "Login Timeout S",
+            "type": "integer"
+          },
+          "max_run_s": {
+            "default": 480,
+            "maximum": 1200.0,
+            "minimum": 120.0,
+            "title": "Max Run S",
+            "type": "integer"
+          },
+          "rung_timeout_s": {
+            "default": 30,
+            "maximum": 120.0,
+            "minimum": 5.0,
+            "title": "Rung Timeout S",
+            "type": "integer"
+          },
+          "tunnel_prefix": {
+            "default": "10.254.",
+            "title": "Tunnel Prefix",
+            "type": "string"
+          },
+          "window_automation": {
+            "default": "off",
+            "enum": [
+              "off",
+              "connect",
+              "connect_update"
+            ],
+            "title": "Window Automation",
+            "type": "string"
+          }
+        },
+        "title": "VpnConfig",
+        "type": "object"
+      },
+      "VpnLogin": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Email",
+            "type": "string"
+          },
+          "headless": {
+            "default": true,
+            "title": "Headless",
+            "type": "boolean"
+          },
+          "residency": {
+            "default": "US Data Residency",
+            "enum": [
+              "US Data Residency",
+              "EU Data Residency",
+              "India Data Residency",
+              "Australia Data Residency",
+              "CA Data Residency"
+            ],
+            "title": "Residency",
+            "type": "string"
+          },
+          "totp_filter": {
+            "default": "Perimeter",
+            "title": "Totp Filter",
+            "type": "string"
+          },
+          "workspace": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "title": "VpnLogin",
+        "type": "object"
+      },
+      "VpnRunList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VpnRunView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "VpnRunList",
+        "type": "object"
+      },
+      "VpnRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_login": {
+            "default": true,
+            "title": "Allow Login",
+            "type": "boolean"
+          },
+          "max_rung": {
+            "anyOf": [
+              {
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rung"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "title": "VpnRunRequest",
+        "type": "object"
+      },
+      "VpnRunView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "rung": {
+            "default": 0,
+            "title": "Rung",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "cancelled",
+              "succeeded",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VpnRunView",
+        "type": "object"
+      },
+      "VpnSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "vpn": {
+            "$ref": "#/components/schemas/VpnConfig"
+          }
+        },
+        "required": [
+          "revision",
+          "vpn"
+        ],
+        "title": "VpnSettingsPatch",
+        "type": "object"
+      },
+      "VpnSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "additionalProperties": true,
+            "title": "Client",
+            "type": "object"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "credentials": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "enum": [
+                "password",
+                "totp_secret"
+              ]
+            },
+            "title": "Credentials",
+            "type": "object"
+          },
+          "current_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VpnRunView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "permissions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "screen_recording",
+                "accessibility"
+              ]
+            },
+            "title": "Permissions",
+            "type": "object"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/VpnConfig"
+          }
+        },
+        "required": [
+          "connected",
+          "ip",
+          "client",
+          "credentials",
+          "permissions",
+          "settings",
+          "revision"
+        ],
+        "title": "VpnSnapshot",
         "type": "object"
       },
       "WhitelistRequest": {
@@ -14728,6 +15218,443 @@
           }
         },
         "summary": "Import Token"
+      }
+    },
+    "/api/vpn": {
+      "get": {
+        "operationId": "status_api_vpn_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status"
+      }
+    },
+    "/api/vpn/connect": {
+      "post": {
+        "operationId": "connect_api_vpn_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VpnRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connect"
+      }
+    },
+    "/api/vpn/credentials/import-legacy": {
+      "post": {
+        "operationId": "import_legacy_api_vpn_credentials_import_legacy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyCredentialsImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Legacy"
+      }
+    },
+    "/api/vpn/credentials/{kind}": {
+      "delete": {
+        "operationId": "delete_credential_api_vpn_credentials__kind__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialConfigured"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential"
+      },
+      "put": {
+        "operationId": "put_credential_api_vpn_credentials__kind__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialConfigured"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Credential"
+      }
+    },
+    "/api/vpn/relogin": {
+      "post": {
+        "operationId": "relogin_api_vpn_relogin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VpnRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Relogin"
+      }
+    },
+    "/api/vpn/runs": {
+      "get": {
+        "operationId": "runs_api_vpn_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnRunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Runs"
+      }
+    },
+    "/api/vpn/runs/{run_id}": {
+      "get": {
+        "operationId": "run_api_vpn_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run"
+      }
+    },
+    "/api/vpn/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_api_vpn_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VpnRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel"
+      }
+    },
+    "/api/vpn/runs/{run_id}/mfa": {
+      "post": {
+        "operationId": "mfa_api_vpn_runs__run_id__mfa_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualMfa"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualMfaResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mfa"
+      }
+    },
+    "/api/vpn/settings": {
+      "patch": {
+        "operationId": "settings_api_vpn_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VpnSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/vpn/totp/import": {
+      "post": {
+        "operationId": "import_totp_api_vpn_totp_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialConfigured"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Totp"
       }
     },
     "/api/work-items": {

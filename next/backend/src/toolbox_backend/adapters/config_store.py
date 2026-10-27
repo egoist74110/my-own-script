@@ -21,7 +21,7 @@ from toolbox_backend.logging_setup import contains_secret
 
 T = TypeVar("T")
 MigrationStep = Callable[[dict], dict]
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 def stamp() -> str:
@@ -84,12 +84,14 @@ class ConfigStore:
         from toolbox_backend.domain.mcp import config_v3_to_v4
         from toolbox_backend.domain.services import config_v4_to_v5
         from toolbox_backend.domain.telegram import config_v1_to_v2
+        from toolbox_backend.domain.vpn import config_v5_to_v6
 
         self.migrations = {
             1: config_v1_to_v2,
             2: config_v2_to_v3,
             3: config_v3_to_v4,
             4: config_v4_to_v5,
+            5: config_v5_to_v6,
             **(migrations or {}),
         }
         self.readonly_error: str | None = None
@@ -138,11 +140,11 @@ class ConfigStore:
         return await asyncio.to_thread(self._read)
 
     def _backup(self, original: bytes, version: int) -> None:
-        target = self.data_dir / "migrations" if version in (1, 2, 3, 4) else self.data_dir
+        target = self.data_dir / "migrations" if version in (1, 2, 3, 4, 5) else self.data_dir
         private_dir(target)
         prefix = (
             f"config-v{version}-{stamp().replace(':', '-')}"
-            if version in (1, 2, 3, 4)
+            if version in (1, 2, 3, 4, 5)
             else (f"config.json.bak-v{version}-{stamp().replace(':', '-')}-")
         )
         fd, filename = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=target)
@@ -165,12 +167,14 @@ class ConfigStore:
         from toolbox_backend.domain.mcp import config_v3_to_v4
         from toolbox_backend.domain.services import config_v4_to_v5
         from toolbox_backend.domain.telegram import config_v1_to_v2
+        from toolbox_backend.domain.vpn import config_v5_to_v6
 
         migrations = {
             1: config_v1_to_v2,
             2: config_v2_to_v3,
             3: config_v3_to_v4,
             4: config_v4_to_v5,
+            5: config_v5_to_v6,
             **self.migrations,
         }
         try:

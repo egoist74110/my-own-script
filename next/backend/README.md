@@ -1077,3 +1077,11 @@ TG 主 Bot owner 菜单新增“服务”页及 `/services`，状态仅含状态
 测试只使用临时配置、内存凭据与 Python 编写的 code-server/cloudflared/ifconfig 替身，PATH 仅含替身。
 `tests/test_s7_services.py`、`test_s7_ws_tg.py` 和 `tests/independent/s7a/` 覆盖无进程边界；
 `test_s7_processes.py` 覆盖端口、进程组、忽略 TERM、孙进程与后端 SIGKILL；沙箱拒绝进程组或监听时显式标记 not_run，须在沙箱外复跑。
+
+## S8-A：VPN 后端
+
+配置 schema v6 在 `vpn` 段保存客户端 bundle id、隧道前缀、登录字段、自动化模式与超时；v5→v6 初始化会先留存原始快照，再原子替换。VPN 密码和 TOTP 种子只写入 `toolbox-next` 凭据后端，状态接口只返回是否已配置。旧 Keychain 导入为显式只读操作。
+
+TOTP 导入请求接收不超过 1 MiB 的文本或 `otpauth://` URI；服务端仅在内存解析并要求调用方选择多条匹配项。计算使用标准库 RFC 6238 SHA1/6 位/30 秒。VPN 运行使用单飞任务、幂等 request_id、取消与总时限，最多保留 20 条内存记录。客户端控制使用固定 argv 与 bundle id；登录和窗口自动化当前留有 S8-B 接缝，占位实现明确返回 `vpn_not_implemented`。
+
+HTTP 路由为 `/api/vpn*`，WebSocket 主题为 `vpn`，TG `/vpn status|on` 仅 owner 可用。`vpn/logs/vpn.log` 限 5 MiB 并保留一个轮转文件，目录 0700、日志 0600，拒绝符号链接。状态读取每次直读网络接口；运行收尾与应用关闭会释放 VPN 任务。

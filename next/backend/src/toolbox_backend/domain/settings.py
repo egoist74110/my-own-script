@@ -20,6 +20,7 @@ from toolbox_backend.domain.ai import AIConfig
 from toolbox_backend.domain.mcp import McpConfig
 from toolbox_backend.domain.services import ServicesConfig
 from toolbox_backend.domain.telegram import TelegramConfig
+from toolbox_backend.domain.vpn import VpnConfig
 
 
 def identifier(value: str) -> str:
@@ -234,8 +235,9 @@ class CredentialMeta(StrictModel):
 
 class Config(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    schema_version: Literal[5] = 5
+    schema_version: Literal[6] = 6
     services: ServicesConfig = Field(default_factory=ServicesConfig)
+    vpn: VpnConfig = Field(default_factory=VpnConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)

@@ -66,17 +66,21 @@ class BearerAuth:
 class BodyLimit:
     """Buffer at most max_body_bytes, rejecting a stream before route processing."""
 
-    def __init__(self, app: ASGIApp, max_body_bytes: int):
+    def __init__(
+        self, app: ASGIApp, max_body_bytes: int, path_limits: dict[str, int] | None = None
+    ):
         self.app, self.limit = app, max_body_bytes
+        self.path_limits = path_limits or {}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        limit = self.path_limits.get(scope.get("path"), self.limit)
         length = _header(scope, b"content-length")
         if length is not None:
             try:
-                if int(length) > self.limit:
+                if int(length) > limit:
                     await _json_response(send, 413, "request body too large")
                     return
             except ValueError:
@@ -88,7 +92,7 @@ class BodyLimit:
             if message["type"] == "http.disconnect":
                 return
             chunk = message.get("body", b"")
-            if len(body) + len(chunk) > self.limit:
+            if len(body) + len(chunk) > limit:
                 await _json_response(send, 413, "request body too large")
                 return
             body.extend(chunk)

@@ -93,10 +93,15 @@ async def test_telegram_custom_tunnel_requires_input_then_confirm_and_same_valid
             calls.append(body)
 
         monkeypatch.setattr(tg.services, "create_tunnel", create)
+        async def vpn_snapshot():
+            return SimpleNamespace(connected=False, ip=None)
+
+        monkeypatch.setattr(tg.vpn, "snapshot", vpn_snapshot)
         await tg.process_updates([message(700, text="/services", chat=6002)])
         assert not calls
         await tg.process_updates([message(701, text="/services", chat=6001)])
-        assert "VPN 管理见 S8" in (await outbox_texts(ctx))[-1]
+        assert "VPN：未连接" in (await outbox_texts(ctx))[-1]
+        assert any("连接 VPN" in button["text"] for button in await buttons(ctx))
         await tap(ctx, 702, "新增自定义隧道", chat=6001)
         await tg.process_updates([message(703, text="http://[::1]:45436", chat=6001)])
         assert not calls

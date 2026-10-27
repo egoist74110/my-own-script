@@ -110,6 +110,13 @@ from toolbox_backend.api.services_schemas import (  # noqa: E402
     ServicesStatusEvent,
     ServicesSubscribedEvent,
 )
+from toolbox_backend.api.vpn_schemas import (  # noqa: E402
+    VpnCredentialConfigured,
+    VpnMfaRequiredEvent,
+    VpnRunEvent,
+    VpnStatusEvent,
+    VpnSubscribedEvent,
+)
 
 Event = Annotated[
     SystemHelloEvent
@@ -127,6 +134,11 @@ Event = Annotated[
     | McpJobEvent
     | McpSubscribedEvent
     | ServicesStatusEvent
-    | ServicesSubscribedEvent,
+    | ServicesSubscribedEvent
+    | VpnCredentialConfigured
+    | VpnMfaRequiredEvent
+    | VpnRunEvent
+    | VpnStatusEvent
+    | VpnSubscribedEvent,
     Field(discriminator="type"),
 ]

@@ -21,7 +21,7 @@ async def test_v4_migration_preserves_legacy_snapshot_and_is_idempotent(tmp_path
 
     store = ConfigStore(tmp_path)
     migrated = await store.initialize()
-    assert migrated.schema_version == 5
+    assert migrated.schema_version == 6
     assert migrated.revision == 22
     assert migrated.services.cloudflared.protocol == "http2"
     assert migrated.services.binaries.code_server is None

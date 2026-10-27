@@ -110,6 +110,9 @@ async def test_services_panel_never_renders_password_or_token_fields(telegram_ap
         async def get_snapshot():
             return snapshot
 
+        async def get_vpn_snapshot():
+            return SimpleNamespace(connected=False, ip=None)
+
         async def panel(_update, text, _buttons=None):
             messages.append(text)
 
@@ -117,6 +120,7 @@ async def test_services_panel_never_renders_password_or_token_fields(telegram_ap
             return {"text": label}
 
         monkeypatch.setattr(service.services, "snapshot", get_snapshot)
+        monkeypatch.setattr(service.vpn, "snapshot", get_vpn_snapshot)
         monkeypatch.setattr(dispatcher, "panel", panel)
         monkeypatch.setattr(dispatcher, "button", button)
         await dispatcher.services_panel({})

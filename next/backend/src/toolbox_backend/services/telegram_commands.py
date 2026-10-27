@@ -511,6 +511,26 @@ class TelegramDispatcher:
             await self.mcp_panel(update, notice="Lark MCP 已停止")
         return "handled"
 
+    async def vpn_command(self, update, action):
+        vpn = getattr(self.service, "vpn", None)
+        if vpn is None:
+            await self.panel(update, "VPN 服务不可用")
+            return "handled"
+        action = (action or "status").strip().lower()
+        if action == "status":
+            status = await vpn.snapshot()
+            await self.panel(
+                update,
+                f"VPN：{'已连接' if status.connected else '未连接'} · {status.ip or '无地址'}",
+            )
+            return "handled"
+        if action == "on":
+            await vpn.start(request_id=uuid.uuid5(TG_NAMESPACE, str(update.get("update_id"))))
+            await self.panel(update, "已开始")
+            return "handled"
+        await self.panel(update, "用法：/vpn status 或 /vpn on；断开请在客户端中操作")
+        return "handled"
+
     async def services_panel(self, update):
         service = getattr(self.service, "services", None)
         if service is None:
@@ -523,8 +543,18 @@ class TelegramDispatcher:
             f"全局隧道：{tunnel.state} · {tunnel.url or '域名待刷新'}",
             f"协议：{snap.settings.cloudflared.protocol}",
             f"局域网地址：{snap.network.lan_ip or '未连接'}",
-            "VPN 管理见 S8",
         ]
+        vpn = getattr(self.service, "vpn", None)
+        vpn_button = None
+        if vpn is not None:
+            vpn_status = await vpn.snapshot()
+            lines.append(
+                f"VPN：{'已连接' if vpn_status.connected else '未连接'} "
+                f"· {vpn_status.ip or '无地址'}"
+            )
+            vpn_button = await self.button(update, "🔌连接 VPN", "vpn_connect", {})
+        else:
+            lines.append("VPN 服务不可用")
         buttons = []
         for name, label, view in [
             ("code-server", "code-server", code),
@@ -542,6 +572,8 @@ class TelegramDispatcher:
                 [await self.button(update, "停止自定义隧道", "svc_delete", {"id": custom.id})]
             )
         buttons.append([await self.button(update, "新增自定义隧道", "svc_input", {})])
+        if vpn_button:
+            buttons.append([vpn_button])
         buttons.append([await self.button(update, "刷新状态", "menu", {"page": "services"})])
         await self.panel(update, "\n".join(lines), buttons)
 
@@ -633,6 +665,12 @@ class TelegramDispatcher:
             if role != "owner":
                 return "ignored"
             return await self.mcp_action(update, kind, token)
+        if kind == "vpn_connect":
+            if role != "owner":
+                return "ignored"
+            await self.service.vpn.start(request_id=uuid.uuid5(TG_NAMESPACE, token))
+            await self.panel(update, "已开始")
+            return "handled"
         page = payload.get("page")
         if page == "tasks":
             await self.tasks(update)
@@ -679,6 +717,12 @@ class TelegramDispatcher:
                     return "ignored"
                 await self.services_panel(update)
                 return "handled"
+            if command == "/vpn":
+                if role != "owner":
+                    return "ignored"
+                text = identities(update)[0].get("text", "")
+                parts = text.split(maxsplit=1)
+                return await self.vpn_command(update, parts[1] if len(parts) > 1 else "status")
             _, _, chat, user, _, _ = identities(update)
             if role == "owner" and (chat, user) in self._service_inputs:
                 import time

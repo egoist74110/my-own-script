@@ -35,6 +35,9 @@ class Subscriber:
         self.services_after = None
         self.services_replaying = None
         self.services_unsubscribed = False
+        self.vpn_after = None
+        self.vpn_replaying = None
+        self.vpn_unsubscribed = False
 
 
 class EventHub:
@@ -46,6 +49,8 @@ class EventHub:
         self._mcp_history: list[SimpleNamespace] = []
         self._services_seq = 0
         self._services_history = []
+        self._vpn_seq = 0
+        self._vpn_history = []
 
     @property
     def seq(self) -> int:
@@ -155,6 +160,34 @@ class EventHub:
                 self.enqueue(sub, event_cls, data)
         return self._services_seq
 
+    def publish_vpn(self, event_type, data):
+        from toolbox_backend.api.vpn_schemas import VpnMfaRequiredEvent, VpnRunEvent, VpnStatusEvent
+
+        event_cls = {
+            "vpn.status": VpnStatusEvent,
+            "vpn.run": VpnRunEvent,
+            "vpn.mfa_required": VpnMfaRequiredEvent,
+        }[event_type]
+
+        self._vpn_seq += 1
+        data = {**data, "vpn_seq": self._vpn_seq}
+        entry = SimpleNamespace(vpn_seq=self._vpn_seq, event_cls=event_cls, data=data)
+        self._vpn_history.append(entry)
+        self._vpn_history = self._vpn_history[-1024:]
+        for sub in tuple(self._subscribers):
+            if sub.vpn_after is None or sub.vpn_unsubscribed or entry.vpn_seq <= sub.vpn_after:
+                continue
+            if sub.vpn_replaying is not None:
+                if len(sub.vpn_replaying) >= self._queue_size:
+                    sub.overflowed.set()
+                    self._subscribers.discard(sub)
+                else:
+                    sub.vpn_replaying.append(entry)
+            else:
+                sub.vpn_after = entry.vpn_seq
+                self.enqueue(sub, entry.event_cls, data)
+        return self._vpn_seq
+
     def _state(self, topic: str) -> SimpleNamespace:
         if topic == "services":
             return SimpleNamespace(
@@ -162,6 +195,8 @@ class EventHub:
             )
         if topic == "mcp":
             return SimpleNamespace(history=list(self._mcp_history), last_seq=self._mcp_seq)
+        if topic == "vpn":
+            return SimpleNamespace(history=list(self._vpn_history), last_seq=self._vpn_seq)
         return SimpleNamespace(history=[], last_seq=0)
 
     def _fan_out(self, payload: str) -> None:

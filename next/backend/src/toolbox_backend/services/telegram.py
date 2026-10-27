@@ -79,6 +79,7 @@ class TelegramService:
         ai=None,
         mcp=None,
         services=None,
+        vpn=None,
         registry=None,
         projector=None,
     ):
@@ -89,6 +90,7 @@ class TelegramService:
         self.ai = ai
         self.mcp = mcp
         self.services = services
+        self.vpn = vpn
         self.registry = registry if registry is not None else {}
         self.projector = projector
         self.focus = {}
@@ -825,7 +827,7 @@ class TelegramService:
                 await self.reply(update, await self.status_text(role, group, chat))
             else:
                 return "ignored"
-        elif command in {"/vpn", "/cc", "/svc", "/service", "/cancelrollback"}:
+        elif command in {"/cc", "/svc", "/service", "/cancelrollback"}:
             await self.reply(update, "该功能尚未迁移到新应用")
         else:
             result = await self.dispatcher.dispatch(update, command, role, group)
@@ -993,6 +995,21 @@ class TelegramService:
             edit_message_id=mid,
             chunk_size=chunk_size,
         )
+
+    async def notify_vpn(self, run):
+        if self._closing or self.slot != "main":
+            return
+        config = await self.config_store.read()
+        owner = config.telegram.owner
+        if not config.telegram.control.enabled or not owner.chat_id:
+            return
+        if run.state == "succeeded":
+            text = f"VPN 已连接 · {run.ip or 'IP 未知'}"
+        elif run.state == "cancelled":
+            text = "VPN 连接已取消"
+        else:
+            text = f"VPN 连接失败 · {run.error_code or 'vpn_failed'}"
+        await self.enqueue(owner.chat_id, f"vpn-result:{run.run_id}", text)
 
     async def enqueue(
         self,

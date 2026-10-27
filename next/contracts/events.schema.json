@@ -2653,6 +2653,235 @@
       ],
       "title": "TelegramStatusEvent",
       "type": "object"
+    },
+    "VpnCredentialConfigured": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/VpnCredentialConfiguredData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "vpn",
+          "default": "vpn",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "vpn.credentials",
+          "default": "vpn.credentials",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "VpnCredentialConfigured",
+      "type": "object"
+    },
+    "VpnCredentialConfiguredData": {
+      "additionalProperties": false,
+      "properties": {
+        "configured": {
+          "title": "Configured",
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "vpn_password",
+            "vpn_totp_secret"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "configured"
+      ],
+      "title": "VpnCredentialConfiguredData",
+      "type": "object"
+    },
+    "VpnMfaRequiredEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "vpn",
+          "default": "vpn",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "vpn.mfa_required",
+          "default": "vpn.mfa_required",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "VpnMfaRequiredEvent",
+      "type": "object"
+    },
+    "VpnRunEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "vpn",
+          "default": "vpn",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "vpn.run",
+          "default": "vpn.run",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "VpnRunEvent",
+      "type": "object"
+    },
+    "VpnStatusEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "vpn",
+          "default": "vpn",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "vpn.status",
+          "default": "vpn.status",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "VpnStatusEvent",
+      "type": "object"
+    },
+    "VpnSubscribedData": {
+      "additionalProperties": false,
+      "properties": {
+        "last_seq": {
+          "minimum": 0,
+          "title": "Last Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "last_seq"
+      ],
+      "title": "VpnSubscribedData",
+      "type": "object"
+    },
+    "VpnSubscribedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/VpnSubscribedData"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "topic": {
+          "const": "vpn",
+          "default": "vpn",
+          "title": "Topic",
+          "type": "string"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "const": "vpn.subscribed",
+          "default": "vpn.subscribed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "data"
+      ],
+      "title": "VpnSubscribedEvent",
+      "type": "object"
     }
   },
   "discriminator": {
@@ -2672,7 +2901,12 @@
       "system.alert": "#/$defs/SystemAlertEvent",
       "system.heartbeat": "#/$defs/SystemHeartbeatEvent",
       "system.hello": "#/$defs/SystemHelloEvent",
-      "telegram.status": "#/$defs/TelegramStatusEvent"
+      "telegram.status": "#/$defs/TelegramStatusEvent",
+      "vpn.credentials": "#/$defs/VpnCredentialConfigured",
+      "vpn.mfa_required": "#/$defs/VpnMfaRequiredEvent",
+      "vpn.run": "#/$defs/VpnRunEvent",
+      "vpn.status": "#/$defs/VpnStatusEvent",
+      "vpn.subscribed": "#/$defs/VpnSubscribedEvent"
     },
     "propertyName": "type"
   },
@@ -2724,6 +2958,21 @@
     },
     {
       "$ref": "#/$defs/ServicesSubscribedEvent"
+    },
+    {
+      "$ref": "#/$defs/VpnCredentialConfigured"
+    },
+    {
+      "$ref": "#/$defs/VpnMfaRequiredEvent"
+    },
+    {
+      "$ref": "#/$defs/VpnRunEvent"
+    },
+    {
+      "$ref": "#/$defs/VpnStatusEvent"
+    },
+    {
+      "$ref": "#/$defs/VpnSubscribedEvent"
     }
   ],
   "title": "ToolboxEvent"
