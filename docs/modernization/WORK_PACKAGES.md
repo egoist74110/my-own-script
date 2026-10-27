@@ -358,3 +358,10 @@ TOOLBOX.app/Contents/
 | 9 | 开机自启/launchd 无界面常驻 | **S9 不做**（ARCHITECTURE §8 未决项维持未决） | 做登录项：增加 `SMAppService` 授权与退出语义，需单独设计 |
 | 10 | 真实签名/公证/发布授权 | **S9 施工与本机验证不做，真实验收清单你另行授权时再逐项做**；全程不 `git push`、不 `gh release` | 授权主控在你在场时一次走完签名→公证→发布测试 tag |
 | 11 | 版本起点 | **首个对外版本 `1.0.0`**（旧应用最近 1.1.3 (42)，新版用新版本线，避免被旧更新器误判为“更新”或“降级”） | 延续 `1.x`（如 `1.2.0`）：版本线连续，但新旧并存期旧更新器可能提示新应用 |
+
+## S9 已决
+
+- 用户 2026-10-27 原答复：**“S9 待决 1–11 全部按推荐，写入 S9 已决并提交，然后派 S9-A。”** 确认十一项：1 用 Apple Developer ID 签名 + 公证（证书与公证凭据由用户自己配置在钥匙串，主控只用 profile 名，不接触凭据值）；2 应用名/bundle id **沿用占位 `TOOLBOX` / `dev.toolbox.next`**，发布前可改一次，改名视为数据目录/授权身份迁移，需用户另行确认；3 内置 Python 运行时用 python-build-standalone（方案 A）；4 不内置 Node，沿用探测与设置页提示，列为有意推迟；5 更新用 Tauri updater + GitHub Releases 静态清单（更新签名私钥由用户保管、不入库）；6 DMG（UDZO）+ updater 用 zip，仅 arm64；7 旧应用下线待各切片所有权切换全部完成并验收后另行授权，S9 不改旧应用；8 版本号单一来源为 `tauri.conf.json`，构建脚本同步并校验 Cargo/package.json/pyproject 一致，不再用 pre-commit 自动递增；9 S9 不做开机自启/launchd；10 S9 施工与本机验证不做真实签名/公证/发布，真实验收清单另行授权，全程不 `git push`、不 `gh release`；11 首个对外版本 `1.0.0`。
+- 本确认解除派工门禁；**不**授权真实签名、公证（联网上传 Apple）、读取证书/钥匙串私钥、发布/`gh release`/push、修改或下线旧应用、改 bundle id/应用名、联网访问真实更新源。无证书时本机只做未签名/ad-hoc 验证，产物标注不可分发。
+- 派工顺序：S9-A（codex `gpt-6.1-sol` / medium，Rust 壳打包态解析）→ S9-B（构建与签名脚本）与 S9-C（更新机制，壳/后端用 codex，前端用 agy `gemini-3.8-flash-high`）在 S9-A 契约冻结后可并行；最后 S9 集成验收（签名/公证/安全核对用 Opus）。
+- S9-A 取舍（主控裁决）：版本起点按待决 11 把 `tauri.conf.json` 的 `version` 设为 `1.0.0`；Cargo.toml/package.json/pyproject 版本同步与一致性校验属 S9-B；运行时与 `mcp/` 资源通过**构建时叠加配置 `tauri.bundle.conf.json`**（`tauri build --config`）引入，不写入默认 `tauri.conf.json`，使 `cargo test`/开发态不依赖尚未构建的资源目录；`minimumSystemVersion` 暂不设置，留待 S9-B 实测后定（记为开放项）。
