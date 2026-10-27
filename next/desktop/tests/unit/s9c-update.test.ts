@@ -304,6 +304,48 @@ describe('S9-C UpdateCard & useUpdate', () => {
       expect(fake.calls.some((c) => c.cmd === 'update_check')).toBe(true)
     })
 
+    it.each(['ready', 'downloading', 'checking', 'disabled'] as const)(
+      '%s 状态下“检查更新”按钮禁用',
+      async (state) => {
+        const fake = createFakeTauri({ state })
+        const wrapper = mount(UpdateCard, { props: { sources: fake.sources } })
+        await flushPromises()
+        const btn = wrapper.find('[data-testid="update-check-btn"]')
+        expect(btn.attributes('disabled')).toBeDefined()
+        await btn.trigger('click')
+        await flushPromises()
+        expect(fake.calls.some((c) => c.cmd === 'update_check')).toBe(false)
+      },
+    )
+
+    it.each(['update_busy', 'update_check_failed'] as const)(
+      '本地 idle 但后端已 ready 时 check 抛 %s：不改写为 error，保留重启按钮',
+      async (code) => {
+        const fake = createFakeTauri({ state: 'idle' })
+        const wrapper = mount(UpdateCard, { props: { sources: fake.sources } })
+        await flushPromises()
+        const readyStatus = {
+          ...((await (fake.invoke as unknown as (c: string) => Promise<UpdateStatus>)(
+            'update_status',
+          )) as UpdateStatus),
+          state: 'ready',
+        }
+        fake.invoke.mockImplementation(async (cmd: string) => {
+          fake.calls.push({ cmd })
+          if (cmd === 'update_check') throw code
+          if (cmd === 'update_status') return JSON.parse(JSON.stringify(readyStatus))
+          return undefined
+        })
+        await wrapper.find('[data-testid="update-check-btn"]').trigger('click')
+        await flushPromises()
+
+        expect(fake.calls.some((c) => c.cmd === 'update_check')).toBe(true)
+        expect(wrapper.find('[data-testid="update-restart-btn"]').exists()).toBe(true)
+        expect(wrapper.find('[data-testid="update-state-text"]').text()).toContain('待重启')
+        expect(wrapper.find('[data-testid="update-error-banner"]').exists()).toBe(false)
+      },
+    )
+
     it('点击“下载并安装”调用 update_install（仅 available 时可用）', async () => {
       const fake = createFakeTauri({ state: 'available', available_version: '1.1.0' })
       const wrapper = mount(UpdateCard, { props: { sources: fake.sources } })

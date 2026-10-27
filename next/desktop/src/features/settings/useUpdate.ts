@@ -129,10 +129,40 @@ export function useUpdate(sources?: UpdateSources) {
     return '仅桌面应用内可用'
   })
 
+  // 命令失败后拉取后端权威状态；失败返回 null（保持本地不变）
+  async function refreshStatus(invoke: TauriInvoke): Promise<UpdateStatus | null> {
+    try {
+      const res = (await invoke('update_status')) as UpdateStatus
+      if (res && !disposed) {
+        status.value = res
+        return res
+      }
+    } catch {
+      // 忽略：保持本地状态
+    }
+    return null
+  }
+
+  // 返回 true 表示已按“后端状态与命令冲突”处理（不写 error）
+  async function handleStateConflict(invoke: TauriInvoke, code: string): Promise<boolean> {
+    if (code === 'update_busy') {
+      await refreshStatus(invoke)
+      return true
+    }
+    // 后端处于不可检查/安装的状态（如 ready）时拒绝命令，状态以后端为准
+    const res = await refreshStatus(invoke)
+    return !!res && (res.state === 'ready' || res.state === 'downloading')
+  }
+
   async function checkUpdate() {
     const invoke = getInvoke()
     if (!invoke || status.value.state === 'disabled') return
-    if (status.value.state === 'checking' || status.value.state === 'downloading') return
+    if (
+      status.value.state === 'checking' ||
+      status.value.state === 'downloading' ||
+      status.value.state === 'ready'
+    )
+      return
     status.value.state = 'checking'
     status.value.error_code = null
     error.value = null
@@ -146,9 +176,11 @@ export function useUpdate(sources?: UpdateSources) {
       const code = (
         typeof err === 'string' ? err : (err as Error)?.message || 'update_check_failed'
       ) as UpdateErrorCode
-      status.value.state = 'error'
-      status.value.error_code = code
-      error.value = updateErrorMessage(code)
+      if (!(await handleStateConflict(invoke, code))) {
+        status.value.state = 'error'
+        status.value.error_code = code
+        error.value = updateErrorMessage(code)
+      }
     } finally {
       loading.value = false
     }
@@ -168,9 +200,11 @@ export function useUpdate(sources?: UpdateSources) {
       const code = (
         typeof err === 'string' ? err : (err as Error)?.message || 'update_install_failed'
       ) as UpdateErrorCode
-      status.value.state = 'error'
-      status.value.error_code = code
-      error.value = updateErrorMessage(code)
+      if (!(await handleStateConflict(invoke, code))) {
+        status.value.state = 'error'
+        status.value.error_code = code
+        error.value = updateErrorMessage(code)
+      }
     } finally {
       loading.value = false
     }
@@ -190,7 +224,11 @@ export function useUpdate(sources?: UpdateSources) {
       const code = (
         typeof err === 'string' ? err : (err as Error)?.message || 'update_cancelled'
       ) as UpdateErrorCode
-      error.value = updateErrorMessage(code)
+      if (code === 'update_busy') {
+        await refreshStatus(invoke)
+      } else {
+        error.value = updateErrorMessage(code)
+      }
     }
   }
 

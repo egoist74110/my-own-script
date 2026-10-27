@@ -26,6 +26,26 @@ fi
 SRC_ROOT="$(cd "$TOOLBOX_PBS_PYTHON_HOME" && pwd -P)"
 echo "[build_runtime] source interpreter: $SRC_ROOT"
 
+# Guard the destructive rm: RUNTIME_OUT must be absolute, strictly inside BUILD_DIR, and not a protected dir.
+if ! python3 - "$RUNTIME_OUT" "$BUILD_DIR" "$HOME" "$REPO" <<'PYEOF'
+import os
+import sys
+
+out, build, home, repo = sys.argv[1:5]
+if not out or not build or not os.path.isabs(out) or not os.path.isabs(build):
+    sys.exit(1)
+out_r, build_r = os.path.realpath(out), os.path.realpath(build)
+protected = {os.path.realpath(p) for p in ("/", home, repo) if p}
+if out_r in protected:
+    sys.exit(1)
+if not out_r.startswith(build_r.rstrip("/") + "/"):
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+then
+  echo "error: refusing to rm -rf RUNTIME_OUT='$RUNTIME_OUT': must be non-empty, absolute, strictly under BUILD_DIR='$BUILD_DIR', and not /, \$HOME or the repo root." >&2
+  exit 2
+fi
 rm -rf "$RUNTIME_OUT"
 mkdir -p "$(dirname "$RUNTIME_OUT")"
 cp -R "$SRC_ROOT" "$RUNTIME_OUT"

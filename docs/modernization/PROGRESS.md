@@ -19,7 +19,7 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 | S6 MCP 管理 | integrated；集成验收通过（有条件：S6-ACC-001～008 fixed，009～013 deferred，其中 009 待前端派工） | 真实验收清单未授权；Lark（真实包补丁核对、所有权切换）用户搁置，后续再议 | [progress/S6.md](archive/progress/S6.md) |
 | S7 服务管理 | integrated；集成验收通过（有条件：S7-ACC-001～003 fixed，004/005 deferred；dsh 已推迟出 S7） | 真实验收清单与服务所有权切换未授权；真实 cloudflared 输出格式待核（S7-ACC-001） | [progress/S7.md](archive/progress/S7.md) |
 | S8 VPN | integrated；集成验收有条件通过（`583410c`/`036bde6`/`c902c2c`/`3cae809`；Opus 安全核对 M1–M3 已修，L1–L10 记账） | 真实验收清单（新品牌 SSO/窗口 OCR/深链/客户端 A·B 档）、所有权切换与主 Bot 切换未授权 | 见下「S8-A/B/C 施工与集成验收」 |
-| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B、S9-C 已集成，S9 集成验收有条件通过（2026-10-27，见文末「S9 集成验收」：F1 发布前必修，F2–F7 open），待真实验收 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
+| S9 交付 | 合同已确认（[WORK_PACKAGES.md「S9」「S9 已决」](WORK_PACKAGES.md)，11 项按推荐）；S9-A、S9-B、S9-C 已集成，S9 集成验收有条件通过（2026-10-27，见文末「S9 集成验收」：F1–F7 已于验收后修复），待真实验收 | 真实签名/公证/发布/旧应用下线均未授权；本机无签名身份 | — |
 
 最近一次集成版本全量（S7 集成验收，`a3bd7b3`/`93fca54` + 验收修复）：后端 **1307 passed**、ruff、contracts --check；前端 **1162 passed / 82 文件**（frozen install/typecheck/lint/test/build/guard:dist/contracts:check）；Rust 未改（上次 `cargo test --offline` 36 passed）。
 
@@ -168,13 +168,13 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 
 | 编号 | 级别 | 位置 | 摘要 | 状态 |
 | --- | --- | --- | --- | --- |
-| S9-F1 | 高（仅真实发布） | `build_app.sh:145,154-162`、`README.md:82-103` | updater 的 `.app.tar.gz`/`.sig` 取自**未签名**的 cargo 产物，而非签名/公证后的 `out/TOOLBOX.app`；按 README 发布会让自动更新装上无 Developer ID/公证的包 | open（发布前必修：签名公证 staple 后重打 tar.gz，再 `tauri signer sign`，再生成清单） |
-| S9-F2 | 中（主控读码确认 `updater.rs:524-577,610-626`） | `updater.rs` | 安装阶段状态仍为 Downloading 且 `cancel_tx=None`，`update_cancel` 被接受并广播 Available/cancelled，但安装继续并最终发 Ready，违反“取消保留旧版” | open（建议：进入安装时同锁置 installing 标记，安装阶段 cancel 原样返回快照；先写失败回归） |
-| S9-F3 | 低 | `UpdateCard.vue:25-28`、`useUpdate.ts:132-173`、`updater.rs:363` | ready 时“检查更新”可点，后端报错后前端把本地状态改 error，“重启”按钮消失 | open |
-| S9-F4 | 低 | `build_app.sh:117-141` | 合并 `--updater-config` 不校验非 https/`dangerousInsecureTransportProtocol`/占位公钥；release 下非 https endpoint 会使插件初始化 panic（推导） | open |
-| S9-F5 | 低 | `verify_app.sh:268-297` | 主进程已退而进程组残留时 finally 不 `killpg` | open |
-| S9-F6 | 低（推测） | `backend.rs:243-246` | 打包态未清 `PYTHONPATH/PYTHONHOME/PYTHONSTARTUP`（终端启动 .app 时可混入） | open |
-| S9-F7 | 低 | `build_runtime.sh:29`、`tauri.bundle.conf.json:4` | `rm -rf "$RUNTIME_OUT"` 无路径防护；设置 `TOOLBOX_BUILD_DIR/RUNTIME_OUT` 时资源路径写死不一致 | open |
+| S9-F1 | 高（仅真实发布） | `build_app.sh:145,154-162`、`README.md:82-103` | updater 的 `.app.tar.gz`/`.sig` 取自**未签名**的 cargo 产物，而非签名/公证后的 `out/TOOLBOX.app`；按 README 发布会让自动更新装上无 Developer ID/公证的包 | fixed（见下「验收后修复」） |
+| S9-F2 | 中（主控读码确认 `updater.rs:524-577,610-626`） | `updater.rs` | 安装阶段状态仍为 Downloading 且 `cancel_tx=None`，`update_cancel` 被接受并广播 Available/cancelled，但安装继续并最终发 Ready，违反“取消保留旧版” | fixed（见下「验收后修复」） |
+| S9-F3 | 低 | `UpdateCard.vue:25-28`、`useUpdate.ts:132-173`、`updater.rs:363` | ready 时“检查更新”可点，后端报错后前端把本地状态改 error，“重启”按钮消失 | fixed（见下「验收后修复」） |
+| S9-F4 | 低 | `build_app.sh:117-141` | 合并 `--updater-config` 不校验非 https/`dangerousInsecureTransportProtocol`/占位公钥；release 下非 https endpoint 会使插件初始化 panic（推导） | fixed（见下「验收后修复」） |
+| S9-F5 | 低 | `verify_app.sh:268-297` | 主进程已退而进程组残留时 finally 不 `killpg` | fixed（见下「验收后修复」） |
+| S9-F6 | 低（推测） | `backend.rs:243-246` | 打包态未清 `PYTHONPATH/PYTHONHOME/PYTHONSTARTUP`（终端启动 .app 时可混入） | fixed（见下「验收后修复」） |
+| S9-F7 | 低 | `build_runtime.sh:29`、`tauri.bundle.conf.json:4` | `rm -rf "$RUNTIME_OUT"` 无路径防护；设置 `TOOLBOX_BUILD_DIR/RUNTIME_OUT` 时资源路径写死不一致 | fixed（见下「验收后修复」） |
 | S9-F8–F13 | 信息 | — | F8 插件 debug 日志含完整 URL（现无日志后端，接日志时须过滤 `tauri_plugin_updater`）；F9 verify 测试钩子经 argv 传临时 token；F10 README 让 export 私钥/口令；F11 合同写 zip、实际 updater 用 tar.gz；F12 `check()` 允许从 Available 发起；F13 `--timestamp` 需联网、entitlements 为空须真实签名时实测 | deferred |
 
   Opus 清单：①②④⑤⑥⑨⑩ 通过；③ 有保留（F2）；⑦ 有保留（F1/F5/F7）；⑧ 有保留（F6）。无凭据泄漏、无 URL 注入、权限仅新增 5 个 `allow-update-*`、Cargo.lock 新增 46 个 crate 全部来自 crates.io 带 checksum、无既有 crate 版本变化。Opus 未核对 `tests/**` 与真实签名/公证行为。
@@ -183,3 +183,12 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
   - 待做：F1–F7 修复；真实更新源与更新签名密钥；Developer ID 签名、公证、staple、Gatekeeper；旧应用下线与旧更新器/空占位清理（改旧代码，需另行授权，S9 不改旧应用）。
   - 有意推迟：不内置 Node/code-server/cloudflared/AI CLI（沿用探测与设置页提示）；不做开机自启；仅 arm64；差分更新；包体积优化。
 - **开放项（not_run，均需真实证书/授权）**：Developer ID 签名、公证、Gatekeeper/quarantine 首启、TCC（屏幕录制/辅助功能）授权跨更新保留、`disable-library-validation` 是否需要、打包态真实下载/校验/替换与重启、更新后后端无残留、GUI 人工体验（未启动打包后的 `.app` 窗口）；`shellcheck` 本机未安装；更新包体积（Playwright node 驱动 138 MB，整包 291–294 MB，DMG 132–140 MB/zip 100–113 MB）；S8 遗留低级项 L1–L10；已知间歇测试（S6-ACC-014 lark 健康探测、s5c flood、新增 s7 sigkill 时序）；bundle id/应用名仍为占位 `dev.toolbox.next`/`TOOLBOX`；干净机器首次 release 构建（见上 futures-macro）。
+
+### S9 验收后修复（2026-10-27）
+
+- 派工：3 个 Sonnet 5.5 子 agent（claude 运行时，无提供方回执），路径互不重叠，均未提交；主控复验后限定路径提交。
+- F2（`updater.rs`）：`Inner.installing` 标记，下载完成时在同一把锁内判定“取消 vs 进入安装”，安装阶段 `cancel` 原样返回快照；新增回归测试（去掉守卫即红）。F6（`backend.rs`）：打包态 `env_remove` `PYTHONPATH/PYTHONHOME/PYTHONSTARTUP` + 测试。Rust **55 passed**（+2），fmt/clippy 通过。
+- F3（`UpdateCard.vue`、`useUpdate.ts`）：ready 时禁用检查按钮；check/install/cancel 出现状态冲突时重拉 `update_status` 而非写 error；+6 测试，前端 **1200 passed / 84 文件**，typecheck/lint/build/guard:dist 通过。（worker 一次全量中 `s2c-independent` 2 条偶发失败，重跑全绿。）
+- F1：新增 `make_update_artifact.sh`（从签名后的 `out/TOOLBOX.app` 重打 tar.gz，私钥只读环境变量；ad-hoc/未签名拒绝 exit 2，`--allow-unsigned` 仅本地测试）；README/manifest 流程同步，`build_app.sh` 末尾提示 cargo 产物的 tar.gz 不可发布。F4：新增 `validate_updater_config.py`，拒绝 `dangerousInsecureTransportProtocol`、非 https、占位 endpoint/公钥（exit 2）。F5：`verify_app.sh` 主进程已退但进程组残留时按记录的 PGID `killpg`。F7：`build_runtime.sh` 的 `rm -rf` 路径防护，叠加配置资源映射随实际 RUNTIME_OUT 改写。脚本 unittest **23 OK**（+5）。
+- 主控复验：前端/Rust/脚本全量如上；真实 `build_app.sh --skip-frontend --sign adhoc` 再次 exit 0 且 verify 全过；`make_update_artifact.sh` 对 ad-hoc 包正确拒绝；无残留进程。
+- not_run：`pnpm tauri signer sign` 靠环境变量取私钥仅按 Tauri v2 文档假设、未实测；真实 Developer ID 签名/公证后的更新包链路；ShellCheck。F8–F13 仍 deferred。

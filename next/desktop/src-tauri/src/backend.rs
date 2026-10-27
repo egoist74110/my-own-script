@@ -194,6 +194,8 @@ pub struct BackendCommand {
     pub args: Vec<OsString>,
     pub cwd: Option<PathBuf>,
     pub env: Vec<(OsString, OsString)>,
+    /// Environment variables removed from the child (not inherited from the app).
+    pub env_remove: Vec<OsString>,
 }
 
 impl BackendCommand {
@@ -203,6 +205,7 @@ impl BackendCommand {
             args: Vec::new(),
             cwd: None,
             env: Vec::new(),
+            env_remove: Vec::new(),
         }
     }
 
@@ -225,6 +228,11 @@ impl BackendCommand {
         self
     }
 
+    pub fn env_remove(mut self, key: impl Into<OsString>) -> Self {
+        self.env_remove.push(key.into());
+        self
+    }
+
     /// Resolve override, bundled runtime beside the executable, then dev mode.
     /// `repo_root` is only a development fallback; it need not exist in a bundle.
     pub fn packaged(
@@ -243,7 +251,10 @@ impl BackendCommand {
                     .args(["-m", "toolbox_backend"])
                     .cwd(backend)
                     .env("PYTHONDONTWRITEBYTECODE", "1")
-                    .env("PYTHONNOUSERSITE", "1"));
+                    .env("PYTHONNOUSERSITE", "1")
+                    .env_remove("PYTHONPATH")
+                    .env_remove("PYTHONHOME")
+                    .env_remove("PYTHONSTARTUP"));
             }
         }
         Self::dev(repo_root, override_cmd)
@@ -696,6 +707,9 @@ async fn run_once(
     if let Some(cwd) = &cfg.command.cwd {
         command.current_dir(cwd);
     }
+    for k in &cfg.command.env_remove {
+        command.env_remove(k);
+    }
     for (k, v) in &cfg.command.env {
         command.env(k, v);
     }
@@ -1003,5 +1017,33 @@ mod tests {
         // blank override falls back to the default
         let blank = BackendCommand::dev(root, Some("   ")).unwrap();
         assert_eq!(blank.args.len(), 3);
+    }
+
+    #[test]
+    fn packaged_command_strips_python_env_overrides() {
+        let temp = tempfile::tempdir().unwrap();
+        let macos = temp.path().join("App.app/Contents/MacOS");
+        let backend = temp.path().join("App.app/Contents/Resources/backend");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::create_dir_all(backend.join("bin")).unwrap();
+        std::fs::write(backend.join("bin/python3.14"), "").unwrap();
+        let cmd = BackendCommand::packaged(
+            &macos.join("toolbox-desktop"),
+            Path::new("/nonexistent-root"),
+            None,
+        )
+        .unwrap();
+        for key in ["PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"] {
+            assert!(cmd.env_remove.iter().any(|k| k == key), "{key} not removed");
+        }
+        assert!(cmd
+            .env
+            .iter()
+            .any(|(k, v)| k == "PYTHONNOUSERSITE" && v == "1"));
+        // dev mode leaves the environment untouched
+        assert!(BackendCommand::dev(Path::new("/x"), None)
+            .unwrap()
+            .env_remove
+            .is_empty());
     }
 }

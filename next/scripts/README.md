@@ -67,6 +67,7 @@ export TOOLBOX_PBS_PYTHON_HOME="$(cd "$(dirname "$PY_BIN")/.." && pwd -P)"
 - **分发归档产物**（由 `make_dmg.sh` 生成到指定 `<outdir>`，如 `next/build/out/`）：
   - `TOOLBOX-<version>-arm64.dmg`
   - `TOOLBOX-<version>-arm64.zip`
+- **更新包产物**（`make_update_artifact.sh`）：`next/build/dist/TOOLBOX.app.tar.gz`、`.sig`、`latest.json`
 
 ---
 
@@ -78,26 +79,33 @@ export TOOLBOX_PBS_PYTHON_HOME="$(cd "$(dirname "$PY_BIN")/.." && pwd -P)"
    - 执行 `pnpm tauri signer generate -w ~/.tauri/toolbox-updater.key`，妥善保管私钥与密码（**严禁入库**）。
 2. **准备构建时更新器叠加配置文件**（不提交真实地址或根据需要仅在发布环境生成）：
    - 复制 `next/desktop/src-tauri/tauri.updater.conf.example.json` 为本地文件（如 `/tmp/tauri.updater.conf.json`），将 `plugins.updater.pubkey` 替换为上一步生成的公钥文本，`endpoints` 替换为真实 GitHub Releases 静态清单地址：`["https://github.com/<OWNER>/<REPO>/releases/latest/download/latest.json"]`。
-3. **带更新工件与签名构建 `.app`**：
-   - 在环境中注入更新私钥（Tauri bundler 生成 `.app.tar.gz` 及 `.app.tar.gz.sig` 必需）：
+3. **构建 `.app`（启用更新器配置）**：
+   - `--updater-config` 会先校验：禁止 `dangerousInsecureTransportProtocol`、`endpoints` 必须 `https://`、`pubkey` 非空且不得是示例占位值；不通过 exit 2。
+   - 在环境中注入更新私钥（`createUpdaterArtifacts` 构建期需要；仅从环境变量读取，不进 argv/日志/磁盘）：
      ```bash
      export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/toolbox-updater.key)"
      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="<你的密钥密码>"
      bash next/scripts/build_app.sh --sign identity --updater-config /tmp/tauri.updater.conf.json
      ```
+   - **注意**：`$CARGO_TARGET_DIR/release/bundle/macos/` 下 Tauri 自带的 `.app.tar.gz/.sig` 来自**未签名**的 bundle，**不得上传或用于 `latest.json`**。
+   - 资源映射：`build_app.sh` 会按实际 `TOOLBOX_RUNTIME_OUT`（默认 `$TOOLBOX_BUILD_DIR/app-resources/backend`）改写叠加配置里的 `backend` 资源路径；`build_runtime.sh` 要求 `TOOLBOX_RUNTIME_OUT` 为绝对路径且严格位于 `TOOLBOX_BUILD_DIR` 之内（且不是 `/`、`$HOME`、仓库根），否则 exit 2，不执行 `rm -rf`。
 4. **Apple 公证与分发归档**：
    - 执行 `notarize_app.sh` 对 `next/build/out/TOOLBOX.app` 公证并装订；
    - 执行 `make_dmg.sh next/build/out/TOOLBOX.app next/build/out` 生成 DMG 与 zip。
-5. **生成静态更新清单 `latest.json`**：
-   - 使用 Tauri 产出的 `.app.tar.gz.sig` 签名文件生成 `latest.json`：
-     ```bash
+5. **从最终（已签名/公证/装订）的 `.app` 重新生成更新包与签名，再生成 `latest.json`**：
+   - ```bash
+     bash next/scripts/make_update_artifact.sh next/build/out/TOOLBOX.app    # 产物在 next/build/dist/
+     ```
+     产出 `next/build/dist/TOOLBOX.app.tar.gz`（`COPYFILE_DISABLE=1 tar` 重打）与 `TOOLBOX.app.tar.gz.sig`（`pnpm tauri signer sign`，私钥只读环境变量 `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]`）。缺私钥时仅提示并跳过 `.sig`（不失败，但该 tar.gz 不可发布）。
+   - **ad-hoc / 未签名的 `.app` 不产出可分发更新包**：脚本会拒绝（exit 2；`--allow-unsigned` 仅供本地测试，产物不可发布）。
+   - ```bash
      python3 next/scripts/make_update_manifest.py \
        --version 1.0.0 \
        --notes-file /path/to/release-notes.txt \
        --platform darwin-aarch64 \
        --url "https://github.com/<OWNER>/<REPO>/releases/download/v1.0.0/TOOLBOX.app.tar.gz" \
-       --signature-file "$CARGO_TARGET_DIR/release/bundle/macos/TOOLBOX.app.tar.gz.sig" \
-       --out next/build/out/latest.json
+       --signature-file next/build/dist/TOOLBOX.app.tar.gz.sig \
+       --out next/build/dist/latest.json
      ```
 6. **上传至 GitHub Releases**（需人手或另行授权后使用 `gh release`）：
-   - 将 `TOOLBOX-<version>-arm64.dmg`、`TOOLBOX.app.tar.gz` 与 `latest.json` 一并上传至对应 GitHub Release（`v<version>`）。
+   - 将 `TOOLBOX-<version>-arm64.dmg`，以及 `next/build/dist/` 下的 `TOOLBOX.app.tar.gz` 与 `latest.json` 一并上传至对应 GitHub Release（`v<version>`）。

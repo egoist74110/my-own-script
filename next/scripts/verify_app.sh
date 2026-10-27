@@ -289,11 +289,17 @@ try:
 
         print(f"[verify_app] relocatable startup, /health 200, exit 0, and read-only check ok (pid={ready_pid})")
     finally:
-        if proc.poll() is None:
+        # Kill the group we started (by recorded PGID, never by name) even if the main process already
+        # exited but descendants linger. Only if the group is still ours: it is not our own group, and
+        # either the main process is still running or a current member is a PID we recorded.
+        members = set(group_pids(pgid))
+        still_ours = pgid != os.getpgrp() and (proc.poll() is None or bool(members & recorded_pids))
+        if still_ours:
             try:
                 os.killpg(pgid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+        if proc.poll() is None:
             proc.wait()
         if proc.stdout:
             proc.stdout.close()

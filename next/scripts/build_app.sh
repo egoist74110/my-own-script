@@ -7,6 +7,7 @@
 #   5. copy bundle to next/build/out/TOOLBOX.app
 #   6. optional: --sign adhoc | --sign identity
 #   7. verify_app.sh next/build/out/TOOLBOX.app
+# Updater artifacts are NOT taken from the cargo bundle dir; see make_update_artifact.sh.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,6 +86,10 @@ if [ -n "$UPDATER_CONFIG" ] && [ ! -f "$UPDATER_CONFIG" ]; then
   echo "error: updater config file not found: $UPDATER_CONFIG" >&2
   exit 2
 fi
+if [ -n "$UPDATER_CONFIG" ]; then
+  # Reject insecure/placeholder updater configs before any build work (exit 2).
+  python3 "$HERE/validate_updater_config.py" "$UPDATER_CONFIG"
+fi
 
 echo "[build_app] step 1/6: checking version consistency..."
 python3 "$HERE/sync_version.py" --root "$REPO" --check
@@ -113,9 +118,11 @@ export CARGO_NET_OFFLINE=true
 
 # Blank beforeBuildCommand via merged overlay so Tauri reuses the already-built dist/ without re-running pnpm build
 OVERLAY_JSON="$BUILD_DIR/tauri.build.overlay.json"
+RUNTIME_OUT="${TOOLBOX_RUNTIME_OUT:-$BUILD_DIR/app-resources/backend}"
 mkdir -p "$BUILD_DIR"
-python3 - "$DESKTOP/src-tauri/tauri.bundle.conf.json" "$OVERLAY_JSON" "$UPDATER_CONFIG" <<'PYEOF'
+python3 - "$DESKTOP/src-tauri/tauri.bundle.conf.json" "$OVERLAY_JSON" "$UPDATER_CONFIG" "$RUNTIME_OUT" <<'PYEOF'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -131,6 +138,12 @@ def deep_merge(base: dict, extra: dict) -> dict:
 
 bundle_conf = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 bundle_conf.setdefault("build", {})["beforeBuildCommand"] = ""
+# Point the "backend" resource at the actual runtime dir (honours TOOLBOX_BUILD_DIR/TOOLBOX_RUNTIME_OUT);
+# resource keys are relative to the directory holding tauri.bundle.conf.json.
+resources = bundle_conf.setdefault("bundle", {}).setdefault("resources", {})
+for key in [k for k, v in resources.items() if v == "backend"]:
+    del resources[key]
+resources[os.path.relpath(os.path.abspath(sys.argv[4]), os.path.dirname(os.path.abspath(sys.argv[1])))] = "backend"
 updater_path = sys.argv[3]
 if updater_path:
     updater_conf = json.loads(Path(updater_path).read_text(encoding="utf-8"))
@@ -166,3 +179,7 @@ echo "[build_app] step 6/6: verifying $OUT_APP..."
 bash "$HERE/verify_app.sh" "$OUT_APP"
 
 echo "[build_app] complete: $OUT_APP"
+if [ -n "$UPDATER_CONFIG" ]; then
+  echo "[build_app] NOTE: any .app.tar.gz/.sig under $CARGO_TARGET_DIR/release/bundle are from the UNSIGNED bundle; do not publish them." >&2
+  echo "[build_app] NOTE: after signing/notarizing run: bash next/scripts/make_update_artifact.sh $OUT_APP  (ad-hoc builds yield no distributable update)." >&2
+fi

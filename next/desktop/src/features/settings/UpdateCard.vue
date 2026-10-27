@@ -24,7 +24,13 @@ const confirmRestart = ref(false)
 
 const isCheckDisabled = computed(() => {
   const s = update.status.value.state
-  return s === 'disabled' || s === 'checking' || s === 'downloading' || update.loading.value
+  return (
+    s === 'disabled' ||
+    s === 'checking' ||
+    s === 'downloading' ||
+    s === 'ready' ||
+    update.loading.value
+  )
 })
 
 const pillState = computed<PillState>(() => {

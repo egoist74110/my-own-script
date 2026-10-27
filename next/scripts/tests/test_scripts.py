@@ -59,7 +59,7 @@ class TestShellScripts(unittest.TestCase):
             fake_bin = tmp / "bin"
             log_file = tmp / "uv.log"
             pbs_home = tmp / "pbs-python"
-            out_dir = tmp / "app-resources/backend"
+            out_dir = tmp / "build/app-resources/backend"
 
             # Create fake PBS python3.14 interpreter
             _write_exec(
@@ -583,16 +583,221 @@ class TestShellScripts(unittest.TestCase):
             import json
             overlay_data = json.loads((build_dir / "tauri.build.overlay.json").read_text(encoding="utf-8"))
             self.assertEqual(overlay_data["bundle"]["createUpdaterArtifacts"], True)
-            self.assertEqual(
-                overlay_data["bundle"]["resources"]["../../build/app-resources/backend"],
-                "backend",
+            expected_key = os.path.relpath(
+                os.path.abspath(build_dir / "app-resources/backend"),
+                os.path.abspath(REPO_ROOT / "next/desktop/src-tauri"),
             )
+            self.assertEqual(overlay_data["bundle"]["resources"], {expected_key: "backend"})
             self.assertEqual(overlay_data["bundle"]["macOS"]["minimumSystemVersion"], "13.5")
             self.assertEqual(overlay_data["plugins"]["updater"]["pubkey"], "TEST_PUBKEY")
             self.assertEqual(
                 overlay_data["plugins"]["updater"]["endpoints"],
                 ["https://example.com/latest.json"],
             )
+
+    def test_build_app_rejects_unsafe_updater_configs_exit_2(self) -> None:
+        script = SCRIPTS_DIR / "build_app.sh"
+        good = {
+            "bundle": {"createUpdaterArtifacts": True},
+            "plugins": {"updater": {"pubkey": "REALKEY", "endpoints": ["https://e.com/latest.json"]}},
+        }
+        import copy
+        import json
+
+        def variant(mut) -> dict:
+            c = copy.deepcopy(good)
+            mut(c)
+            return c
+
+        bad_cases = {
+            "insecure_flag": variant(lambda c: c["plugins"]["updater"].update(dangerousInsecureTransportProtocol=True)),
+            "http_endpoint": variant(lambda c: c["plugins"]["updater"].update(endpoints=["http://e.com/l.json"])),
+            "empty_endpoints": variant(lambda c: c["plugins"]["updater"].update(endpoints=[])),
+            "empty_pubkey": variant(lambda c: c["plugins"]["updater"].update(pubkey="  ")),
+            "placeholder_pubkey": variant(lambda c: c["plugins"]["updater"].update(pubkey="REPLACE_WITH_MINISIGN_PUBLIC_KEY")),
+        }
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            for name, conf in bad_cases.items():
+                cfg = tmp / f"{name}.json"
+                cfg.write_text(json.dumps(conf), encoding="utf-8")
+                res = subprocess.run(
+                    ["bash", str(script), "--updater-config", str(cfg)],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(res.returncode, 2, msg=f"{name}: {res.stdout}{res.stderr}")
+                self.assertIn("updater config invalid", res.stderr, msg=name)
+            # example file itself (placeholders) must be rejected too
+            example = REPO_ROOT / "next/desktop/src-tauri/tauri.updater.conf.example.json"
+            res = subprocess.run(
+                ["bash", str(script), "--updater-config", str(example)], capture_output=True, text=True
+            )
+            self.assertEqual(res.returncode, 2, msg=res.stderr)
+            # good config passes the validator
+            good_cfg = tmp / "good.json"
+            good_cfg.write_text(json.dumps(good), encoding="utf-8")
+            res_good = subprocess.run(
+                ["python3", str(SCRIPTS_DIR / "validate_updater_config.py"), str(good_cfg)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(res_good.returncode, 0, msg=res_good.stderr)
+
+    def test_build_runtime_refuses_unsafe_runtime_out(self) -> None:
+        script = SCRIPTS_DIR / "build_runtime.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            pbs = tmp / "pbs"
+            _write_exec(pbs / "bin/python3.14", "#!/usr/bin/env bash\nexit 0\n")
+            build = tmp / "build"
+            build.mkdir()
+            victim = tmp / "victim"
+            victim.mkdir()
+            (victim / "keep.txt").write_text("x", encoding="utf-8")
+            cases = {
+                "outside_build": str(victim),
+                "equals_build": str(build),
+                "relative": "relative/path",
+                "dotdot_escape": str(build / ".." / "victim"),
+                "root": "/",
+                "home": os.environ["HOME"],
+            }
+            for name, out in cases.items():
+                env = dict(os.environ)
+                env.update(
+                    TOOLBOX_PBS_PYTHON_HOME=str(pbs),
+                    TOOLBOX_BUILD_DIR=str(build),
+                    TOOLBOX_RUNTIME_OUT=out,
+                )
+                res = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+                self.assertEqual(res.returncode, 2, msg=f"{name}: {res.stdout}{res.stderr}")
+                self.assertIn("refusing to rm -rf", res.stderr, msg=name)
+            self.assertTrue((victim / "keep.txt").is_file())
+
+    def test_make_update_artifact_retars_signed_app_and_signs_from_env(self) -> None:
+        script = SCRIPTS_DIR / "make_update_artifact.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            app = tmp / "out/TOOLBOX.app"
+            (app / "Contents").mkdir(parents=True)
+            (app / "Contents/marker.txt").write_text("signed-copy", encoding="utf-8")
+            fake_bin = tmp / "bin"
+            pnpm_log = tmp / "pnpm.log"
+            _write_exec(
+                fake_bin / "codesign",
+                "#!/usr/bin/env bash\n"
+                "if [ \"$1\" = \"-dv\" ] && [ \"$2\" = \"--verbose=2\" ]; then echo 'Authority=Developer ID Application: X' >&2; fi\n"
+                "exit 0\n",
+            )
+            _write_exec(
+                fake_bin / "pnpm",
+                "#!/usr/bin/env bash\n"
+                "echo \"ARGV: $*\" >> \"" + str(pnpm_log) + "\"\n"
+                "echo \"keyset=${TAURI_SIGNING_PRIVATE_KEY:+yes}\" >> \"" + str(pnpm_log) + "\"\n"
+                "for a in \"$@\"; do last=\"$a\"; done\n"
+                "echo SIGDATA > \"$last.sig\"\n",
+            )
+            dist = tmp / "dist"
+            env = dict(os.environ)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '/usr/bin:/bin')}"
+            env.pop("TAURI_SIGNING_PRIVATE_KEY", None)
+
+            # no key: tarball produced, signing skipped, exit 0
+            res = subprocess.run(["bash", str(script), str(app), str(dist)], env=env, capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, msg=res.stdout + res.stderr)
+            tarball = dist / "TOOLBOX.app.tar.gz"
+            self.assertTrue(tarball.is_file())
+            self.assertFalse((dist / "TOOLBOX.app.tar.gz.sig").exists())
+            self.assertIn("skipping", res.stderr)
+            listing = subprocess.run(["tar", "-tzf", str(tarball)], capture_output=True, text=True).stdout
+            self.assertIn("TOOLBOX.app/Contents/marker.txt", listing)
+            self.assertNotIn("._", listing)
+
+            # with key: signer invoked, secret never in argv
+            secret = "SUPER-SECRET-KEY-VALUE"
+            env["TAURI_SIGNING_PRIVATE_KEY"] = secret
+            res2 = subprocess.run(["bash", str(script), str(app), str(dist)], env=env, capture_output=True, text=True)
+            self.assertEqual(res2.returncode, 0, msg=res2.stdout + res2.stderr)
+            self.assertTrue((dist / "TOOLBOX.app.tar.gz.sig").is_file())
+            log = pnpm_log.read_text(encoding="utf-8")
+            self.assertIn("tauri signer sign", log)
+            self.assertIn("keyset=yes", log)
+            self.assertNotIn(secret, log)
+            self.assertNotIn(secret, res2.stdout + res2.stderr)
+
+    def test_make_update_artifact_refuses_adhoc_and_unsigned(self) -> None:
+        script = SCRIPTS_DIR / "make_update_artifact.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            app = tmp / "TOOLBOX.app"
+            (app / "Contents").mkdir(parents=True)
+            fake_bin = tmp / "bin"
+            _write_exec(
+                fake_bin / "codesign",
+                "#!/usr/bin/env bash\necho 'Signature=adhoc' >&2\nexit 0\n",
+            )
+            env = dict(os.environ)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '/usr/bin:/bin')}"
+            dist = tmp / "dist"
+            res = subprocess.run(["bash", str(script), str(app), str(dist)], env=env, capture_output=True, text=True)
+            self.assertEqual(res.returncode, 2, msg=res.stderr)
+            self.assertIn("ad-hoc", res.stderr)
+            self.assertFalse((dist / "TOOLBOX.app.tar.gz").exists())
+
+    def test_verify_app_kills_leftover_group_even_when_main_exited(self) -> None:
+        script = SCRIPTS_DIR / "verify_app.sh"
+        with tempfile.TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            app_dir = tmp / "TOOLBOX.app"
+            main_bin = app_dir / "Contents/MacOS/toolbox-desktop"
+            py_bin = app_dir / "Contents/Resources/backend/bin/python3.14"
+            mcp_dir = app_dir / "Contents/Resources/backend/lib/python3.14/resources/mcp"
+            mcp_dir.mkdir(parents=True, exist_ok=True)
+            for fname in ("figma_mcp_concurrency.js", "lark_mcp_patches.js", "package.json", "package-lock.json"):
+                (mcp_dir / fname).write_text("// ok\n", encoding="utf-8")
+            main_bin.parent.mkdir(parents=True, exist_ok=True)
+            main_bin.write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 16)
+            main_bin.chmod(0o755)
+            child_pid_file = tmp / "child.pid"
+            sys_py = "/usr/bin/python3" if Path("/usr/bin/python3").is_file() else "python3"
+            # Backend spawns a lingering child in the same group, then exits 0 on stdin EOF.
+            _write_exec(
+                py_bin,
+                f"#!{sys_py}\n"
+                "import json, os, subprocess, sys\n"
+                f"c = subprocess.Popen(['/bin/sleep', '60'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+                f"open({str(child_pid_file)!r}, 'w').write(str(c.pid))\n"
+                "sys.stdout.write('TOOLBOX_READY ' + json.dumps({'v': 1, 'port': 54321, 'token': 't', 'pid': os.getpid()}) + '\\n')\n"
+                "sys.stdout.flush()\n"
+                "sys.stdin.read()\n"
+                "sys.exit(0)\n",
+            )
+            fake_bin = tmp / "bin"
+            fake_http = _write_exec(fake_bin / "fake_http_get", "#!/usr/bin/env bash\nexit 0\n")
+            _write_exec(fake_bin / "codesign", "#!/usr/bin/env bash\nexit 0\n")
+            _write_exec(fake_bin / "vtool", "#!/usr/bin/env bash\necho '    minos 14.0'\nexit 0\n")
+            env = dict(os.environ)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '/usr/bin:/bin')}"
+            env["TOOLBOX_VERIFY_HTTP_GET"] = str(fake_http)
+            res = subprocess.run(["bash", str(script), str(app_dir)], env=env, capture_output=True, text=True)
+            child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+            try:
+                self.assertNotEqual(res.returncode, 0, msg="leftover child must fail verification")
+                self.assertIn("leftover", res.stdout + res.stderr)
+                import time
+                alive = True
+                for _ in range(40):
+                    try:
+                        os.kill(child_pid, 0)
+                    except ProcessLookupError:
+                        alive = False
+                        break
+                    time.sleep(0.1)
+                self.assertFalse(alive, "leftover child in the verify process group must be killed")
+            finally:
+                try:
+                    os.kill(child_pid, 9)
+                except ProcessLookupError:
+                    pass
 
 
 if __name__ == "__main__":

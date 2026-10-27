@@ -239,6 +239,9 @@ struct Inner {
     status: UpdateStatus,
     available_info: Option<UpdateInfo>,
     cancel_tx: Option<watch::Sender<bool>>,
+    /// Set (under the state lock) once the verified payload is being installed;
+    /// cancel is no longer accepted from that point on.
+    installing: bool,
 }
 
 #[derive(Clone)]
@@ -293,6 +296,7 @@ impl UpdateCoordinator {
                 status: initial,
                 available_info: None,
                 cancel_tx: None,
+                installing: false,
             })),
             busy: Arc::new(AtomicBool::new(false)),
             source,
@@ -521,15 +525,23 @@ impl UpdateCoordinator {
 
         let payload = match download_res {
             Ok(bytes) => {
-                if *cancel_rx.borrow() {
+                // Decide cancel-vs-install atomically under the state lock so a
+                // cancel arriving at any point either wins here or is ignored later.
+                let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+                if *cancel_rx.borrow() || guard.status.state != UpdateState::Downloading {
+                    drop(guard);
                     self.log("updater: download cancelled before install");
                     return Ok(self.publish(|inner| {
                         inner.cancel_tx = None;
+                        inner.installing = false;
                         inner.status.state = UpdateState::Available;
                         inner.status.progress = None;
                         inner.status.error_code = Some(UpdateErrorCode::UpdateCancelled);
                     }));
                 }
+                guard.cancel_tx = None;
+                guard.installing = true;
+                drop(guard);
                 bytes
             }
             Err(UpdateError::Cancelled) => {
@@ -558,12 +570,6 @@ impl UpdateCoordinator {
             }
         };
 
-        // Clear cancel handle before entering synchronous/atomic install phase
-        {
-            let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            guard.cancel_tx = None;
-        }
-
         match self.source.install(payload).await {
             Ok(()) => {
                 self.log(&format!(
@@ -571,6 +577,7 @@ impl UpdateCoordinator {
                     info.version
                 ));
                 Ok(self.publish(|inner| {
+                    inner.installing = false;
                     inner.status.state = UpdateState::Ready;
                     inner.status.progress = None;
                     inner.status.error_code = None;
@@ -583,6 +590,7 @@ impl UpdateCoordinator {
                     code.as_str()
                 ));
                 Ok(self.publish(|inner| {
+                    inner.installing = false;
                     // Return to retryable Available state and retain old version
                     inner.status.state = UpdateState::Available;
                     inner.status.progress = None;
@@ -613,6 +621,7 @@ impl UpdateCoordinator {
                 (self.on_status)(&snapshot);
                 snapshot
             }
+            UpdateState::Downloading if guard.installing => guard.status.clone(),
             UpdateState::Downloading => {
                 if let Some(tx) = guard.cancel_tx.take() {
                     let _ = tx.send(true);
@@ -783,5 +792,90 @@ impl<R: Runtime> UpdateSource for TauriUpdateSource<R> {
                 },
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use tokio::sync::Notify;
+
+    /// Source whose install blocks until released, to exercise cancel-during-install.
+    struct BlockingInstall {
+        started: Arc<Notify>,
+        gate: Arc<Notify>,
+    }
+
+    impl UpdateSource for BlockingInstall {
+        fn check(&self) -> BoxFuture<'_, Result<Option<UpdateInfo>, UpdateError>> {
+            Box::pin(async {
+                Ok(Some(UpdateInfo {
+                    version: "9.9.9".to_owned(),
+                    notes: None,
+                    host: None,
+                }))
+            })
+        }
+
+        fn download(
+            &self,
+            _info: &UpdateInfo,
+            _progress_cb: Box<dyn FnMut(usize, Option<u64>) + Send>,
+            _cancel: watch::Receiver<bool>,
+        ) -> BoxFuture<'_, Result<Vec<u8>, UpdateError>> {
+            Box::pin(async { Ok(vec![1, 2, 3]) })
+        }
+
+        fn install(&self, _payload: Vec<u8>) -> BoxFuture<'_, Result<(), UpdateError>> {
+            let started = self.started.clone();
+            let gate = self.gate.clone();
+            Box::pin(async move {
+                started.notify_one();
+                gate.notified().await;
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_during_install_is_ignored_and_ends_ready() {
+        let started = Arc::new(Notify::new());
+        let gate = Arc::new(Notify::new());
+        let source = Arc::new(BlockingInstall {
+            started: started.clone(),
+            gate: gate.clone(),
+        });
+        let cancelled_broadcasts = Arc::new(AtomicUsize::new(0));
+        let counter = cancelled_broadcasts.clone();
+        let on_status: StatusSink = Arc::new(move |st: &UpdateStatus| {
+            if st.error_code == Some(UpdateErrorCode::UpdateCancelled) {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        let coord = UpdateCoordinator::new(
+            "1.0.0".to_owned(),
+            None,
+            source,
+            on_status,
+            Arc::new(|_: &str| {}),
+            Arc::new(|| Box::pin(async {})),
+        );
+        coord.check().await.unwrap();
+
+        let c2 = coord.clone();
+        let task = tokio::spawn(async move { c2.install().await });
+        started.notified().await;
+
+        let snap = coord.cancel();
+        assert_eq!(snap.state, UpdateState::Downloading);
+        assert_eq!(coord.status().state, UpdateState::Downloading);
+        assert_eq!(cancelled_broadcasts.load(Ordering::SeqCst), 0);
+
+        gate.notify_one();
+        let done = task.await.unwrap().unwrap();
+        assert_eq!(done.state, UpdateState::Ready);
+        assert_eq!(done.error_code, None);
+        assert_eq!(cancelled_broadcasts.load(Ordering::SeqCst), 0);
     }
 }
