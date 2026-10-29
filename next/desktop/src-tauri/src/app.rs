@@ -23,7 +23,9 @@ use crate::{
         has_updater_plugin_config, resolve_disabled_reason, TauriUpdateSource, UpdateCoordinator,
         UpdateStatus, UPDATE_STATUS_EVENT,
     },
+    window_layout::{initial_size, is_reachable, Rect},
 };
+use tauri_plugin_window_state::StateFlags;
 
 const MAIN_WINDOW: &str = "main";
 const TRAY_ID: &str = "main";
@@ -133,6 +135,76 @@ async fn coordinated_restart(app: AppHandle) {
     app.restart();
 }
 
+/// Window geometry is remembered by `tauri-plugin-window-state`; visibility and
+/// decorations are deliberately not part of it (the window is hidden on close and
+/// the tray may quit while hidden, which would otherwise start hidden next time).
+fn window_state_flags() -> StateFlags {
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
+
+fn monitor_rect(m: &tauri::Monitor) -> Rect {
+    let a = m.work_area();
+    Rect {
+        x: a.position.x,
+        y: a.position.y,
+        w: a.size.width,
+        h: a.size.height,
+    }
+}
+
+/// First launch (no saved state): size from the current monitor's work area and centre.
+/// Later launches: the plugin already restored size/position/maximized; if the saved
+/// position is on no monitor any more (unplugged display), centre instead.
+fn place_main_window(app: &tauri::App) {
+    let Some(w) = app.get_webview_window(MAIN_WINDOW) else {
+        return;
+    };
+    let has_saved = app
+        .path()
+        .app_config_dir()
+        .map(|d| {
+            d.join(tauri_plugin_window_state::DEFAULT_FILENAME)
+                .is_file()
+        })
+        .unwrap_or(false);
+    if !has_saved {
+        let monitor = w
+            .current_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| w.primary_monitor().ok().flatten());
+        if let Some(m) = monitor {
+            let area = m.work_area();
+            let scale = m.scale_factor();
+            let (lw, lh) = initial_size(
+                area.size.width as f64 / scale,
+                area.size.height as f64 / scale,
+            );
+            let _ = w.set_size(tauri::LogicalSize::new(lw, lh));
+        }
+        let _ = w.center();
+        return;
+    }
+    if w.is_maximized().unwrap_or(false) {
+        return;
+    }
+    let (Ok(pos), Ok(size), Ok(monitors)) =
+        (w.outer_position(), w.outer_size(), w.available_monitors())
+    else {
+        return;
+    };
+    let rects: Vec<Rect> = monitors.iter().map(monitor_rect).collect();
+    let win = Rect {
+        x: pos.x,
+        y: pos.y,
+        w: size.width,
+        h: size.height,
+    };
+    if !rects.is_empty() && !is_reachable(win, &rects) {
+        let _ = w.center();
+    }
+}
+
 fn repo_root() -> PathBuf {
     // Development fallback only; this path need not exist in packaged builds.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -144,6 +216,12 @@ pub fn run() {
             show_main_window(app);
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_state_flags())
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             backend_connection,
             backend_status,
@@ -161,6 +239,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            place_main_window(app);
             let status_item = MenuItem::with_id(
                 app,
                 "status",

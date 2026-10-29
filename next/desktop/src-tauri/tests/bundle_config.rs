@@ -77,7 +77,7 @@ fn default_config_excludes_updater_and_example_overlay_is_valid() {
 }
 
 #[test]
-fn capabilities_main_json_adds_only_five_updater_commands() {
+fn capabilities_main_json_adds_only_updater_commands_and_dialog_open() {
     let tauri_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cap: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(tauri_dir.join("capabilities/main.json")).unwrap(),
@@ -99,6 +99,7 @@ fn capabilities_main_json_adds_only_five_updater_commands() {
             "core:event:allow-unlisten",
             "core:window:allow-start-dragging",
             "core:window:allow-toggle-maximize",
+            "dialog:allow-open",
         ]
     );
     assert_eq!(perms.len(), string_perms.len() + 1);
