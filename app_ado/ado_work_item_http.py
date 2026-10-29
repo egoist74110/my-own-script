@@ -4,7 +4,7 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse, urlsplit
 
 import httpx
 
@@ -105,14 +105,74 @@ def _client(pat: str, *, timeout_sec: float = 15.0) -> httpx.Client:
     )
 
 
-def _binary_client(pat: str, *, timeout_sec: float = 30.0) -> httpx.Client:
-    """专门给附件 / 内联图片用：跟随重定向（ADO 常 302 到 CDN 签名 URL），Accept 不限。"""
+class AttachmentOriginError(RuntimeError):
+    """附件 / 内联图片 URL 不在受信 origin 内（或重定向越界），已拒绝，PAT 未发出。"""
+
+
+_MAX_ATTACHMENT_REDIRECTS = 5
+_REDIRECT_STATUS = {301, 302, 303, 307, 308}
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin_of(url: str, *, what: str) -> tuple[str, str, int]:
+    """返回 (scheme, host 小写, 有效端口)；URL 不合规直接抛 AttachmentOriginError。"""
+    try:
+        parts = urlsplit(str(url or "").strip())
+        scheme = (parts.scheme or "").lower()
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except ValueError as exc:
+        raise AttachmentOriginError(f"{what} 无法解析，拒绝请求：{exc}") from exc
+    if scheme not in _DEFAULT_PORTS:
+        raise AttachmentOriginError(f"{what} 仅允许 http/https，拒绝请求（scheme={scheme!r}）")
+    if not host:
+        raise AttachmentOriginError(f"{what} 缺少 host，拒绝请求")
+    if "@" in parts.netloc:
+        raise AttachmentOriginError(f"{what} 含用户信息（user:pass@host），拒绝请求")
+    return scheme, host, port if port is not None else _DEFAULT_PORTS[scheme]
+
+
+def _fetch_attachment_response(
+    url: str,
+    *,
+    pat: str,
+    trusted_base_url: str,
+    timeout_sec: float,
+) -> httpx.Response:
+    """仅对与 ``trusted_base_url`` 同 origin（scheme+host+有效端口）的 URL 发带 PAT 的请求。
+
+    重定向逐跳手动处理：同 origin 继续（保持认证）；跨 origin / 降级 / 超跳数一律抛
+    AttachmentOriginError，绝不把 PAT 发给其他 origin。初始 URL 不同源则完全不发请求。
+    """
+    trusted = _origin_of(trusted_base_url, what="受信 base_url")
+    current = str(url).strip()
+    origin = _origin_of(current, what="附件 URL")
+    if origin != trusted:
+        raise AttachmentOriginError(
+            f"附件 URL 的来源 {origin[0]}://{origin[1]}:{origin[2]} 与当前代码库 "
+            f"{trusted[0]}://{trusted[1]}:{trusted[2]} 不同源，已拒绝（未发送任何请求）"
+        )
+    headers = {"Authorization": _auth_header(pat), "Accept": "*/*"}
+    params: dict[str, str] | None = {"download": "true"}
     timeout = httpx.Timeout(timeout_sec, connect=5.0)
-    return httpx.Client(
-        timeout=timeout,
-        headers={"Authorization": _auth_header(pat), "Accept": "*/*"},
-        follow_redirects=True,
-    )
+    with httpx.Client(timeout=timeout, follow_redirects=False) as c:
+        for _hop in range(_MAX_ATTACHMENT_REDIRECTS + 1):
+            r = c.get(current, params=params, headers=headers)
+            if r.status_code not in _REDIRECT_STATUS:
+                return r
+            location = r.headers.get("location")
+            if not location:
+                return r
+            nxt = urljoin(current, location)
+            nxt_origin = _origin_of(nxt, what="重定向目标")
+            if nxt_origin != trusted:
+                downgrade = origin[0] == "https" and nxt_origin[0] == "http"
+                raise AttachmentOriginError(
+                    ("重定向降级到 http，" if downgrade else "重定向跨 origin，")
+                    + f"已终止（目标 {nxt_origin[0]}://{nxt_origin[1]}:{nxt_origin[2]}，未发送 PAT）"
+                )
+            current, params = nxt, None
+    raise AttachmentOriginError(f"重定向超过 {_MAX_ATTACHMENT_REDIRECTS} 跳，已终止")
 
 
 def _raise_http_error(r: httpx.Response, *, url: str) -> None:
@@ -282,17 +342,19 @@ def download_authenticated_file(
     *,
     pat: str,
     dest_path: str | Path,
+    trusted_base_url: str,
     timeout_sec: float = 30.0,
 ) -> Path:
     target = Path(dest_path)
+    r = _fetch_attachment_response(
+        url, pat=pat, trusted_base_url=trusted_base_url, timeout_sec=timeout_sec
+    )
+    _raise_http_error(r, url=url)
     target.parent.mkdir(parents=True, exist_ok=True)
-    with _binary_client(pat, timeout_sec=timeout_sec) as c:
-        r = c.get(url, params={"download": "true"})
-        _raise_http_error(r, url=url)
-        suffix = target.suffix or _infer_suffix(url, r.headers.get("content-type"))
-        if not target.suffix and suffix:
-            target = target.with_suffix(suffix)
-        target.write_bytes(r.content)
+    suffix = target.suffix or _infer_suffix(url, r.headers.get("content-type"))
+    if not target.suffix and suffix:
+        target = target.with_suffix(suffix)
+    target.write_bytes(r.content)
     return target
 
 
@@ -300,12 +362,14 @@ def fetch_attachment_bytes(
     url: str,
     *,
     pat: str,
+    trusted_base_url: str,
     timeout_sec: float = 30.0,
 ) -> tuple[bytes, str | None]:
-    with _binary_client(pat, timeout_sec=timeout_sec) as c:
-        r = c.get(url, params={"download": "true"})
-        _raise_http_error(r, url=url)
-        return r.content, r.headers.get("content-type")
+    r = _fetch_attachment_response(
+        url, pat=pat, trusted_base_url=trusted_base_url, timeout_sec=timeout_sec
+    )
+    _raise_http_error(r, url=url)
+    return r.content, r.headers.get("content-type")
 
 
 def get_work_items(

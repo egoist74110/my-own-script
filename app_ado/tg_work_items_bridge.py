@@ -599,7 +599,7 @@ class WorkItemsBridge:
         try:
             urls = collect_image_urls(item, comments)
             if urls:
-                photo_blobs = fetch_image_blobs(urls, pat=pat)
+                photo_blobs = fetch_image_blobs(urls, pat=pat, trusted_base_url=lib.base_url)
         except Exception:
             photo_blobs = []
 

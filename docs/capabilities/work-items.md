@@ -30,4 +30,5 @@
 - AI 建单类型：`ado_create_work_item` 的 `work_item_type` 默认/推荐「用户情景」（User Story），保证测试在用户情景看板可见；「任务」仅用于明确拆分的子任务。AI 漏传类型时 handler 兜底为「用户情景」。
 - 权限：TG 侧工单操作目前仅 owner；MCP 分析走的是各 AI **专属机器人**（`bridges` 按 ai_id 路由 claude_code/codex/gemini）。
 - 附件走认证下载（`fetch_attachment_bytes`），图片落盘前原地压缩，别直接把原图塞进提示词。
+- 附件/内联图片的 PAT 只发给当前选定 library `base_url` 同 origin（scheme+host+有效端口）的 URL：调用方必须显式传 `trusted_base_url`；不同源（含 userinfo、非 http/https）一律不发请求（UI/TG 跳过、MCP 报错，不匿名抓取）；重定向逐跳校验，同源继续，跨源/降级/超 5 跳即终止。
 - ADO 调用全同步、无后台线程（TG 侧在轮询线程里跑）；长操作注意别卡住轮询。

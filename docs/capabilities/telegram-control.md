@@ -37,7 +37,7 @@
 
 ## 注意坑
 - 轮询只在应用运行时存活；offset 持久化在 `~/.config/my-own-script/` 下的状态文件。
-- Bot Token 只进 Keychain（`app_ado/secrets.py`），日志绝不输出 Token。
+- Bot Token 只进 Keychain（`app_ado/secrets.py`），日志绝不输出 Token。`tg_control.py`/`notifier_telegram.py` 的异常文本在进入日志、状态、回发用户、抛出异常前统一经 `app_ado/redact.py` 脱敏（bot URL 的 token→`/bot***/`、认证头值、已知当前 token），保留状态码/方法/路径/异常类型；用 `tests/test_telegram_redaction.py` 验证。
 - 长轮询超时/断线是正常噪音，别当错误弹。
 - 改 Telegram 相关文件属于 `config/ai_change_policy.yaml` 的 review/forbidden 路径，AI 改动需谨慎（见 `docs/AI_CHANGE_POLICY.md`）。
 
