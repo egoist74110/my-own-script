@@ -10,13 +10,15 @@
 
 ## 策略文件
 
-当前策略文件：
+运行时策略文件在后端数据目录：
 
-- `config/ai_change_policy.yaml`
+- `<数据目录>/mcp/ai_change_policy.yaml`（默认 `~/Library/Application Support/toolbox-next/mcp/`）
+
+实现见 `next/backend/src/toolbox_backend/mcp/policy.py`。新版不随包附带默认策略，需通过 `POST /api/mcp/ado/policy/import-legacy` 一次性导入基线（已存在则拒绝覆盖）；旧版基线可用 `git show 885d186:config/ai_change_policy.yaml` 找回，并把旧路径改成 `next/` 对应路径。
 
 ## 当前策略入口
 
-当前 MCP server 已提供工具：
+当前 ADO MCP server（`next/backend/src/toolbox_backend/mcp/ado_server.py`）已提供工具：
 
 - `ado_evaluate_change_policy`
 
@@ -49,15 +51,14 @@
 - 命中高风险关键词
 - 命中禁止路径
 
-## 默认禁止路径
+## 旧版默认禁止路径（已随旧应用删除，仅供迁移参考）
 
-- `app_ado/secrets.py`
-- `app_ado/tg_control.py`
-- `app_ado/ado_release_http.py`
-- `app_ado/ado_build_http.py`
-- `release_github.sh`
-- `pack_mac_app.sh`
-- `pack_mac_dmg.sh`
+旧基线禁止 `app_ado/secrets.py`、`tg_control.py`、`ado_release_http.py`、`ado_build_http.py`、`release_github.sh`、`pack_mac_*.sh`。新基线建议映射为新版对应实现（导入时自行确认）：
+
+- `next/backend/src/toolbox_backend/adapters/credentials.py`（密钥）
+- `next/backend/src/toolbox_backend/services/telegram*.py`、`adapters/telegram_http.py`（TG 控制）
+- `next/backend/src/toolbox_backend/services/releases.py`、`adapters/ado_tasks.py`（发布/构建）
+- `next/scripts/`（打包发布脚本）
 
 ## 示例
 
@@ -76,6 +77,8 @@
 ```
 
 ## 说明
+
+- 能力页：[ai-collab-rules](capabilities/ai-collab-rules.md)。
 
 - 这套规则是本地规则，不依赖 ADO 服务端。
 - MCP 负责提供工单事实数据，策略负责判断是否允许进入自动改代码流程。

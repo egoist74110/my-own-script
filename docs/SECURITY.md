@@ -12,13 +12,13 @@
 
 ## 1. Secrets 存储
 
-- Azure DevOps PAT：存储在 macOS Keychain（通过 `keyring`）
-- Telegram Bot Token：存储在 macOS Keychain（通过 `keyring`）
-- 配置文件（`~/.config/my-own-script/*.yaml`）**不包含**上述 secrets
+- Azure DevOps PAT、Telegram Bot Token 等：存储在 macOS Keychain（通过 `keyring`，实现见 `next/backend/src/toolbox_backend/adapters/credentials.py`；新版 service 为 `toolbox-next`，旧版 `my-own-script` 条目仅作只读迁移来源）
+- 非密配置在后端数据目录（`~/Library/Application Support/toolbox-next`）**不包含**上述 secrets
+- 日志/响应经 `logging_setup.py` 脱敏，已登记的 secret 不得出现
 
 **建议**：
 - 不要在日志中输出 Authorization / Token / PAT
-- 不要把 `~/.config/my-own-script` 或 Keychain 导出给他人
+- 不要把数据目录或 Keychain 导出给他人
 
 ---
 

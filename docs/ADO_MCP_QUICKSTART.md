@@ -2,26 +2,16 @@
 
 ## 当前状态
 
-本项目已提供本地 MCP server：
+本项目内置本地 stdio MCP server：
 
-- `app_ado/mcp_ado_work_items_server.py`
+- `next/backend/src/toolbox_backend/mcp/ado_server.py`（模块 `toolbox_backend.mcp.ado_server`，由应用内置后端 Python 运行）
 
-已注册到当前机器的 Codex 全局配置：
-
-- server 名称：`adoWorkItems`
-
-## Codex 注册结果
-
-已写入：
-
-- `~/.codex/config.toml`
-
-对应配置：
+接入配置由应用「MCP」页生成（API `mcp_routes.py` 的接入配置片段，含 Claude/Codex 格式），粘贴到客户端即可。Codex 示例形态（实际 command/args/数据目录以应用生成为准，不要手抄路径）：
 
 ```toml
 [mcp_servers.adoWorkItems]
-command = "/Users/wesker/my-own-script/.venv/bin/python"
-args = ["/Users/wesker/my-own-script/app_ado/mcp_ado_work_items_server.py"]
+command = "<应用生成的 python 路径>"
+args = ["-m", "toolbox_backend.mcp.ado_server", "--data-dir", "<数据目录>"]
 ```
 
 查看方式：
@@ -35,7 +25,7 @@ codex mcp get adoWorkItems
 
 ### 1. 先在工具里配置 ADO
 
-先在本项目现有 UI 里配置这些内容：
+先在应用的设置/发布配置里配置这些内容：
 
 - library
 - project
@@ -44,8 +34,7 @@ codex mcp get adoWorkItems
 要求：
 
 - PAT 已写入 macOS Keychain
-- `active_library_id` 已选中
-- `active_project_id` 已选中
+- 已选中默认 library / project
 
 MCP server 会直接复用这些本地配置，不需要在 Codex 里重复登录 ADO。
 
@@ -85,6 +74,9 @@ MCP server 会直接复用这些本地配置，不需要在 Codex 里重复登�
 - `ado_query_work_items`
 - `ado_list_board_columns`
 - `ado_list_work_items_by_column`
+- `ado_get_attachment`
+- `ado_create_work_item`
+- `ado_evaluate_change_policy`（改代码前的准入评估，见 [AI_CHANGE_POLICY](AI_CHANGE_POLICY.md)）
 
 ## 典型使用场景
 
@@ -114,13 +106,11 @@ MCP server 会直接复用这些本地配置，不需要在 Codex 里重复登�
 - 如果 Codex 能看到 MCP，但查不到数据，优先检查 PAT 权限。
 - 如果工作项详情正常、评论失败，优先检查 ADO Server 的 comments API 版本兼容性。
 - 如果按列查询失败，优先检查 `team` 和 `board` 的真实名字。
-- 当前还没有前端“工作项页”，现在是先打通 AI 主链路。
+- 工具清单以 `next/backend/src/toolbox_backend/mcp/tools.json` 为准。
 
-## 下一步
+## 联调步骤
 
-建议下一步做真实联调：
-
-1. 在工具里确认 ADO 配置可用
+1. 在应用里确认 ADO 配置可用（MCP 页可跑自检）
 2. 用一个真实 bug id 测 `ado_get_work_item`
 3. 再测 `ado_get_work_item_comments`
 4. 然后正式跑一次“修复 Bug 12345”

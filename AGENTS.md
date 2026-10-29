@@ -1,38 +1,42 @@
 # AGENTS.md — 先读我
 
-本仓库 = **代码工具箱**（macOS PySide6 桌面应用，入口 `app_main.py`）+ **ok-script**（图像识别自动化框架，`ok/`）。
-Python 3.14，`.venv` 隔离，敏感信息走 macOS Keychain（keyring），配置走 YAML。
+本仓库 = **代码工具箱**（macOS 桌面应用，v1.0.0）：Vue 3 + Vite 界面、Tauri 2 薄壳、Python 3.14 + FastAPI 后端。代码全部在 [`next/`](next/)：
 
-## 现代化重构协作入口
+```text
+next/
+  desktop/     Vue 前端 + src-tauri/（Rust 壳：窗口、托盘、更新器、拉起/回收后端）
+  backend/     Python 后端（src/toolbox_backend：api/ services/ adapters/ domain/ mcp/ vpn/）
+  contracts/   生成的 OpenAPI / 事件 Schema（前端 TS 类型由它生成，不手写）
+  scripts/     构建、签名、打包、本机安装脚本
+```
 
-参与本次重构前，必须阅读 [协作规范](docs/modernization/AGENT_WORKFLOW.md)、[工作包](docs/modernization/WORK_PACKAGES.md) 和 [进度账本](docs/modernization/PROGRESS.md)（两者只含当前切片；已完成切片在 [archive](docs/modernization/archive/README.md)，按需只读相关小节）。
-按工作包分工；施工模型可委派一层测试子 agent；Claude 全部 medium，GPT 6 Luna 固定 high，GPT 6.1 Sol 主控 high、施工 medium。实际型号/档位不可验证时记录 unknown，不得虚构署名或静默替换。
-交叉审计异步开展、登记发现，不阻塞下一工作包，不强制审到零问题。具体职责、验收和升级条件以协作规范为准。
-`config/model_collaboration_templates/` 是历史可复制模板，不得覆盖本仓库当前协作规范；不自动修改用户全局 agent 配置。
+敏感信息（PAT / Bot Token / VPN / OTP）只进 macOS Keychain；非密配置走后端配置存储（数据目录 `~/Library/Application Support/toolbox-next`）。
 
 > 本文件只做导航，不堆细节。**任何 AI 接手任务前，先看能力索引：**
 
 ## 📇 能力索引（从这里开始）
 
-**[docs/CAPABILITIES.md](docs/CAPABILITIES.md)** —— 本项目全部能力的索引。
-
-使用方式：
-1. 想做什么 → 打开 `docs/CAPABILITIES.md` 查「能力清单」表，定位对应能力行；
-2. 点进该能力的详细文档（`docs/capabilities/*.md`），里面有关键文件、用法、坑；
-3. 按文档里的文件路径直接动手。
+**[docs/CAPABILITIES.md](docs/CAPABILITIES.md)** —— 想做什么 → 查「能力清单」表 → 进 `docs/capabilities/*.md` 详情页 → 按里面的文件路径动手。
 
 ## 30 秒常用操作
 
 | 要做的事 | 怎么做 |
 | --- | --- |
-| 本地运行应用 | `bash dev_run.sh`（自动 pull + 建 venv + 装依赖 + 启动） |
-| 打包 .app / .dmg | `bash pack_mac_app.sh` → `bash pack_mac_dmg.sh` |
-| 发布到 GitHub Releases | `VERSION=x.y.z bash release_github.sh` |
-| 改版本号 | 改 `app_version.py`（第 4 段由 pre-commit 自动递增） |
-| 跑测试 | `pytest`（见 `tests/`，`pytest.ini` 配置） |
+| 本机构建并安装 | `bash next/scripts/install_local.sh --open`（ad-hoc 签名，仅本机） |
+| 跑后端测试 | `cd next/backend && uv run pytest -q` |
+| 跑前端检查 | `cd next/desktop && pnpm typecheck && pnpm lint && pnpm test`（以 package.json 为准） |
+| 改后端接口后同步契约 | 见 [dev-and-tests](docs/capabilities/dev-and-tests.md) 的契约生成/检查命令 |
+| 打包 DMG | `bash next/scripts/make_dmg.sh <.app> <outdir>` |
+| 发布 | `gh release create vX.Y.Z <dmg> <zip> --latest`，流程见 [packaging-release](docs/capabilities/packaging-release.md) |
+| 版本号 | 单一来源 `next/desktop/src-tauri/tauri.conf.json`，用 `next/scripts/sync_version.py` 同步 |
 
 ## 红线
 
-- PAT / Bot Token 等密钥**只进 Keychain**（`app_ado/secrets.py`），禁止写明文进 YAML 或提交到仓库。
-- 涉及 ADO/发布操作的改动，先读 `docs/SECURITY.md` 与 `docs/AI_CHANGE_POLICY.md`。
-- 新增能力：代码落 `app_ado/`（或对应模块），并在 `docs/CAPABILITIES.md` 索引 + `docs/capabilities/` 补一行/一页，保持索引可用。
+- PAT / Bot Token 等密钥**只进 Keychain**，禁止写明文进配置或提交到仓库，日志与响应里也不得出现。
+- 涉及 ADO/发布的改动，先读 [docs/SECURITY.md](docs/SECURITY.md) 与 [docs/AI_CHANGE_POLICY.md](docs/AI_CHANGE_POLICY.md)。
+- 改后端 API 必须重新生成契约（OpenAPI + 桌面 `schema.d.ts`），不手改生成文件。
+- 新增能力：代码落 `next/backend`（业务）与 `next/desktop`（界面），并在 `docs/CAPABILITIES.md` 索引 + `docs/capabilities/` 补一行/一页，保持索引可用。
+
+## 历史
+
+重写（原“现代化重构”）已完成并以 v1.0.0 取代旧 PySide6 应用。设计决策与过程记录仍在 [docs/modernization/](docs/modernization/README.md)：架构决策见 [ARCHITECTURE.md](docs/modernization/ARCHITECTURE.md)，逐切片历史在 `archive/`。旧应用源码可在 git 历史（提交 `885d186` 及之前）找回。

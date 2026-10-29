@@ -1,44 +1,42 @@
 # ADO 流水线：任务（同步 / 构建 / 发布 / 回滚 / 停止）
 
 ## 这个能力做什么
-「任务」Tab 里 CRUD 动态任务（GitFlow 同步 → 构建 → 发布 的一键执行器）。每个任务 = 本地 git 仓库 + 可配置分支流 + 多个「构建+发布」目标，多目标串行、失败即停。
+把「本地 Git 同步 → ADO 构建 → ADO Release 发布」做成一键执行。后端 `next/backend` 提供任务 CRUD、预检（preflight）、启动、取消、核实（reconcile）和事件回放；桌面「任务」页和 Telegram 都走同一套接口。三种操作：`sync_build_release`（同步+构建+发布）、`deploy_only`（取最新成功构建只发布）、`rollback`（回滚 1..5 个历史 Release）。多目标串行，失败即停。
 
-## 关键文件
+任务定义以「发布配置 + 运行命令」为准（v8，见 [发布配置](release-configs-next.md)），执行时展开成 `DynamicTask`；运行用的 task_id 即命令 id。
+
+## 关键文件（均在 `next/`）
 
 | 做什么 | 文件 |
 | --- | --- |
-| 任务 Tab（卡片 CRUD、执行、日志、停止、回滚、历史） | `app_ado/ui/tasks_tab.py` |
-| 任务卡片组件 | `app_ado/ui/task_card.py` |
-| 任务定义模型（`DynamicTaskConfig`/`GitFlow`/`DeployTarget`） | `app_ado/models.py` |
-| 本地 git 操作（fetch/checkout/merge/push，subprocess） | `app_ado/ui/tasks_tab.py` `_run` 内 + `app_ado/ado_git_ops.py` |
-| 无本地仓库时的远程 PR 合并 | `app_ado/ado_git_ops.py`（`create_pull_request`/`complete_pull_request`/`merge_via_pr`） |
-| 构建：Pipelines 与 Build Definitions 触发/查询/等待/取消、智能匹配运行中实例 | `app_ado/ado_build_http.py` |
-| 发布：建 Release、取 envs、启动 notStarted 环境、列最近 Release | `app_ado/ado_release_http.py` |
-| 构建列表/查询辅助 | `app_ado/ado_build_query.py` |
-| 执行历史记录 | `app_ado/task_history.py` |
-| 任务编辑/排序/目标/回滚等对话框 | `app_ado/ui/dynamic_task_dialog.py`、`task_sort_dialog.py`、`deploy_target_dialog.py`、`rollback_dialog.py` |
+| 任务/运行 HTTP 路由（`/api/tasks*`、`/api/runs*`） | `backend/src/toolbox_backend/api/task_routes.py`、`api/task_schemas.py` |
+| 任务 CRUD、排序、引用保护（被 ACL 引用等） | `backend/src/toolbox_backend/services/tasks.py` |
+| 运行服务：预检计划、启动、取消、核实、恢复循环、最多 4 并发 | `backend/src/toolbox_backend/services/runs.py` |
+| 执行器协议与日志/检查点/副作用意图模型 | `backend/src/toolbox_backend/domain/task_execution.py` |
+| 真实 ADO 执行器（预检、构建、Release、部署、回滚、只读核实） | `backend/src/toolbox_backend/adapters/ado_tasks.py` |
+| 本地 Git 同步与推送 | `backend/src/toolbox_backend/adapters/task_git.py`、`adapters/git_process.py` |
+| 运行记录（`<data-dir>/runs.sqlite3`，WAL）、事件流 | `backend/src/toolbox_backend/adapters/run_store.py`、`adapters/run_log.py` |
+| 运行事件 WebSocket 订阅（按 run_seq 回放） | `backend/src/toolbox_backend/api/ws.py` |
+| 测试用假 ADO / 开发用临时 Git 夹具 | `adapters/fake_task_ado.py`、`adapters/dev_tasks.py` |
+| 桌面任务页（列表、运行卡、日志、历史、回滚、发布向导） | `desktop/src/features/tasks/TasksPage.vue`、`RunCard.vue`、`LogPanel.vue`、`RunHistory.vue`、`TaskRollbackSheet.vue`、`ReleaseWizardSheet.vue` |
+| 契约 | `next/contracts/openapi.json`、`events.schema.json` |
 
-## 执行流程（`TasksTab._run`，`run_task` 入口）
-1. **git 流**：`git_flow.update_branches` 逐个拉取更新 → `merges` 逐个合并（本地 `git merge`；失败自动 `merge --abort + reset --hard`；无本地仓库则走 ADO PR 远程合并）→ `push_branches` 逐个推送。
-2. **每个 target 串行**：触发构建（有 `agent_queue_id` 覆盖时走 Build API）→ `find_matching_run` 智能接管已在运行的实例（防重复触发死循环）→ 等待完成 → `create_release_from_build` → 自动启动 `notStarted` 环境 → 监控选定 stages。
-3. 全程 emit 日志到任务卡片，响应式停止（每步查 `should_stop`，非阻塞）。
-
-对外回调（供 TG 调用）：`run_task` / `deploy_only_task`（只发不构建）/ `rollback_task`（回滚 N 个版本）/ `stop_one_task` / `list_stoppable_tasks` / `status_text`。
+## 执行流程
+1. **预检** `POST /api/tasks/{id}/preflight`（带配置 `revision`、`operation`、回滚的 `rollback_offset`）：校验凭据来源、仓库/构建定义/Release 定义绑定，冻结目标、commit、阶段，返回 `plan_id`。
+2. **启动** `POST /api/tasks/{id}/runs`（`plan_id`、`request_id` 幂等、`ack_old_app_idle` 必须为 true）→ 202。同一任务同时只能有一个活动 run。
+3. **Git 步骤**（仅 `sync_build_release` 且配了本地仓库）：fetch → `update_branches` 逐个 `--ff-only` → `merges` 逐条 `git merge`（失败 `merge --abort`）→ `push_branches` 非强制推送；结束后切回原分支。
+4. **每个目标串行**：创建/接管构建并等待 → 创建 Release、部署所选环境（回滚则对历史 Release 重新部署）→ 监控结果。远端写操作先落「副作用意图」再记回执。
+5. **停止** `POST /api/runs/{id}/cancel`；结果不确定时状态为 `unknown`，由 `reconcile`（只读）或每 30 秒的恢复循环核实，15 分钟未核实转人工。
+状态：`queued/running/cancelling/cancelled/succeeded/failed/unknown`。
 
 ## 怎么改
-- 加任务：UI「新增任务」或直接编辑 `~/.config/my-own-script/tasks.yaml`（模型见 `app_ado/models.py`）。
-- 加构建/发布 API 能力：放 `app_ado/ado_*_http.py`，PAT 从 `app_ado/secrets.py` 的 `get_pat(library_id)` 取。
+- 加任务字段：`domain/settings.py` + `api/task_schemas.py`，改完重新生成 `contracts` 与 `desktop/src/api/schema.d.ts`。
+- 加远端能力：放 `adapters/ado_tasks.py`，经 `adapters/ado_http.py` 出站，PAT 由 credentials 提供，不进日志。
 
-## 注意坑
-- 任务运行中编辑被锁定（置灰防误触发）；`isValid` 保护 Qt 对象。
-- 认证用 `Basic base64(":PAT")`，PAT 只存 Keychain，绝不进日志。
-- PAT 最小权限建议见 `docs/SECURITY.md`（Build 读+执行、Release 读+写+执行、Code 只读）。
-- 老格式 `flows` 会自动迁移成 `tasks`（`app_ado/task_migrate.py`，加载时落盘）。
-
-## 重写 S3-A 阶段检查点
-
-`next/backend` 已加入任务 CRUD/排序及引用保护 API、`<data-dir>/runs.sqlite3` WAL 运行记录、检查点/副作用意图/预约和按 run_seq 回放的事件流。实现入口为 `api/task_routes.py`、`services/tasks.py`、`services/runs.py`、`adapters/run_store.py`；接口由 `next/contracts` 生成。
-
-`adapters/task_git.py` 使用隔离环境和固定 argv，仓库 root/common-dir 互斥，监督进程负责回收本次子进程。fetch 可刷新远端跟踪引用，push 始终非强制；失败保留已发生的推送，不做硬重置。自动测试只使用临时 bare 远端和假执行器。
-
-这是基础层检查点：真实 ADO 执行器待 S3-B 接入，生产 preflight/start 返回 `unsupported_task`；任务页仍为旧 mock，待 S3-C 替换。纯本地异常分类及收尾失败后的同进程恢复尚有审计待办，不能视作完整 S3 或真实环境验收通过。合同与最新证据见 `docs/modernization/WORK_PACKAGES.md`、`PROGRESS.md`。
+## 注意与坑
+- Git 失败不做硬重置，已发生的推送保留；仓库处于 merge/rebase 中、origin 的 fetch/push URL 不一致、或指向本工具自身仓库路径时，预检/执行会拒绝。
+- **未迁移**：旧版「无本地仓库时用 ADO PR 远程合并」。新版无本地路径但配了 update/merge/push 规则时预检直接报不支持；无本地路径只能取远端分支头构建。
+- **未迁移**：旧 `~/.config/my-own-script/tasks.yaml`、`flows→tasks` 迁移不在运行时使用，旧配置经 [配置与密钥](config-and-secrets.md) 的导入进入。
+- 日志与错误文本经脱敏（PAT、Authorization、URL 凭据）。
+- 纯本地异常分类及收尾失败后的同进程恢复仍有审计待办，见 `docs/modernization/WORK_PACKAGES.md`、`PROGRESS.md`。
+- Telegram 触发的发布菜单见 [Telegram 分层菜单](telegram-menu-next.md)。

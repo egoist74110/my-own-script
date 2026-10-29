@@ -1,41 +1,58 @@
 # 开发 / 测试
 
 ## 这个能力做什么
-本地开发运行、跑测试、以及「新增一个能力」时的落点约定。
+新版（`next/`）的本地开发运行、各层测试命令、契约生成/检查，以及「新增一个能力」的落点约定。
 
 ## 关键文件
 | 做什么 | 文件 |
 | --- | --- |
-| 一键运行（git pull + venv + 装 mac 依赖 + 启动） | `dev_run.sh` |
-| 入口 | `app_main.py` |
-| mac 依赖 | `requirements-mac.txt` |
-| 全平台依赖（含 ok 相关） | `requirements.txt` |
-| 测试配置（`testpaths = tests integration`） | `pytest.ini` |
-| 版本号 + bump + 钩子 | `app_version.py`、`scripts/bump_version.py`、`.githooks/pre-commit`、`app_ado/versioning.py` |
-| 手工打包/发布 | `pack_mac_app.sh`、`pack_mac_dmg.sh`、`release_github.sh` |
-| 生成 RSA 密钥对（辅助脚本） | `genkey.py` |
+| 后端工程/依赖/pytest 配置（`testpaths=tests`、`asyncio_mode=auto`） | `next/backend/pyproject.toml`、`uv.lock` |
+| 后端测试 | `next/backend/tests/` |
+| 前端脚本 | `next/desktop/package.json` |
+| 前端守卫脚本 | `next/desktop/scripts/`（`contracts-check.mjs`、`guard-dist.mjs`、`forbidden-scan.mjs`、`dev-web.mjs`） |
+| Rust 壳与测试 | `next/desktop/src-tauri/`（`src/`、`tests/`） |
+| 构建脚本测试 | `next/scripts/tests/`（`test_scripts.py`、`test_sync_version.py`、`test_make_update_manifest.py`） |
+| 契约产物 | `next/contracts/{openapi,events.schema}.json`、`next/desktop/src/api/schema.d.ts`（生成，不手改） |
+| 契约生成器 | `next/backend/src/toolbox_backend/contracts.py` |
 
 ## 怎么跑
 ```bash
-bash dev_run.sh   # 本地开发运行（等价 npm install && npm run dev）
-pytest            # 跑测试（见 pytest.ini）
+# 后端
+cd next/backend && uv run pytest -q
+
+# 前端（以 package.json 为准）
+cd next/desktop
+pnpm typecheck        # vue-tsc --noEmit
+pnpm lint             # eslint + prettier --check
+pnpm test             # vitest run
+pnpm build            # vue-tsc + vite build
+pnpm tauri dev        # 桌面开发（dev:web 仅起网页端：pnpm dev:web）
+
+# Rust 壳
+cd next/desktop/src-tauri && cargo test
+
+# 构建脚本
+cd next && python3 -m unittest scripts.tests.test_scripts    # 另可加 test_sync_version、test_make_update_manifest
+python3 next/scripts/sync_version.py --check                 # 版本一致性（仓库根）
 ```
 
-## 测试覆盖（`tests/`）
-- `test_versioning.py`：4 段版本 bump 纯逻辑（参数化，覆盖进位/规范化）。
-- `test_task_migrate.py`：老 `flows` → 新 `tasks` 迁移。
-- `test_acl_migrate.py`：ACL task_ids 从 legacy flow id → UUID 迁移。
-- `test_app.py` / `test_box.py`：ok-script 的 `Box`/`sort_boxes`，依赖 ok 符号，导入失败自动 `skip`。
-- `pytest.ini` 还声明了 `integration` testpath（当前仓库未提供该目录，不影响 `tests/` 运行）。
+## 契约（改后端 API 后必做）
+```bash
+cd next/backend && uv run python -m toolbox_backend.contracts            # 重新生成 openapi.json / events.schema.json
+cd next/backend && uv run python -m toolbox_backend.contracts --check    # 有漂移则 exit 1
+cd next/desktop && pnpm contracts:gen                                    # 由 openapi.json 生成 src/api/schema.d.ts
+cd next/desktop && pnpm contracts:check                                  # schema.d.ts 与 openapi.json 不一致则失败
+```
+后端另有 `tests/test_contracts.py` 守护。
+
+## 沙箱 / 环境下的已知失败
+- 沙箱（限制端口监听、子进程、keychain、`~/Library` 写入）下，涉及起本地 HTTP/WS、拉子进程（后端 supervisor、MCP、PTY、`verify_app.sh`）的测试可能因端口/进程限制失败；这类失败先在沙箱外复跑再判断，别直接当回归。
+- 间歇失败：`next/backend/tests/test_s6b_lark.py::test_lark_health_probe_marks_unhealthy_after_3_failures`（Lark 健康探测，依赖时序）。单独复跑通过即视为抖动。
+- 迭代时只跑针对性测试（`uv run pytest -q tests/test_xxx.py`），全量留到提交前。
 
 ## 新增能力的落点约定（照 `AGENTS.md` 红线）
-1. **代码**：应用相关落 `app_ado/`（UI 进 `app_ado/ui/`，网络/纯逻辑进 `app_ado/*.py`）；ok 自动化相关落 `ok/`；Figma/Lark 各自落 `app_figma/`、`app_lark/`。
-2. **密钥**：新凭据走 `app_ado/secrets.py`（或对应模块的 `secrets.py`），只进 Keychain，别写 YAML。
-3. **配置**：非密项加进 `app_ado/models.py` 的 pydantic model。
-4. **索引**：在 `docs/CAPABILITIES.md` 的能力清单表加一行，并在 `docs/capabilities/` 补一页，保持索引可用。
-5. **红线**：涉及 ADO/发布操作的改动，先读 `docs/SECURITY.md` 与 `docs/AI_CHANGE_POLICY.md`；forbidden_paths 里的文件 AI 不得自动改。
-
-## 注意坑
-- 运行环境 Python 3.14 + `.venv`；`dev_run.sh` 按 `uname` 选 `requirements-mac.txt`（macOS）或 `requirements.txt`。
-- pre-commit 每 commit 自动 bump 版本第 4 段，别手工乱改 `app_version.py` 的第 4 段（发布才用 `release_github.sh` 设前三段）。
-- 改 `ok/__init__.pyx` 需 Windows 下重编 Cython（见 ok-script.md）。
+1. **代码**：业务进 `next/backend/src/toolbox_backend/`（`api/` 路由、`services/` 业务、`adapters/` 外部 IO、`domain/` 模型、`mcp/`、`vpn/`）；界面进 `next/desktop/src/`。
+2. **密钥**：只进 macOS Keychain（`adapters/credentials.py`），不写 YAML/日志/响应。
+3. **契约**：改 API 后跑上面的契约生成 + 检查，不手改生成文件。
+4. **索引**：`docs/CAPABILITIES.md` 加一行并在 `docs/capabilities/` 补一页。
+5. **红线**：涉及 ADO/发布先读 `docs/SECURITY.md` 与 `docs/AI_CHANGE_POLICY.md`。
