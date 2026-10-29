@@ -21,6 +21,7 @@ from toolbox_backend.adapters.telegram_store import TelegramStore
 from toolbox_backend.api import (
     ai_routes,
     mcp_routes,
+    release_routes,
     routes,
     services_routes,
     settings_routes,
@@ -296,6 +297,7 @@ def create_app(
     app.include_router(ai_routes.router)
     app.include_router(telegram_routes.router)
     app.include_router(task_routes.router)
+    app.include_router(release_routes.router)
     app.include_router(work_item_routes.router)
     app.include_router(routes.router)
     app.include_router(ws.router)

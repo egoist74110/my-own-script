@@ -11,10 +11,27 @@ class Extensible(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class VerifiedBot(BaseModel):
+    id: str
+    username: str | None = None
+    first_name: str | None = None
+    verified_at: str
+
+
+class TokenVerification(BaseModel):
+    ok: bool
+    code: Literal["token_invalid", "telegram_unreachable", "telegram_request_failed"] | None = None
+    message: str
+    has_webhook: bool | None = None
+    checked_at: str
+
+
 class Control(Extensible):
     enabled: bool = False
     enabled_at: str | None = None
     bot_id: str | None = None
+    verified_bot: VerifiedBot | None = None
+    token_verify: TokenVerification | None = None
 
 
 class Owner(Extensible):
@@ -45,6 +62,12 @@ class ACLMember(Extensible):
     username: str | None = None
     user_id: str | None = None
     label: str = ""
+
+    @field_validator("chat_id", "username", "user_id", mode="before")
+    @classmethod
+    def blank_as_missing(cls, value):
+        # Legacy imports store unset identities as ""; "" must not count as a duplicate identity.
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 class TelegramConfig(Extensible):

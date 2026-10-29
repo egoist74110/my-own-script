@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务页设计方向</title>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  --ink:#1b1d22;--ink-2:#5b616e;--ink-3:#8b919c;--line:#e4e6eb;--chrome:#f3f4f6;--paper:#ffffff;
+  --ok:#1f8a5b;--ok-bg:#e6f4ec;--bad:#c2372f;--bad-bg:#fbeceb;--run:#2457d6;--run-bg:#e8eefc;--warn:#b26a00;--warn-bg:#fdf1de;
+  --l-event:#0f8f86;--l-front:#2f5fe0;--l-vip:#7a4fd6;--l-api:#d4651c;
+  --sans:-apple-system,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --num:"SF Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#d9dbe0;color:var(--ink);font:13px/1.45 var(--sans)}
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line)}
+.bar b{font-weight:600;margin-right:8px}
+.seg{display:inline-flex;background:var(--chrome);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;font:inherit;padding:4px 10px;border-radius:6px;cursor:pointer;color:var(--ink-2)}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.seg button:focus-visible{outline:2px solid var(--run);outline-offset:1px}
+.note{color:var(--ink-2);margin-left:auto;max-width:520px}
+.stage{padding:24px 16px 40px;overflow:auto}
+.win{margin:0 auto;height:660px;background:var(--paper);border-radius:12px;overflow:hidden;display:grid;box-shadow:0 0 0 1px rgba(0,0,0,.12),0 20px 40px -20px rgba(0,0,0,.35)}
+.win[data-w="1000"]{width:1000px;grid-template-columns:56px 280px minmax(0,1fr)}
+.win[data-w="1440"]{width:1440px;grid-template-columns:212px 300px minmax(0,1fr) 280px}
+.side{background:var(--chrome);border-right:1px solid var(--line);padding:38px 8px 12px;display:flex;flex-direction:column;gap:2px}
+.nav{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:7px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.nav svg{width:17px;height:17px;flex:none}
+.nav.on{background:#e3e5ea;color:var(--ink);font-weight:600}
+.nav .n{margin-left:auto;font-size:11px;color:var(--run);font-weight:600}
+.win[data-w="1000"] .nav span,.win[data-w="1000"] .nav .n,.win[data-w="1000"] .grp{display:none}
+.win[data-w="1000"] .nav{justify-content:center;padding:0}
+.grp{font-size:11px;color:var(--ink-3);margin:12px 10px 4px}
+.side .foot{margin-top:auto}
+.dotlive{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.list{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.lh{padding:14px 14px 8px}
+.lh h1{font-size:15px;margin:0;font-weight:650}
+.lh p{margin:2px 0 0;color:var(--ink-3);font-size:12px}
+.search{margin:6px 12px 6px;display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border-radius:7px;background:var(--chrome);color:var(--ink-3)}
+.search svg{width:14px;height:14px}
+.items{overflow:auto;padding:4px 8px 12px}
+.det{min-width:0;overflow:auto;display:flex;flex-direction:column}
+.tb{display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--line);background:#fff;font:inherit;color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn svg{width:14px;height:14px}
+.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.ic{padding:0 7px}
+.btn:focus-visible{outline:2px solid var(--run);outline-offset:1px}
+.grow{flex:1}
+.body{padding:18px 20px 24px}
+.ttl{font-size:20px;font-weight:650;margin:0;letter-spacing:-.01em}
+.meta{color:var(--ink-2);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}
+.meta span{display:inline-flex;align-items:center;gap:5px}
+.meta svg{width:13px;height:13px;color:var(--ink-3)}
+.sec{margin-top:22px}
+.sec h2{font-size:12px;font-weight:600;color:var(--ink-2);margin:0 0 8px}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:12px}
+.callout{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:8px;margin-top:14px}
+.callout svg{width:15px;height:15px;flex:none;margin-top:1px}
+.callout.bad{background:var(--bad-bg);color:var(--bad)}
+.callout .act{margin-left:auto}
+.insp{background:#fafafb;border-left:1px solid var(--line);padding:16px;overflow:auto}
+.insp h3{font-size:12px;margin:0 0 8px;color:var(--ink-2);font-weight:600}
+.kv{display:grid;grid-template-columns:64px 1fr;gap:6px 10px;margin-bottom:18px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.win[data-w="1000"] .insp{display:none}
+.it{display:block;padding:9px 10px;border-radius:9px;cursor:pointer;margin-bottom:2px}
+.it:hover{background:var(--chrome)}
+.it.on{background:#e9ecf3}
+.it .n1{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .n2{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--ink-3);font-size:12px;white-space:nowrap;overflow:hidden}
+.pill{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 7px;border-radius:5px;font-size:11px;font-weight:600;white-space:nowrap}
+.pill svg{width:11px;height:11px}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-bad{background:var(--bad-bg);color:var(--bad)} .p-run{background:var(--run-bg);color:var(--run)} .p-idle{background:var(--chrome);color:var(--ink-3)}
+
+/* A 线路图 */
+.A .it .glyph{display:flex;align-items:center;gap:0;margin-top:6px}
+.A .gdot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--c);background:#fff;flex:none}
+.A .gdot.f{background:var(--c)}
+.A .gseg{height:2px;width:22px;background:var(--c);opacity:.35}
+.A .gseg.f{opacity:1}
+.A .gdot.x{border-color:var(--bad);background:var(--bad)}
+.A .route{position:relative;padding:22px 8px 6px}
+.A .track{display:grid;grid-template-columns:repeat(4,1fr);position:relative}
+.A .track::before{content:"";position:absolute;left:12.5%;right:12.5%;top:13px;height:4px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--c) 0 8px,transparent 8px 14px);opacity:.45}
+.A .done{position:absolute;left:12.5%;top:13px;height:4px;border-radius:2px;background:var(--c)}
+.A .stn{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;z-index:1}
+.A .stn i{width:30px;height:30px;border-radius:50%;border:4px solid var(--c);background:#fff;display:grid;place-items:center}
+.A .stn i svg{width:14px;height:14px;color:var(--c)}
+.A .stn.f i{background:var(--c)} .A .stn.f i svg{color:#fff}
+.A .stn.skip i{border-style:dashed;border-color:var(--ink-3);background:#fff}
+.A .stn.skip i svg{color:var(--ink-3)}
+.A .stn b{margin-top:8px;font-weight:600}
+.A .stn small{color:var(--ink-3);font-size:12px;margin-top:1px}
+.A .runs{display:flex;flex-direction:column;gap:2px}
+.A .run{display:grid;grid-template-columns:70px 1fr 110px 90px;align-items:center;gap:12px;padding:8px 10px;border-radius:8px}
+.A .run:hover{background:var(--chrome)}
+.A .mini{display:flex;align-items:center}
+.A .mini .gseg{width:30px}
+
+/* B 进程条 */
+.B .items{background:#eef1f4;padding:8px}
+.B .list{background:#eef1f4}
+.B .it{background:#fff;border-radius:4px;padding:0;display:grid;grid-template-columns:6px 1fr;overflow:hidden;margin-bottom:6px;box-shadow:0 0 0 1px #dfe3e8}
+.B .it.on{box-shadow:0 0 0 2px var(--ink)}
+.B .it .tab{background:var(--e)}
+.B .it .in{padding:8px 10px;min-width:0}
+.B .strip{display:grid;grid-template-columns:86px repeat(3,minmax(0,1fr));border-radius:6px;overflow:hidden;box-shadow:0 0 0 1px #d5dae1;background:#fff}
+.B .strip > div{padding:10px 12px;border-left:1px solid #e3e7ec;min-width:0}
+.B .strip .env{border-left:0;background:var(--e);color:#fff;display:flex;flex-direction:column;justify-content:center}
+.B .strip .env b{font-size:15px} .B .strip .env small{opacity:.85;font-size:11px}
+.B .cell b{display:flex;align-items:center;gap:6px;font-weight:600}
+.B .cell b svg{width:14px;height:14px}
+.B .cell small{display:block;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.B .cell.ok{background:linear-gradient(var(--ok),var(--ok)) top/100% 3px no-repeat #fff} .B .cell.ok b{color:var(--ok)}
+.B .cell.skip{background:repeating-linear-gradient(135deg,#f6f7f9 0 6px,#fff 6px 12px)} .B .cell.skip b{color:var(--ink-3)}
+.B .cell.run{background:linear-gradient(var(--run),var(--run)) top/62% 3px no-repeat #fff} .B .cell.run b{color:var(--run)}
+.B .board{display:flex;flex-direction:column;gap:6px}
+.B .board .strip{grid-template-columns:86px repeat(3,minmax(0,1fr)) 104px}
+.B .when{white-space:nowrap;align-items:flex-start}
+.B .board .strip > div{padding:7px 10px}
+.B .when{display:flex;flex-direction:column;justify-content:center;color:var(--ink-2)}
+
+/* C 柔和卡片 */
+.C .side{background:#f2f1f6}
+.C .list{background:#f7f6fa}
+.C .it{display:flex;gap:10px;align-items:center;border-radius:12px}
+.C .it.on{background:#fff;box-shadow:0 0 0 1px #e6e4ec,0 2px 6px -3px rgba(40,30,80,.15)}
+.C .tile{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--c)}
+.C .tile svg{width:16px;height:16px}
+.C .tile.lg{width:40px;height:40px;border-radius:12px} .C .tile.lg svg{width:20px;height:20px}
+.C .it .tx{min-width:0;flex:1}
+.C .card{border-radius:16px;box-shadow:0 0 0 1px #e9e7ef;padding:14px 16px;background:#fff}
+.C .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.C .flow > svg{width:14px;height:14px;color:var(--ink-3)}
+.C .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;font-weight:600;white-space:nowrap}
+.C .chip svg{width:14px;height:14px}
+.C .hist{display:flex;gap:6px;align-items:center}
+.C .hist span{width:10px;height:22px;border-radius:3px}
+@media (prefers-reduced-motion:no-preference){.spin{animation:sp 1.2s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}}
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="预览控制">
+  <b>任务页 · 设计方向</b>
+  <div class="seg" id="dir" aria-label="方向">
+    <button data-v="A" aria-pressed="true">A 线路图</button>
+    <button data-v="B" aria-pressed="false">B 进程条</button>
+    <button data-v="C" aria-pressed="false">C 柔和卡片</button>
+  </div>
+  <div class="seg" id="wid" aria-label="窗口宽度">
+    <button data-v="1000" aria-pressed="true">1000 宽（你现在）</button>
+    <button data-v="1440" aria-pressed="false">1440 宽</button>
+  </div>
+  <span class="note" id="note"></span>
+</div>
+<div class="stage"><div class="win A" id="win" data-w="1000"></div></div>
+
+<script>
+const TASKS=[
+ {n:'sync_build_event_test',repo:'CG_Vue_Event',br:'main',c:'--l-event',env:'测试',st:'bad',when:'34 分钟前',icon:'party-popper',stages:['ok','ok','skip']},
+ {n:'sync_build_vip_h5_dcr',repo:'CG_Vue_Vip_H5_DCR',br:'main',c:'--l-vip',env:'测试+正式',st:'idle',when:'未运行',icon:'crown',stages:['idle','idle','idle']},
+ {n:'build_cg_front_api',repo:'CG',br:'main',c:'--l-api',env:'正式',st:'run',when:'构建中 2:13',icon:'server',stages:['ok','run','idle']},
+ {n:'sync_build_front',repo:'CG_Vue_Front',br:'main',c:'--l-front',env:'正式',st:'ok',when:'昨天 18:02',icon:'monitor',stages:['ok','ok','ok']},
+ {n:'sync_build_front_test',repo:'CG_Vue_Front',br:'develop',c:'--l-front',env:'测试',st:'ok',when:'昨天 15:40',icon:'monitor',stages:['ok','ok','ok']},
+ {n:'build_cg_front_api_test',repo:'CG',br:'main',c:'--l-api',env:'测试',st:'idle',when:'未运行',icon:'server',stages:['idle','idle','idle']},
+ {n:'sync_build_vip_h5',repo:'CG_Vue_Vip_H5',br:'main',c:'--l-vip',env:'正式',st:'idle',when:'未运行',icon:'crown',stages:['idle','idle','idle']},
+ {n:'sync_build_event',repo:'CG_Vue_Event',br:'main',c:'--l-event',env:'正式',st:'idle',when:'未运行',icon:'party-popper',stages:['idle','idle','idle']},
+];
+const RUNS=[
+ {st:'bad',label:'失败',stages:['ok','ok','skip'],by:'Telegram · @janson12138',at:'10-28 09:21',dur:'4:23'},
+ {st:'bad',label:'失败',stages:['bad','idle','idle'],by:'Telegram · @janson12138',at:'10-28 09:20',dur:'0:20'},
+ {st:'ok',label:'成功',stages:['ok','ok','ok'],by:'桌面',at:'10-27 16:05',dur:'6:48'},
+];
+const PILL={ok:['p-ok','check','成功'],bad:['p-bad','x','失败'],run:['p-run','loader','运行中'],idle:['p-idle','minus','未运行']};
+const ENVC={'测试':'#b26a00','正式':'#c2372f','测试+正式':'#7a4fd6'};
+const NOTES={
+ A:'一次发布 = 一趟列车。同步、构建、各环境是线路上的站点，每个仓库一种线路色；列表里的小线路一眼看出走到哪一站。',
+ B:'借用塔台进程条：左侧色块标明发到测试还是正式，阶段是格子，历史像进程板一样一条条叠起来，适合同时盯好几个任务。',
+ C:'Raycast 式柔和卡片：每个任务有自己的图标，阶段是胶囊，留白多。最稳妥，辨识度最低，用来对照。'};
+let D='A',W='1000';
+const ic=(n,cls='')=>`<i data-lucide="${n}" class="${cls}"></i>`;
+const pill=s=>{const p=PILL[s];return `<span class="pill ${p[0]}">${ic(p[1],s==='run'?'spin':'')}${p[2]}</span>`};
+function side(){return `<nav class="side" aria-label="导航">
+ <div class="grp">工作</div>
+ <a class="nav on">${ic('rocket')}<span>任务</span><em class="n">1</em></a>
+ <a class="nav">${ic('file-text')}<span>工单</span></a>
+ <a class="nav">${ic('message-square')}<span>AI 会话</span></a>
+ <div class="grp">基础设施</div>
+ <a class="nav">${ic('plug')}<span>MCP</span></a>
+ <a class="nav">${ic('server')}<span>服务</span></a>
+ <a class="nav">${ic('shield')}<span>VPN</span></a>
+ <div class="foot"><a class="nav">${ic('settings')}<span>设置</span></a><a class="nav"><i class="dotlive"></i><span>后端在线</span></a></div></nav>`}
+function listHead(){return `<div class="lh"><div style="display:flex;align-items:center"><h1>任务</h1><span class="grow"></span><button class="btn ic" aria-label="新建任务">${ic('plus')}</button></div><p>8 个任务，1 个运行中</p></div><div class="search">${ic('search')}搜索任务、仓库、分支<span class="grow"></span><span class="num" style="font-size:11px">⌘K</span></div>`}
+function toolbar(){const wide=W==='1440';return `<div class="tb"><button class="btn pri">${ic('play')}运行</button><button class="btn">${ic('upload')}只发布</button>${wide?`<button class="btn">${ic('undo-2')}回滚</button><button class="btn">${ic('pencil')}编辑</button>`:`<button class="btn ic" aria-label="更多操作">${ic('ellipsis')}</button>`}<span class="grow"></span><button class="btn ic" aria-label="检查器">${ic('panel-right')}</button></div>`}
+function head(t){return `<h1 class="ttl">${t.n}</h1><div class="meta"><span>${ic('git-branch')}${t.repo} / ${t.br}</span><span>${ic('target')}发往${t.env}环境</span><span>${ic('send')}Telegram /${t.n}</span></div>`}
+const callout=`<div class="callout bad">${ic('circle-alert')}<div><b>发布没有执行。</b>构建 #64758 已完成，但流水线在发布前停下了。到 ADO 确认环境状态后，可以单独「只发布」。</div><button class="btn act">只发布</button></div>`;
+function insp(){return `<aside class="insp" aria-label="检查器"><h3>Git</h3><dl class="kv"><dt>本地路径</dt><dd class="num">~/CG_Vue_Event</dd><dt>构建分支</dt><dd>main</dd><dt>合并</dt><dd>—</dd></dl><h3>目标</h3><dl class="kv"><dt>构建</dt><dd>CG_Vue_Event-節慶活動</dd><dt>Release</dt><dd>CG_Vue_Event(節慶活動)</dd><dt>环境</dt><dd>新优惠-测试环境</dd></dl><h3>执行策略</h3><dl class="kv"><dt>失败</dt><dd>即停，目标串行</dd><dt>队列</dt><dd>默认</dd></dl></aside>`}
+
+function A(){const t=TASKS[0];
+ const glyph=s=>`<div class="glyph">${s.map((x,i)=>`${i?`<span class="gseg ${x==='ok'||x==='run'?'f':''}"></span>`:''}<span class="gdot ${x==='ok'?'f':''} ${x==='bad'?'x':''}"></span>`).join('')}</div>`;
+ const items=TASKS.map((x,i)=>`<a class="it ${i?'':'on'}" style="--c:var(${x.c})"><div class="n1">${x.n}</div><div class="n2">${x.st!=='idle'?pill(x.st):''}<span>${x.when}</span></div>${glyph(x.stages)}</a>`).join('');
+ const st=[['git-pull-request','同步','0:21','f'],['hammer','构建','#64758 · 4:01','f'],['flask-conical','测试环境','未执行','skip'],['globe','正式环境','不在本次线路','skip']];
+ const route=`<div class="route"><div class="track"><div class="done" style="width:25%"></div>${st.map(s=>`<div class="stn ${s[3]}"><i>${ic(s[0])}</i><b>${s[1]}</b><small class="${s[2].includes(':')?'num':''}">${s[2]}</small></div>`).join('')}</div></div>`;
+ const runs=RUNS.map(r=>`<div class="run">${pill(r.st)}<div class="mini">${r.stages.map((x,i)=>`${i?`<span class="gseg ${x==='ok'?'f':''}"></span>`:''}<span class="gdot ${x==='ok'?'f':''} ${x==='bad'?'x':''}"></span>`).join('')}<span style="margin-left:10px;color:var(--ink-2)">${r.by}</span></div><span class="num" style="color:var(--ink-2)">${r.at}</span><span class="num" style="color:var(--ink-3)">用时 ${r.dur}</span></div>`).join('');
+ return `${side()}<section class="list">${listHead()}<div class="items">${items}</div></section><section class="det">${toolbar()}<div class="body" style="--c:var(${t.c})">${head(t)}<div class="sec"><h2>本次运行 · 09:21 开始，用时 4:23</h2>${route}${callout}</div><div class="sec"><h2>运行记录</h2><div class="runs" style="--c:var(${t.c})">${runs}</div></div></div></section>${W==='1440'?insp():''}`}
+
+function B(){const t=TASKS[0];
+ const items=TASKS.map((x,i)=>`<a class="it ${i?'':'on'}" style="--e:${ENVC[x.env]}"><span class="tab"></span><span class="in"><div class="n1">${x.n}</div><div class="n2">${x.st!=='idle'?pill(x.st):''}<span>${x.env} · ${x.when}</span></div></span></a>`).join('');
+ const cell=(s,name,sub)=>{const m={ok:['ok','check'],skip:['skip','minus'],run:['run','loader'],bad:['skip','x'],idle:['skip','minus']}[s];return `<div class="cell ${m[0]}"><b>${ic(m[1],s==='run'?'spin':'')}${name}</b><small>${sub}</small></div>`};
+ const big=`<div class="strip" style="--e:${ENVC['测试']}"><div class="env"><b>测试</b><small>新优惠环境</small></div>${cell('ok','同步','0:21')}${cell('ok','构建','#64758 · 4:01')}${cell('skip','发布','未执行')}</div>`;
+ const board=RUNS.map(r=>`<div class="strip"><div class="env" style="background:${ENVC['测试']}"><b style="font-size:13px">测试</b><small>${r.by.split(' · ')[0]}</small></div>${cell(r.stages[0],'同步','')}${cell(r.stages[1],'构建','')}${cell(r.stages[2],'发布','')}<div class="when">${pill(r.st)}<span class="num" style="margin-top:3px">${r.at}</span></div></div>`).join('');
+ return `${side()}<section class="list">${listHead()}<div class="items">${items}</div></section><section class="det">${toolbar()}<div class="body">${head(t)}<div class="sec"><h2>本次运行 · 09:21 开始，用时 4:23</h2>${big}${callout}</div><div class="sec"><h2>进程板</h2><div class="board">${board}</div></div></div></section>${W==='1440'?insp():''}`}
+
+function C(){const t=TASKS[0];
+ const items=TASKS.map((x,i)=>`<a class="it ${i?'':'on'}" style="--c:var(${x.c})"><span class="tile">${ic(x.icon)}</span><span class="tx"><div class="n1">${x.n}</div><div class="n2">${x.st!=='idle'?pill(x.st):''}<span>${x.when}</span></div></span></a>`).join('');
+ const chip=(s,name)=>{const m={ok:['p-ok','check'],skip:['p-idle','minus']}[s];return `<span class="chip ${m[0]}">${ic(m[1])}${name}</span>`};
+ const hist=['bad','bad','ok','ok','ok','bad','ok','ok'].map(s=>`<span style="background:var(--${s==='ok'?'ok':'bad'});opacity:${s==='ok'?.75:1}"></span>`).join('');
+ return `${side()}<section class="list">${listHead()}<div class="items">${items}</div></section><section class="det" style="background:#fbfbfd">${toolbar()}<div class="body" style="--c:var(${t.c})"><div style="display:flex;gap:12px;align-items:center"><span class="tile lg">${ic(t.icon)}</span><div style="min-width:0">${head(t)}</div></div><div class="sec card"><h2>本次运行 · 09:21 开始，用时 4:23</h2><div class="flow">${chip('ok','同步 0:21')}${ic('chevron-right')}${chip('ok','构建 #64758')}${ic('chevron-right')}${chip('skip','发布 未执行')}</div>${callout}</div><div class="sec card"><h2>最近 8 次</h2><div class="hist">${hist}</div></div></div></section>${W==='1440'?insp():''}`}
+
+function render(){const w=document.getElementById('win');w.className='win '+D;w.dataset.w=W;w.innerHTML={A,B,C}[D]();document.getElementById('note').textContent=NOTES[D];lucide.createIcons({attrs:{'stroke-width':1.8}})}
+for(const [id,set] of [['dir',v=>D=v],['wid',v=>W=v]]){document.getElementById(id).addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;set(b.dataset.v);document.querySelectorAll('#'+id+' button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()})}
+render();
+</script>
+</body>
+</html>

@@ -198,3 +198,50 @@ plan_id: modernization-20261021。账本允许追加证据和更正状态，不�
 - **现象**：安装 `TOOLBOX-1.0.0-arm64.dmg` 后窗口纯白。**根因（主控确认）**：`next/scripts/tests/test_scripts.py` 里 build_app 的单元测试用假 `pnpm`，其 `mkdir -p dist; echo '<html></html>' > dist/index.html` 写进了**真实** `next/desktop/dist`；我在验收里先跑 pnpm build、再跑脚本 unittest、再 `--skip-frontend` 构建，于是把空页面打进了应用（上一节“真实构建复验通过”的 DMG 实际是白屏包）。`verify_app.sh` 只验后端启动，未覆盖前端，因此没发现。该缺陷自 `78efbec` 起就存在。
 - **修复**：`build_app.sh` 增加 `TOOLBOX_DESKTOP_DIR` 覆盖，并在打包前强制检查 `dist/index.html` 含 `<script` 且 `dist/assets/*.js` 存在，否则 exit 1；测试改为使用临时 desktop 目录（不再碰真实 dist），新增 `test_build_app_rejects_stub_frontend_dist`。脚本 unittest **24 OK**（跑完后真实 dist 保持完好）。已重新构建并重打 DMG（`next/build/dist/`），二进制内可见 `assets/index-*` 引用。
 - **教训/开放项**：此前“真实验收”只覆盖后端启动，GUI 从未被打开——正是用户在场的 GUI 人工体验项所补出的缺陷；建议后续在 `verify_app.sh` 之外补一个不碰真实数据目录的窗口冒烟（not_run）。新 DMG 的窗口内容仍待用户确认。
+
+## 发布配置 v7（2026-10-28，用户本轮已定方案）
+
+- 角色：build；actual_model/actual_effort=unknown（工具未提供可验证回执）；原生运行通道 `/root`；verified_by=executor，independent=false，未委派。基线 `rewrite/next @ 42f5042` + 用户既有未提交改动；本轮未提交、未切分支。
+- 实现 done：ReleaseConfig/稳定目标目录/RunCommand，v6→v7 备份与原子迁移，配置及命令 CRUD/排序，旧任务接口兼容展开，TG 冒号标签、ACL/运行记录继续使用原任务 id，OpenAPI 与桌面生成类型。未修改执行器、RunService、运行 SQLite 结构或用户已有 ACL 修复；桌面源码仅更新生成类型。
+- 交付字段、接口、兼容写限制、迁移假数据结果与文件清单见 [发布配置与运行命令](../capabilities/release-configs-next.md)。历史空目标选择保留但禁止执行；新命令至少选一个目标。
+- 全量验收 partial：`uv run pytest -q` exit 1，**96 failed / 1149 passed / 20 skipped / 211 errors，798.41s**。该轮与施工重叠，含已修复的适配/契约失败；全部失败及原始输出留本地审计目录，不虚报为全量通过。沙箱明确拒绝本地 socket bind 和进程查询；其他 AI/进程/Lark 失败尚未在无沙箱环境复验。
+- 最终相邻 S1/S3/S4：**501 passed / 1 failed，115.15s**，唯一失败为 `test_s1d_process.py::test_cr006_dev_memory_process_stderr_never_contains_pat` 的 socket bind `PermissionError: Operation not permitted`；相关配置/迁移集合 **261 passed / 1 skipped，26.88s**；专项 **13 passed，0.68s**；最终契约测试 **14 passed，16.23s**。ruff 全后端、契约 `--check`、桌面 contracts:gen/check、diff --check 通过。
+- 未测：用户真实配置迁移、真实 ADO/TG/Keychain、桌面人工体验。后续：前端按新配置/命令接口接入；在允许本地端口/进程查询的环境复跑全量。
+- 清理/保留：临时施工脚本已移除；原始输出、SHA-256 与命令记录保留于 Git 忽略的 `next/.local/release-configs-v7/`；uv 缓存保留。
+
+
+## 发布配置 v8 分支目录（2026-10-28，用户本轮已定方案）
+
+- role=build；actual_model/actual_effort=unknown；verified_by=executor，independent=false；未委派、未提交、未 stash、未切分支。
+- done：ReleaseBranch 稳定目录、命令必选 branch_id、配置共享来源合并、v7→v8 备份/原子/幂等迁移、目标映射与命令 id 保持、引用错误码 target_in_use/branch_in_use、旧任务视图与保守写兼容、生成 OpenAPI/桌面类型。执行器、运行库及投递/核对协议不变。桌面仅运行生成命令更新 schema.d.ts。
+- 等价假数据验收：6 配置→5 配置，CG_Vue_Front 包含 main/develop 两分支、两命令；未读用户真实配置。字段、迁移、API 对照、前端接入和本轮文件清单见 [交付说明](../capabilities/release-configs-next.md)。
+- 验收 partial：专项 20 passed；最终 S1/S3/S4 + 专项 **511 passed / 1 failed，112.18s**，唯一失败为 test_s1d_process 本地 bind 被沙箱拒绝。首轮独立 S1 live boundary 的 8 项 setup errors 经隔离启动确认同为 bind PermissionError，最终集合明确排除该文件。契约及相关配置迁移 **93 passed / 1 skipped，14.93s**；ruff、OpenAPI --check、桌面 contracts:gen/check、diff --check 通过。
+- not_run：本轮全量、沙箱外端口相关项、真实配置迁移、真实 ADO/TG/Keychain、桌面业务接入与人工体验。无业务范围偏离；同名构建分支但规则不同的历史冲突保留原文件并报迁移失败。
+- 清理/保留：无持久服务，无临时施工文件；原始日志、端口诊断及 SHA-256/命令清单保留在 Git 忽略的 next/.local/release-configs-v8/；测试资源由 fixture 清理。
+
+## 发布配置只读自动发现（2026-10-28）
+
+- role=build；actual_model/actual_effort=unknown（运行时未提供可验证回执）；runtime=/root；verified_by=executor，independent=false，未委派。输入为 rewrite/next @ 42f5042 + 用户既有大量未提交改动；未提交、未 stash、未切分支。
+- done：`/api/release-configs/discover` 下 repo/branches/targets/queues 四接口、独立响应契约与服务；本地固定 Git 参数只读发现、URL 去凭据与项目匹配、仓库详情和已有配置检测、默认分支排序、构建 kind、Release 关联与建议目标、队列多版本回退、稳定中文错误。无配置写入、缓存或迁移；凭据与出站限制复用 work_items/AdoRead。接口/示例/边界详见 release-configs-next.md「自动发现」。
+- 文件增量：新增 api/release_discovery_routes.py、api/release_discovery_schemas.py、services/release_discovery.py、tests/test_release_discovery.py；release_routes.py 注册子路由；能力文档追加自动发现；OpenAPI/桌面 schema.d.ts 由指定生成器更新。保留原有用户改动，桌面未手改。
+- 真实验收：指定 `uv run pytest -q tests/test_release_discovery.py tests/test_release_configs.py` 最终 **45 passed in 1.86s**，exit 0；改动 Python 文件 ruff check **All checks passed!**，exit 0；contracts 生成及 `--check`、桌面 `pnpm -s contracts:gen && pnpm -s contracts:check`（contracts:check ok）、git diff --check 均 exit 0。期间命令工作目录错误已纠正，失败尝试不计作通过。
+- 偏离：无业务范围偏离。Release 使用与现执行器一致的同域、6.0→7.0 明确版本不支持回退，不扩大 Library 出站边界。端口精确匹配，不跨 SSH/HTTPS 端口猜测；项目来源不唯一同样返回 project_not_matched，避免选错凭据。
+- not_run：真实 ADO/Keychain、前端向导人工体验、后端全量及沙箱外验收。资源核对：Git subprocess.run 有 10s 超时并自动 kill/wait；取消由 outbound 等待线程退出后释放许可；HTTP 复用 AdoRead 的客户端上下文与超时。无任务持久服务或临时施工文件，临时 Git/配置由 pytest fixture 清理；uv 缓存保留。
+
+## Telegram Token 保存后只读校验（2026-10-28）
+
+- role=build；actual_model/actual_effort=unknown；runtime=/root；verified_by=executor，independent=false，未委派。输入 `rewrite/next @ 42f5042` + 用户大量既有未提交改动；未提交、未 stash、未切分支。
+- done：主 Bot 与三个 AI Bot 保存/旧版导入后只读 getMe/getWebhookInfo、10 秒总超时、持久化已验证身份及最近校验结果；新增对应 token/verify；失败保留 Token、固定错误码及中文文案；webhook 提示；enable 刷新身份，接管身份和状态机语义不变。配置新字段默认 null，schema 版本不变。
+- 文件：backend services/telegram.py、api/telegram_routes.py、api/telegram_schemas.py、domain/telegram.py、domain/ai.py；新增 tests/test_telegram_token_verify.py；test_s4a_foundation.py 补 FakeTelegram 注入；contracts/openapi.json、desktop/src/api/schema.d.ts 由指定命令生成；本能力文档及本账本。保留原有改动，未手改桌面源码。
+- 最终指定 pytest 集合 **132 passed in 4.96s**，exit 0；新增专项 28 项，包含四槽位保存/导入成功、401、网络、超时、webhook、verify、更换/删除、enable 身份刷新、持久化重读与响应/日志不含 Token。改动 Python 文件 ruff **All checks passed!**；后端 contracts 生成及 --check、桌面 contracts:gen/check **contracts:check ok**，均 exit 0；git diff --check 通过。
+- 首轮指定集合为 1 failed / 127 passed / 1 teardown error：旧 foundation 测试保存 Token 未注入传输，新行为触发 DNS 测试隔离守卫；补 FakeTelegram 后完整通过。此项不是端口绑定失败，没有放宽守卫或捕获守卫异常。
+- not_run：真实 Telegram/Keychain、桌面按钮及人工体验、后端全量；前端接入说明见 telegram-control.md。无持久服务或任务临时文件，测试资源由 fixture 回收。
+
+
+## Telegram 分层菜单（2026-10-28）
+
+- role=build；actual_model/actual_effort=unknown；runtime=/root；原生测试子 agent `/root/menu_tests`（actual unknown）仅新增测试文件，接管后施工者补辅助导航测试；verified_by=executor，最终集成验证 independent=false。输入为 rewrite/next 的用户未提交工作区；未提交、stash、切分支或修改 next/desktop。
+- done：主菜单五项及摘要、发布配置→命令→动作→确认、配置/命令权限过滤与排序分页、逐层返回与深层主菜单、原面板编辑、过期提示、详情结果与相对时间、活动运行停止/进度、系统回滚与停止分层、文本命令兼容、工单/服务/MCP 图标及返回。停止加 task_ids 限制且保留原 chat 来源限制；状态/进度独立检查 can_status。执行器、运行协议与配置模型未改。
+- 最终指定验收 exit 0：**142 passed in 16.27s**；新增菜单专项包含 27 项。相邻回归除下列失败项外 exit 0：**43 passed, 1 deselected in 28.23s**。改动 Python 文件 ruff check 与 git diff --check 通过。完整菜单树、路径、逐条旧断言与命令见 [交付说明](../capabilities/telegram-menu-next.md)。
+- partial（相邻，不属于指定集合）：`test_s5c_wi.py::test_analysis_routes_output_to_enabled_ai_bot` 连续两次等待 AI 输出超时，单独复现 exit 1，**1 failed in 16.23s**；测试库会话 `failed/start_failed`，只有 starting→failed 事件，主 Bot 创建/路由断言已通过。保留失败断言，未改 AI 执行器，原因待定位；没有证据认定为端口沙箱失败，未宣称相邻全量通过。
+- not_run：真实 TG/ADO/Keychain、Telegram 客户端人工体验、后端全量。cleanup：无任务常驻服务或新增端口；pytest fixture 回收资源；日志与最终文件摘要保留在 Git 忽略的 `next/.local/telegram-menu/`，任务 `/tmp` 日志已移除，uv 缓存保留。

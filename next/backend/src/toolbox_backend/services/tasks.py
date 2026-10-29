@@ -1,6 +1,7 @@
 """Single config writer, editor validation and active-resource coordination."""
 
 import asyncio
+import json
 import re
 import uuid
 
@@ -9,11 +10,32 @@ from pydantic import ValidationError
 from toolbox_backend.api.settings_schemas import MutationResponse
 from toolbox_backend.api.task_schemas import FlowInput, MergeInput, TargetInput, TaskFields
 from toolbox_backend.domain.errors import SettingsError
-from toolbox_backend.domain.settings import DynamicTask, repo_path, segment
+from toolbox_backend.domain.settings import (
+    DynamicTask,
+    GitFlow,
+    ReleaseBranch,
+    ReleaseTarget,
+    group_tasks,
+    repo_path,
+    segment,
+)
 
 
 def invalid(message="任务配置无效"):
     return SettingsError("validation_error", message, 422)
+
+
+def normalize_flow(flow):
+    """仅供写入路径使用；局部更新中未提供的字段保持缺省。"""
+    if "build_branch" in flow:
+        flow["build_branch"] = flow["build_branch"].strip()
+    for key in ("update_branches", "push_branches"):
+        if key in flow:
+            flow[key] = [value.strip() for value in flow[key] if value.strip()]
+    for rule in flow.get("merges", []):
+        for key in ("source", "target"):
+            rule[key] = rule[key].strip()
+    return flow
 
 
 def branch(value):
@@ -142,6 +164,8 @@ class TasksService:
             validate_fields(known)
             if task.project_id not in {p.id for p in config.ado.projects}:
                 warnings.append("任务项目不存在")
+            if not task.targets:
+                warnings.append("运行命令未选择发布目标")
             if not task.git_flow.build_branch:
                 warnings.append("未设置构建分支")
         except ValidationError, SettingsError:
@@ -178,6 +202,8 @@ class TasksService:
         fields = body.model_dump(exclude={"revision"}, exclude_unset=bool(tid))
         if not tid:
             fields = TaskFields.model_validate(fields).model_dump()
+        if fields.get("git_flow") is not None:
+            normalize_flow(fields["git_flow"])
         validate_fields(fields)
         if fields.get("local_repo_path"):
             await self.git.inspect(fields["local_repo_path"])
@@ -204,7 +230,9 @@ class TasksService:
                         raise invalid()
                     # Nested persisted extensions survive a full form round trip.
                     if key == "git_flow":
-                        value = {**task.git_flow.model_dump(), **value}
+                        value = GitFlow.model_validate(
+                            normalize_flow({**task.git_flow.model_dump(), **value})
+                        )
                     if key == "targets" and value is not None:
                         value = [
                             {
@@ -214,37 +242,91 @@ class TasksService:
                             for i, target in enumerate(value)
                         ]
                     setattr(task, key, value)
+                task = DynamicTask.model_validate(task.model_dump())
+                parent = next(
+                    p for p in c.tasks.release_configs if any(m.id == tid for m in p.commands)
+                )
+                command = next(m for m in parent.commands if m.id == tid)
+                shared = {
+                    "name",
+                    "project_id",
+                    "repo_id",
+                    "repo_name",
+                    "local_repo_path",
+                    "git_flow",
+                    "agent_queue_id",
+                    "agent_queue_name",
+                }
+                if len(parent.commands) > 1 and shared.intersection(fields):
+                    raise invalid("共享发布配置请使用发布配置接口修改")
+                if "git_flow" in fields:
+                    if len(parent.branches) != 1:
+                        raise invalid("共享发布配置请使用发布配置接口修改")
+                    parent.branches[0] = ReleaseBranch(
+                        id=command.branch_id, **task.git_flow.model_dump()
+                    )
+                for key in ("enabled", "sort_order", "tg_command", "tg_desc"):
+                    setattr(command, key, getattr(task, key))
+                if "tg_desc" in fields:
+                    command.name = task.tg_desc or task.tg_command
+                for key in (
+                    "name",
+                    "project_id",
+                    "repo_id",
+                    "repo_name",
+                    "local_repo_path",
+                    "agent_queue_id",
+                    "agent_queue_name",
+                ):
+                    if key in fields:
+                        setattr(parent, key, getattr(task, key))
+                if "targets" in fields:
+
+                    def signature(t):
+                        return json.dumps(
+                            {
+                                k: getattr(t, k)
+                                for k in (
+                                    "build_kind",
+                                    "build_id",
+                                    "release_id",
+                                    "release_stage_ids",
+                                )
+                            },
+                            sort_keys=True,
+                        )
+
+                    catalog = {signature(t): t for t in parent.targets}
+                    selected = []
+                    for target in task.targets:
+                        key = signature(target)
+                        if key not in catalog:
+                            item = ReleaseTarget(
+                                id="target:" + str(uuid.uuid4()), **target.model_dump()
+                            )
+                            parent.targets.append(item)
+                            catalog[key] = item
+                        if target.enabled and catalog[key].id not in selected:
+                            selected.append(catalog[key].id)
+                    command.target_ids = selected
             else:
-                c.tasks.items.append(DynamicTask(id=ident, **fields))
+                item = group_tasks([DynamicTask(id=ident, **fields)])[0]
+                # 兼容创建保持旧表单的人类可读名称，每次创建独立配置。
+                item.id = "release:" + str(uuid.uuid4())
+                item.name = fields.get("name") or item.name
+                c.tasks.release_configs.append(item)
 
         config = await self.store.update(body.revision, mutate)
         return MutationResponse(revision=config.revision, id=ident)
 
     async def delete(self, tid, revision, detach_acl=False):
         def mutate(c):
-            find_task(c, tid)
-            from toolbox_backend.domain.telegram import as_dict
+            from toolbox_backend.services.releases import detach_commands
 
-            groups = [as_dict(g) for g in c.telegram.acl_groups]
-            referenced = [
-                g.get("name", "")
-                for g in groups
-                if isinstance(g, dict)
-                and isinstance(g.get("task_ids"), list)
-                and tid in g["task_ids"]
-            ]
-            if referenced and not detach_acl:
-                raise SettingsError("task_referenced", "任务被 ACL 引用", groups=referenced)
-            if detach_acl:
-                for group in c.telegram.acl_groups:
-                    raw = as_dict(group)
-                    if isinstance(raw, dict) and isinstance(raw.get("task_ids"), list):
-                        remaining = [t for t in raw["task_ids"] if t != tid]
-                        if isinstance(group, dict):
-                            group["task_ids"] = remaining
-                        else:
-                            group.task_ids = remaining
-            c.tasks.items = [t for t in c.tasks.items if t.id != tid]
+            find_task(c, tid)
+            detach_commands(c, {tid}, detach_acl)
+            for parent in c.tasks.release_configs:
+                parent.commands = [m for m in parent.commands if m.id != tid]
 
         config = await self.store.update(revision, mutate)
         return MutationResponse(revision=config.revision)
@@ -256,8 +338,9 @@ class TasksService:
             }:
                 raise invalid("排序必须恰好包含全部任务一次")
             positions = {tid: i for i, tid in enumerate(body.ids)}
-            for task in c.tasks.items:
-                task.sort_order = positions[task.id]
+            for parent in c.tasks.release_configs:
+                for command in parent.commands:
+                    command.sort_order = positions[command.id]
 
         config = await self.store.update(body.revision, mutate)
         return MutationResponse(revision=config.revision)

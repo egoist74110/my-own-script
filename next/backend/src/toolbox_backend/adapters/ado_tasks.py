@@ -6,7 +6,7 @@ No method in reconciliation reaches the write helper. Unprovable delivery remain
 import asyncio
 import re
 import time
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from toolbox_backend.adapters.ado_read import AdoFailure, build_url, within
 from toolbox_backend.domain.errors import SettingsError
@@ -23,6 +23,68 @@ def number(value):
     if result is None:
         unsupported("远端身份字段缺失或无效")
     return result
+
+
+def require_artifact_identity(actual, expected, message):
+    """只校验制品身份；展示名称可随构建定义改名而变化。"""
+    def fields(artifact):
+        refs = artifact["definitionReference"]
+        project_id = refs["project"].get("id")
+        if not isinstance(project_id, (str, int)) or not str(project_id):
+            unsupported("Release artifact definitionReference.project.id 缺失或无效")
+        return {
+            "alias": artifact["alias"],
+            "type": artifact["type"],
+            "definitionReference.project.id": str(project_id).casefold(),
+            "definitionReference.definition.id": number(refs["definition"]["id"]),
+        }
+
+    actual_fields, expected_fields = fields(actual), fields(expected)
+    differences = [
+        f"{key}: 预期={expected_fields[key]!r}，实际={value!r}"
+        for key, value in actual_fields.items()
+        if value != expected_fields[key]
+    ]
+    if differences:
+        unsupported(f"{message}（{'；'.join(differences)}）")
+
+
+def project_matches(source, project):
+    """配置可用项目名称寻址；远端项目 ID 比较忽略大小写。"""
+    return (
+        str(source).casefold() == str(project.get("id", "")).casefold()
+        or source == project.get("name")
+    )
+
+
+def artifact_build_id(artifact):
+    """兼容 Server 的制品表示；所有已提供的来源必须一致。"""
+    ids = []
+    refs = artifact.get("definitionReference", {})
+    if not isinstance(refs, dict):
+        unsupported("Release 具体制品不符")
+    for is_uri, container in (
+        (False, artifact.get("instanceReference")),
+        (False, refs.get("version")),
+        (True, refs.get("buildUri")),
+    ):
+        if container is None:
+            continue
+        if not isinstance(container, dict):
+            unsupported("Release 具体制品不符")
+        value = container.get("id")
+        if value is None:
+            continue
+        if is_uri:
+            match = re.fullmatch(r"vstfs:///Build/Build/([0-9]+)", str(value))
+            value = match[1] if match else None
+        ident = integer(value)
+        if ident is None:
+            unsupported("Release 具体制品不符")
+        ids.append(ident)
+    if not ids or any(ident != ids[0] for ident in ids):
+        unsupported("Release 具体制品不符")
+    return ids[0]
 
 
 def values(payload):
@@ -44,9 +106,71 @@ def commit(value):
 
 def attempt(env):
     steps = env.get("deploySteps", [])
-    if not isinstance(steps, list):
+    if not isinstance(steps, list) or any(not isinstance(s, dict) for s in steps):
         unsupported("无法核实部署尝试")
     return max([0, *(number(s.get("attempt")) for s in steps)])
+
+
+def manual_environment(env):
+    """返回手动依据；Server 空条件必须同时有明确的 Manual 触发原因。"""
+    if (
+        env.get("status") != "notStarted"
+        or env.get("deploySteps", []) != []
+        or env.get("scheduledDeploymentTime") not in (None, "")
+    ):
+        return None
+    conditions = env.get("conditions")
+    if not isinstance(conditions, list):
+        return None
+    if conditions and all(
+        isinstance(c, dict) and c.get("conditionType") == "manual" for c in conditions
+    ):
+        return "conditions 全部为 manual"
+    reason = env.get("triggerReason")
+    if conditions == [] and isinstance(reason, str) and reason.casefold() == "manual":
+        return "Server conditions=[] 且 triggerReason=Manual"
+    return None
+
+
+RELEASE_TERMINAL = {
+    "succeeded", "rejected", "canceled", "cancelled", "failed", "partiallysucceeded"
+}
+
+
+def release_status(env):
+    return str(env.get("status", "")).casefold()
+
+
+def deployment_result(env):
+    """环境终态为主；新尝试的审批、gate 和阶段证据不能与成功矛盾。"""
+    state = release_status(env)
+    if state not in RELEASE_TERMINAL:
+        return None
+    if state != "succeeded":
+        return False
+    current = attempt(env)
+    signals = []
+    for step in env.get("deploySteps", []):
+        if number(step.get("attempt")) != current:
+            continue
+        if "status" in step:
+            signals.append((release_status(step), {"succeeded"}))
+        for key in ("preDeploymentGates", "postDeploymentGates"):
+            gate = step.get(key)
+            if gate:
+                signals.append((release_status(gate), {"none", "succeeded"}))
+        for phase in step.get("releaseDeployPhases") or []:
+            signals.append((release_status(phase), {"succeeded"}))
+    for key in ("preDeployApprovals", "postDeployApprovals"):
+        for approval in env.get(key) or []:
+            if approval.get("attempt") is not None and number(approval["attempt"]) != current:
+                continue
+            signals.append((release_status(approval), {"approved", "skipped"}))
+    for value, accepted in signals:
+        if value not in accepted:
+            # 未知、等待审批或 gate 尚在运行时，不能凭旧环境 succeeded 提前结束。
+            return None
+    return True
 
 
 class AdoTaskExecutor:
@@ -112,9 +236,8 @@ class AdoTaskExecutor:
         if snapshot.get("agent_queue_id") and not isinstance(build.get("queue"), dict):
             return False
         project = build["project"]
-        project_matches = source["project"] in (project.get("id"), project.get("name"))
         result = (
-            project_matches
+            project_matches(source["project"], project)
             and str(build.get("repository", {}).get("id", "")).lower()
             == str(snapshot["repo_id"]).lower()
             and integer(build.get("definition", {}).get("id")) == target["definition_id"]
@@ -166,10 +289,19 @@ class AdoTaskExecutor:
             not isinstance(a.get("alias"), str)
             or not a["alias"]
             or len(a["alias"]) > 200
-            or integer(refs.get("definition", {}).get("id")) != target["definition_id"]
-            or snapshot["source"]["project"] not in {project.get("id"), project.get("name")}
         ):
-            unsupported("Release artifact 项目或构建定义绑定不符")
+            unsupported(f"Release artifact alias 无效：{a.get('alias')!r}")
+        if integer(refs.get("definition", {}).get("id")) != target["definition_id"]:
+            unsupported(
+                "Release artifact 构建定义绑定不符（definitionReference.definition.id: "
+                f"预期={target['definition_id']!r}，实际={refs.get('definition', {}).get('id')!r}）"
+            )
+        if not project_matches(snapshot["source"]["project"], project):
+            unsupported(
+                "Release artifact 项目绑定不符（definitionReference.project.id/name: "
+                f"预期来源={snapshot['source']['project']!r}，"
+                f"实际 id={project.get('id')!r}，name={project.get('name')!r}）"
+            )
         if any(
             not isinstance(refs[key].get(field), (str, int)) or len(str(refs[key][field])) > 200
             for key in ("project", "definition")
@@ -251,7 +383,7 @@ class AdoTaskExecutor:
             unsupported("无本地路径的 Git 规则及远程 PR 写暂不支持")
         prepared = PreparedExecution(frozen={"targets": []}, budget_seconds=300)
         if operation == "sync_build_release" and snapshot["local_repo_path"]:
-            await self.git.preflight(snapshot["local_repo_path"])
+            await self.git.preflight(snapshot["local_repo_path"], snapshot)
             prepared.steps.append({"kind": "git", "target_index": None})
             prepared.budget_seconds += 900
         elif operation == "sync_build_release":
@@ -335,13 +467,12 @@ class AdoTaskExecutor:
                     str(number(e["id"])): attempt(e) for e in historic_envs
                 }
                 arts = historic.get("artifacts", [])
-                if (
-                    len(arts) != 1
-                    or self.artifact(snapshot, target, historic) != target["artifact"]
-                ):
-                    unsupported("历史 Release 制品绑定已变化")
+                require_artifact_identity(
+                    self.artifact(snapshot, target, historic), target["artifact"],
+                    "历史 Release 制品绑定已变化",
+                )
                 build = await self.build(
-                    snapshot, target, arts[0].get("instanceReference", {}).get("id")
+                    snapshot, target, artifact_build_id(arts[0])
                 )
                 target.update(
                     release_id=number(historic["id"]),
@@ -403,10 +534,30 @@ class AdoTaskExecutor:
         except TimeoutError:
             pass
 
+    def pipeline_web_build(self, ctx, pipeline):
+        # ADO Server omits _links.build; its web link `_build/results?buildId=N` is the
+        # server-provided association. Never fall back to run.id itself.
+        href = pipeline.get("_links", {}).get("web", {}).get("href", "")
+        if not isinstance(href, str) or not href or not within(ctx[1], href):
+            return None
+        parts = urlsplit(href)
+        base = urlsplit(ctx[1].base_url).path.rstrip("/")
+        prefix = f"{base}/{ctx[0].collection}/".casefold()
+        path = unquote(parts.path)
+        if not path.casefold().startswith(prefix):
+            return None
+        rest = path[len(prefix) :].split("/")
+        if len(rest) != 3 or not rest[0] or rest[1:] != ["_build", "results"]:
+            return None
+        match = re.fullmatch(r"buildId=([1-9][0-9]{0,18})", parts.query)
+        return int(match[1]) if match and not parts.fragment else None
+
     async def pipeline_build(self, snapshot, target, pipeline, expected):
-        # Only a same-source explicit Build API link counts; never treat run.id as build.id.
+        # Only a same-source explicit Build link counts; never treat run.id as build.id.
         ctx = await self.source(snapshot)
         href = pipeline.get("_links", {}).get("build", {}).get("href", "")
+        if not href and (ident := self.pipeline_web_build(ctx, pipeline)) is not None:
+            return await self.build(snapshot, target, ident, expected)
         if not isinstance(href, str) or not within(ctx[1], href):
             unsupported("Pipeline 未提供可核实的 Build 关联")
         match = re.fullmatch(r"(.*/_apis/build/builds/)([1-9][0-9]*)", urlsplit(href).path)
@@ -419,6 +570,28 @@ class AdoTaskExecutor:
         if urlsplit(trusted).path != urlsplit(href).path or urlsplit(href).query:
             unsupported("Pipeline 的 Build 关联不属于冻结项目")
         return await self.build(snapshot, target, ident, expected)
+
+    def run_link(self, snapshot, kind, ident):
+        source = snapshot["source"]
+        path = [source["collection"], source["project"]]
+        if kind == "build":
+            path += ["_build", "results"]
+            query = f"?buildId={number(ident)}"
+        else:
+            path += ["_releaseProgress"]
+            query = f"?releaseId={number(ident)}"
+        return source["base_url"].rstrip("/") + "/" + "/".join(
+            quote(str(part), safe="") for part in path
+        ) + query
+
+    async def log_build(self, context, target, build, action):
+        name = build.get("definition", {}).get("name") or target["name"]
+        await context.log(
+            f"{action}构建：{name}（定义 #{target['definition_id']}），"
+            f"分支 {context.snapshot['git_flow']['build_branch']}，"
+            f"commit {commit(build.get('sourceVersion'))[:12]}，构建 #{number(build['id'])}，"
+            f"{self.run_link(context.snapshot, 'build', build['id'])}\n"
+        )
 
     async def acquire_build(self, context, target, expected):
         s = context.snapshot
@@ -449,6 +622,7 @@ class AdoTaskExecutor:
                         "owned": False,
                     },
                 )
+                await self.log_build(context, target, b, "复用")
                 return b, False
         await context.checkpoint(
             "build", {"target_index": target["target_index"], "commit": expected}
@@ -498,13 +672,25 @@ class AdoTaskExecutor:
                 "owned": True,
             },
         )
+        await self.log_build(context, target, b, "已排队")
         return b, True
 
     async def wait_build(self, context, target, build, owned, expected):
         deadline = time.monotonic() + 1800
         cancelling = False
+        started, previous = time.monotonic(), None
         while True:
+            state = (build.get("status"), build.get("result"))
+            if state != previous:
+                await context.log(
+                    f"构建 #{build['id']} 状态：{state[0]}，结果：{state[1] or '待定'}\n"
+                )
+                previous = state
             if build.get("status") == "completed":
+                await context.log(
+                    f"构建 #{build['id']} 结束：{build.get('result')}，"
+                    f"等待耗时 {time.monotonic() - started:.1f} 秒\n"
+                )
                 if context.cancelled.is_set() and build.get("result") in {"canceled", "cancelled"}:
                     return "cancelled"
                 return build.get("result") in {"succeeded", "success"}
@@ -540,7 +726,11 @@ class AdoTaskExecutor:
             definition = await self.request(
                 s, ["release", "definitions", target["release_definition_id"]], version=version
             )
-            if self.artifact(s, target, definition) != target["artifact"] or self.stages(
+            require_artifact_identity(
+                self.artifact(s, target, definition), target["artifact"],
+                "Release 定义在确认后变化",
+            )
+            if self.stages(
                 target, definition
             ) != (target["stage_ids"], target["manual_environments"]):
                 unsupported("Release 定义在确认后变化")
@@ -575,28 +765,38 @@ class AdoTaskExecutor:
             )
             release_id = number(r.get("id"))
             await context.receipt(effect, "confirmed", remote_id=release_id, owned=True)
+            await context.log(
+                f"已创建 Release：{definition.get('name') or target['name']}"
+                f"（定义 #{target['release_definition_id']}），Release #{release_id}，"
+                f"{self.run_link(s, 'release', release_id)}\n"
+            )
         r = await self.request(s, ["release", "releases", release_id], version=version)
         selected = self.release_envs(target, r)
-        if self.artifact(s, target, r) != target["artifact"]:
-            unsupported("Release 制品绑定已变化")
+        require_artifact_identity(
+            self.artifact(s, target, r), target["artifact"], "Release 制品绑定已变化",
+        )
         if context.operation == "rollback" and (
             [number(e["id"]) for e in selected] != target["environment_ids"]
             or {str(number(e["id"])): attempt(e) for e in selected} != target["deployment_attempts"]
         ):
             raise SettingsError("plan_changed", "历史环境身份或部署尝试已变化")
         arts = r.get("artifacts", [])
-        if len(arts) != 1 or integer(arts[0].get("instanceReference", {}).get("id")) != build_id:
-            unsupported("Release 具体制品不符")
+        try:
+            matches = len(arts) == 1 and artifact_build_id(arts[0]) == build_id
+        except SettingsError:
+            matches = False
+        if not matches:
+            unsupported(f"Release 具体制品不符（Release #{release_id} 已创建，环境未部署）")
+        await context.log(f"核对 Release #{release_id}：制品、定义及所选环境身份一致\n")
         if context.operation != "rollback":
             for env in r.get("environments", []):
-                conditions = env.get("conditions")
-                if (
-                    not isinstance(conditions, list)
-                    or not conditions
-                    or any(c.get("conditionType") != "manual" for c in conditions)
-                    or env.get("status") != "notStarted"
-                ):
+                basis = manual_environment(env)
+                if basis is None:
                     unsupported("服务器未保证所有环境为手动且未自动部署")
+                await context.log(
+                    f"Release #{release_id} 环境 {env['name']} 手动安全核对通过：{basis}；"
+                    "状态 notStarted、无部署尝试、无计划部署时间\n"
+                )
         baselines = {str(number(e["id"])): attempt(e) for e in selected}
         kind = "rollback" if context.operation == "rollback" else "release"
         await context.checkpoint(
@@ -609,10 +809,14 @@ class AdoTaskExecutor:
                 "deployment_attempts": baselines,
             },
         )
+        started, previous = time.monotonic(), {}
         for env in selected:
             if context.cancelled.is_set():
                 return None
             ident = number(env["id"])
+            await context.log(f"Release #{release_id} 环境 {env['name']}（#{ident}）开始部署\n")
+            # 旧版在此 Server 已跑通的状态转换端点使用独立的预览版本；写入不重试。
+            deploy_version = "6.0-preview.6" if version == "6.0" else version
             await self.write(
                 context,
                 "env_deploy",
@@ -620,11 +824,11 @@ class AdoTaskExecutor:
                     "release_id": release_id,
                     "environment_id": ident,
                     "baseline_attempt": baselines[str(ident)],
-                    "api_version": version,
+                    "api_version": deploy_version,
                 },
                 ["release", "releases", release_id, "environments", ident],
                 {"status": "inProgress", "comment": "toolbox-next run=" + context.run_id},
-                version=version,
+                version=deploy_version,
                 method="PATCH",
             )
         deadline = time.monotonic() + 3600
@@ -633,17 +837,29 @@ class AdoTaskExecutor:
             selected = self.release_envs(target, r)
             if context.operation != "rollback" and any(
                 integer(e.get("definitionEnvironmentId")) not in target["stage_ids"]
-                and e.get("status") != "notStarted"
+                and manual_environment(e) is None
                 for e in r.get("environments", [])
             ):
                 return None
+            for env in selected:
+                ident = number(env["id"])
+                state = (env.get("status"), attempt(env))
+                if previous.get(ident) != state:
+                    await context.log(
+                        f"Release #{release_id} 环境 {env['name']}（#{ident}）状态：{state[0]}，"
+                        f"尝试 {state[1]}\n"
+                    )
+                    previous[ident] = state
+                    if state[1] > baselines[str(ident)] and deployment_result(env) is not None:
+                        await context.log(
+                            f"Release #{release_id} 环境 {env['name']} 部署结束：{state[0]}，"
+                            f"耗时 {time.monotonic() - started:.1f} 秒\n"
+                        )
             fresh = all(attempt(e) > baselines[str(number(e["id"]))] for e in selected)
-            if fresh and all(e.get("status") == "succeeded" for e in selected):
+            results = [deployment_result(e) for e in selected]
+            if fresh and all(result is True for result in results):
                 return True
-            if fresh and all(
-                e.get("status") in {"succeeded", "rejected", "canceled", "partiallySucceeded"}
-                for e in selected
-            ):
+            if fresh and all(result is not None for result in results):
                 return False
             if context.cancelled.is_set():
                 return None
@@ -655,12 +871,20 @@ class AdoTaskExecutor:
         s = context.snapshot
         expected = s["prepared"].get("commit")
         if context.operation == "sync_build_release":
+            await context.log(
+                f"开始同步/拉取：分支 {s['git_flow']['build_branch']}，"
+                f"commit {expected[:12] if expected else '同步后确定'}\n"
+            )
             if s["local_repo_path"]:
-                expected = await self.git.execute(s, context)
+                _, _, pat = await self.source(s)
+                expected = await self.git.execute(s, context, pat=pat)
+                await context.log(f"同步完成：commit {expected[:12]}\n")
                 await context.complete_step()
                 context.step_no += 1
             elif await self.head(s) != expected:
-                return ExecutionOutcome("failed", "plan_changed")
+                return ExecutionOutcome(
+                    "failed", "plan_changed", "构建分支提交或冻结的发布计划已变化"
+                )
         for target in s["prepared"]["targets"]:
             if context.cancelled.is_set():
                 current = await context.current()
@@ -676,7 +900,9 @@ class AdoTaskExecutor:
                 return ExecutionOutcome("unknown" if remote else "cancelled", "interrupted")
             if context.operation == "sync_build_release":
                 if await self.head(s) != expected:
-                    return ExecutionOutcome("failed", "plan_changed")
+                    return ExecutionOutcome(
+                        "failed", "plan_changed", "构建分支提交或冻结的发布计划已变化"
+                    )
                 b, owned = await self.acquire_build(context, target, expected)
                 ready = await self.wait_build(context, target, b, owned, expected)
                 if ready == "cancelled":
@@ -689,6 +915,9 @@ class AdoTaskExecutor:
                     return ExecutionOutcome(
                         "unknown" if ready is None else "failed",
                         "remote_running" if ready is None else "build_failed",
+                        f"构建 #{b['id']} 结果尚未确认"
+                        if ready is None
+                        else f"构建 #{b['id']} 未成功",
                     )
                 await context.complete_step()
                 context.step_no += 1
@@ -696,11 +925,14 @@ class AdoTaskExecutor:
             else:
                 build_id = target["build_id"]
                 b = await self.build(s, target, build_id, target["commit"])
+                await self.log_build(context, target, b, "选用")
                 if context.operation == "deploy_only" and (
                     b.get("status") != "completed"
                     or b.get("result") not in {"succeeded", "success"}
                 ):
-                    return ExecutionOutcome("failed", "plan_changed")
+                    return ExecutionOutcome(
+                        "failed", "plan_changed", "构建分支提交或冻结的发布计划已变化"
+                    )
             if context.operation == "rollback":
                 rows = values(
                     await self.request(
@@ -715,13 +947,16 @@ class AdoTaskExecutor:
                     )
                 )
                 if [number(x.get("id")) for x in rows] != target["history_ids"]:
-                    return ExecutionOutcome("failed", "plan_changed")
+                    return ExecutionOutcome(
+                        "failed", "plan_changed", "构建分支提交或冻结的发布计划已变化"
+                    )
             deployed = await self.deploy(context, target, build_id, target.get("release_id"))
             if deployed is not True:
                 await context.complete_step("unknown" if deployed is None else "failed")
                 return ExecutionOutcome(
                     "unknown" if deployed is None else "failed",
                     "remote_running" if deployed is None else "release_failed",
+                    "所选环境部署结果尚未确认" if deployed is None else "所选环境部署未全部成功",
                 )
             await context.complete_step()
             context.step_no += 1
@@ -843,12 +1078,14 @@ class AdoTaskExecutor:
                             s, ["release", "releases", release_id], version=target["api_version"]
                         )
                         self.release_envs(target, r)
-                        if self.artifact(s, target, r) != target["artifact"]:
-                            unsupported("核实的 Release artifact 绑定不符")
+                        require_artifact_identity(
+                            self.artifact(s, target, r), target["artifact"],
+                            "核实的 Release artifact 绑定不符",
+                        )
                         arts = r.get("artifacts", [])
                         if (
                             len(arts) != 1
-                            or integer(arts[0].get("instanceReference", {}).get("id"))
+                            or artifact_build_id(arts[0])
                             != effect["intent"]["build_id"]
                         ):
                             unsupported("核实的 Release 制品不符")
@@ -879,34 +1116,27 @@ class AdoTaskExecutor:
                         continue
                     if effect["state"] in {"intent", "unknown"}:
                         await context.receipt(effect["effect_id"], "confirmed", remote_id=env["id"])
-                    if env.get("status") not in {
-                        "succeeded",
-                        "rejected",
-                        "canceled",
-                        "partiallySucceeded",
-                    }:
+                    result = deployment_result(env)
+                    if result is None:
                         uncertain = True
                         all_done = False
                     else:
-                        failed |= env.get("status") != "succeeded"
-                        other_failure |= env.get("status") != "succeeded"
+                        failed |= not result
+                        other_failure |= not result
                 # Unexpected auto-deployment is also an observed remote operation.
                 selected_ids = {e["id"] for e in envs}
                 for env in r.get("environments", []):
                     if (
                         context.operation != "rollback"
                         and env.get("id") not in selected_ids
-                        and env.get("status") != "notStarted"
+                        and manual_environment(env) is None
                     ):
                         failed = True
                         other_failure = True
-                    if env.get("id") not in selected_ids and env.get("status") not in {
-                        "notStarted",
-                        "succeeded",
-                        "rejected",
-                        "canceled",
-                        "partiallySucceeded",
-                    }:
+                    if (
+                        env.get("id") not in selected_ids
+                        and release_status(env) not in RELEASE_TERMINAL | {"notstarted"}
+                    ):
                         uncertain = True
                 if all_done:
                     completed_steps.add(step["step_no"])

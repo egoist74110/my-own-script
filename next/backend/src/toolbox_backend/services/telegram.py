@@ -15,18 +15,21 @@ from datetime import UTC, datetime, timedelta
 from toolbox_backend.adapters.config_store import stamp
 from toolbox_backend.adapters.telegram_http import TOKEN_RE, TelegramError, TelegramHTTP
 from toolbox_backend.api.settings_schemas import MutationResponse
-from toolbox_backend.api.telegram_schemas import TelegramStatusData
+from toolbox_backend.api.telegram_schemas import TelegramStatusData, TokenMutationResponse
 from toolbox_backend.domain.errors import SettingsError
-from toolbox_backend.domain.settings import CredentialMeta
+from toolbox_backend.domain.settings import CredentialMeta, task_label
 from toolbox_backend.domain.telegram import (
     ACLGroup,
     ACLMember,
+    TokenVerification,
+    VerifiedBot,
     acl_validity,
     as_dict,
     numeric,
     username,
 )
 from toolbox_backend.logging_setup import contains_secret, redact_exception, register_secret
+from toolbox_backend.services.telegram_menu import STATUSES
 
 TOKEN_ACCOUNT = "telegram_bot_token"
 AI_IDS = ("claude_code", "codex", "gemini")
@@ -202,11 +205,7 @@ class TelegramService:
         result = dict(
             revision=config.revision,
             control=tg.control.model_dump(),
-            bot=dict(
-                credential=dict(present=present, source=meta.source if meta else "unknown"),
-                bot_id=tg.control.bot_id,
-                username=self.bot_username,
-            ),
+            bot=self.bot_view(tg.control, present, meta),
             owner=dict(
                 bound=numeric(tg.owner.chat_id), chat_id=tg.owner.chat_id, source=tg.owner.source
             ),
@@ -235,14 +234,8 @@ class TelegramService:
         result = dict(
             ai_id=self.ai_id,
             slot=self.slot,
-            control=dict(
-                enabled=control.enabled, enabled_at=control.enabled_at, bot_id=control.bot_id
-            ),
-            bot=dict(
-                credential=dict(present=present, source=meta.source if meta else "unknown"),
-                bot_id=control.bot_id,
-                username=self.bot_username or control.username,
-            ),
+            control=control.model_dump(),
+            bot=self.bot_view(control, present, meta),
             owner=dict(
                 bound=numeric(config.telegram.owner.chat_id),
                 chat_id=config.telegram.owner.chat_id,
@@ -258,6 +251,21 @@ class TelegramService:
             ),
         )
         return json.loads(redact_exception(json.dumps(result)))
+
+    def bot_view(self, control, present, meta):
+        verified = control.verified_bot if present else None
+        legacy_identity = present and control.token_verify is None
+        return dict(
+            credential=dict(present=present, source=meta.source if meta else "unknown"),
+            bot_id=verified.id if verified else control.bot_id if legacy_identity else None,
+            username=verified.username
+            if verified
+            else (self.bot_username or getattr(control, "username", None))
+            if legacy_identity
+            else None,
+            verified_bot=verified.model_dump() if verified else None,
+            verify=control.token_verify.model_dump() if control.token_verify else None,
+        )
 
     def inactive(self, config):
         if self.control_of(config).enabled:
@@ -288,6 +296,8 @@ class TelegramService:
                 if delete:
 
                     def pending(c):
+                        ctl = self.control_of(c)
+                        ctl.verified_bot = ctl.token_verify = None
                         c.credentials[self.token_account] = CredentialMeta(
                             kind=self.credential_kind,
                             ref=self.ai_id or self.token_account,
@@ -303,6 +313,8 @@ class TelegramService:
                     self.settings._set(self.token_account, value)
 
                     def record(c):
+                        ctl = self.control_of(c)
+                        ctl.verified_bot = ctl.token_verify = None
                         c.credentials[self.token_account] = CredentialMeta(
                             kind=self.credential_kind,
                             ref=self.ai_id or self.token_account,
@@ -320,7 +332,76 @@ class TelegramService:
                         raise
                 return MutationResponse(revision=tx.config.revision)
 
-            return await self.config_store.run(revision, operation)
+            result = await self.config_store.run(revision, operation)
+            if delete:
+                self.bot_username = None
+                return result
+            return await self._verify_token(value)
+
+    @staticmethod
+    def verified_identity(me):
+        if not isinstance(me, dict) or type(me.get("id")) is not int or me["id"] <= 0:
+            raise TelegramError("bad_response")
+        name = me.get("username")
+        first_name = me.get("first_name")
+        return VerifiedBot(
+            id=str(me["id"]),
+            username=name
+            if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_]{5,32}", name)
+            else None,
+            first_name=redact_exception(first_name)[:128] if isinstance(first_name, str) else None,
+            verified_at=stamp(),
+        )
+
+    async def _verify_token(self, value):
+        # 独立短连接只读检查，绝不接管或影响正在运行的轮询客户端。
+        client = TelegramHTTP(value, transport=self.transport)
+        identity = None
+        verify = TokenVerification(ok=True, message="Token 校验成功", checked_at=stamp())
+        try:
+            async with asyncio.timeout(10):
+                identity = self.verified_identity(await client.request("getMe"))
+                info = await client.request("getWebhookInfo")
+                if not isinstance(info, dict):
+                    raise TelegramError("bad_response")
+                verify.has_webhook = bool(info.get("url"))
+                if verify.has_webhook:
+                    verify.message = "Token 校验成功；Bot 已设置 webhook，启用时需确认删除"
+        except (TelegramError, TimeoutError) as exc:
+            category = exc.category if isinstance(exc, TelegramError) else "timeout"
+            code, message = (
+                ("token_invalid", "Token 无效或已被撤销")
+                if category == "unauthorized"
+                else ("telegram_unreachable", "无法连接 Telegram，请检查网络与代理")
+                if category in {"network", "timeout"}
+                else ("telegram_request_failed", "Telegram 校验请求失败，请重试")
+            )
+            verify = TokenVerification(ok=False, code=code, message=message, checked_at=stamp())
+        finally:
+            await client.close()
+
+        def record(tx):
+            def save(c):
+                ctl = self.control_of(c)
+                # getMe 成功后即保留身份；webhook 查询失败仍单独报告。
+                if identity is not None:
+                    ctl.verified_bot = identity
+                ctl.token_verify = verify
+
+            tx.commit(save)
+            return TokenMutationResponse(revision=tx.config.revision, verify=verify)
+
+        return await self.config_store.run(None, record)
+
+    async def verify_token(self, revision):
+        async with self._control:
+            config = await self.config_store.read()
+            if config.revision != revision:
+                raise SettingsError("revision_conflict", "配置已更新", revision=config.revision)
+            value = await asyncio.to_thread(self.settings._get, self.token_account)
+            if not value:
+                raise SettingsError("no_credential", "请先录入 Bot Token")
+            return await self._verify_token(value)
 
     async def _open_client(self):
         value = await asyncio.to_thread(self.settings._get, self.token_account)
@@ -374,6 +455,10 @@ class TelegramService:
                     ctl.enabled = True
                     ctl.enabled_at = stamp()
                     ctl.bot_id = self.bot_id
+                    ctl.verified_bot = self.verified_identity(me)
+                    ctl.token_verify = TokenVerification(
+                        ok=True, message="Token 校验成功", has_webhook=False, checked_at=stamp()
+                    )
                     if self.ai_id is not None:
                         ctl.username = self.bot_username
 
@@ -794,47 +879,58 @@ class TelegramService:
             await self.reply(update, f"该指令发送于 {clock}，已过期，请重新发送")
             return "expired"
         if command in {"/help", "/start", "/menu"}:
-            pages = (
-                [("任务", "tasks")]
-                if role == "owner" or (group and (group.can_run or group.can_rollback))
-                else []
-            )
-            if role == "owner":
-                pages += [
-                    ("回滚", "rollback"),
-                    ("停止", "stop"),
-                    ("系统操作", "system"),
-                    ("工单", "wi"),
-                    ("MCP", "mcp"),
-                    ("服务", "services"),
-                ]
-            elif group:
-                if group.can_rollback:
-                    pages.append(("回滚", "rollback"))
-                if group.can_stop:
-                    pages.append(("停止", "stop"))
-            if role in {"owner", "legacy"} or group and group.can_status:
-                pages.append(("状态", "status"))
-            buttons = []
-            for label, page in pages:
-                token = await self.store.action(self.bot_id, chat, user, "menu", {"page": page})
-                buttons.append([{"text": label, "callback_data": token}])
-            await self.reply(
-                update, "请选择菜单", reply_markup={"inline_keyboard": buttons}, panel=True
-            )
+            await self.main_menu(update, role, group, chat, user)
         elif command == "/status":
             if role == "owner" or role == "legacy" or group and group.can_status:
-                await self.reply(update, await self.status_text(role, group, chat))
+                await self.dispatcher.status_panel(update, role, group, chat)
             else:
                 return "ignored"
-        elif command in {"/cc", "/svc", "/service", "/cancelrollback"}:
-            await self.reply(update, "该功能尚未迁移到新应用")
         else:
             result = await self.dispatcher.dispatch(update, command, role, group)
             if result is not None:
                 return result
             await self.reply(update, "暂未开放")
         return "handled"
+
+    async def main_menu(self, update, role, group, chat, user):
+        config = await self.config_store.read()
+        visible = (
+            role == "owner" or bool(group and (group.can_run or group.can_rollback))
+        ) and any(
+            c.enabled and self.dispatcher.visible(config, update, c.id)
+            for r in config.tasks.release_configs
+            for c in r.commands
+        )
+        pages = [("🚀 发布", "tasks")] if role == "owner" or visible else []
+        if role == "owner" or group and (group.can_status or group.can_stop or group.can_rollback):
+            pages.append(("🛠 系统操作", "system"))
+        if role == "owner":
+            pages += [("📋 工单", "wi"), ("🔌 服务", "services"), ("🧩 MCP", "mcp")]
+        buttons = [
+            [await self.dispatcher.button(update, label, "menu", {"page": page})]
+            for label, page in pages
+        ]
+        active = await self.runs.store.call(self.runs.store.active_snapshots)
+        count = sum(self.dispatcher.allowed(config, update, "status", r["task_id"]) for r in active)
+        vpn = "未知"
+        if self.vpn is not None:
+            # 主菜单只探测隧道，不触发客户端或窗口权限检查。
+            try:
+                info = await self.vpn.network_reader(
+                    cwd=self.config_store.data_dir,
+                    path_extras=self.vpn.path_extras,
+                    tunnel_prefix=config.vpn.tunnel_prefix,
+                )
+                vpn = "已连接" if info.vpn_ip else "未连接"
+            except OSError, SettingsError:
+                vpn = "未知"
+        text = (
+            f"🧰 代码工具箱\n运行中 {count} 个 / VPN {vpn} / "
+            f"远程控制{'已启用' if config.telegram.control.enabled else '未启用'}"
+        )
+        if not pages:
+            text += "\n当前没有可用菜单，请联系管理员授权"
+        await self.reply(update, text, reply_markup={"inline_keyboard": buttons}, panel=True)
 
     async def status_text(self, role, group, chat):
         config = await self.config_store.read()
@@ -844,16 +940,12 @@ class TelegramService:
             else (set(group.task_ids) if group else set())
         )
         rows = await asyncio.to_thread(self.runs.store.active_snapshots)
-        names = {t.id: t.name for t in config.tasks.items}
+        names = {t.id: task_label(config, t.id) for t in config.tasks.items}
         lines = []
         for run in rows:
-            origin = run.get("origin", {})
-            own = origin.get("kind") == "telegram" and origin.get("chat_id") == chat
-            if role == "owner" or run["task_id"] in visible or own:
-                lines.append(
-                    f"{names.get(run['task_id'], '历史任务')} · {run['status']}"
-                    f" · #{run['run_id'][:8]}"
-                )
+            if role == "owner" or run["task_id"] in visible:
+                status = STATUSES.get(run["status"], "待核实")
+                lines.append(f"{names.get(run['task_id'], '历史任务')} · {status}")
         return "\n".join(lines) or "当前可见范围内没有活动运行"
 
     async def bind_code(self, revision):
@@ -1116,8 +1208,14 @@ class TelegramService:
         icon = {"running": "▶️", "succeeded": "✅", "failed": "❌", "cancelled": "⏹"}.get(
             status, "⚠️"
         )
-        name = re.sub(r"https?://\S+", "[链接已隐藏]", snapshot.get("name", "任务"))
-        text = f"{icon} {operation} · {name} · 运行 #{run['run_id'][:8]}"
+        name = re.sub(
+            r"https?://\S+",
+            "[链接已隐藏]",
+            task_label(
+                config, run.get("task_id", snapshot.get("id", "")), snapshot.get("name", "任务")
+            ),
+        )
+        text = f"{icon} {operation} · {name}"
         if status in {"unknown", "manual_required"}:
             text += "\n结果需要核实"
         elif status == "failed":
@@ -1248,10 +1346,9 @@ class TelegramService:
             try:
                 result = await self.client.request(method, payload)
             except TelegramError:
-                if method != "editMessageText":
+                if method != "editMessageText" or self.ai_id is None:
                     raise
-                # A panel edit failure never retries an execution action. Only its
-                # already materialized plain-text reply falls back to a new message.
+                # 专属 AI 机器人的投递恢复保持原逻辑；主菜单编辑失败不另发消息。
                 payload.pop("message_id", None)
                 result = await self.client.request("sendMessage", payload)
             self.remember_message(row, result)

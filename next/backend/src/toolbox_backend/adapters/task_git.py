@@ -1,6 +1,7 @@
 """Fixed-argv Git boundary. Local file remotes require constructor-only test injection."""
 
 import asyncio
+import base64
 import contextlib
 import fcntl
 import hashlib
@@ -10,22 +11,24 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from toolbox_backend.adapters.config_store import private_dir
 from toolbox_backend.adapters.run_log import StreamRedactor
 from toolbox_backend.adapters.run_store import secure_open
 from toolbox_backend.domain.errors import SettingsError
+from toolbox_backend.logging_setup import register_secret
 from toolbox_backend.services.tasks import branch
 
 SUPERVISOR = str(Path(__file__).with_name("git_process.py"))
 
 
 class GitFailure(Exception):
-    def __init__(self, code="git_failed", unknown=False):
+    def __init__(self, code="git_failed", unknown=False, *, message=None):
         self.code = code
         self.unknown = unknown
-        super().__init__(code)
+        self.message = message or "Git 检查失败；请确认仓库可访问且 Git 安装正常后重试"
+        super().__init__(self.message)
 
 
 class GitAdapter:
@@ -67,7 +70,35 @@ class GitAdapter:
             env["SSH_AUTH_SOCK"] = os.environ["SSH_AUTH_SOCK"]
         return env
 
-    async def command(self, path, args, *, lock_fd=None, cancel=None, output=None):
+    async def command(self, path, args, *, lock_fd=None, cancel=None, output=None, pat=None):
+        env = self.environment()
+        auth_args = []
+        secrets = []
+        if pat is not None:
+            if not pat:
+                raise GitFailure("unsupported_task", message="未配置 ADO 库 PAT；请先保存该库凭据")
+            encoded = base64.b64encode((":" + pat).encode()).decode()
+            header = "Authorization: Basic " + encoded
+            secrets = [header, encoded, pat]
+            for secret in secrets:
+                register_secret(secret)
+            env["GIT_ALLOW_PROTOCOL"] = "https"
+            auth_args = [
+                "-c",
+                "http.extraHeader=",
+                "-c",
+                "http.extraHeader=" + header,
+                "-c",
+                "http.followRedirects=false",
+                "-c",
+                "http.sslVerify=true",
+            ]
+
+        def redact(text):
+            for secret in secrets:
+                text = text.replace(secret, "***")
+            return text
+
         argv = [
             self.executable,
             "-c",
@@ -92,6 +123,7 @@ class GitAdapter:
             "diff.external=",
             "-c",
             "core.pager=cat",
+            *auth_args,
             *args,
         ]
         owned_fd = None
@@ -115,14 +147,14 @@ class GitAdapter:
                     try:
                         await output("", raw_bytes=len(block))
                         for text in redactor.feed(block):
-                            await output(text, raw_bytes=0)
+                            await output(redact(text), raw_bytes=0)
                     except Exception as exc:
                         sink_errors.append(exc)
                         sink_failed.set()
             if output and not sink_errors and not finishing:
                 try:
                     for text in redactor.finish():
-                        await output(text, raw_bytes=0)
+                        await output(redact(text), raw_bytes=0)
                 except Exception as exc:
                     sink_errors.append(exc)
                     sink_failed.set()
@@ -137,7 +169,7 @@ class GitAdapter:
                 ",".join(map(str, lock_fds)),
                 *argv,
                 cwd=path,
-                env=self.environment(),
+                env=env,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -169,7 +201,14 @@ class GitAdapter:
                 raise sink_errors[0]
             if proc.returncode:
                 raise GitFailure()
-            return chunks.decode("utf-8", errors="replace").strip()
+            return redact(chunks.decode("utf-8", errors="replace").strip())
+        except Exception as exc:
+            # 启动失败或日志回调异常也可能回显 argv，认证命令不传播原始异常。
+            if pat is not None and not isinstance(exc, GitFailure):
+                if isinstance(exc, SettingsError):
+                    raise SettingsError(exc.code, redact(exc.message), exc.status) from None
+                raise GitFailure() from None
+            raise
         finally:
             finishing = True
             os.close(write_fd)  # EOF asks supervisor to terminate and reap its group.
@@ -211,9 +250,12 @@ class GitAdapter:
                 root=str(root), common_dir=str(common), lock_keys=sorted({str(root), str(common)})
             )
         except GitFailure:
-            raise SettingsError("unsafe_repository", "目录必须为受支持的非 bare 工作树") from None
+            raise SettingsError(
+                "unsafe_repository",
+                "不是受支持的 git 工作树（可能为 bare 仓库或受保护目录）；请选择普通仓库根目录",
+            ) from None
 
-    def remote(self, remote):
+    def remote(self, remote, task=None):
         if self.test_remote_root:
             url = urlsplit(remote)
             if url.scheme not in ("", "file") or url.netloc or url.query or url.fragment:
@@ -222,6 +264,52 @@ class GitAdapter:
             if not target.is_relative_to(self.test_remote_root) or not (target / "HEAD").is_file():
                 raise GitFailure("unsafe_repository")
             return
+
+        def unsupported(reason):
+            raise GitFailure(
+                "unsupported_task",
+                message="origin 不受支持：" + reason + "；请核对任务来源及 origin",
+            )
+
+        if remote.lower().startswith("https:"):
+            try:
+                url = urlsplit(remote)
+                if url.username is not None or url.password is not None:
+                    unsupported("URL 不得包含用户名或密码")
+                if "?" in remote or "#" in remote:
+                    unsupported("URL 不得包含 query 或 fragment")
+                if "\\" in remote or any(ord(c) < 33 or ord(c) == 127 for c in remote):
+                    unsupported("URL 含不允许的字符")
+                source = (task or {}).get("source", {})
+                base = urlsplit(source.get("base_url", ""))
+                if not url.hostname or url.netloc.lower() != base.netloc.lower():
+                    unsupported("origin 主机与 ADO 库不一致（含端口）")
+                # 每段单独解码，不允许编码的分隔符或路径穿越改变实际目标。
+                parts = [unquote(p) for p in url.path.split("/")[1:]]
+                if (
+                    any(
+                        p in {"", ".", ".."}
+                        or "/" in p
+                        or "\\" in p
+                        or "%" in p
+                        or any(ord(c) < 32 or ord(c) == 127 for c in p)
+                        for p in parts
+                    )
+                    or len(parts) != 4
+                    or parts[2].lower() != "_git"
+                ):
+                    unsupported("路径必须为 /{collection}/{project}/_git/{repo}")
+                for index, key, label in (
+                    (0, "collection", "collection"),
+                    (1, "project", "project"),
+                ):
+                    if parts[index].casefold() != source.get(key, "").casefold():
+                        unsupported(label + " 与任务来源不一致")
+                if parts[3].casefold() != ((task or {}).get("repo_name") or "").casefold():
+                    unsupported("repo 与任务 repo_name 不一致")
+                return "https"
+            except ValueError:
+                unsupported("URL 格式无效")
         # Require an actual DNS name/IP, not an SSH config alias or arbitrary helper.
         user = r"[A-Za-z0-9_][A-Za-z0-9_-]*"
         host = r"[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+"
@@ -232,16 +320,19 @@ class GitAdapter:
                 or re.fullmatch(rf"ssh://{user}@{host}(?::[0-9]{{1,5}})?/{path}", remote)
             )
             or ".." in remote
-            or not os.environ.get("SSH_AUTH_SOCK")
         ):
-            raise GitFailure("unsupported_task")
+            unsupported("仅支持匹配任务来源的 HTTPS 地址或完整 SSH 地址")
+        if not os.environ.get("SSH_AUTH_SOCK"):
+            unsupported("SSH agent 未配置；请启动 agent 并加载密钥")
 
-    async def check(self, root, fd):
+    async def check(self, root, fd, task=None):
         config = await self.command(
-            root, ["config", "--local", "--no-includes", "--list"], lock_fd=fd
+            root, ["config", "--local", "--no-includes", "--name-only", "--null", "--list"],
+            lock_fd=fd,
         )
-        for line in config.splitlines():
-            key = line.partition("=")[0].lower()
+        # 只读取键名，避免多行配置值被误当成键名并出现在错误提示中。
+        keys = [key.lower() for key in config.split("\0") if key]
+        for key in keys:
             if (
                 key.startswith(("url.", "include.", "includeif.", "filter.", "extensions."))
                 or key
@@ -249,8 +340,6 @@ class GitAdapter:
                     "core.sshcommand",
                     "core.gitproxy",
                     "core.worktree",
-                    "core.fsmonitor",
-                    "core.hookspath",
                     "ssh.variant",
                 }
                 or key.startswith("remote.")
@@ -260,21 +349,48 @@ class GitAdapter:
                 or key.startswith("branch.")
                 and key.endswith(".mergeoptions")
             ):
-                raise GitFailure("unsafe_repository")
-        status = await self.command(root, ["status", "--porcelain"], lock_fd=fd)
-        if status:
-            raise GitFailure("unsafe_repository")
+                raise GitFailure(
+                    "unsafe_repository",
+                    message=f"本地 git 配置含不允许的项 {key}；请移除该项后重试（配置值已隐藏）",
+                )
         for marker in ("MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD"):
             location = await self.command(root, ["rev-parse", "--git-path", marker], lock_fd=fd)
             if (Path(root) / location).exists():
-                raise GitFailure("unsafe_repository")
-        urls = await self.command(root, ["remote", "get-url", "--all", "origin"], lock_fd=fd)
-        pushes = await self.command(
-            root, ["remote", "get-url", "--push", "--all", "origin"], lock_fd=fd
-        )
+                raise GitFailure(
+                    "unsafe_repository",
+                    message=f"仓库正在 merge、rebase 或 cherry-pick（{marker}）；"
+                    "请先完成或中止该操作",
+                )
+        status = await self.command(root, ["status", "--porcelain"], lock_fd=fd)
+        if status:
+            raise GitFailure(
+                "unsafe_repository", message="工作区有未提交改动；请先提交或自行保存改动后重试"
+            )
+        try:
+            urls = await self.command(root, ["remote", "get-url", "--all", "origin"], lock_fd=fd)
+            pushes = await self.command(
+                root, ["remote", "get-url", "--push", "--all", "origin"], lock_fd=fd
+            )
+        except GitFailure:
+            raise GitFailure(
+                "unsupported_task", message="origin 不受支持：未配置有效地址；请设置 origin 后重试"
+            ) from None
         if len(urls.splitlines()) != 1 or pushes != urls:
-            raise GitFailure("unsafe_repository")
-        self.remote(urls)
+            raise GitFailure(
+                "unsupported_task",
+                message="origin 不受支持：fetch 与 push URL 必须相同且各只有一个；"
+                "请统一 origin 地址",
+            )
+        protocol = self.remote(urls, task)
+        if protocol == "https":
+            for key in keys:
+                if key.startswith(("http.", "credential.")):
+                    raise GitFailure(
+                        "unsafe_repository",
+                        message=f"本地 git 配置含不允许的项 {key}；"
+                        "请移除该项后重试（配置值已隐藏）",
+                    )
+        return protocol
 
     @contextlib.asynccontextmanager
     async def locked(self, info, cancel, *, wait_seconds=None):
@@ -305,21 +421,21 @@ class GitAdapter:
                 # Do not LOCK_UN: child copies own the same open-file-description.
                 os.close(fd)
 
-    async def preflight(self, path):
+    async def preflight(self, path, task=None):
         info = await self.inspect(path)
         try:
             async with self.locked(info, asyncio.Event(), wait_seconds=5) as fds:
-                await self.check(info["root"], fds)
+                await self.check(info["root"], fds, task)
             return info
         except GitFailure as exc:
             if exc.code == "busy":
                 raise SettingsError("busy", "仓库正在使用，请稍后预检", 503) from None
             raise SettingsError(
                 exc.code if exc.code == "unsupported_task" else "unsafe_repository",
-                "仓库状态或 origin 不受支持；请检查工作区及 SSH agent 配置",
+                exc.message,
             ) from None
 
-    async def execute(self, task, context):
+    async def execute(self, task, context, *, pat=None):
         info = await self.inspect(task["local_repo_path"])
         flow = task["git_flow"]
         branches = {flow["build_branch"], *flow["update_branches"], *flow["push_branches"]}
@@ -329,7 +445,7 @@ class GitAdapter:
             branch(value)
         async with self.locked(info, context.cancelled) as fd:
             root = info["root"]
-            await self.check(root, fd)
+            protocol = await self.check(root, fd, task)
 
             async def cmd(*args):
                 return await self.command(
@@ -338,6 +454,11 @@ class GitAdapter:
                     lock_fd=fd,
                     cancel=context.cancelled,
                     output=getattr(context, "log", None),
+                    **(
+                        {"pat": pat or ""}
+                        if protocol == "https" and args[0] in {"fetch", "push", "ls-remote"}
+                        else {}
+                    ),
                 )
 
             original = await cmd("rev-parse", "--verify", "HEAD")
@@ -374,7 +495,7 @@ class GitAdapter:
                             "rev-parse", "--verify", f"refs/remotes/origin/{value}^{{commit}}"
                         )
                     for value in flow["update_branches"]:
-                        await self.check(root, fd)
+                        await self.check(root, fd, task)
                         await cmd("checkout", value)
                         await cmd("merge", "--ff-only", f"refs/remotes/origin/{value}")
                         new_refs["refs/heads/" + value] = await cmd(
@@ -382,7 +503,7 @@ class GitAdapter:
                         )
                         await context.checkpoint("git", {**checkpoint, "new_refs": dict(new_refs)})
                     for rule in flow["merges"]:
-                        await self.check(root, fd)
+                        await self.check(root, fd, task)
                         await cmd("checkout", rule["target"])
                         merge_started = True
                         await cmd("merge", "--no-edit", f"refs/remotes/origin/{rule['source']}")
@@ -392,7 +513,7 @@ class GitAdapter:
                         )
                         await context.checkpoint("git", {**checkpoint, "new_refs": dict(new_refs)})
                     for value in flow["push_branches"]:
-                        await self.check(root, fd)
+                        await self.check(root, fd, task)
                         commit = await cmd(
                             "rev-parse", "--verify", f"refs/heads/{value}^{{commit}}"
                         )

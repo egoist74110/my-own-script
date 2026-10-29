@@ -434,7 +434,7 @@ user_id）→ 旧白名单（status）→ none。空 owner 不自动绑定，只
 码仅在内存、10 分钟、同时一个、错 5 次作废。none 零回复；非 owner status 只列组内任务
 或自己触发的运行。/help、/start、/menu 使用服务端一次性菜单令牌（TTL 5 分钟，
 每 bot 活动≤256、每 chat≤16）；伪造/跨主体令牌无效果，过期动作提示重新操作。
-/status 与 /bind 可用，执行类与 /wi 流程见下方 S4-B；服务/VPN/MCP/AI 回复“该功能尚未迁移到新应用”。
+/status 与 /bind 可用，执行类与 /wi 流程见下方 S4-B；服务（/services、/svc、/service）、VPN（/vpn）、MCP（/mcp）由 S6 接管，/cc 引导至 Claude Code 专属机器人。
 
 发件箱只在 control.enabled 时接收运行通知，入箱与停用协调；UI 通知给 owner（可关闭），
 Telegram 通知给触发 chat 并绑定原 bot。run/status 去重；同一状态不重复；重启扫描 enabled_at
@@ -514,7 +514,7 @@ MockTransport 和既有 keyring/socket 守卫。真实 Bot、系统代理、Keyc
   不自动预检或启动。任务禁用、删除、配置变化或权限收回均阻止旧确认启动。
 - `/stop` 列出当前可停的活动/unknown 运行，点选调用幂等 cancel。固定提示
   “停止不会回滚已部署内容；远端可能继续”；unknown 另提示“结果需要核实”。
-- `/status` 延续 S4-A 可见范围。系统操作保留“尚未迁移”提示，不显示服务、VPN、MCP、AI 入口。
+- `/status` 延续 S4-A 可见范围。菜单“系统操作”按角色/组权限展示“回退 / 状态 / 停止”及“⬅ 返回”；`/cancelrollback` 作废当前会话未消费的回滚动作令牌。
 
 动作令牌由服务端生成：16 个随机字节的 base64url（22 字符），绑定 bot/chat/user，TTL 最长
 5 分钟；确认令牌同时受 plan 到期时间限制。单事务消费一次，消费后重新解析 ACL；最终

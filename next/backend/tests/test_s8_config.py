@@ -16,7 +16,7 @@ async def test_v5_migration_is_snapshotted_and_idempotent(tmp_path):
     (tmp_path / "config.json").write_bytes(original)
     store = ConfigStore(tmp_path)
     result = await store.initialize()
-    assert result.schema_version == 6
+    assert result.schema_version == 8
     assert result.revision == 8
     assert result.vpn.window_automation == "off"
     snapshots = list((tmp_path / "migrations").glob("config-v5-*.json"))

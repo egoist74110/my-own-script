@@ -43,7 +43,9 @@ async def test_analysis_chain_without_ai_bot_is_desktop_only(tmp_path, monkeypat
         await step(ctx, "repo")
         assert "选择 AI" in ctx.texts("main")[-1]
         labels = [b["text"] for r in ctx.bots.last_markup(123456789)["inline_keyboard"] for b in r]
-        assert labels and all("仅桌面可见" in x for x in labels)
+        assert {"⬅️ 返回", "🏠 主菜单"} <= set(labels)
+        profiles = [x for x in labels if x not in {"⬅️ 返回", "🏠 主菜单"}]
+        assert profiles and all("仅桌面可见" in x for x in profiles)
         await step(ctx, "Claude")
         assert "只读分析档" in ctx.texts("main")[-1]
         before = len(ctx.texts("main"))
@@ -101,7 +103,8 @@ async def test_copy_prompt_is_plain_text_without_body(tmp_path, monkeypatch):
         assert "#42" in sent["text"] and "ProjName" in sent["text"] and "LibName" in sent["text"]
         assert "```" not in sent["text"].replace("`mcp", "")
         labels = [b["text"] for r in sent["reply_markup"]["inline_keyboard"] for b in r]
-        assert len(labels) == 2
+        assert {"⬅️ 返回", "🏠 主菜单"} <= set(labels)
+        assert len([x for x in labels if x not in {"⬅️ 返回", "🏠 主菜单"}]) == 2
 
 
 async def test_analysis_never_writes_config_repo_selection(tmp_path, monkeypatch):

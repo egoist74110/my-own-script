@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from toolbox_backend.api.mcp_schemas import LarkActionRequest
 from toolbox_backend.api.task_schemas import PreflightRequest, StartRequest
 from toolbox_backend.domain.errors import SettingsError
+from toolbox_backend.domain.settings import task_label
 from toolbox_backend.domain.telegram import acl_validity, numeric
+from toolbox_backend.services.telegram_menu import TelegramMenu
 
 TG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "toolbox-next:telegram")
 LARK_STATE_LABELS = {
@@ -57,7 +59,7 @@ def identities(update):
     return identity(update)
 
 
-class TelegramDispatcher:
+class TelegramDispatcher(TelegramMenu):
     def __init__(self, service, work_items):
         from toolbox_backend.services.telegram_work_items import TelegramWorkItems
 
@@ -106,9 +108,12 @@ class TelegramDispatcher:
             origin = (run or {}).get("origin", {})
             return (
                 group.can_stop
+                and (run or {}).get("task_id") in group.task_ids
                 and origin.get("kind") == "telegram"
                 and origin.get("chat_id") == chat
             )
+        if operation == "status":
+            return group.can_status and task_id in group.task_ids
         permission = group.can_rollback if operation == "rollback" else group.can_run
         return permission and task_id in group.task_ids
 
@@ -119,79 +124,10 @@ class TelegramDispatcher:
         return {"text": label, "callback_data": token}
 
     async def panel(self, update, text, buttons=None):
-        await self.service.reply(
-            update, text, reply_markup={"inline_keyboard": buttons or []}, panel=True
-        )
-
-    async def tasks(self, update, *, rollback=False, page=0):
-        config = await self.service.config_store.read()
-        operation = "rollback" if rollback else "sync_build_release"
-        tasks = [
-            t
-            for t in sorted(config.tasks.items, key=lambda t: (t.sort_order, t.id))
-            if t.enabled
-            and (
-                self.allowed(config, update, operation, t.id)
-                or not rollback
-                and self.allowed(config, update, "rollback", t.id)
-            )
-        ]
-        page = min(max(page, 0), max(0, (len(tasks) - 1) // 8))
-        rows = [
-            [
-                await self.button(
-                    update,
-                    task.name or task.tg_command or "任务",
-                    "rollback_pick" if rollback else "menu",
-                    {"page": "offsets" if rollback else "task", "task_id": task.id},
-                )
-            ]
-            for task in tasks[page * 8 : (page + 1) * 8]
-        ]
-        nav = []
-        for label, number in (("上一页", page - 1), ("下一页", page + 1)):
-            if 0 <= number * 8 < len(tasks):
-                nav.append(
-                    await self.button(
-                        update,
-                        label,
-                        "menu",
-                        {"page": "task_page", "number": number, "rollback": rollback},
-                    )
-                )
-        if nav:
-            rows.append(nav)
-        await self.panel(
-            update,
-            ("请选择回滚任务" if rollback else "请选择任务") if tasks else "当前没有可执行的任务",
-            rows,
-        )
-
-    async def task(self, update, task_id):
-        config = await self.service.config_store.read()
-        task = self.task_checked(config, update, task_id, "sync_build_release", any_mode=True)
-        buttons = []
-        if self.allowed(config, update, "sync_build_release", task_id):
-            for label, op in (("构建发布", "sync_build_release"), ("仅发布", "deploy_only")):
-                buttons.append(
-                    [
-                        await self.button(
-                            update,
-                            label,
-                            "menu",
-                            {"page": "preflight", "task_id": task_id, "operation": op},
-                        )
-                    ]
-                )
-        if self.allowed(config, update, "rollback", task_id):
-            buttons.append(
-                [
-                    await self.button(
-                        update, "回滚", "rollback_pick", {"page": "offsets", "task_id": task_id}
-                    )
-                ]
-            )
-        await self.panel(update, f"任务：{task.name or task.tg_command}", buttons)
+        rows = list(buttons or [])
+        if not any(b["text"] == "⬅️ 返回" for row in rows for b in row):
+            rows += await self.fallback_navigation(update)
+        await self.service.reply(update, text, reply_markup={"inline_keyboard": rows}, panel=True)
 
     def task_checked(self, config, update, tid, operation, *, any_mode=False):
         task = next((t for t in config.tasks.items if t.id == tid), None)
@@ -199,31 +135,10 @@ class TelegramDispatcher:
             raise SettingsError("not_found", "固定错误", 404)
         permitted = self.allowed(config, update, operation, tid)
         if any_mode:
-            permitted = permitted or self.allowed(config, update, "rollback", tid)
+            permitted = permitted or self.visible(config, update, tid)
         if not task.enabled or not permitted:
             raise SettingsError("validation_error", "固定错误", 422)
         return task
-
-    async def offsets(self, update, tid):
-        config = await self.service.config_store.read()
-        task = self.task_checked(config, update, tid, "rollback")
-        rows = [
-            [
-                await self.button(
-                    update,
-                    f"回滚偏移 {offset}",
-                    "rollback_pick",
-                    {
-                        "page": "preflight",
-                        "task_id": tid,
-                        "operation": "rollback",
-                        "offset": offset,
-                    },
-                )
-            ]
-            for offset in range(1, 6)
-        ]
-        await self.panel(update, f"{task.name}：请选择历史偏移（1..5）", rows)
 
     async def preflight(self, update, payload):
         tid, op = payload["task_id"], payload["operation"]
@@ -241,14 +156,14 @@ class TelegramDispatcher:
         current = await self.service.config_store.read()
         self.task_checked(current, update, tid, op)
         operation_name = {
-            "sync_build_release": "构建发布",
-            "deploy_only": "仅发布",
+            "sync_build_release": "构建并发布",
+            "deploy_only": "只发布",
             "rollback": "回滚",
         }[op]
         text = [
-            f"任务：{task.name}",
+            f"任务：{task_label(config, task.id)}",
             f"操作：{operation_name}",
-            f"仓库：{task.repo_name or task.repo_id or '未提供'}",
+            f"仓库：{self.command_config(config, tid)[0].name}",
             f"分支：{task.git_flow.build_branch or '未提供'}",
         ]
         if op == "rollback":
@@ -257,9 +172,16 @@ class TelegramDispatcher:
             text.extend(
                 [
                     f"目标：{target['name']}",
-                    f"Build definition：{target['definition_id']} · "
-                    f"Release definition：{target['release_definition_id']}",
-                    "Stage：" + "、".join(map(str, target["stage_ids"])),
+                    "环境："
+                    + (
+                        "、".join(
+                            name
+                            for t in task.targets
+                            if t.name == target["name"]
+                            for name in t.release_stage_names
+                        )
+                        or "未提供名称"
+                    ),
                 ]
             )
             if op in {"deploy_only", "rollback"}:
@@ -290,20 +212,37 @@ class TelegramDispatcher:
         }[op]
         confirm = await self.button(
             update,
-            "确认执行",
+            "✅ 确认执行",
             kind,
             {
                 "task_id": tid,
                 "operation": op,
                 "offset": offset,
                 "plan_id": str(plan["plan_id"]),
+                "context": payload.get("context", {}),
             },
             ttl=ttl,
         )
         cancel = await self.button(
-            update, "取消", "menu", {"page": "cancel", "confirm_token": confirm["callback_data"]}
+            update,
+            "✖️ 取消",
+            "menu",
+            {
+                "page": "cancel",
+                "task_id": tid,
+                "confirm_token": confirm["callback_data"],
+                "context": payload.get("context", {}),
+            },
         )
-        await self.panel(update, "\n".join(text), [[confirm, cancel]])
+        back = {
+            "page": "cancel",
+            "task_id": tid,
+            "confirm_token": confirm["callback_data"],
+            "context": payload.get("context", {}),
+        }
+        await self.panel(
+            update, "\n".join(text), [[confirm, cancel]] + await self.navigation(update, back)
+        )
         return "handled"
 
     async def rollback_details(self, plan_id):
@@ -343,10 +282,11 @@ class TelegramDispatcher:
         return text
 
     async def expired(self, update, action):
-        payload = action["payload"]
-        if action["kind"] in {"run_confirm", "deploy_confirm", "rollback_confirm"}:
-            return await self.replan(update, payload)
-        await self.panel(update, "操作已过期，请重新打开菜单")
+        await self.panel(
+            update,
+            "菜单已过期，请重新 /start",
+            [[await self.button(update, "🏠 主菜单", "menu", {"page": "main"})]],
+        )
         return "expired"
 
     async def replan(self, update, payload):
@@ -354,16 +294,25 @@ class TelegramDispatcher:
         self.task_checked(config, update, payload["task_id"], payload["operation"])
         button = await self.button(
             update,
-            "重新预检",
+            "🔄 重新预检",
             "menu",
             {
                 "page": "preflight",
                 "task_id": payload["task_id"],
                 "operation": payload["operation"],
                 "offset": payload.get("offset"),
+                "context": payload.get("context", {}),
             },
         )
-        await self.panel(update, "计划已过期，请重新预检", [[button]])
+        rows = [[button]] + await self.navigation(
+            update,
+            {
+                "page": "task",
+                "task_id": payload["task_id"],
+                "context": payload.get("context", {}),
+            },
+        )
+        await self.panel(update, "计划已过期，请重新预检", rows)
         return "expired"
 
     async def confirm(self, update, token, action):
@@ -404,7 +353,7 @@ class TelegramDispatcher:
                 return await self.replan(update, payload)
             raise
         await self.service.store.action_result(token, result["run_id"])
-        await self.panel(update, f"已开始（运行 #{result['run_id'][:8]}）")
+        await self.service.reply(update, "已开始")
         return "handled"
 
     async def stops(self, update, page=0):
@@ -415,28 +364,30 @@ class TelegramDispatcher:
         buttons = []
         for run in runs[page * 8 : (page + 1) * 8]:
             if self.allowed(config, update, "stop", run=run):
-                name = run["task_snapshot"].get("name", "历史任务")
+                name = task_label(
+                    config, run["task_id"], run["task_snapshot"].get("name", "历史任务")
+                )
                 buttons.append(
                     [
                         await self.button(
                             update,
-                            f"{name} · #{run['run_id'][:8]}",
+                            f"⏹ {name}",
                             "stop",
                             {"run_id": run["run_id"]},
                         )
                     ]
                 )
         nav = []
-        for label, number in (("上一页", page - 1), ("下一页", page + 1)):
+        for label, number in (("⬅️ 上一页", page - 1), ("下一页 ➡️", page + 1)):
             if 0 <= number * 8 < len(runs):
                 nav.append(
                     await self.button(update, label, "menu", {"page": "stop", "number": number})
                 )
         if nav:
             buttons.append(nav)
-        await self.panel(
-            update, "请选择要停止的运行" if buttons else "当前没有可停止的运行", buttons
-        )
+        text = "请选择要停止的运行" if runs else "当前没有可停止的运行"
+        buttons += await self.navigation(update, {"page": "system"})
+        await self.panel(update, text, buttons)
 
     async def stop(self, update, payload):
         rid = payload["run_id"]
@@ -451,7 +402,12 @@ class TelegramDispatcher:
         text = "停止不会回滚已部署内容；远端可能继续"
         if result["status"] == "unknown":
             text += "\n结果需要核实"
-        await self.panel(update, text)
+        back = (
+            {"page": "task", "task_id": run["task_id"], "context": payload.get("context", {})}
+            if payload.get("detail")
+            else {"page": "stop"}
+        )
+        await self.panel(update, text, await self.navigation(update, back))
         return "handled"
 
     async def mcp_panel(self, update, *, notice: str | None = None):
@@ -483,13 +439,18 @@ class TelegramDispatcher:
         buttons = []
         if snap.lark.state in {"running", "running_degraded", "unhealthy", "starting"}:
             buttons.append(
-                [await self.button(update, "停止 Lark MCP", "mcp_lark_stop", {"action": "stop"})]
+                [await self.button(update, "⏹ 停止 Lark MCP", "mcp_lark_stop", {"action": "stop"})]
             )
         else:
             buttons.append(
-                [await self.button(update, "启动 Lark MCP", "mcp_lark_start", {"action": "start"})]
+                [
+                    await self.button(
+                        update, "▶️ 启动 Lark MCP", "mcp_lark_start", {"action": "start"}
+                    )
+                ]
             )
-        buttons.append([await self.button(update, "刷新状态", "menu", {"page": "mcp"})])
+        buttons.append([await self.button(update, "🔄 刷新状态", "menu", {"page": "mcp"})])
+        buttons += await self.navigation(update, {"page": "main"}, deep=False)
         await self.panel(update, "\n".join(lines), buttons)
 
     async def mcp_action(self, update, kind: str, token: str):
@@ -574,7 +535,7 @@ class TelegramDispatcher:
                 f"VPN：{'已连接' if vpn_status.connected else '未连接'} "
                 f"· {vpn_status.ip or '无地址'}"
             )
-            vpn_button = await self.button(update, "🔌连接 VPN", "vpn_connect", {})
+            vpn_button = await self.button(update, "🔌 连接 VPN", "vpn_connect", {})
         else:
             lines.append("VPN 服务不可用")
         buttons = []
@@ -583,7 +544,7 @@ class TelegramDispatcher:
             ("cloudflared", "全局隧道", tunnel),
         ]:
             action = "stop" if view.state in {"running", "unhealthy", "external"} else "start"
-            title = ("停止 " if action == "stop" else "启动 ") + label
+            title = ("⏹ 停止 " if action == "stop" else "▶️ 启动 ") + label
             kind = "svc_confirm" if name == "cloudflared" and action == "start" else "svc_action"
             buttons.append(
                 [await self.button(update, title, kind, {"name": name, "action": action})]
@@ -591,12 +552,13 @@ class TelegramDispatcher:
         for custom in snap.cloudflared.tunnels:
             lines.append(f"自定义隧道：{custom.state} · {custom.url or '域名待刷新'}")
             buttons.append(
-                [await self.button(update, "停止自定义隧道", "svc_delete", {"id": custom.id})]
+                [await self.button(update, "⏹ 停止自定义隧道", "svc_delete", {"id": custom.id})]
             )
-        buttons.append([await self.button(update, "新增自定义隧道", "svc_input", {})])
+        buttons.append([await self.button(update, "➕ 新增自定义隧道", "svc_input", {})])
         if vpn_button:
             buttons.append([vpn_button])
-        buttons.append([await self.button(update, "刷新状态", "menu", {"page": "services"})])
+        buttons.append([await self.button(update, "🔄 刷新状态", "menu", {"page": "services"})])
+        buttons += await self.navigation(update, {"page": "main"}, deep=False)
         await self.panel(update, "\n".join(lines), buttons)
 
     async def services_action(self, update, kind, payload, token):
@@ -613,7 +575,7 @@ class TelegramDispatcher:
             self._service_inputs[(chat, user)] = time.monotonic() + 300
             await self.panel(update, "请输入本机回环 HTTP/HTTPS 地址与端口（5 分钟内有效）")
         elif kind == "svc_confirm":
-            button = await self.button(update, "确认公开到公网", "svc_action", payload)
+            button = await self.button(update, "✅ 确认公开到公网", "svc_action", payload)
             await self.panel(update, "该地址将可被公网任何人访问，隧道本身无认证", [[button]])
         elif kind == "svc_create":
             validate_tunnel_target(payload["target_url"], True)
@@ -637,6 +599,52 @@ class TelegramDispatcher:
             await self.services_panel(update)
         return "handled"
 
+    async def system_menu(self, update, role, group):
+        can_rollback = role == "owner" or bool(group and group.can_rollback)
+        can_status = role in {"owner", "legacy"} or bool(group and group.can_status)
+        can_stop = role == "owner" or bool(group and group.can_stop)
+        if not (can_rollback or can_status or can_stop):
+            return "ignored"
+        rows = []
+        for permitted, label, page in (
+            (can_status, "📊 运行状态", "status"),
+            (can_stop, "⏹ 停止运行", "stop"),
+            (can_rollback, "↩️ 回滚", "rollback"),
+        ):
+            if permitted:
+                rows.append([await self.button(update, label, "menu", {"page": page})])
+        rows += await self.navigation(update, {"page": "main"}, deep=False)
+        await self.panel(update, "🛠 系统操作", rows)
+        return "handled"
+
+    async def cancel_rollback(self, update):
+        _, _, chat, user, _, _ = identities(update)
+        cancelled = await self.service.store.cancel_rollback_actions(
+            self.service.bot_id, chat, user
+        )
+        await self.panel(update, "已取消回滚" if cancelled else "当前没有进行中的回滚")
+        return "handled"
+
+    async def cc_command(self, update):
+        config = await self.service.config_store.read()
+        bot_cfg = config.ai.bots.claude_code
+        slot = self.service.registry.get("ai:claude_code")
+        username = (
+            (slot.bot_username if slot else None)
+            or bot_cfg.username
+            or (bot_cfg.verified_bot.username if bot_cfg.verified_bot else None)
+        )
+        if bot_cfg.enabled and username:
+            clean = username.lstrip("@")
+            text = f"Claude 会话已迁移至 Claude Code 专属机器人：@{clean}（https://t.me/{clean}）"
+        else:
+            text = (
+                "Claude 会话已迁移至 Claude Code 专属机器人。"
+                "请在桌面端 设置 → Telegram → AI 专属机器人 启用 Claude Code 机器人。"
+            )
+        await self.panel(update, text)
+        return "handled"
+
     async def callback(self, update):
         _, callback, chat, user, _, _ = identities(update)
         token = callback.get("data")
@@ -646,12 +654,12 @@ class TelegramDispatcher:
         if action is None:
             prior = await self.service.store.inspect_action(token, self.service.bot_id, chat, user)
             if prior is None:
-                return "ignored"
+                return await self.expired(update, {})
             if prior["consumed_at"]:
                 if prior["kind"] not in {"run_confirm", "deploy_confirm", "rollback_confirm"}:
-                    return "ignored"
+                    return await self.expired(update, prior)
                 if prior["result_run_id"]:
-                    await self.panel(update, f"已开始（运行 #{prior['result_run_id'][:8]}）")
+                    await self.panel(update, "已开始")
                 else:
                     await self.panel(update, "该操作已处理，请查看状态或重新打开菜单")
                 return "ignored"
@@ -671,6 +679,7 @@ class TelegramDispatcher:
             except TelegramError:
                 pass
         kind, payload = action["kind"], action["payload"]
+        update["_tg_screen"] = (kind, payload)
         if kind in {"run_confirm", "deploy_confirm", "rollback_confirm"}:
             return await self.confirm(update, token, action)
         if kind == "stop":
@@ -695,11 +704,17 @@ class TelegramDispatcher:
         if page == "tasks":
             await self.tasks(update)
         elif page == "task_page":
-            await self.tasks(update, rollback=bool(payload.get("rollback")), page=payload["number"])
+            await self.tasks(
+                update,
+                rollback=bool(payload.get("rollback")),
+                page=payload.get("number", 0),
+                config_id=payload.get("config_id"),
+                config_page=payload.get("config_page", 0),
+            )
         elif page == "task":
-            await self.task(update, payload["task_id"])
+            await self.task(update, payload["task_id"], **payload.get("context", {}))
         elif page == "offsets":
-            await self.offsets(update, payload["task_id"])
+            await self.offsets(update, payload["task_id"], **payload.get("context", {}))
         elif page == "preflight":
             return await self.preflight(update, payload)
         elif page == "rollback":
@@ -713,16 +728,23 @@ class TelegramDispatcher:
         elif page == "mcp" and role == "owner":
             await self.mcp_panel(update)
         elif page == "status" and (role in {"owner", "legacy"} or group and group.can_status):
-            await self.panel(update, await self.service.status_text(role, group, chat))
-        elif page == "system" and role == "owner":
-            await self.panel(update, "该功能尚未迁移到新应用")
+            await self.status_panel(update, role, group, chat)
+        elif page == "system":
+            return await self.system_menu(update, role, group)
+        elif page == "progress":
+            await self.progress(update, payload)
+        elif page == "main":
+            await self.service.main_menu(update, role, group, chat, user)
         elif page == "cancel":
             cancelled = await self.service.store.cancel_action(
                 payload.get("confirm_token"), self.service.bot_id, chat, user
             )
-            await self.panel(
-                update, "已取消本次确认" if cancelled else "确认已处理，请查看运行状态"
-            )
+            if payload.get("task_id"):
+                await self.task(update, payload["task_id"], **payload.get("context", {}))
+            else:
+                await self.panel(
+                    update, "已取消本次确认" if cancelled else "确认已处理，请查看运行状态"
+                )
         else:
             return "ignored"
         return "handled"
@@ -732,11 +754,15 @@ class TelegramDispatcher:
         try:
             if isinstance(callback, dict):
                 return await self.callback(update)
-            if command == "/services":
+            if command in {"/services", "/svc", "/service"}:
                 if role != "owner":
                     return "ignored"
                 await self.services_panel(update)
                 return "handled"
+            if command == "/cc":
+                return await self.cc_command(update)
+            if command == "/cancelrollback":
+                return await self.cancel_rollback(update)
             if command == "/vpn":
                 if role != "owner":
                     return "ignored"
@@ -754,7 +780,7 @@ class TelegramDispatcher:
                     return "ignored"
                 target = validate_tunnel_target(update["message"].get("text", ""), True)
                 button = await self.button(
-                    update, "确认公开到公网", "svc_create", {"target_url": target}
+                    update, "✅ 确认公开到公网", "svc_create", {"target_url": target}
                 )
                 await self.panel(update, "该地址将可被公网任何人访问，隧道本身无认证", [[button]])
                 return "handled"
@@ -776,6 +802,7 @@ class TelegramDispatcher:
             if command == "/wi":
                 if role != "owner":
                     return "ignored"
+                update["_tg_screen"] = ("wi_projects", {})
                 await self.work_items.command(update)
                 return "handled"
             if command == "/mcp":

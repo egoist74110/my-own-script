@@ -79,7 +79,12 @@ async def test_committed_start_survives_request_cancellation(tmp_path, monkeypat
             c.ado.libraries = [Library(id="lib:a", name="Fake", base_url="https://ado.test")]
             c.ado.projects = [Project(id="proj:a", library_id="lib:a", collection="c", project="p")]
             c.tasks.items = [
-                DynamicTask(id="task:a", project_id="proj:a", git_flow={"build_branch": "main"})
+                DynamicTask(
+                    id="task:a",
+                    project_id="proj:a",
+                    git_flow={"build_branch": "main"},
+                    targets=[{"build_kind": "build", "build_id": "1"}],
+                )
             ]
 
         await app.state.config_store.update(0, seed)

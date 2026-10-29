@@ -16,7 +16,7 @@ async def test_v3_upgrade_preserves_original_and_is_idempotent(tmp_path):
     (tmp_path / "config.json").write_bytes(original)
     store = ConfigStore(tmp_path)
     result = await store.initialize()
-    assert result.schema_version == 6
+    assert result.schema_version == 8
     assert result.revision == 8
     assert result.mcp.lark.port == 3456
     assert "drive.v1.media.batchGetTmpDownloadUrl" in result.mcp.lark.tools

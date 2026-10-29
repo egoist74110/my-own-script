@@ -30,6 +30,7 @@
 | 只发布 / 回滚 / 停止 | 跳过构建只发 Release、回滚 N 版本、毫秒级响应式停止 | `app_ado/ui/tasks_tab.py`（`deploy_only_task`/`rollback_task`/`stop_one_task`） | [ado-pipeline](capabilities/ado-pipeline.md) |
 | 构建 API | Pipelines 与 Build Definitions 触发/查询/等待/取消、agent 池覆盖 | `app_ado/ado_build_http.py`、`app_ado/ado_build_query.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 | 重写 S3-A 任务基础层（阶段检查点） | 任务配置 API、SQLite 运行记录/增量事件、隔离 Git 适配器；真实执行入口仍关闭，任务页尚未迁移 | `next/backend/src/toolbox_backend/api/task_routes.py`、`services/runs.py`、`adapters/run_store.py` | [ado-pipeline](capabilities/ado-pipeline.md#重写-s3-a-阶段检查点) |
+| 重写版发布配置与运行命令 | v8 分支目录与配置合并迁移、固定分支/目标命令 CRUD、兼容任务快照与 TG/ACL | `next/backend/src/toolbox_backend/api/release_routes.py` | [release-configs-next](capabilities/release-configs-next.md) |
 | 发布 API | 建 Release、自动启动 notStarted 环境、监控 stages | `app_ado/ado_release_http.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 | Git 合并（本地/远程 PR） | 本地 `git merge`（失败自动 abort+reset）或 ADO PR 远程合并 | `app_ado/ado_git_ops.py` | [ado-pipeline](capabilities/ado-pipeline.md) |
 
@@ -47,6 +48,7 @@
 | 能力 | 一句话说明 | 入口/关键文件 | 详细文档 |
 | --- | --- | --- | --- |
 | 指令控制 | `/run` `/stop` `/status` `/rollback` `/vpn` `/wi` + 动态任务命令 | `app_ado/tg_control.py` | [telegram-control](capabilities/telegram-control.md) |
+| 重写版 Telegram 菜单 | 发布配置→运行命令→预检；系统操作收纳状态/停止/回滚，权限裁剪与就地编辑 | `next/backend/src/toolbox_backend/services/telegram_menu.py` | [telegram-menu-next](capabilities/telegram-menu-next.md) |
 | ACL 授权 | owner + 组/成员按 task_ids 授权，TG 触发只回触发者 | `app_ado/tg_control.py`（`_resolve_acl`/`_can`） | [telegram-control](capabilities/telegram-control.md) |
 | 通知 | 任务摘要推送，可选「包含细节」 | `app_ado/notifier_telegram.py` | [telegram-control](capabilities/telegram-control.md) |
 | 专属 AI 机器人 ×3 | claude/codex/agy 各走独立 Bot Token 轮询线程 | `app_main.py` + 三个 `*_headless_tg_bridge.py` | [telegram-control](capabilities/telegram-control.md) |

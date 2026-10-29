@@ -67,6 +67,7 @@ async def execution(tmp_path):
                     project_id="proj:a",
                     git_flow={"build_branch": "main"},
                     future_extension="keep",
+                    targets=[{"build_kind": "build", "build_id": "1"}],
                 )
             ]
 
@@ -180,7 +181,7 @@ async def test_nested_extensions_are_preserved_but_never_enter_execution(executi
     app, client, fake = execution
 
     def extension(c):
-        c.tasks.items[0].git_flow.future_flow = {"arbitrary": "not-executable"}
+        c.tasks.release_configs[0].branches[0].future_flow = {"arbitrary": "not-executable"}
 
     await app.state.config_store.update(1, extension)
     response = await client.post(

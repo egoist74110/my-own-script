@@ -17,7 +17,7 @@ async def test_v4_services_migration_is_atomic_and_idempotent(tmp_path):
     (tmp_path / "config.json").write_bytes(original)
     store = ConfigStore(tmp_path)
     first = await store.initialize()
-    assert first.schema_version == 6
+    assert first.schema_version == 8
     assert first.services.cloudflared.protocol == "http2"
     assert first.revision == 8
     backups = list((tmp_path / "migrations").glob("config-v4-*.json"))

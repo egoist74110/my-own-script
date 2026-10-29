@@ -72,7 +72,7 @@ def allowed(config: Config) -> None:
         (
             config.ado.libraries,
             config.ado.projects,
-            config.tasks.items,
+            config.tasks.release_configs,
         )
     ):
         raise SettingsError("import_not_allowed", "仅首次运行且未完成/跳过导入时允许导入")
@@ -351,6 +351,7 @@ class SettingsService:
                     )
                     c.telegram = plan.config.telegram
                     from toolbox_backend.domain.mcp import imported_mcp
+
                     c.mcp = imported_mcp(c.imported.model_dump())
                     c.credentials = {
                         **{
@@ -586,7 +587,7 @@ class SettingsService:
 
     @staticmethod
     def _in_use(config, pids):
-        tasks = [t.name or t.tg_command or t.id for t in config.tasks.items if t.project_id in pids]
+        tasks = [c.name for c in config.tasks.release_configs if c.project_id in pids]
         if tasks:
             raise SettingsError("in_use", "条目被任务引用", tasks=tasks)
 

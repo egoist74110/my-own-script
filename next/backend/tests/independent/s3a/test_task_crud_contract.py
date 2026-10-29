@@ -1,6 +1,16 @@
 """Independent S3-A task configuration contracts."""
 
 
+async def test_create_without_git_flow_preserves_empty_build_branch(s3actx):
+    response = await s3actx.create_task(name="No Git flow")
+
+    assert response.status_code == 200, response.text
+    saved = await s3actx.client.get(f"/api/tasks/{response.json()['id']}")
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["item"]["git_flow"]["build_branch"] == ""
+    assert "未设置构建分支" in saved.json()["item"]["warnings"]
+
+
 async def test_patch_preserves_unknown_fields_on_an_existing_task(s3actx):
     task_id = "task:legacy-preserved"
     revision = await s3actx.seed_task(

@@ -16,8 +16,8 @@ RFC6238_SHA1_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 def test_config_v6_vpn_defaults_match_the_accepted_contract():
     config = Config()
 
-    assert CURRENT_SCHEMA_VERSION == 6
-    assert config.schema_version == 6
+    assert CURRENT_SCHEMA_VERSION == 8
+    assert config.schema_version == 8
     assert config.vpn == VpnConfig()
     assert config.vpn.client.bundle_id == "com.safervpn.osx.smb"
     assert config.vpn.client.url_scheme == "CheckPointSASE"
@@ -63,7 +63,7 @@ async def test_v5_migration_adds_vpn_defaults_without_changing_existing_settings
     store = ConfigStore(tmp_path)
     migrated = await store.initialize()
 
-    assert migrated.schema_version == 6
+    assert migrated.schema_version == 8
     assert migrated.revision == 15
     assert migrated.vpn == VpnConfig()
     assert migrated.services.model_dump(mode="json") == original_services

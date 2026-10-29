@@ -44,11 +44,9 @@ async def test_task_menu_is_visible_only_to_members_with_run_permission(
             c.telegram.acl_members = [ACLMember(id="m", group_id="ops", chat_id="6002")]
 
         await ctx.app.state.config_store.update(config.revision, save)
-        await ctx.app.state.telegram_service.process_updates(
-            [message(1, chat=6002, text="/help")]
-        )
+        await ctx.app.state.telegram_service.process_updates([message(1, chat=6002, text="/help")])
         labels = {button["text"] for button in await buttons(ctx)}
-        assert ("任务" in labels) is expected
+        assert ("🚀 发布" in labels) is expected
 
 
 async def test_forged_callback_and_cross_chat_token_cannot_start_a_run(tmp_path):
@@ -98,9 +96,10 @@ async def test_menu_actions_are_server_tokens_and_single_use(tmp_path):
         tg.runs.start = start
         await tg.process_updates([message(20)])
         assert all(len(button["callback_data"]) == 22 for button in await buttons(ctx))
-        await tap(ctx, 21, "任务")
+        await tap(ctx, 21, "🚀 发布")
         await tap(ctx, 22, "S4-B task")
-        await tap(ctx, 23, "构建发布")
+        await tap(ctx, 220, "▶️")
+        await tap(ctx, 23, "构建并发布")
         assert len(preflights) == 1
         assert starts == []
         confirm = next(button for button in await buttons(ctx) if "确认执行" in button["text"])
@@ -133,9 +132,7 @@ async def test_s4a_task_menu_database_failure_is_reflected_in_poller_state(tmp_p
         await tg.store.baseline("123456789", 0)
 
         async def disk_failure(*args, **kwargs):
-            raise SettingsError(
-                "telegram_store_unavailable", "Telegram 数据库不可用", 503
-            )
+            raise SettingsError("telegram_store_unavailable", "Telegram 数据库不可用", 503)
 
         class PollClient:
             async def request(self, method, payload):
@@ -175,14 +172,17 @@ async def test_expired_confirmation_action_replans_without_starting(tmp_path):
         tg.runs.preflight = preflight
         tg.runs.start = start
         await tg.process_updates([message(100, text="/ship")])
-        await tap(ctx, 101, "构建发布")
+        await tap(ctx, 101, "构建并发布")
         confirm = next(button for button in await buttons(ctx) if "确认执行" in button["text"])
         with sqlite3.connect(ctx.data_dir / "telegram.sqlite3") as db:
-            db.execute("UPDATE tg_actions SET expires_at='2000-01-01T00:00:00+00:00' WHERE token=?", (confirm["callback_data"],))
+            db.execute(
+                "UPDATE tg_actions SET expires_at='2000-01-01T00:00:00+00:00' WHERE token=?",
+                (confirm["callback_data"],),
+            )
         await tg.process_updates([callback(102, confirm["callback_data"])])
         assert starts == []
-        assert any("计划已过期" in text for text in await outbox_texts(ctx))
-        assert any(button["text"] == "重新预检" for button in await buttons(ctx))
+        assert any("菜单已过期，请重新 /start" in text for text in await outbox_texts(ctx))
+        assert any(button["text"] == "🏠 主菜单" for button in await buttons(ctx))
 
 
 async def test_deploy_only_requires_confirmation_and_starts_the_frozen_plan(tmp_path):
@@ -219,7 +219,7 @@ async def test_deploy_only_requires_confirmation_and_starts_the_frozen_plan(tmp_
 
         tg.runs.preflight, tg.runs.start = preflight, start
         await tg.process_updates([message(105, text="/ship")])
-        await tap(ctx, 106, "仅发布")
+        await tap(ctx, 106, "只发布")
         assert len(preflights) == 1 and starts == []
         request = preflights[0][0][1]
         assert request.operation == "deploy_only"
@@ -264,6 +264,7 @@ async def test_rollback_preflight_freezes_selected_offset_before_confirmation(tm
         tg.runs.preflight, tg.runs.start = preflight, start
         await tg.process_updates([message(108, text="/rollback")])
         await tap(ctx, 109, "S4-B task")
+        await tap(ctx, 1090, "▶️")
         await tap(ctx, 110, "回滚偏移 3")
         assert len(preflights) == 1 and starts == []
         request = preflights[0][0][1]
@@ -298,13 +299,13 @@ async def test_expired_preflight_plan_never_starts_and_returns_fixed_replan(tmp_
         tg.runs.preflight = preflight
         tg.runs.start = expired_start
         await tg.process_updates([message(110, text="/ship")])
-        await tap(ctx, 111, "构建发布")
+        await tap(ctx, 111, "构建并发布")
         await tap(ctx, 112, "确认执行")
         assert len(starts) == 1
         texts = await outbox_texts(ctx)
         assert any("计划已过期，请重新预检" in text for text in texts)
         assert all("private plan detail" not in text for text in texts)
-        assert any(button["text"] == "重新预检" for button in await buttons(ctx))
+        assert any(button["text"] == "🔄 重新预检" for button in await buttons(ctx))
 
 
 @pytest.mark.parametrize("change", ["disabled", "deleted", "acl_revoked"])
@@ -346,12 +347,12 @@ async def test_confirmation_rechecks_task_and_acl_before_start(tmp_path, change)
         tg.runs.start = start
         chat = 6002 if change == "acl_revoked" else 6001
         await tg.process_updates([message(120, text="/ship", chat=chat)])
-        await tap(ctx, 121, "构建发布", chat=chat)
+        await tap(ctx, 121, "构建并发布", chat=chat)
         config = await ctx.app.state.config_store.read()
 
         def revoke(c):
             if change == "disabled":
-                c.tasks.items[0].enabled = False
+                c.tasks.release_configs[0].commands[0].enabled = False
             elif change == "deleted":
                 c.tasks.items.clear()
             else:
@@ -374,7 +375,9 @@ async def test_non_owner_stop_menu_and_callback_are_limited_to_own_chat(tmp_path
         await ctx.app.state.config_store.update(
             config.revision,
             lambda c: (
-                c.telegram.acl_groups.append(ACLGroup(id="stopper", name="stopper", can_stop=True)),
+                c.telegram.acl_groups.append(
+                    ACLGroup(id="stopper", name="stopper", can_stop=True, task_ids=["task:s4b"])
+                ),
                 c.telegram.acl_members.append(
                     ACLMember(id="member", group_id="stopper", chat_id="6002")
                 ),
@@ -419,9 +422,14 @@ async def test_non_owner_stop_menu_and_callback_are_limited_to_own_chat(tmp_path
         tg.runs.cancel = cancel
         await tg.process_updates([message(130, text="/stop", chat=6002)])
         labels = {button["text"] for button in await buttons(ctx)}
-        assert any("Own run" in label for label in labels)
-        assert not any("Other run" in label for label in labels)
-        await tap(ctx, 131, "Own run", chat=6002)
+        assert "⏹ S4-B task：ship" in labels
+        stop_actions = [
+            await tg.store.inspect_action(b["callback_data"], tg.bot_id, "6002", "6002")
+            for b in await buttons(ctx)
+            if b["text"].startswith("⏹ ")
+        ]
+        assert [a["payload"]["run_id"] for a in stop_actions] == ["own00001"]
+        await tap(ctx, 131, "⏹ S4-B task：ship", chat=6002)
         assert cancelled == ["own00001"]
         assert any("停止不会回滚" in text for text in await outbox_texts(ctx))
 
@@ -433,10 +441,10 @@ async def test_run_origin_preserves_stop_ownership_after_backend_restart(tmp_pat
         config = await first.app.state.config_store.read()
 
         def grant_stop(c):
-            c.telegram.acl_groups = [ACLGroup(id="stopper", name="stopper", can_stop=True)]
-            c.telegram.acl_members = [
-                ACLMember(id="member", group_id="stopper", chat_id="6002")
+            c.telegram.acl_groups = [
+                ACLGroup(id="stopper", name="stopper", can_stop=True, task_ids=["task:s4b"])
             ]
+            c.telegram.acl_members = [ACLMember(id="member", group_id="stopper", chat_id="6002")]
 
         await first.app.state.config_store.update(config.revision, grant_stop)
         store = first.app.state.run_service.store
@@ -449,7 +457,12 @@ async def test_run_origin_preserves_stop_ownership_after_backend_restart(tmp_pat
             snapshot={"id": "task:s4b", "name": "Restart-owned run"},
             resources=[],
             deadline_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
-            origin={"kind": "telegram", "bot_id": "123456789", "chat_id": "6002", "user_id": "6002"},
+            origin={
+                "kind": "telegram",
+                "bot_id": "123456789",
+                "chat_id": "6002",
+                "user_id": "6002",
+            },
         )
         await store.transition(run["run_id"], run["state_version"], "running")
 
@@ -460,9 +473,14 @@ async def test_run_origin_preserves_stop_ownership_after_backend_restart(tmp_pat
             [message(170, text="/stop", chat=6002)]
         )
         labels = {button["text"] for button in await buttons(restarted)}
-        own_label = next(label for label in labels if "Restart-owned run" in label)
-        assert own_label
-        await tap(restarted, 171, "Restart-owned run", chat=6002)
+        own_label = next(label for label in labels if label.startswith("⏹ "))
+        assert "S4-B task：ship" in own_label
+        button = next(b for b in await buttons(restarted) if b["text"] == own_label)
+        action = await restarted.app.state.telegram_store.inspect_action(
+            button["callback_data"], "123456789", "6002", "6002"
+        )
+        assert action["payload"]["run_id"] == run["run_id"]
+        await tap(restarted, 171, own_label, chat=6002)
         texts = await outbox_texts(restarted)
         assert any("结果需要核实" in text for text in texts), texts
 
@@ -473,8 +491,12 @@ async def test_work_item_listing_paginates_eight_items_per_page(tmp_path):
         config = await ctx.app.state.config_store.read()
 
         def add_project(c):
-            library = Library(id="lib:s4b", name="S4-B library", base_url="https://ado.example.test")
-            project = Project(id="proj:s4b", library_id=library.id, collection="Collection", project="Project")
+            library = Library(
+                id="lib:s4b", name="S4-B library", base_url="https://ado.example.test"
+            )
+            project = Project(
+                id="proj:s4b", library_id=library.id, collection="Collection", project="Project"
+            )
             c.ado.libraries.append(library)
             c.ado.projects.append(project)
             c.ado.active_project_id = project.id
@@ -508,8 +530,12 @@ async def test_work_item_full_text_applies_media_allowlist_and_ten_image_limit(t
         config = await ctx.app.state.config_store.read()
 
         def add_project(c):
-            library = Library(id="lib:s4b", name="S4-B library", base_url="https://ado.example.test")
-            project = Project(id="proj:s4b", library_id=library.id, collection="Collection", project="Project")
+            library = Library(
+                id="lib:s4b", name="S4-B library", base_url="https://ado.example.test"
+            )
+            project = Project(
+                id="proj:s4b", library_id=library.id, collection="Collection", project="Project"
+            )
             c.ado.libraries.append(library)
             c.ado.projects.append(project)
             c.ado.active_project_id = project.id
@@ -584,8 +610,12 @@ async def test_work_item_error_uses_fixed_text_without_ado_exception_detail(tmp_
         config = await ctx.app.state.config_store.read()
 
         def add_project(c):
-            library = Library(id="lib:s4b", name="S4-B library", base_url="https://ado.example.test")
-            project = Project(id="proj:s4b", library_id=library.id, collection="Collection", project="Project")
+            library = Library(
+                id="lib:s4b", name="S4-B library", base_url="https://ado.example.test"
+            )
+            project = Project(
+                id="proj:s4b", library_id=library.id, collection="Collection", project="Project"
+            )
             c.ado.libraries.append(library)
             c.ado.projects.append(project)
             c.ado.active_project_id = project.id
@@ -619,7 +649,13 @@ async def test_telegram_media_uses_photo_for_one_and_media_group_for_multiple():
     observed = []
 
     async def inspect_upload(request):
-        observed.append((request.url.path.rsplit("/", 1)[-1], request.headers.get("content-type", ""), await request.aread()))
+        observed.append(
+            (
+                request.url.path.rsplit("/", 1)[-1],
+                request.headers.get("content-type", ""),
+                await request.aread(),
+            )
+        )
         method = observed[-1][0]
         result = [{}] if method == "sendMediaGroup" else {}
         return httpx.Response(200, json={"ok": True, "result": result})
@@ -634,7 +670,9 @@ async def test_telegram_media_uses_photo_for_one_and_media_group_for_multiple():
     finally:
         await client.close()
     assert [method for method, _, _ in observed] == ["sendPhoto", "sendMediaGroup"]
-    assert all(content_type.startswith("multipart/form-data; boundary=") for _, content_type, _ in observed)
+    assert all(
+        content_type.startswith("multipart/form-data; boundary=") for _, content_type, _ in observed
+    )
     assert b"chat_id" in observed[0][2] and b"one.png" in observed[0][2]
     assert b"chat_id" in observed[1][2] and b"two.jpg" in observed[1][2]
 
@@ -695,7 +733,9 @@ async def test_full_worker_queue_replies_busy_and_marks_update_failed(tmp_path):
         await tg.process_updates([message(190)], queued=True)
         assert any("忙，请稍后重试" in text for text in await outbox_texts(ctx))
         with sqlite3.connect(ctx.data_dir / "telegram.sqlite3") as db:
-            assert db.execute("SELECT status,reason FROM tg_updates WHERE update_id=190").fetchone() == (
+            assert db.execute(
+                "SELECT status,reason FROM tg_updates WHERE update_id=190"
+            ).fetchone() == (
                 "failed",
                 "busy",
             )

@@ -17,6 +17,7 @@ from toolbox_backend.api.telegram_schemas import (
     TelegramErrorResponse,
     TelegramSettingsRequest,
     TelegramView,
+    TokenMutationResponse,
     TokenRequest,
     WhitelistRequest,
 )
@@ -47,14 +48,19 @@ async def ai_bot(ai_id: AIId, request: Request):
     return await ai_slot(request, ai_id).ai_view()
 
 
-@router.put("/ai-bots/{ai_id}/token", response_model=MutationResponse)
+@router.put("/ai-bots/{ai_id}/token", response_model=TokenMutationResponse)
 async def ai_token(ai_id: AIId, body: TokenRequest, request: Request):
     return await ai_slot(request, ai_id).token(body.revision, body.token.get_secret_value())
 
 
-@router.post("/ai-bots/{ai_id}/token/import-legacy", response_model=MutationResponse)
+@router.post("/ai-bots/{ai_id}/token/import-legacy", response_model=TokenMutationResponse)
 async def ai_import_token(ai_id: AIId, body: RevisionRequest, request: Request):
     return await ai_slot(request, ai_id).token(body.revision, legacy=True)
+
+
+@router.post("/ai-bots/{ai_id}/token/verify", response_model=TokenMutationResponse)
+async def ai_verify_token(ai_id: AIId, body: RevisionRequest, request: Request):
+    return await ai_slot(request, ai_id).verify_token(body.revision)
 
 
 @router.delete("/ai-bots/{ai_id}/token", response_model=MutationResponse)
@@ -88,14 +94,19 @@ async def view(request: Request):
     return await service(request).view()
 
 
-@router.put("/token", response_model=MutationResponse)
+@router.put("/token", response_model=TokenMutationResponse)
 async def token(body: TokenRequest, request: Request):
     return await service(request).token(body.revision, body.token.get_secret_value())
 
 
-@router.post("/token/import-legacy", response_model=MutationResponse)
+@router.post("/token/import-legacy", response_model=TokenMutationResponse)
 async def import_token(body: RevisionRequest, request: Request):
     return await service(request).token(body.revision, legacy=True)
+
+
+@router.post("/token/verify", response_model=TokenMutationResponse)
+async def verify_token(body: RevisionRequest, request: Request):
+    return await service(request).verify_token(body.revision)
 
 
 @router.delete("/token", response_model=MutationResponse)

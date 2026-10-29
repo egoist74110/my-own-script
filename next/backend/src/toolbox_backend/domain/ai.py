@@ -8,6 +8,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue
 
+from toolbox_backend.domain.telegram import TokenVerification, VerifiedBot
+
 BUILTINS = {
     "codex": ("Codex", "codex", "npm install -g @openai/codex@latest", "codex"),
     "gemini": ("Antigravity CLI", "agy", "agy update", "agy"),
@@ -150,6 +152,8 @@ class AIBot(Extensible):
     enabled_at: str | None = None
     bot_id: str | None = None
     username: str | None = None
+    verified_bot: VerifiedBot | None = None
+    token_verify: TokenVerification | None = None
 
 
 class AIBots(Extensible):

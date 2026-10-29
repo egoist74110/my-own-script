@@ -82,15 +82,16 @@ class TelegramWorkItems:
         return await self.dispatcher.button(update, label, "wi_" + kind, payload)
 
     async def projects(self, update, page=0):
+        update["_tg_screen"] = ("wi_projects", {})
         config = await self.owner(update)
         projects = config.ado.projects
         page = min(max(page, 0), max(0, (len(projects) - 1) // 8))
         rows = [
-            [await self.button(update, p.project, "project", {"project_id": p.id})]
+            [await self.button(update, "📁 " + p.project, "project", {"project_id": p.id})]
             for p in projects[page * 8 : (page + 1) * 8]
         ]
         nav = []
-        for label, number in (("上一页", page - 1), ("下一页", page + 1)):
+        for label, number in (("⬅️ 上一页", page - 1), ("下一页 ➡️", page + 1)):
             if 0 <= number * 8 < len(projects):
                 nav.append(await self.button(update, label, "projects", {"page": number}))
         if nav:
@@ -98,6 +99,7 @@ class TelegramWorkItems:
         await self.dispatcher.panel(update, "请选择工单项目" if projects else "尚未配置项目", rows)
 
     async def columns(self, update, project_id):
+        update["_tg_screen"] = ("wi_project", {"project_id": project_id})
         config = await self.owner(update)
         if project_id not in {p.id for p in config.ado.projects}:
             raise SettingsError("not_found", "固定错误", 404)
@@ -106,7 +108,7 @@ class TelegramWorkItems:
             [
                 await self.button(
                     update,
-                    column,
+                    "📋 " + column,
                     "column",
                     {"project_id": project_id, "column": column, "page": 0},
                 )
@@ -116,6 +118,7 @@ class TelegramWorkItems:
         await self.dispatcher.panel(update, "请选择版块", rows)
 
     async def listing(self, update, payload):
+        update["_tg_screen"] = ("wi_column", payload)
         config = await self.owner(update)
         pid, column, page = payload["project_id"], payload["column"], payload.get("page", 0)
         if column not in COLUMNS or type(page) is not int or page < 0:
@@ -137,7 +140,10 @@ class TelegramWorkItems:
         rows = [
             [
                 await self.button(
-                    update, f"#{item.id} {item.title}", "detail", {"project_id": pid, "id": item.id}
+                    update,
+                    f"📋 #{item.id} {item.title}",
+                    "detail",
+                    {"project_id": pid, "id": item.id},
                 )
             ]
             for item in items[page * 8 : (page + 1) * 8]
@@ -147,7 +153,7 @@ class TelegramWorkItems:
             nav.append(
                 await self.button(
                     update,
-                    "上一页",
+                    "⬅️ 上一页",
                     "page",
                     {"project_id": pid, "column": column, "page": page - 1},
                 )
@@ -156,14 +162,14 @@ class TelegramWorkItems:
             nav.append(
                 await self.button(
                     update,
-                    "下一页",
+                    "下一页 ➡️",
                     "page",
                     {"project_id": pid, "column": column, "page": page + 1},
                 )
             )
         if nav:
             rows.append(nav)
-        rows.append([await self.button(update, "版块", "project", {"project_id": pid})])
+        rows += await self.dispatcher.navigation(update, {"project_id": pid}, kind="wi_project")
         text = f"{column} · 第 {page + 1} 页\n" + (
             "\n".join(f"#{x.id} {x.title}" for x in items[page * 8 : (page + 1) * 8]) or "暂无工单"
         )
@@ -173,6 +179,7 @@ class TelegramWorkItems:
         return "handled"
 
     async def detail(self, update, payload, *, full=False):
+        update["_tg_screen"] = ("wi_full" if full else "wi_detail", payload)
         await self.owner(update)
         pid, ident = payload["project_id"], payload["id"]
         if type(ident) is not int or not 1 <= ident <= 2147483647:
@@ -254,8 +261,8 @@ class TelegramWorkItems:
                 text.append(f"{skipped} 张图片未发送")
         rows = [
             [
-                await self.button(update, "全文", "full", payload),
-                await self.button(update, "关联项", "related", payload),
+                await self.button(update, "📄 全文", "full", payload),
+                await self.button(update, "🔗 关联项", "related", payload),
             ],
             [
                 await self.button(update, "🔍 AI 分析", "ai", payload),
@@ -263,6 +270,7 @@ class TelegramWorkItems:
             ],
         ]
         if full:
+            rows += await self.dispatcher.fallback_navigation(update)
             await self.dispatcher.service.reply(
                 update,
                 "\n".join(text),
@@ -285,13 +293,16 @@ class TelegramWorkItems:
         rows = [
             [
                 await self.button(
-                    update, f"工单 #{ident}", "detail", {"project_id": pid, "id": ident}
+                    update,
+                    f"📋 工单 #{ident}",
+                    "detail",
+                    {"project_id": pid, "id": ident, "_back": payload},
                 )
             ]
             for ident in visible
         ]
         nav = []
-        for label, number in (("上一页", page - 1), ("下一页", page + 1)):
+        for label, number in (("⬅️ 上一页", page - 1), ("下一页 ➡️", page + 1)):
             if 0 <= number * 8 < len(ids):
                 nav.append(await self.button(update, label, "related", {**payload, "page": number}))
         if nav:
@@ -364,7 +375,7 @@ class TelegramWorkItems:
                 await self.dispatcher.panel(update, "尚未配置本地仓库，请先在桌面端添加")
                 return "handled"
             rows = [
-                [await self.button(update, name[:48], "air", {**base, "repo_id": rid})]
+                [await self.button(update, "📦 " + name[:48], "air", {**base, "repo_id": rid})]
                 for rid, name in list(repos.items())[:8]
             ]
             await self.dispatcher.panel(update, f"工单 #{ident}：选择分析用的本地仓库", rows)
@@ -406,10 +417,13 @@ class TelegramWorkItems:
                 else "对应 AI 机器人未启用，仅可在桌面 AI 会话页查看"
             )
             confirm = await self.button(
-                update, "确认分析", "aic", {**base, "repo_id": rid, "profile_id": profile.id}
+                update, "✅ 确认分析", "aic", {**base, "repo_id": rid, "profile_id": profile.id}
             )
             cancel = await self.button(
-                update, "取消", "menu_cancel", {"confirm_token": confirm["callback_data"]}
+                update,
+                "✖️ 取消",
+                "menu_cancel",
+                {**base, "repo_id": rid, "confirm_token": confirm["callback_data"]},
             )
             await self.dispatcher.panel(
                 update,
@@ -483,11 +497,13 @@ class TelegramWorkItems:
                 if name != cli
             ]
         ]
-        # Plain text, never Markdown: the prompt contains names from configuration.
+        rows += await self.dispatcher.navigation(update, base, kind="wi_detail")
+        # 配置名称按纯文本发送，避免被解释成 Markdown。
         await self.dispatcher.service.reply(
             update,
             result["prompt"],
             reply_markup={"inline_keyboard": rows},
+            panel=True,
             chunk_size=3900,
         )
         return "handled"

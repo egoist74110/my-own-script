@@ -54,7 +54,7 @@ async def seed(app, root):
     fixture_path = Path(os.environ["TOOLBOX_DEV_FAKE_ADO"]) / "tasks.json"
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     config = await app.state.config_store.initialize()
-    if config.tasks.items or config.ado.libraries:
+    if config.tasks.release_configs or config.ado.libraries:
         raise ValueError("dev task seed requires a fresh isolated data directory")
 
     def populate(c):

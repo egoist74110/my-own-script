@@ -16,7 +16,14 @@ from toolbox_backend.adapters.credentials import MemoryCredentials
 from toolbox_backend.adapters.fake_task_ado import FakeTaskADO
 from toolbox_backend.adapters.telegram_http import TelegramHTTP
 from toolbox_backend.app import create_app
-from toolbox_backend.domain.settings import DeployTarget, DynamicTask, GitFlow, Library, Project
+from toolbox_backend.domain.settings import (
+    DeployTarget,
+    DynamicTask,
+    GitFlow,
+    Library,
+    Project,
+    ReleaseBranch,
+)
 from toolbox_backend.domain.telegram import ACLGroup, ACLMember
 from toolbox_backend.settings import Settings
 
@@ -127,7 +134,7 @@ async def tap(app, tg, uid, label, *, chat=6002, token=None):
 
 @pytest.mark.parametrize(
     "operation,label",
-    [("sync_build_release", "构建发布"), ("deploy_only", "仅发布"), ("rollback", "回滚偏移 1")],
+    [("sync_build_release", "构建并发布"), ("deploy_only", "只发布"), ("rollback", "回滚偏移 1")],
 )
 async def test_full_real_execution_and_duplicate_confirmation(tmp_path, operation, label):
     async with execution(tmp_path) as (app, tg, fake, bot):
@@ -136,6 +143,7 @@ async def test_full_real_execution_and_duplicate_confirmation(tmp_path, operatio
         )
         if operation == "rollback":
             await tap(app, tg, 2, "Telegram task")
+            await tap(app, tg, 20, "▶️")
         await tap(app, tg, 3, label)
         text, _ = latest(app)
         assert "确认" in text and "main" in text
@@ -169,12 +177,12 @@ async def test_full_real_execution_and_duplicate_confirmation(tmp_path, operatio
 async def test_cancel_button_invalidates_unconsumed_confirmation(tmp_path):
     async with execution(tmp_path) as (app, tg, _, _):
         await tg.process_updates([message(1, 6002, text="/deploy")])
-        await tap(app, tg, 2, "构建发布")
+        await tap(app, tg, 2, "构建并发布")
         confirm = next(
             b["callback_data"]
             for row in latest(app)[1]["inline_keyboard"]
             for b in row
-            if b["text"] == "确认执行"
+            if b["text"] == "✅ 确认执行"
         )
         await tap(app, tg, 3, "取消")
         await tap(app, tg, 4, "", token=confirm)
@@ -188,8 +196,9 @@ async def test_confirmed_telegram_run_uses_only_temporary_bare_git(repository, t
         config = await app.state.config_store.read()
 
         def source(c):
-            c.tasks.items[0].local_repo_path = str(local)
-            c.tasks.items[0].git_flow = GitFlow(
+            c.tasks.release_configs[0].local_repo_path = str(local)
+            c.tasks.release_configs[0].branches[0] = ReleaseBranch(
+                id=c.tasks.release_configs[0].branches[0].id,
                 build_branch="main",
                 update_branches=["main"],
                 merges=[{"source": "source", "target": "main"}],
@@ -207,7 +216,7 @@ async def test_confirmed_telegram_run_uses_only_temporary_bare_git(repository, t
 
         await app.state.config_store.update(config.revision, source)
         await tg.process_updates([message(1, 6002, text="/run deploy")])
-        await tap(app, tg, 2, "构建发布")
+        await tap(app, tg, 2, "构建并发布")
         assert fake.writes == []
         assert git(remote, "rev-parse", "main") == original
         await tap(app, tg, 3, "确认执行")

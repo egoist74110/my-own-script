@@ -628,7 +628,11 @@ async def test_help_menu_callbacks_use_bound_one_time_server_tokens(tmp_path):
             assert db.execute("SELECT count(*) FROM tg_outbox").fetchone() == (1,)
         await tg.process_updates([callback(504, token), callback(505, token)])
         with sqlite3.connect(ctx.data_dir / "telegram.sqlite3") as db:
-            assert db.execute("SELECT count(*) FROM tg_outbox").fetchone() == (2,)
+            # 首次点击导航，重复点击只显示过期提示，不再次执行导航。
+            assert db.execute("SELECT count(*) FROM tg_outbox").fetchone() == (3,)
+            assert db.execute("SELECT text FROM tg_outbox ORDER BY id DESC LIMIT 1").fetchone() == (
+                "菜单已过期，请重新 /start",
+            )
             assert db.execute(
                 "SELECT consumed_at FROM tg_actions WHERE token=?", (token,)
             ).fetchone()[0]
@@ -837,3 +841,22 @@ async def test_last_bot_state_is_persisted_on_disable(tmp_path):
         assert response.status_code == 200
         with sqlite3.connect(ctx.data_dir / "telegram.sqlite3") as db:
             assert db.execute("SELECT state FROM tg_bots").fetchone() == ("disabled",)
+
+
+def test_legacy_blank_member_identities_are_not_duplicates():
+    # Old app exports username-only members with chat_id "".
+    config = Config.model_validate(
+        {
+            "telegram": {
+                "acl_groups": [{"id": "ops", "name": "ops"}],
+                "acl_members": [
+                    {"id": "m:1", "group_id": "ops", "chat_id": "", "username": "@alice_ops"},
+                    {"id": "m:2", "group_id": "ops", "chat_id": "", "username": "@bob_ops1"},
+                ],
+            }
+        }
+    )
+    groups, members, warnings = acl_validity(config)
+    assert [m.id for m in members] == ["m:1", "m:2"]
+    assert all(m.chat_id is None for m in members)
+    assert warnings == []

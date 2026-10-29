@@ -4,8 +4,18 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, JsonValue, SecretStr, StringConstraints, model_validator
 
+from toolbox_backend.api.settings_schemas import MutationResponse
 from toolbox_backend.domain.settings import StrictModel
-from toolbox_backend.domain.telegram import ACLGroup, ACLMember, Control, Notify, numeric, username
+from toolbox_backend.domain.telegram import (
+    ACLGroup,
+    ACLMember,
+    Control,
+    Notify,
+    TokenVerification,
+    VerifiedBot,
+    numeric,
+    username,
+)
 
 ChatId = Annotated[str, StringConstraints(pattern=r"^-?\d{1,20}$")]
 Username = Annotated[str, StringConstraints(pattern=r"^@[A-Za-z0-9_]{5,32}$")]
@@ -97,6 +107,12 @@ class BotView(BaseModel):
     credential: CredentialView
     bot_id: str | None
     username: str | None
+    verified_bot: VerifiedBot | None = None
+    verify: TokenVerification | None = None
+
+
+class TokenMutationResponse(MutationResponse):
+    verify: TokenVerification
 
 
 class OwnerView(BaseModel):
@@ -164,6 +180,8 @@ class AIBotControlView(BaseModel):
     enabled: bool
     enabled_at: str | None = None
     bot_id: str | None = None
+    verified_bot: VerifiedBot | None = None
+    token_verify: TokenVerification | None = None
 
 
 class AIBotView(BaseModel):

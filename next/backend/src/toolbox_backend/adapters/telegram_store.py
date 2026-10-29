@@ -459,6 +459,20 @@ class TelegramStore:
 
         return await self.call(save)
 
+    async def cancel_rollback_actions(self, bot_id, chat_id, user_id):
+        def save():
+            now = stamp()
+            with self.transaction() as db:
+                row = db.execute(
+                    "UPDATE tg_actions SET consumed_at=? WHERE bot_id=? AND chat_id=? "
+                    "AND user_id=? AND kind IN ('rollback_pick','rollback_confirm') "
+                    "AND expires_at>? AND consumed_at IS NULL",
+                    (now, bot_id, chat_id, user_id, now),
+                )
+                return row.rowcount > 0
+
+        return await self.call(save)
+
     async def action_result(self, token, run_id):
         def save():
             with self.transaction() as db:

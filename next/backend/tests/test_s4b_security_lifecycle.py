@@ -197,7 +197,7 @@ async def test_expired_confirmation_still_prompts_after_another_menu_opens(tmp_p
         )
         with sqlite3.connect(tg.store.path) as db:
             texts = [r[0] for r in db.execute("SELECT text FROM tg_outbox")]
-        assert any("计划已过期" in text for text in texts)
+        assert any("菜单已过期，请重新 /start" in text for text in texts)
         assert (await tg.runs.store.list())["items"] == []
 
 

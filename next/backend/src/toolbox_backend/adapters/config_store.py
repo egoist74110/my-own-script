@@ -16,12 +16,12 @@ from pydantic import ValidationError
 
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.models import utcnow
-from toolbox_backend.domain.settings import Config
+from toolbox_backend.domain.settings import Config, config_v6_to_v7, config_v7_to_v8
 from toolbox_backend.logging_setup import contains_secret
 
 T = TypeVar("T")
 MigrationStep = Callable[[dict], dict]
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 8
 
 
 def stamp() -> str:
@@ -92,6 +92,8 @@ class ConfigStore:
             3: config_v3_to_v4,
             4: config_v4_to_v5,
             5: config_v5_to_v6,
+            6: config_v6_to_v7,
+            7: config_v7_to_v8,
             **(migrations or {}),
         }
         self.readonly_error: str | None = None
@@ -140,11 +142,11 @@ class ConfigStore:
         return await asyncio.to_thread(self._read)
 
     def _backup(self, original: bytes, version: int) -> None:
-        target = self.data_dir / "migrations" if version in (1, 2, 3, 4, 5) else self.data_dir
+        target = self.data_dir / "migrations" if version in (1, 2, 3, 4, 5, 6, 7) else self.data_dir
         private_dir(target)
         prefix = (
             f"config-v{version}-{stamp().replace(':', '-')}"
-            if version in (1, 2, 3, 4, 5)
+            if version in (1, 2, 3, 4, 5, 6, 7)
             else (f"config.json.bak-v{version}-{stamp().replace(':', '-')}-")
         )
         fd, filename = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=target)
@@ -175,6 +177,8 @@ class ConfigStore:
             3: config_v3_to_v4,
             4: config_v4_to_v5,
             5: config_v5_to_v6,
+            6: config_v6_to_v7,
+            7: config_v7_to_v8,
             **self.migrations,
         }
         try:

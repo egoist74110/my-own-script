@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>线路图设计稿</title>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  --ink:#1b1d22;--ink-2:#5b616e;--ink-3:#8b919c;--line:#e4e6eb;--chrome:#f3f4f6;--paper:#ffffff;--sel:#e9ecf3;
+  --ok:#1f8a5b;--ok-bg:#e6f4ec;--bad:#c2372f;--bad-bg:#fbeceb;--run:#2457d6;--run-bg:#e8eefc;--warn:#9a5b00;--warn-bg:#fdf1de;
+  --l-event:#0f8f86;--l-front:#2f5fe0;--l-vip:#7a4fd6;--l-api:#d4651c;--l-board:#3b4252;
+  --sans:-apple-system,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --num:"SF Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#d9dbe0;color:var(--ink);font:13px/1.45 var(--sans)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--run);outline-offset:1px}
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line)}
+.bar b{font-weight:600;margin-right:6px}
+.seg{display:inline-flex;background:var(--chrome);border-radius:8px;padding:2px;flex-wrap:wrap}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:6px;cursor:pointer;color:var(--ink-2)}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.stage{padding:24px 16px 40px;overflow:auto}
+.win{margin:0 auto;height:680px;background:var(--paper);border-radius:12px;overflow:hidden;display:grid;box-shadow:0 0 0 1px rgba(0,0,0,.12),0 20px 40px -20px rgba(0,0,0,.35)}
+.win[data-w="1000"]{width:1000px;grid-template-columns:56px 300px minmax(0,1fr)}
+.win[data-w="1440"]{width:1440px;grid-template-columns:212px 320px minmax(0,1fr) 280px}
+.win.two[data-w="1000"]{grid-template-columns:56px 200px minmax(0,1fr)}
+.win.two[data-w="1440"]{grid-template-columns:212px 220px minmax(0,1fr)}
+.win.one[data-w="1000"]{grid-template-columns:56px minmax(0,1fr)}
+.win.one[data-w="1440"]{grid-template-columns:212px minmax(0,1fr)}
+.side{background:var(--chrome);border-right:1px solid var(--line);padding:38px 8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.nav{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:7px;color:var(--ink-2);white-space:nowrap;overflow:hidden;cursor:pointer}
+.nav svg{width:17px;height:17px;flex:none}
+.nav:hover{background:#e9eaee}
+.nav.on{background:#e1e3e8;color:var(--ink);font-weight:600}
+.nav .n{margin-left:auto;font-size:11px;color:var(--run);font-weight:600;font-style:normal}
+.win[data-w="1000"] .nav span,.win[data-w="1000"] .nav .n,.win[data-w="1000"] .grp{display:none}
+.win[data-w="1000"] .nav{justify-content:center;padding:0}
+.grp{font-size:11px;color:var(--ink-3);margin:12px 10px 4px}
+.foot{margin-top:auto}
+.dotlive{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.list{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;min-height:0}
+.lh{padding:14px 14px 8px}
+.lh h1{font-size:15px;margin:0;font-weight:650}
+.lh p{margin:2px 0 0;color:var(--ink-3);font-size:12px}
+.search{margin:4px 12px 6px;display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border-radius:7px;background:var(--chrome);color:var(--ink-3);white-space:nowrap}
+.search svg{width:14px;height:14px}
+.items{overflow:auto;padding:4px 8px 12px;min-height:0;flex:1}
+.det{min-width:0;overflow:auto;display:flex;flex-direction:column}
+.tb{display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);white-space:nowrap;min-height:49px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--line);background:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--chrome)}
+.btn svg{width:14px;height:14px}
+.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.ic{padding:0 7px}
+.btn.danger{color:var(--bad)}
+.grow{flex:1}
+.body{padding:18px 20px 24px;max-width:860px}
+.ttl{font-size:20px;font-weight:650;margin:0;letter-spacing:-.01em;overflow-wrap:anywhere}
+.meta{color:var(--ink-2);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}
+.meta span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.meta svg{width:13px;height:13px;color:var(--ink-3)}
+.sec{margin-top:24px}
+.sec > h2{font-size:12px;font-weight:600;color:var(--ink-2);margin:0 0 8px}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:12px}
+.callout{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:8px;margin-top:14px}
+.callout svg{width:15px;height:15px;flex:none;margin-top:1px}
+.callout.bad{background:var(--bad-bg);color:var(--bad)}
+.callout.warn{background:var(--warn-bg);color:var(--warn)}
+.callout .act{margin-left:auto}
+.insp{background:#fafafb;border-left:1px solid var(--line);padding:16px;overflow:auto;min-width:0}
+.insp h3{font-size:12px;margin:0 0 8px;color:var(--ink-2);font-weight:600}
+.kv{display:grid;grid-template-columns:64px minmax(0,1fr);gap:6px 10px;margin:0 0 18px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it{display:block;padding:9px 10px;border-radius:9px;cursor:pointer;margin-bottom:2px;text-decoration:none;color:inherit}
+.it:hover{background:var(--chrome)}
+.it.on{background:var(--sel)}
+.n1{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n2{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--ink-3);font-size:12px;white-space:nowrap;overflow:hidden}
+.pill{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 7px;border-radius:5px;font-size:11px;font-weight:600;white-space:nowrap;flex:none}
+.pill svg{width:11px;height:11px}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-bad{background:var(--bad-bg);color:var(--bad)} .p-run{background:var(--run-bg);color:var(--run)} .p-idle{background:var(--chrome);color:var(--ink-3)} .p-warn{background:var(--warn-bg);color:var(--warn)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+.d-ok{background:var(--ok)} .d-bad{background:var(--bad)} .d-idle{background:#c5c9d0} .d-warn{background:#d18a00}
+.repo{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.repo::before{content:"";width:10px;height:3px;border-radius:2px;background:var(--c)}
+
+/* 线路 */
+.gl{display:flex;align-items:center;margin-top:6px}
+.gdot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--c);background:#fff;flex:none}
+.gdot.f{background:var(--c)} .gdot.x{border-color:var(--bad);background:var(--bad)}
+.gseg{height:2px;width:22px;background:var(--c);opacity:.3}
+.gseg.f{opacity:1}
+.route{padding:18px 8px 4px}
+.track{display:grid;position:relative}
+.track::before{content:"";position:absolute;left:var(--inset);right:var(--inset);top:13px;height:4px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--c) 0 8px,transparent 8px 14px);opacity:.4}
+.done{position:absolute;left:var(--inset);top:13px;height:4px;border-radius:2px;background:var(--c)}
+.stn{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;z-index:1;min-width:0;background:none;border:0;padding:0;cursor:default}
+.stn i{width:30px;height:30px;border-radius:50%;border:4px solid var(--c);background:#fff;display:grid;place-items:center}
+.stn i svg{width:14px;height:14px;color:var(--c)}
+.stn.f i{background:var(--c)} .stn.f i svg{color:#fff}
+.stn.here i{box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 22%,transparent)}
+.stn.skip i{border-style:dashed;border-color:var(--ink-3)} .stn.skip i svg{color:var(--ink-3)}
+.stn b{margin-top:8px;font-weight:600;white-space:nowrap}
+.stn small{color:var(--ink-3);font-size:12px;margin-top:1px;white-space:nowrap}
+.runs{display:flex;flex-direction:column}
+.run{display:grid;grid-template-columns:62px minmax(0,1fr) 92px 74px;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;white-space:nowrap}
+.run:hover{background:var(--chrome)}
+.run .mini{display:flex;align-items:center;min-width:0;overflow:hidden}
+.run .mini .gseg{width:26px}
+
+/* 工单线路筛选 */
+.board{display:grid;grid-template-columns:repeat(5,1fr);position:relative;margin:2px 12px 8px;--c:var(--l-board);--inset:10%}
+.board::before{content:"";position:absolute;left:10%;right:10%;top:9px;height:2px;background:#cfd3da}
+.bst{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;border:0;background:none;cursor:pointer;padding:0 0 4px;min-width:0}
+.bst i{width:20px;height:20px;border-radius:50%;border:2px solid #b9bec7;background:#fff;display:grid;place-items:center;font-style:normal;font-size:10px;font-weight:700;color:var(--ink-3)}
+.bst span{font-size:11px;color:var(--ink-2);margin-top:4px;white-space:nowrap}
+.bst[aria-pressed=true] i{border-color:var(--ink);background:var(--ink);color:#fff}
+.bst[aria-pressed=true] span{color:var(--ink);font-weight:600}
+.wi .pri{font-weight:700;font-size:11px;color:var(--ink-2)}
+.prose{font-size:14px;line-height:1.7;max-width:68ch;color:#2b2e35}
+.prose p{margin:0 0 10px}
+.cm{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:28px 1fr;gap:10px}
+.av{width:28px;height:28px;border-radius:50%;background:var(--chrome);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--ink-2)}
+
+/* AI 会话 */
+.chat{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;max-width:820px}
+.msg.me{align-self:flex-end;background:var(--sel);padding:8px 12px;border-radius:12px 12px 4px 12px;max-width:70%}
+.msg.ai{line-height:1.65;max-width:68ch}
+.tool{border:1px solid var(--line);border-radius:8px;padding:7px 10px;display:flex;gap:8px;align-items:center;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.tool svg{width:14px;height:14px;flex:none}
+.approve{border:1px solid #e8c98f;background:var(--warn-bg);border-radius:10px;padding:10px 12px}
+.approve .cmd{font-family:var(--num);font-size:12px;background:#fff;border-radius:6px;padding:6px 8px;margin:6px 0 8px;overflow-x:auto;white-space:pre}
+.composer{border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;align-items:flex-end}
+.composer .in{flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--ink-3);min-height:38px}
+.sess{border-left:3px solid var(--c);border-radius:0 9px 9px 0}
+
+/* 设置：系统设置式分组列表 */
+.setnav{background:#fafafb;border-right:1px solid var(--line);padding:16px 8px;min-width:0}
+.setnav .nav{height:30px}
+.win[data-w="1000"] .setnav .nav span{display:inline}
+.win[data-w="1000"] .setnav .nav{justify-content:flex-start;padding:0 10px}
+.group{margin-top:22px}
+.group > h2{font-size:13px;font-weight:600;margin:0 0 6px}
+.group > p{margin:0 0 8px;color:var(--ink-2);max-width:68ch}
+.rows{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:44px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .lbl{min-width:0;flex:1}
+.row .lbl b{font-weight:500;display:block}
+.row .lbl small{color:var(--ink-3);display:block;margin-top:1px}
+.row .val{color:var(--ink-2);white-space:nowrap}
+.sw{width:34px;height:20px;border-radius:999px;background:#d4d7dd;position:relative;flex:none;border:0;cursor:pointer}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw[aria-checked=true]{background:var(--ok)} .sw[aria-checked=true]::after{left:16px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 14px;border-top:1px solid var(--line);white-space:nowrap}
+thead th{border-top:0;font-weight:500;color:var(--ink-3);font-size:12px;background:#fafafb}
+td.wrap{white-space:normal}
+.field{border:1px solid var(--line);border-radius:7px;height:28px;padding:0 9px;display:flex;align-items:center;color:var(--ink-3);min-width:0;flex:1;max-width:320px;white-space:nowrap;overflow:hidden}
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="预览控制">
+  <b>线路图设计稿</b>
+  <div class="seg" id="pg" aria-label="页面"></div>
+  <div class="seg" id="wid" aria-label="窗口宽度">
+    <button data-v="1000" aria-pressed="true">1000 宽（你现在）</button>
+    <button data-v="1440" aria-pressed="false">1440 宽</button>
+  </div>
+</div>
+<div class="stage"><div class="win" id="win" data-w="1000"></div></div>
+
+<script>
+const ic=(n,cls='')=>`<i data-lucide="${n}" class="${cls}"></i>`;
+const PILL={ok:['p-ok','check','成功'],bad:['p-bad','x','失败'],run:['p-run','loader','运行中'],idle:['p-idle','minus','未运行'],warn:['p-warn','circle-help','需核实']};
+const pill=(s,t)=>{const p=PILL[s];return `<span class="pill ${p[0]}">${ic(p[1])}${t||p[2]}</span>`};
+let P='tasks',W='1000';
+const wide=()=>W==='1440';
+
+function side(on){const a=(k,icn,t,n='')=>`<a class="nav ${on===k?'on':''}" data-go="${k}" title="${t}">${ic(icn)}<span>${t}</span>${n?`<em class="n">${n}</em>`:''}</a>`;
+ return `<nav class="side" aria-label="导航"><div class="grp">工作</div>${a('tasks','rocket','任务','1')}${a('wi','file-text','工单')}${a('ai','message-square','AI 会话')}<div class="grp">基础设施</div>${a('mcp','plug','MCP')}${a('svc','server','服务')}${a('vpn','shield','VPN')}<div class="foot">${a('tg','settings','设置')}<a class="nav" title="后端在线"><i class="dotlive"></i><span>后端在线</span></a></div></nav>`}
+function lh(title,sub,add=true){return `<div class="lh"><div style="display:flex;align-items:center"><h1>${title}</h1><span class="grow"></span>${add?`<button class="btn ic" aria-label="新建">${ic('plus')}</button>`:''}</div><p>${sub}</p></div>`}
+
+/* 任务 */
+const TASKS=[
+ {n:'sync_build_event_test',c:'--l-event',st:'bad',when:'34 分钟前',g:['ok','ok','skip']},
+ {n:'sync_build_vip_h5_dcr',c:'--l-vip',st:'idle',when:'从未运行',g:['idle','idle','idle','idle']},
+ {n:'build_cg_front_api',c:'--l-api',st:'run',when:'构建中 2:13',g:['ok','run','idle']},
+ {n:'sync_build_front',c:'--l-front',st:'ok',when:'昨天 18:02',g:['ok','ok','ok']},
+ {n:'sync_build_front_test',c:'--l-front',st:'ok',when:'昨天 15:40',g:['ok','ok','ok']},
+ {n:'build_cg_front_api_test',c:'--l-api',st:'idle',when:'从未运行',g:['idle','idle','idle']},
+ {n:'sync_build_vip_h5',c:'--l-vip',st:'idle',when:'从未运行',g:['idle','idle','idle']},
+ {n:'sync_build_event',c:'--l-event',st:'idle',when:'从未运行',g:['idle','idle','idle']},
+];
+const glyph=g=>`<div class="gl">${g.map((x,i)=>`${i?`<span class="gseg ${x==='ok'||x==='run'?'f':''}"></span>`:''}<span class="gdot ${x==='ok'?'f':''} ${x==='bad'?'x':''}"></span>`).join('')}</div>`;
+function tasks(){
+ const items=TASKS.map((x,i)=>`<a class="it ${i?'':'on'}" style="--c:var(${x.c})"><div class="n1">${x.n}</div><div class="n2">${x.st!=='idle'?pill(x.st):''}<span>${x.when}</span></div>${glyph(x.g)}</a>`).join('');
+ const st=[['git-pull-request','同步','0:21','f'],['hammer','构建','#64758，4:01','f'],['flask-conical','测试环境','没有执行','skip']];
+ const route=`<div class="route"><div class="track" style="grid-template-columns:repeat(3,1fr);--inset:16.6%"><div class="done" style="width:33.3%"></div>${st.map(s=>`<div class="stn ${s[3]}"><i>${ic(s[0])}</i><b>${s[1]}</b><small>${s[2]}</small></div>`).join('')}</div></div>`;
+ const R=[['bad',['ok','ok','skip'],'Telegram，@janson12138','10-28 09:21','4:23'],['bad',['bad','idle','idle'],'Telegram，@janson12138','10-28 09:20','0:20'],['ok',['ok','ok','ok'],'桌面','10-27 16:05','6:48']];
+ const runs=R.map(r=>`<div class="run">${pill(r[0])}<div class="mini">${r[1].map((x,i)=>`${i?`<span class="gseg ${x==='ok'?'f':''}"></span>`:''}<span class="gdot ${x==='ok'?'f':''} ${x==='bad'?'x':''}"></span>`).join('')}<span style="margin-left:10px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis">${r[2]}</span></div><span class="num" style="color:var(--ink-2)">${r[3]}</span><span class="num" style="color:var(--ink-3)">${r[4]}</span></div>`).join('');
+ const tb=`<div class="tb"><button class="btn pri">${ic('play')}运行</button><button class="btn">${ic('upload')}只发布</button>${wide()?`<button class="btn">${ic('undo-2')}回滚</button><button class="btn">${ic('pencil')}编辑</button>`:`<button class="btn ic" aria-label="更多操作">${ic('ellipsis')}</button>`}<span class="grow"></span><button class="btn ic" aria-label="检查器">${ic('panel-right')}</button></div>`;
+ const insp=`<aside class="insp" aria-label="任务配置"><h3>代码</h3><dl class="kv"><dt>仓库</dt><dd>CG_Vue_Event</dd><dt>本地路径</dt><dd class="num">~/CG_Vue_Event</dd><dt>构建分支</dt><dd>main</dd></dl><h3>发布目标</h3><dl class="kv"><dt>构建</dt><dd>CG_Vue_Event-節慶活動</dd><dt>Release</dt><dd>CG_Vue_Event(節慶活動)</dd><dt>环境</dt><dd>新优惠-测试环境</dd></dl><h3>出错时</h3><dl class="kv"><dt>策略</dt><dd>停下，不继续后面的目标</dd></dl></aside>`;
+ return {cls:'',html:`${side('tasks')}<section class="list">${lh('任务','8 个任务，1 个正在运行')}<div class="search">${ic('search')}搜索任务、仓库、分支<span class="grow"></span><span class="num" style="font-size:11px">⌘K</span></div><div class="items">${items}</div></section><section class="det">${tb}<div class="body" style="--c:var(--l-event)"><h1 class="ttl">sync_build_event_test</h1><div class="meta"><span class="repo" style="--c:var(--l-event)">CG_Vue_Event / main</span><span>${ic('target')}发往测试环境</span><span>${ic('send')}Telegram 命令 /sync_build_event_test</span></div><div class="sec"><h2>本次运行：09:21 开始，用时 4:23</h2>${route}<div class="callout bad">${ic('circle-alert')}<div><b>发布没有执行。</b>构建 #64758 已完成，但在创建 Release 前停下了。到 ADO 确认测试环境没有被别的流程部署后，可以单独只发布这次构建。</div><button class="btn act">只发布</button></div></div><div class="sec"><h2>运行记录</h2><div class="runs" style="--c:var(--l-event)">${runs}</div></div></div></section>${wide()?insp:''}`}}
+
+/* 工单 */
+function wi(){
+ const cols=[['新建',12],['待开发',8],['开发中',5],['测试',3],['已关闭','500+']];
+ const board=`<div class="board" role="group" aria-label="看板列">${cols.map((c,i)=>`<button class="bst" aria-pressed="${i===2}"><i>${typeof c[1]==='number'?c[1]:'·'}</i><span>${c[0]}</span></button>`).join('')}</div>`;
+ const W_=[['APP 包管理页面','2493','azure2_yasuo','P2','10-26'],['所有页面弹窗模态中 el-form 校验提示错位','2496','azure2_yasuo','P2','10-25'],['[手机游戏列表] 复制 App 图标失败','2507','azure2_wesker','P1','10-25'],['[bug] 发布更新后 js 丢失','2508','azure2_yasuo','P1','10-24'],['人工存款单次上限','2592','azure2_allen','P2','10-22']];
+ const items=W_.map((w,i)=>`<a class="it wi ${i===3?'on':''}"><div style="display:flex;gap:8px"><div class="n1" style="flex:1">${w[0]}</div><span class="pri">${w[3]}</span></div><div class="n2"><span class="num">#${w[1]}</span><span>${w[2]}</span><span class="grow"></span><span class="num">${w[4]}</span></div></a>`).join('');
+ const st=['新建','待开发','开发中','测试','已关闭'];
+ const route=`<div class="route" style="--c:var(--l-board)"><div class="track" style="grid-template-columns:repeat(5,1fr);--inset:10%"><div class="done" style="width:40%"></div>${st.map((s,i)=>`<div class="stn ${i<2?'f':''} ${i===2?'f here':''} ${i>2?'skip':''}"><i>${ic(i<2?'check':i===2?'code':'circle')}</i><b>${s}</b><small>${i===2?'3 天':i<2?'已过':''}</small></div>`).join('')}</div></div>`;
+ return {cls:wide()?'':'',html:`${side('wi')}<section class="list">${lh('工单','CG 项目，开发中 5 项',false)}<div class="search">${ic('search')}标题或 #编号<span class="grow"></span><span class="num" style="font-size:11px">⌘K</span></div>${board}<div class="items">${items}</div></section><section class="det"><div class="tb"><button class="btn">${ic('sparkles')}AI 分析</button><button class="btn">${ic('external-link')}在 ADO 打开</button><span class="grow"></span><button class="btn ic" aria-label="复制链接">${ic('link')}</button></div><div class="body"><h1 class="ttl">[bug] 发布更新后 js 丢失</h1><div class="meta"><span class="num">#2508</span><span>${ic('user')}azure2_yasuo</span><span>${ic('flag')}P1</span><span>${ic('tag')}用户情景</span></div>${route}<div class="sec"><h2>描述</h2><div class="prose"><p>CG_Vue_Front 发布到正式环境后，首次打开页面偶发白屏，控制台报 chunk 加载 404。刷新后恢复。</p><p>怀疑是新旧版本 chunk 文件名交替期间，CDN 仍缓存旧的 index.html。</p></div></div><div class="sec"><h2>评论 2</h2><div class="cm"><span class="av">YA</span><div><b>azure2_yasuo</b> <span class="num" style="color:var(--ink-3)">10-25 14:02</span><div class="prose" style="font-size:13px">复现步骤已补在附件里，iOS Safari 必现。</div></div></div></div></div></section>${wide()?`<aside class="insp"><h3>属性</h3><dl class="kv"><dt>指派</dt><dd>azure2_yasuo</dd><dt>迭代</dt><dd>2026-Q4-S3</dd><dt>区域</dt><dd>CG\\前台</dd></dl><h3>关联</h3><dl class="kv"><dt>父项</dt><dd>#2400 发布稳定性</dd><dt>PR</dt><dd>!318 已合并</dd></dl></aside>`:''}`}}
+
+/* AI 会话 */
+function ai(){
+ const S=[['修复发布后 js 丢失','--l-front','Claude Code','运行中'],['工单 #2592 分析','--l-api','Codex','等你批准'],['重构 event 页面','--l-event','Antigravity','昨天']];
+ const items=S.map((s,i)=>`<a class="it sess ${i===1?'on':''}" style="--c:var(${s[1]})"><div class="n1">${s[0]}</div><div class="n2"><span>${s[2]}</span><span class="grow"></span>${s[3]==='等你批准'?pill('warn','等你批准'):s[3]==='运行中'?pill('run'):`<span>${s[3]}</span>`}</div></a>`).join('');
+ return {cls:'two',html:`${side('ai')}<section class="list">${lh('AI 会话','1 个在运行，1 个等你批准')}<div class="items">${items}</div></section><section class="det"><div class="tb"><span class="repo" style="--c:var(--l-api);font-weight:600">CG</span><span style="color:var(--ink-3)">Codex，沙箱：只读</span><span class="grow"></span><button class="btn danger">${ic('square')}停止</button></div><div class="chat"><div class="msg me">分析工单 #2592，给出改动方案，先别改代码。</div><div class="tool">${ic('search')}读取工单 #2592 与 3 条评论</div><div class="tool">${ic('file-code')}查看 src/finance/deposit.ts 等 4 个文件</div><div class="msg ai">单次上限目前写死在前端校验里（5 万），后台接口没有校验。建议把上限改为由后台配置下发，前后端都校验。需要先确认后台接口是否已有这个字段。</div><div class="approve"><b>Codex 想运行一条命令</b><div class="cmd">grep -rn "maxDeposit" api/ src/</div><div style="display:flex;gap:6px"><button class="btn pri">允许一次</button><button class="btn">总是允许 grep</button><button class="btn danger">拒绝</button></div></div></div><div class="composer"><div class="in">回复 Codex…</div><button class="btn pri">${ic('arrow-up')}发送</button></div></section>`}}
+
+/* 设置 */
+const SETNAV=[['import','download','导入'],['ado','database','ADO 连接'],['repo','folder-git-2','本地仓库'],['cred','key-round','凭据'],['tg','send','Telegram'],['cli','terminal','AI CLI'],['mcpset','plug','MCP'],['gen','sliders-horizontal','通用']];
+function setShell(on,title,inner){return {cls:'two',html:`${side('tg')}<nav class="setnav" aria-label="设置分类">${SETNAV.map(s=>`<a class="nav ${s[0]===on?'on':''}" data-go="${s[0]}">${ic(s[1])}<span>${s[2]}</span></a>`).join('')}</nav><section class="det"><div class="body" style="max-width:760px"><h1 class="ttl" style="font-size:18px">${title}</h1>${inner}</div></section>`}}
+function tg(){const M=[['janson','@janson12138','测试组','可运行、可停止'],['steven','@stevenxiuqing','测试组','可运行、可停止'],['yasuo','@azure_yasuo','开发组','全部权限'],['snack','@snack789','开发组','全部权限'],['gerry','@jerry_meeeeeeeeeeeeeeeee','开发组','全部权限'],['—','@Alexander_D_P','产品组','只能运行']];
+ return setShell('tg','Telegram',`
+ <div class="group"><h2>机器人</h2><div class="rows">
+  <div class="row"><div class="lbl"><b>Bot Token</b><small>只存在钥匙串里，这里不会显示</small></div><span class="pill p-ok">${ic('check')}已保存</span><button class="btn">更换</button></div>
+  <div class="row"><div class="lbl"><b>机器人账号</b><small>启用后自动读取</small></div><span class="val">@toolbox_cg_bot</span></div>
+  <div class="row"><div class="lbl"><b>用 Telegram 控制任务</b><small>关闭时机器人不接收任何命令</small></div><button class="sw" role="switch" aria-checked="false" aria-label="用 Telegram 控制任务"></button></div>
+ </div></div>
+ <div class="group"><h2>谁能用机器人</h2><p>成员按组授权。只填了用户名的成员，第一次给机器人发消息后会自动绑定。</p><div class="rows tw"><table><thead><tr><th>成员</th><th>用户名</th><th>组</th><th>权限</th><th></th></tr></thead><tbody>${M.map(m=>`<tr><td>${m[0]}</td><td class="num">${m[1]}</td><td>${m[2]}</td><td>${m[3]}</td><td style="text-align:right"><span style="color:var(--ink-3)">待绑定</span></td></tr>`).join('')}</tbody></table></div></div>
+ <div class="group"><h2>AI 专属机器人</h2><div class="rows">${['Claude Code','Codex','Antigravity'].map(n=>`<div class="row"><div class="lbl"><b>${n}</b><small>没有配置 Token</small></div><button class="btn">配置</button><button class="sw" role="switch" aria-checked="false" aria-label="${n} 机器人"></button></div>`).join('')}</div></div>`)}
+function cli(){const C=[['Claude Code','claude','2.1.311','ok'],['Codex','codex','0.98.0','ok'],['Antigravity','agy','1.14.2','ok']];
+ return setShell('cli','AI CLI',`
+ <div class="group"><h2>已配置的工具</h2><div class="rows tw"><table><thead><tr><th>名称</th><th>命令</th><th>状态</th><th>版本</th><th></th></tr></thead><tbody>${C.map(c=>`<tr><td><b style="font-weight:500">${c[0]}</b> <span class="pill p-idle">内置</span></td><td class="num">${c[1]}</td><td><span class="dot d-ok"></span> 可以运行</td><td class="num">${c[2]}</td><td style="text-align:right"><button class="btn">检测</button> <button class="btn">升级</button> <button class="btn ic" aria-label="更多">${ic('ellipsis')}</button></td></tr>`).join('')}</tbody></table></div><div style="margin-top:8px"><button class="btn">${ic('plus')}添加工具</button></div></div>
+ <div class="group"><h2>Claude Code 默认值</h2><div class="rows">
+  <div class="row"><div class="lbl"><b>权限档位</b><small>新会话默认使用</small></div><button class="btn">自动允许常用只读工具 ${ic('chevrons-up-down')}</button></div>
+  <div class="row"><div class="lbl"><b>思考强度</b></div><button class="btn">默认 ${ic('chevrons-up-down')}</button></div>
+  <div class="row"><div class="lbl"><b>工单分析时</b><small>只读，先给计划</small></div><button class="btn">只读计划 ${ic('chevrons-up-down')}</button></div>
+  <div class="row"><div class="lbl"><b>默认模型</b><small>留空则用 CLI 自己的默认</small></div><span class="field">claude-sonnet-5-5</span></div>
+ </div></div>`)}
+function cred(){return setShell('cred','凭据',`
+ <div class="group"><p>这里只显示凭据是否存在、从哪来，不显示内容。ADO 的 PAT 在「ADO 连接」里更换。</p><div class="rows tw"><table><thead><tr><th>凭据</th><th>用于</th><th>状态</th><th>来源</th><th>更新于</th></tr></thead><tbody>
+ <tr><td>ADO PAT</td><td>cg1alias</td><td><span class="dot d-ok"></span> 正常</td><td>从旧版导入</td><td class="num">10-28 08:16</td></tr>
+ <tr><td>Telegram Bot Token</td><td>任务控制机器人</td><td><span class="dot d-ok"></span> 正常</td><td>从旧版导入</td><td class="num">10-28 08:25</td></tr>
+ </tbody></table></div></div>`)}
+
+/* MCP */
+function mcp(){const S=[['ADO 工单','stdio，由 AI 会话按需拉起','ok','可以使用','运行自检'],['飞书','共享 HTTP 服务，端口 8790','ok','运行中，令牌 6 天后过期','重启'],['Figma','stdio，由 AI 会话按需拉起','warn','没有配置 PAT','配置']];
+ return {cls:'one',html:`${side('mcp')}<section class="det"><div class="body" style="max-width:820px"><h1 class="ttl" style="font-size:18px">MCP 服务</h1><div class="meta"><span>给 Claude Code、Codex、Antigravity 共用的工具服务</span></div>
+ <div class="group"><div class="rows">${S.map(s=>`<div class="row"><span class="dot d-${s[2]}"></span><div class="lbl"><b>${s[0]}</b><small>${s[1]}</small></div><span class="val">${s[3]}</span><button class="btn">${s[4]}</button><button class="btn ic" aria-label="更多">${ic('ellipsis')}</button></div>`).join('')}</div></div>
+ <div class="group"><h2>ADO 工单</h2><div class="rows">
+  <div class="row"><div class="lbl"><b>允许 AI 创建工单</b><small>打开后，AI 在分析或会话中可以直接建单</small></div><button class="sw" role="switch" aria-checked="true" aria-label="允许 AI 创建工单"></button></div>
+  <div class="row"><div class="lbl"><b>附件缓存</b><small>最多 500 MB，单个 25 MB，14 天没用自动清理</small></div><span class="val num">38 MB</span><button class="btn">清空</button></div>
+  <div class="row"><div class="lbl"><b>接入配置</b><small>复制到 CLI 的配置文件里，不含凭据</small></div><button class="btn">${ic('copy')}复制 Claude Code 配置</button><button class="btn ic" aria-label="其他 CLI">${ic('chevron-down')}</button></div>
+ </div></div></div></section>`}}
+
+const PAGES={tasks:['任务',tasks],wi:['工单',wi],ai:['AI 会话',ai],tg:['设置：Telegram',tg],cli:['设置：AI CLI',cli],cred:['设置：凭据',cred],mcp:['MCP',mcp]};
+const pg=document.getElementById('pg');
+pg.innerHTML=Object.entries(PAGES).map(([k,v])=>`<button data-v="${k}" aria-pressed="${k===P}">${v[0]}</button>`).join('');
+function render(){const w=document.getElementById('win');const r=PAGES[P][1]();w.className='win '+r.cls;w.dataset.w=W;w.innerHTML=r.html;document.querySelectorAll('#pg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===P));lucide.createIcons({attrs:{'stroke-width':1.8}})}
+pg.addEventListener('click',e=>{const b=e.target.closest('button');if(b){P=b.dataset.v;render()}});
+document.getElementById('wid').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;W=b.dataset.v;document.querySelectorAll('#wid button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+document.getElementById('win').addEventListener('click',e=>{const a=e.target.closest('[data-go]');if(a&&PAGES[a.dataset.go]){P=a.dataset.go;render()}});
+render();
+</script>
+</body>
+</html>

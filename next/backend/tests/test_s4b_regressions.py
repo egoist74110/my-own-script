@@ -22,7 +22,7 @@ async def test_read_only_group_has_no_task_menu(tmp_path):
         await ctx.app.state.telegram_service.process_updates([message(1, 6002)])
         with sqlite3.connect(ctx.data_dir / "telegram.sqlite3") as db:
             markup = json.loads(db.execute("SELECT reply_markup_json FROM tg_outbox").fetchone()[0])
-        assert "任务" not in {b["text"] for row in markup["inline_keyboard"] for b in row}
+        assert "🚀 发布" not in {b["text"] for row in markup["inline_keyboard"] for b in row}
 
 
 async def test_poll_local_store_error_is_observable(tmp_path):
@@ -53,7 +53,7 @@ async def test_task_command_offers_modes_before_any_run(tmp_path):
             text, markup = db.execute("SELECT text,reply_markup_json FROM tg_outbox").fetchone()
         assert markup is not None
         buttons = [b["text"] for row in json.loads(markup)["inline_keyboard"] for b in row]
-        assert "构建发布" in buttons and "仅发布" in buttons
+        assert "🚀 构建并发布" in buttons and "📤 只发布" in buttons
         assert (await ctx.app.state.run_store.list())["items"] == []
 
 

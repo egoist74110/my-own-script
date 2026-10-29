@@ -140,7 +140,7 @@ class RunService:
                         "unknown",
                         reason_code=run["reason_code"],
                         recovery_state="manual_required",
-                        summary="无法核实远端结果；预约保留，请人工核实",
+                        summary=run["summary"] or "无法核实远端结果；预约保留，请人工核实",
                     )
                 else:
                     await self.reconcile(run["run_id"])
@@ -183,7 +183,7 @@ class RunService:
         snapshot["prepared"] = prepared.frozen
         resources = list(prepared.resources)
         if snapshot["local_repo_path"] and body.operation == "sync_build_release":
-            info = await self.tasks.git.preflight(snapshot["local_repo_path"])
+            info = await self.tasks.git.preflight(snapshot["local_repo_path"], snapshot)
             resources.extend("git:" + key for key in info["lock_keys"])
         for target in snapshot["targets"]:
             if target["enabled"] and target["release_id"]:
@@ -298,14 +298,27 @@ class RunService:
             run = await self.store.get(rid)
             if run["status"] in TERMINAL:
                 return
+            summary = outcome.summary
+            if (
+                run["status"] == "unknown"
+                and run["summary"]
+                and outcome.status in {"unknown", "failed"}
+            ):
+                # 首次失败的具体原因优先；只读核实只能补充结论。
+                prior = run["summary"]
+                summary = prior if not summary or summary in prior else prior + "；" + summary
             try:
                 await self.store.transition(
                     rid,
                     run["state_version"],
                     outcome.status,
                     reason_code=outcome.reason_code,
-                    summary=outcome.summary,
+                    summary=summary,
                     recovery_state="pending" if outcome.status == "unknown" else "none",
+                )
+                await self.store.log(
+                    rid, f"{'核实结论' if run['status'] == 'unknown' else '执行结论'}："
+                    f"{outcome.status}，{summary or outcome.reason_code or '已完成'}\n"
                 )
                 return
             except SettingsError as exc:
@@ -354,10 +367,26 @@ class RunService:
             cancel.set()
             await self.store.cancel(rid, "shutdown" if self.closing else "timeout")
             await self._failure_outcome(rid, stopped=True, reason="interrupted")
+        except AdoFailure as exc:
+            # 仅记录传输层固定安全摘要，不输出响应体、请求或授权头。
+            status = f"HTTP {exc.status}，" if exc.status is not None else ""
+            await self._failure_outcome(
+                rid,
+                stopped=False,
+                reason="remote_unknown",
+                summary=f"ADO 请求失败：{status}{exc.message}",
+            )
+        except SettingsError as exc:
+            # SettingsError messages are fixed, non-sensitive text by contract.
+            await self._failure_outcome(
+                rid, stopped=False, reason="remote_unknown", summary=exc.message
+            )
         except Exception:
-            await self._failure_outcome(rid, stopped=False, reason="remote_unknown")
+            await self._failure_outcome(
+                rid, stopped=False, reason="remote_unknown", summary="执行异常；远端结果需核实"
+            )
 
-    async def _failure_outcome(self, rid, *, stopped, reason):
+    async def _failure_outcome(self, rid, *, stopped, reason, summary=""):
         run = await self.store.get(rid)
         # An unowned reused Build is an observation even without a create effect.
         remote = bool(run["effects"]) or any(
@@ -372,6 +401,7 @@ class RunService:
             ExecutionOutcome(
                 "unknown" if remote else "cancelled" if stopped else "failed",
                 reason if remote else "interrupted" if stopped else "local_failed",
+                summary,
             ),
         )
 
@@ -425,10 +455,19 @@ class RunService:
             try:
                 async with asyncio.timeout(30):
                     context = ExecutionContext(self, run, asyncio.Event(), readonly=True)
+                    await context.log("开始只读核实远端执行结果\n")
                     outcome = await self.executor.reconcile(context)
                     await self._finish(rid, outcome)
-            except TimeoutError, SettingsError, GitFailure:
-                pass  # Keep unknown and its reservations; no remote write retry.
+            except AdoFailure as exc:
+                status = f"HTTP {exc.status}，" if exc.status is not None else ""
+                with contextlib.suppress(SettingsError):
+                    await self.store.log(rid, f"核实未完成：{status}{exc.message}\n")
+            except SettingsError as exc:
+                with contextlib.suppress(SettingsError):
+                    await self.store.log(rid, f"核实未完成：{exc.message}\n")
+            except TimeoutError, GitFailure:
+                with contextlib.suppress(SettingsError):
+                    await self.store.log(rid, "核实未完成：超时或 Git 核实失败；预约保留\n")
             except Exception:
                 with contextlib.suppress(SettingsError):
                     await self._finish(

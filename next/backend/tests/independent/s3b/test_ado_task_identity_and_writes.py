@@ -303,6 +303,70 @@ async def test_pipeline_run_id_is_never_guessed_as_build_id(pipeline):
     assert requests == []
 
 
+async def test_pipeline_web_link_build_id_is_verified_before_use():
+    # ADO Server run responses carry no _links.build; the web results link names the Build.
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        assert request.url.path == "/collection/sample/_apis/build/builds/64758"
+        return httpx.Response(200, json=build_detail(64758))
+
+    executor = AdoTaskExecutor(FakeWorkItems(handler), SimpleNamespace())
+    target = {**TARGET, "api_kind": "pipeline"}
+    pipeline = {
+        "id": 64758,
+        "_links": {
+            "web": {"href": "https://ado.test/collection/a3530f08/_build/results?buildId=64758"}
+        },
+    }
+
+    build = await executor.pipeline_build(snapshot(), target, pipeline, EXPECTED_COMMIT)
+
+    assert build["id"] == 64758
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://evil.test/collection/sample/_build/results?buildId=81",
+        "https://ado.test/other/sample/_build/results?buildId=81",
+        "https://ado.test/collection/sample/_build/results?buildId=81&x=1",
+        "https://ado.test/collection/sample/_build/results?buildId=0",
+        "https://ado.test/collection/sample/_build/other?buildId=81",
+    ],
+)
+async def test_pipeline_web_link_must_be_exact_same_source_results(href):
+    def handler(request):
+        raise AssertionError("an unverifiable web link must not trigger a Build lookup")
+
+    executor = AdoTaskExecutor(FakeWorkItems(handler), SimpleNamespace())
+    target = {**TARGET, "api_kind": "pipeline"}
+
+    with pytest.raises(SettingsError):
+        await executor.pipeline_build(
+            snapshot(), target, {"id": 81, "_links": {"web": {"href": href}}}, EXPECTED_COMMIT
+        )
+
+
+async def test_pipeline_web_link_build_with_wrong_identity_is_rejected():
+    def handler(request):
+        return httpx.Response(200, json=build_detail(81, source_version="b" * 40))
+
+    executor = AdoTaskExecutor(FakeWorkItems(handler), SimpleNamespace())
+    target = {**TARGET, "api_kind": "pipeline"}
+    pipeline = {
+        "id": 81,
+        "_links": {"web": {"href": "https://ado.test/collection/sample/_build/results?buildId=81"}},
+    }
+
+    with pytest.raises(SettingsError) as exc:
+        await executor.pipeline_build(snapshot(), target, pipeline, EXPECTED_COMMIT)
+
+    assert exc.value.code == "unsupported_task"
+
+
 @pytest.mark.parametrize("operation", ["sync_build_release", "deploy_only", "rollback"])
 async def test_disabled_target_is_never_prepared_for_execution(operation):
     requests = []
