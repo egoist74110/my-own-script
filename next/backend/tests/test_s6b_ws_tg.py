@@ -170,7 +170,7 @@ async def test_telegram_mcp_owner_only_menu_status_and_lark_start_stop(
         # 2. Owner /start menu contains single "MCP" button (without status suffix)
         await tg.process_updates([message(301, text="/start", chat=6001)])
         menu_labels = [b["text"] for b in await buttons(ctx)]
-        assert "MCP" in menu_labels
+        assert "🧩 MCP" in menu_labels
 
         # 3. Owner /mcp displays status summary and Lark start button (no ADO/Figma start or CLI inject)
         mcp.path_extras = []

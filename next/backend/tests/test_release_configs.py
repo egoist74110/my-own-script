@@ -320,7 +320,7 @@ async def test_release_api_selection_snapshot_acl_tg_and_protected_delete(tmp_pa
             )
             assert not tg.dispatcher.allowed(config, message(1, 6002), "sync_build_release", mid)
             await tg.process_updates([message(1, 6002, text="/deploy")])
-            assert "节庆活动：deploy" in latest(app)[0]
+            assert "仓库：节庆活动" in latest(app)[0] and "deploy" in latest(app)[0]
             await tg.process_updates([message(2, 6002, text="/both")])
             assert fake.writes == []
             assert task_label(config, mid) == "节庆活动：完整发布"
