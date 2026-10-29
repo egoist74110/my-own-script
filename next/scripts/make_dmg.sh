@@ -43,7 +43,7 @@ ln -s /Applications "$STAGE_DIR/Applications"
 rm -f "$DMG_PATH" "$ZIP_PATH"
 
 echo "[make_dmg] creating UDZO DMG: $DMG_PATH"
-hdiutil create -volname "TOOLBOX" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "代码工具箱" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH"
 
 echo "[make_dmg] creating zip archive: $ZIP_PATH"
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TOOLBOX",
+  "productName": "代码工具箱",
   "version": "1.0.0",
   "identifier": "dev.toolbox.next",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "TOOLBOX",
+        "title": "代码工具箱",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

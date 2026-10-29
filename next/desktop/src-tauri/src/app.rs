@@ -264,7 +264,7 @@ pub fn run() {
             )?;
             let mut tray = TrayIconBuilder::<Wry>::with_id(TRAY_ID)
                 .menu(&menu)
-                .tooltip("TOOLBOX")
+                .tooltip("代码工具箱")
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     MENU_SHOW => show_main_window(app),
                     MENU_QUIT => begin_quit(app),

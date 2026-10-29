@@ -509,7 +509,7 @@ class TestShellScripts(unittest.TestCase):
             cargo_target = tmp / "cargo-target"
 
             # Prepare fake built .app so step 4 succeeds and stops at fake verify_app or finishes
-            built_app = cargo_target / "release/bundle/macos/TOOLBOX.app"
+            built_app = cargo_target / "release/bundle/macos/代码工具箱.app"
             (built_app / "Contents/MacOS").mkdir(parents=True, exist_ok=True)
             (built_app / "Contents/MacOS/toolbox-desktop").write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 16)
             (built_app / "Contents/MacOS/toolbox-desktop").chmod(0o755)
@@ -702,7 +702,7 @@ class TestShellScripts(unittest.TestCase):
         script = SCRIPTS_DIR / "make_update_artifact.sh"
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
-            app = tmp / "out/TOOLBOX.app"
+            app = tmp / "out/代码工具箱.app"
             (app / "Contents").mkdir(parents=True)
             (app / "Contents/marker.txt").write_text("signed-copy", encoding="utf-8")
             fake_bin = tmp / "bin"
@@ -734,7 +734,7 @@ class TestShellScripts(unittest.TestCase):
             self.assertFalse((dist / "TOOLBOX.app.tar.gz.sig").exists())
             self.assertIn("skipping", res.stderr)
             listing = subprocess.run(["tar", "-tzf", str(tarball)], capture_output=True, text=True).stdout
-            self.assertIn("TOOLBOX.app/Contents/marker.txt", listing)
+            self.assertIn("代码工具箱.app/Contents/marker.txt", listing)
             self.assertNotIn("._", listing)
 
             # with key: signer invoked, secret never in argv

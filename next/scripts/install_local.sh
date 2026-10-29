@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # One-command local dev install: build (ad-hoc) -> quit the running app gracefully -> replace
-# /Applications/TOOLBOX.app -> optionally relaunch. For this machine only (ad-hoc, not distributable).
+# /Applications/代码工具箱.app -> optionally relaunch. For this machine only (ad-hoc, not distributable).
 # usage: install_local.sh [--skip-build] [--open] [--dest <dir>]
-#   --skip-build  reuse next/build/out/TOOLBOX.app as is
+#   --skip-build  reuse next/build/out/代码工具箱.app as is
 #   --open        launch the installed app afterwards
 #   --dest <dir>  install directory (default /Applications)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-OUT_APP="${TOOLBOX_OUT_DIR:-$REPO/next/build/out}/TOOLBOX.app"
+OUT_APP="${TOOLBOX_OUT_DIR:-$REPO/next/build/out}/代码工具箱.app"
 DEST_DIR="/Applications"
 SKIP_BUILD=0
 OPEN_AFTER=0
@@ -34,7 +34,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 fi
 [ -d "$OUT_APP" ] || { echo "error: $OUT_APP not found (run without --skip-build)" >&2; exit 1; }
 [ -d "$DEST_DIR" ] || { echo "error: install dir not found: $DEST_DIR" >&2; exit 1; }
-DEST_APP="$DEST_DIR/TOOLBOX.app"
+DEST_APP="$DEST_DIR/代码工具箱.app"
 
 # Quit the installed app: SIGTERM to its exact main-process PID(s) takes the app's own coordinated
 # shutdown path (same as tray "退出": backend stopped first). Never pkill by name.

@@ -4,9 +4,9 @@
 #   2. frontend: pnpm install --frozen-lockfile --offline + pnpm build (or --skip-frontend if dist exists)
 #   3. build_runtime.sh
 #   4. pnpm tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
-#   5. copy bundle to next/build/out/TOOLBOX.app
+#   5. copy bundle to next/build/out/代码工具箱.app
 #   6. optional: --sign adhoc | --sign identity
-#   7. verify_app.sh next/build/out/TOOLBOX.app
+#   7. verify_app.sh next/build/out/代码工具箱.app
 # Updater artifacts are NOT taken from the cargo bundle dir; see make_update_artifact.sh.
 set -euo pipefail
 
@@ -166,15 +166,15 @@ PYEOF
   pnpm tauri build --bundles app --config "$OVERLAY_JSON"
 )
 
-BUILT_APP="$CARGO_TARGET_DIR/release/bundle/macos/TOOLBOX.app"
+BUILT_APP="$CARGO_TARGET_DIR/release/bundle/macos/代码工具箱.app"
 if [ ! -d "$BUILT_APP" ]; then
   echo "error: expected Tauri bundle output not found at $BUILT_APP" >&2
   exit 1
 fi
 
-echo "[build_app] step 5/6: copying bundle to $OUT_DIR/TOOLBOX.app..."
+echo "[build_app] step 5/6: copying bundle to $OUT_DIR/代码工具箱.app..."
 mkdir -p "$OUT_DIR"
-OUT_APP="$OUT_DIR/TOOLBOX.app"
+OUT_APP="$OUT_DIR/代码工具箱.app"
 rm -rf "$OUT_APP"
 cp -R "$BUILT_APP" "$OUT_APP"
 
