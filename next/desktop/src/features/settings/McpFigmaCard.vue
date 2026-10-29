@@ -157,8 +157,8 @@ async function onCopySnippet() {
 <template>
   <section class="st-section" aria-label="Figma MCP" data-testid="mcp-figma-card">
     <div class="st-head">
-      <h2>Figma MCP</h2>
-      <Tag>stdio Wrapper</Tag>
+      <h2>Figma</h2>
+      <Tag>按需启动</Tag>
       <div class="st-grow"></div>
       <Button
         variant="default"
@@ -169,10 +169,7 @@ async function onCopySnippet() {
         {{ isTesting ? '自检中…' : '运行自检' }}
       </Button>
     </div>
-    <p class="st-note">
-      通过 Python wrapper 注入限流与脱敏监督，拉起 figma-developer-mcp stdio 协议。已默认禁用
-      PostHog 遥测。
-    </p>
+    <p class="st-note">由 AI 会话按需启动，中间加了限流和脱敏保护，并默认关闭了 PostHog 遥测。</p>
 
     <!-- 自检错误展示 -->
     <Banner v-if="testError" kind="error" data-testid="figma-test-error-banner">
@@ -222,29 +219,30 @@ async function onCopySnippet() {
 
     <!-- 到期提醒 Banner -->
     <Banner v-if="isExpired" kind="error" data-testid="figma-token-expired-banner">
-      Figma Personal Access Token 已过期，请生成新 Token 并在此替换保存。
+      Figma Token 已过期，AI 暂时无法读取 Figma。请在 Figma 生成新 Token，粘贴到下方并保存。
     </Banner>
     <Banner v-else-if="isExpiringSoon" kind="warn" data-testid="figma-token-expiring-banner">
       Figma Token 即将在 {{ daysRemaining }} 天后到期，请提前更新。
     </Banner>
 
-    <hr class="st-sep" />
-
     <!-- Token 管理（只写不读回） -->
     <div class="cred-section">
-      <strong class="setting-title">Token 管理 (Personal Access Token)</strong>
-      <p class="st-note">
-        钥匙串中只写不读回。当前状态：
-        <strong data-testid="figma-token-configured-status">
-          {{ fg?.token_configured ? '已配置' : '未配置' }}
-        </strong>
-        <template v-if="fg?.token_set_at">
-          · 设置于 {{ fg.token_set_at.slice(0, 10) }} · 有效期 {{ fg.expiry_days }} 天
-          <template v-if="daysRemaining !== null">
-            (剩余 <strong :class="isExpiringSoon ? 'st-warn' : ''">{{ daysRemaining }}</strong> 天)
+      <div class="st-lbl">
+        <b>Personal Access Token</b>
+        <small>
+          Token 只写入钥匙串，不会读回显示。当前状态：
+          <strong data-testid="figma-token-configured-status">
+            {{ fg?.token_configured ? '已配置' : '未配置' }}
+          </strong>
+          <template v-if="fg?.token_set_at">
+            ，设置于 {{ fg.token_set_at.slice(0, 10) }}，有效期 {{ fg.expiry_days }} 天
+            <template v-if="daysRemaining !== null">
+              ，剩余
+              <strong :class="isExpiringSoon ? 'st-warn' : ''">{{ daysRemaining }}</strong> 天
+            </template>
           </template>
-        </template>
-      </p>
+        </small>
+      </div>
 
       <div class="cred-input-row">
         <TextField
@@ -252,7 +250,7 @@ async function onCopySnippet() {
           type="password"
           autocomplete="off"
           label="Figma Token"
-          placeholder="粘贴新的 Figma Token (figd_...)；提交后立即清空"
+          placeholder="粘贴新的 Figma Token（figd_…），提交后输入框立即清空"
           data-testid="figma-token-input"
           class="cred-input"
           :disabled="busy || !writable || tokenSubmitting"
@@ -300,16 +298,16 @@ async function onCopySnippet() {
       </div>
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 限流参数配置 -->
     <div class="ratelimit-section">
-      <strong class="setting-title">限流与退避参数</strong>
-      <p class="st-note">防止因多轮会话或大文件抓取触发 Figma API 429 限流保护。</p>
+      <div class="st-lbl">
+        <b>限流与重试</b>
+        <small>避免多轮会话或抓取大文件时触发 Figma 的 429 限流</small>
+      </div>
 
       <div class="ratelimit-grid">
         <div class="st-fld">
-          <span class="lbl">最大并发数 (max_concurrency)</span>
+          <span class="lbl">最多同时请求数</span>
           <TextField
             v-model="editConcurrency"
             label="最大并发数"
@@ -320,7 +318,7 @@ async function onCopySnippet() {
         </div>
 
         <div class="st-fld">
-          <span class="lbl">最小调用间隔 (min_interval_ms)</span>
+          <span class="lbl">两次请求最短间隔（毫秒）</span>
           <TextField
             v-model="editInterval"
             label="最小调用间隔 (毫秒)"
@@ -331,7 +329,7 @@ async function onCopySnippet() {
         </div>
 
         <div class="st-fld">
-          <span class="lbl">最大重试次数 (max_retry)</span>
+          <span class="lbl">失败后最多重试次数</span>
           <TextField
             v-model="editRetry"
             label="最大重试次数"
@@ -357,12 +355,13 @@ async function onCopySnippet() {
       </div>
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 接入片段复制 -->
     <div class="snippet-section">
       <div class="snippet-header">
-        <strong class="setting-title">CLI 接入片段（无凭据）</strong>
+        <div class="st-lbl">
+          <b>接入配置</b>
+          <small>复制到 CLI 的配置文件里，不含凭据</small>
+        </div>
         <div class="st-grow"></div>
         <Button
           variant="plain"
@@ -390,10 +389,6 @@ async function onCopySnippet() {
 
 <style scoped>
 .test-result-box {
-  background: var(--bg-settings);
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -436,9 +431,6 @@ async function onCopySnippet() {
   flex-direction: column;
   gap: 10px;
 }
-.setting-title {
-  font-size: var(--text-body);
-}
 .cred-input-row {
   display: flex;
   align-items: center;
@@ -454,18 +446,9 @@ async function onCopySnippet() {
   align-items: center;
   gap: 6px;
 }
-.st-select {
-  height: var(--ctl-h);
-  border-radius: var(--r-ctl);
-  border: 1px solid var(--line);
-  background: var(--bg-ctl);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: var(--text-body);
-}
 .ratelimit-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 .ratelimit-actions {
@@ -485,7 +468,7 @@ async function onCopySnippet() {
 .snippet-box {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-settings);
+  background: var(--bg-inspector);
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   max-height: 160px;

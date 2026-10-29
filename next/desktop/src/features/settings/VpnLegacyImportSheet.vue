@@ -128,15 +128,15 @@ async function onSubmit() {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--bg-ctl, #f9f9f9);
-  border-radius: var(--r-ctl, 6px);
+  background: var(--ctl);
+  border-radius: var(--r-ctl);
 }
 .option-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--text-base);
-  color: var(--fg);
+  font-size: var(--text-body);
+  color: var(--ink);
   cursor: pointer;
 }
 .mb-3 {

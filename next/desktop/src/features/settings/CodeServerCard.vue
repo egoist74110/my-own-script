@@ -80,7 +80,7 @@ const cardError = computed(() => {
     return 'code-server 配置为无认证且监听非回环地址，已拒绝启动；请在其 config.yaml 中启用密码认证'
   }
   if (cs.value?.last_error === 'service_binary_missing') {
-    return '未找到服务二进制执行文件，请检查安装路径'
+    return '没有找到 code-server 程序。请在下方「高级设置」里指定路径，或先安装它。'
   }
   if (cs.value?.state === 'failed' && cs.value?.last_error) {
     return cs.value.last_error
@@ -233,7 +233,7 @@ async function onSaveSettings() {
       class="mb-3"
       data-testid="code-server-binary-missing-banner"
     >
-      未找到服务二进制执行文件，请检查安装路径
+      没有找到 code-server 程序。请在下方「高级设置」里指定路径，或先安装它。
     </Banner>
 
     <!-- 错误反馈 Banner（含 service_unsafe_config） -->
@@ -242,49 +242,24 @@ async function onSaveSettings() {
     </Banner>
 
     <!-- 访问信息展示（只展示后端给的字段） -->
-    <div class="st-card">
-      <div class="st-row">
-        <div class="st-field">
-          <span class="st-label">端口</span>
-          <span class="st-val st-mono" data-testid="code-server-port">
-            {{ cs?.port ? cs.port : '—' }}
-          </span>
-        </div>
-        <div class="st-field grow">
-          <span class="st-label">访问地址</span>
-          <div class="url-display">
-            <span v-if="cs?.url" class="st-val st-mono" data-testid="code-server-url">
-              {{ cs.url }}
-            </span>
-            <span v-else class="st-val st-mute" data-testid="code-server-url-empty">
-              未运行或尚未分配
-            </span>
-            <Button
-              v-if="cs?.url"
-              size="sm"
-              data-testid="copy-code-server-url-btn"
-              class="ml-2"
-              @click="onCopyUrl"
-            >
-              {{ urlCopied ? '已复制' : '复制地址' }}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div class="st-row border-top">
-        <div class="st-field grow">
-          <span class="st-label">执行程序路径</span>
-          <span v-if="bin?.path" class="st-val st-mono path-text" data-testid="code-server-path">
-            {{ bin.path }}
-          </span>
-          <span v-else class="st-val st-mute">未检测到</span>
-          <Tag v-if="bin?.confirmed" class="ml-2" data-testid="code-server-confirmed-tag"
-            >已确认</Tag
-          >
-        </div>
-      </div>
-    </div>
+    <dl class="st-kv">
+      <dt>端口</dt>
+      <dd class="st-mono" data-testid="code-server-port">{{ cs?.port ? cs.port : '—' }}</dd>
+      <dt>访问地址</dt>
+      <dd>
+        <span v-if="cs?.url" class="st-mono" data-testid="code-server-url">{{ cs.url }}</span>
+        <span v-else data-testid="code-server-url-empty">未运行或尚未分配</span>
+        <Button v-if="cs?.url" size="sm" data-testid="copy-code-server-url-btn" @click="onCopyUrl">
+          {{ urlCopied ? '已复制' : '复制地址' }}
+        </Button>
+      </dd>
+      <dt>程序路径</dt>
+      <dd>
+        <span v-if="bin?.path" class="st-mono" data-testid="code-server-path">{{ bin.path }}</span>
+        <span v-else>未检测到</span>
+        <Tag v-if="bin?.confirmed" data-testid="code-server-confirmed-tag">已确认</Tag>
+      </dd>
+    </dl>
 
     <!-- 日志查看区 -->
     <div class="logs-section">
@@ -317,14 +292,14 @@ async function onSaveSettings() {
           正在读取日志…
         </div>
         <div v-else class="st-mute log-empty" data-testid="code-server-logs-empty">
-          暂无日志输出
+          还没有日志输出
         </div>
       </div>
     </div>
 
     <!-- 高级配置折叠 / 展开 -->
     <details class="st-details" data-testid="code-server-settings-details">
-      <summary class="st-summary">配置项（启动超时 & 二进制确认）</summary>
+      <summary class="st-summary">高级设置：启动超时与程序路径</summary>
       <div class="st-settings-form">
         <div class="form-row">
           <label class="form-label" for="cs-timeout">启动超时（秒）</label>
@@ -376,34 +351,10 @@ async function onSaveSettings() {
 </template>
 
 <style scoped>
-.st-section {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-window);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-group);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.st-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
 .title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-h2 {
-  margin: 0;
-  font-size: var(--text-section);
-  font-weight: 600;
-  color: var(--fg);
-}
-.st-grow {
-  flex: 1;
 }
 .control-actions {
   display: flex;
@@ -419,51 +370,8 @@ h2 {
 .ml-2 {
   margin-left: 8px;
 }
-.st-card {
-  background: var(--bg-sub);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 12px 14px;
-}
-.st-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.border-top {
-  border-top: 1px solid var(--line);
-  margin-top: 10px;
-  padding-top: 10px;
-}
-.st-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.st-field.grow {
-  flex: 1;
-  min-width: 0;
-}
-.st-label {
-  font-size: var(--text-sub);
-  color: var(--mute);
-}
-.st-val {
-  font-size: var(--text-base);
-  color: var(--fg);
-}
 .st-mute {
   color: var(--mute);
-}
-.url-display {
-  display: flex;
-  align-items: center;
-}
-.path-text {
-  word-break: break-all;
-}
-.logs-section {
-  margin-top: 12px;
 }
 .logs-head {
   display: flex;
@@ -473,10 +381,10 @@ h2 {
   margin-top: 8px;
 }
 .log-box {
-  background: var(--bg-sub);
-  color: var(--fg);
+  background: var(--bg-inspector);
+  color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-ctl);
   padding: 10px 12px;
   max-height: 200px;
   overflow-y: auto;
@@ -492,14 +400,11 @@ h2 {
   font-size: var(--text-sub);
 }
 .st-details {
-  margin-top: 12px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
 }
 .st-summary {
   cursor: pointer;
-  color: var(--mute);
-  font-size: var(--text-sub);
+  color: var(--ink);
+  font-size: var(--text-body);
   user-select: none;
 }
 .st-settings-form {

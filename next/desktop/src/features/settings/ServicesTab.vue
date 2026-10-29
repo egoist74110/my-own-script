@@ -5,6 +5,7 @@ import CloudflaredCard from './CloudflaredCard.vue'
 import CodeServerCard from './CodeServerCard.vue'
 import NetworkBar from './NetworkBar.vue'
 import VpnCard from './VpnCard.vue'
+import { SETTINGS_VPN_ANCHOR } from './tabs'
 import { settingsContextKey } from './useSettings'
 import { servicesContextKey, useServices } from './useServices'
 import { vpnContextKey, useVpn } from './useVpn'
@@ -37,6 +38,7 @@ const cloudflaredSettings = computed(() => snapshot.value?.settings?.cloudflared
 
     <!-- VPN 卡 -->
     <VpnCard
+      :id="SETTINGS_VPN_ANCHOR"
       :snapshot="vpn.snapshot.value"
       :busy="ctx?.busy.value"
       :writable="ctx?.writable.value"

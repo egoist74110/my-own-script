@@ -423,7 +423,7 @@ describe('S7-C: 服务分区单测', () => {
 
     const missingBanner = b.wrapper.find('[data-testid="code-server-binary-missing-banner"]')
     expect(missingBanner.exists()).toBe(true)
-    expect(missingBanner.text()).toContain('未找到服务二进制执行文件，请检查安装路径')
+    expect(missingBanner.text()).toContain('没有找到 code-server 程序')
 
     await b.done()
   })
@@ -741,8 +741,8 @@ describe('S7-C: 服务分区单测', () => {
 
     expect(b.wrapper.get('[data-testid="vpn-ip"]').text()).toBe('10.254.99.100')
 
-    // 切换到其他页签（如常规），验证触发 unsubscribe
-    const generalTab = tabs.find((t) => t.text().includes('常规'))!
+    // 切换到其他页签（如通用），验证触发 unsubscribe
+    const generalTab = tabs.find((t) => t.text().includes('通用'))!
     await generalTab.trigger('mousedown')
     await flushPromises()
     await flushPromises()

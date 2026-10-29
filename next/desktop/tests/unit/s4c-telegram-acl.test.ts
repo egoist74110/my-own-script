@@ -533,11 +533,11 @@ describe('S4-C 设置页 Telegram 分区 ACL 单测', () => {
     expect(row1.text()).toContain('10001')
     expect(row1.text()).toContain('已绑定')
 
-    // 成员2 (李四)：无 user_id，显示未绑定
+    // 成员2 (李四)：无 user_id，显示待绑定
     const row2 = b.wrapper.find('[data-testid="member-row-mem-2"]')
     expect(row2.text()).toContain('李四')
     expect(row2.text()).toContain('@lisi')
-    expect(row2.text()).toContain('未绑定')
+    expect(row2.text()).toContain('待绑定')
 
     // 成员3 (纯ChatID)：无 username，显示 —
     const row3 = b.wrapper.find('[data-testid="member-row-mem-3"]')

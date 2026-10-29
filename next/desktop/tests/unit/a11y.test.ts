@@ -81,7 +81,8 @@ describe('可访问性', () => {
     const tb = src('components/ToolbarButton.vue')
     expect(tb).toMatch(/width:\s*var\(--target-min\)/)
     expect(tb).toMatch(/height:\s*var\(--ctl-h\)/)
-    expect(src('components/Sidebar.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
+    // 方向 A：导航项 32px 高，不低于 28px 的点击目标
+    expect(src('components/Sidebar.vue')).toMatch(/min-height:\s*(var\(--ctl-h\)|3\d+px)/)
     expect(src('components/SegmentedControl.vue')).toMatch(/min-width:\s*var\(--target-min\)/)
     expect(src('components/SearchField.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)
     expect(src('components/TextField.vue')).toMatch(/min-height:\s*var\(--ctl-h\)/)

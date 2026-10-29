@@ -495,13 +495,13 @@ async function onSaveSettings() {
       class="mb-4"
       data-testid="ai-store-unavailable-banner"
     >
-      AI 存储库不可用（只读错误态），无法启动会话或修改配置。
+      AI 存储库不可用（只读），暂时不能启动会话或修改配置。请检查数据目录后重启应用。
     </Banner>
 
     <!-- Profiles 列表 -->
     <section class="st-section" aria-label="AI CLI Profiles">
       <div class="st-head">
-        <h2>AI CLI 配置 (Profiles)</h2>
+        <h2>已配置的工具</h2>
         <Tag>{{ profiles.length }}</Tag>
         <span class="st-grow"></span>
         <Button
@@ -510,7 +510,7 @@ async function onSaveSettings() {
           :disabled="ctx.busy.value || !ctx.writable.value"
           @click="onOpenAddProfile"
         >
-          ＋ 添加配置
+          ＋ 添加工具
         </Button>
       </div>
 
@@ -520,287 +520,315 @@ async function onSaveSettings() {
         class="mb-3"
         data-testid="invalid-profiles-banner"
       >
-        检测到无效配置项，已自动安全跳过
+        有几项配置无法识别，已跳过，不影响其他工具。
       </Banner>
 
-      <table class="st-tbl" data-testid="profiles-table">
-        <thead>
-          <tr>
-            <th scope="col">名称</th>
-            <th scope="col">CLI</th>
-            <th scope="col">启动命令</th>
-            <th scope="col">检测状态</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in profiles" :key="String(p.id)" :data-testid="`profile-row-${p.id}`">
-            <td>
-              <div class="profile-name-cell">
-                <span class="font-medium">{{ String(p.name) }}</span>
-                <Tag v-if="p.builtin" class="ml-2 text-xs">内置</Tag>
-              </div>
-            </td>
-            <td>
-              <span class="st-mono text-xs uppercase">{{ String(p.cli) }}</span>
-            </td>
-            <td class="st-mono text-xs">{{ String(p.command) }}</td>
-            <td>
-              <div class="status-cell" :data-testid="`profile-status-${p.id}`">
-                <span
-                  class="status-indicator"
-                  :class="p.resolved?.ok ? 'status-ok' : 'status-err'"
-                ></span>
-                <span :class="p.resolved?.ok ? 'text-green-700' : 'text-amber-700'">
-                  {{ p.resolved?.ok ? '可执行' : '不可执行' }}
-                </span>
-                <span v-if="p.resolved?.version" class="text-xs text-neutral-500 ml-1">
-                  ({{ p.resolved.version }})
-                </span>
-                <span v-else-if="p.resolved?.path_hint" class="text-xs text-neutral-500 ml-1">
-                  ({{ p.resolved.path_hint }})
-                </span>
-              </div>
-            </td>
-            <td>
-              <div class="actions-cell">
-                <Button
-                  size="sm"
-                  variant="default"
-                  :data-testid="`check-profile-btn-${p.id}`"
-                  :disabled="ctx.busy.value"
-                  @click="onCheck(p)"
-                >
-                  检测
-                </Button>
-                <Button
-                  v-if="p.upgrade_command"
-                  size="sm"
-                  variant="default"
-                  :data-testid="`upgrade-profile-btn-${p.id}`"
-                  :disabled="ctx.busy.value || activeJobState === 'running'"
-                  @click="onOpenUpgradeSheet(p)"
-                >
-                  升级
-                </Button>
-                <Button
-                  size="sm"
-                  variant="default"
-                  :data-testid="`edit-profile-btn-${p.id}`"
-                  :disabled="ctx.busy.value || !ctx.writable.value"
-                  @click="onOpenEditProfile(p)"
-                >
-                  编辑
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  :data-testid="`delete-profile-btn-${p.id}`"
-                  :disabled="p.builtin || ctx.busy.value || !ctx.writable.value"
-                  :title="p.builtin ? '内置配置不可删除' : '删除配置'"
-                  @click="onOpenDeleteProfile(p)"
-                >
-                  删除
-                </Button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="profiles.length === 0">
-            <td colspan="5" class="st-note">暂无 AI CLI 配置</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="st-tw">
+        <table class="st-tbl profiles-tbl" data-testid="profiles-table">
+          <thead>
+            <tr>
+              <th scope="col">名称</th>
+              <th scope="col">CLI</th>
+              <th scope="col">命令</th>
+              <th scope="col">状态</th>
+              <th scope="col"><span class="sr-only">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in profiles" :key="String(p.id)" :data-testid="`profile-row-${p.id}`">
+              <td>
+                <div class="profile-name-cell">
+                  <span class="font-medium">{{ String(p.name) }}</span>
+                  <Tag v-if="p.builtin" class="ml-2 text-xs">内置</Tag>
+                </div>
+              </td>
+              <td>
+                <span class="st-mono text-xs uppercase">{{ String(p.cli) }}</span>
+              </td>
+              <td class="st-mono text-xs cell-cmd" :title="String(p.command)">
+                {{ String(p.command) }}
+              </td>
+              <td>
+                <div class="status-cell" :data-testid="`profile-status-${p.id}`">
+                  <span
+                    class="status-indicator"
+                    :class="p.resolved?.ok ? 'status-ok' : 'status-err'"
+                  ></span>
+                  <span :class="p.resolved?.ok ? 'text-green-700' : 'text-amber-700'">
+                    {{ p.resolved?.ok ? '可以运行' : '无法运行' }}
+                  </span>
+                  <span v-if="p.resolved?.version" class="text-xs text-neutral-500 ml-1">
+                    ({{ p.resolved.version }})
+                  </span>
+                  <span v-else-if="p.resolved?.path_hint" class="text-xs text-neutral-500 ml-1">
+                    ({{ p.resolved.path_hint }})
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="actions-cell">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    :data-testid="`check-profile-btn-${p.id}`"
+                    :disabled="ctx.busy.value"
+                    @click="onCheck(p)"
+                  >
+                    检测
+                  </Button>
+                  <Button
+                    v-if="p.upgrade_command"
+                    size="sm"
+                    variant="default"
+                    :data-testid="`upgrade-profile-btn-${p.id}`"
+                    :disabled="ctx.busy.value || activeJobState === 'running'"
+                    @click="onOpenUpgradeSheet(p)"
+                  >
+                    升级
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    :data-testid="`edit-profile-btn-${p.id}`"
+                    :disabled="ctx.busy.value || !ctx.writable.value"
+                    @click="onOpenEditProfile(p)"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    :data-testid="`delete-profile-btn-${p.id}`"
+                    :disabled="p.builtin || ctx.busy.value || !ctx.writable.value"
+                    :title="p.builtin ? '内置配置不可删除' : '删除配置'"
+                    @click="onOpenDeleteProfile(p)"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="profiles.length === 0">
+              <td colspan="5" class="st-note">还没有配置 AI 命令行工具。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- 默认档位与工单分析档位设置 -->
-    <section class="st-section mt-6" aria-label="默认档位与工单分析">
-      <div class="st-head">
-        <h2>档位与模型预设</h2>
-      </div>
+    <Banner v-if="settingsError" kind="error" data-testid="settings-error-banner">
+      {{ settingsError }}
+    </Banner>
 
-      <Banner v-if="settingsError" kind="error" class="mb-4" data-testid="settings-error-banner">
-        {{ settingsError }}
-      </Banner>
+    <!-- 高权限档位风险提示 (已决4) -->
+    <Banner v-if="hasHighRiskSetting" kind="warn" data-testid="high-risk-tier-banner">
+      高权限档位风险提示：已选高权限档位（Claude bypassPermissions / Codex danger-full-access / agy
+      auto）。该档位下 AI 将完全跳过沙箱或审批，可在本机运行任意命令，请确保环境可信！
+    </Banner>
 
-      <!-- 高权限档位风险提示 (已决4) -->
-      <Banner
-        v-if="hasHighRiskSetting"
-        kind="warn"
-        class="mb-4"
-        data-testid="high-risk-tier-banner"
-      >
-        高权限档位风险提示：已选高权限档位（Claude bypassPermissions / Codex danger-full-access /
-        agy auto）。该档位下 AI 将完全跳过沙箱或审批，可在本机运行任意命令，请确保环境可信！
-      </Banner>
-
-      <div class="settings-grid">
-        <!-- Claude 档位 -->
-        <div class="settings-card" data-testid="claude-settings-card">
-          <h3 class="card-title">Claude Code</h3>
-          <div class="form-row">
-            <label for="claude-perm-select">默认权限档位</label>
-            <select
-              id="claude-perm-select"
-              v-model="claudePermission"
-              class="b-select"
-              data-testid="claude-perm-select"
-            >
-              <option value="default">default (默认)</option>
-              <option value="acceptEdits">acceptEdits (自动接受编辑)</option>
-              <option value="auto">auto (自动允许常用只读工具)</option>
-              <option value="dontAsk">dontAsk (静默拒绝需审批命令)</option>
-              <option value="bypassPermissions">bypassPermissions (跳过所有审批 · 高危)</option>
-              <option value="plan">plan (只读计划模式)</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="claude-effort-select">思考努力程度 (Effort)</label>
-            <select id="claude-effort-select" v-model="claudeEffort" class="b-select">
-              <option :value="null">默认</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-              <option value="max">max</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="claude-analysis-select">工单分析档位</label>
-            <select id="claude-analysis-select" v-model="claudeAnalysis" class="b-select">
-              <option value="plan">plan (只读计划 · 推荐)</option>
-              <option value="auto">auto</option>
-              <option value="acceptEdits">acceptEdits</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="claude-model-input">默认模型 (选填)</label>
-            <TextField
-              id="claude-model-input"
-              v-model="claudeModel"
-              label="Claude 默认模型"
-              placeholder="如 claude-3-5-sonnet"
-            />
-          </div>
+    <!-- Claude 档位 -->
+    <section class="st-section" aria-label="Claude Code 默认值" data-testid="claude-settings-card">
+      <div class="st-head"><h2>Claude Code 默认值</h2></div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="claude-perm-select">权限档位</label>
+          <small>新会话默认使用</small>
         </div>
-
-        <!-- Codex 档位 -->
-        <div class="settings-card" data-testid="codex-settings-card">
-          <h3 class="card-title">Codex CLI</h3>
-          <div class="form-row">
-            <label for="codex-sandbox-select">默认沙箱档位</label>
-            <select
-              id="codex-sandbox-select"
-              v-model="codexSandbox"
-              class="b-select"
-              data-testid="codex-sandbox-select"
-            >
-              <option value="read-only">read-only (只读)</option>
-              <option value="workspace-write">workspace-write (工作区可写)</option>
-              <option value="danger-full-access">danger-full-access (完全访问 · 高危)</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="codex-effort-select">思考努力程度 (Effort)</label>
-            <select id="codex-effort-select" v-model="codexEffort" class="b-select">
-              <option value="none">none</option>
-              <option value="minimal">minimal</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-              <option value="max">max</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="codex-analysis-select">工单分析档位</label>
-            <select id="codex-analysis-select" v-model="codexAnalysis" class="b-select">
-              <option value="read-only">read-only (只读 · 推荐)</option>
-              <option value="workspace-write">workspace-write</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="codex-model-input">默认模型 (选填)</label>
-            <TextField
-              id="codex-model-input"
-              v-model="codexModel"
-              label="Codex 默认模型"
-              placeholder="如 gpt-5.3-codex"
-            />
-          </div>
-        </div>
-
-        <!-- Antigravity (agy) 档位 -->
-        <div class="settings-card" data-testid="agy-settings-card">
-          <h3 class="card-title">Antigravity (agy)</h3>
-          <div class="form-row">
-            <label for="agy-mode-select">默认运行模式</label>
-            <select
-              id="agy-mode-select"
-              v-model="agyMode"
-              class="b-select"
-              data-testid="agy-mode-select"
-            >
-              <option value="sandbox">sandbox (沙箱安全隔离)</option>
-              <option value="auto">auto (自动批准所有命令 · 高危)</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="agy-analysis-select">工单分析档位</label>
-            <select id="agy-analysis-select" v-model="agyAnalysis" class="b-select">
-              <option value="sandbox">sandbox (沙箱 · 推荐)</option>
-              <option value="auto">auto</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="agy-model-input">默认模型 (选填)</label>
-            <TextField
-              id="agy-model-input"
-              v-model="agyModel"
-              label="Antigravity 默认模型"
-              placeholder="如 gemini-3.8-flash"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 模型预设 -->
-      <div class="presets-section mt-4">
-        <h3 class="card-title">模型预设列表 (每行或以逗号分隔一个模型名)</h3>
-        <div class="presets-grid mt-2">
-          <div class="preset-col">
-            <label for="claude-presets-textarea">Claude 模型预设</label>
-            <textarea
-              id="claude-presets-textarea"
-              v-model="claudePresetsText"
-              class="presets-textarea"
-              rows="3"
-              data-testid="claude-presets-textarea"
-            ></textarea>
-          </div>
-          <div class="preset-col">
-            <label for="codex-presets-textarea">Codex 模型预设</label>
-            <textarea
-              id="codex-presets-textarea"
-              v-model="codexPresetsText"
-              class="presets-textarea"
-              rows="3"
-              data-testid="codex-presets-textarea"
-            ></textarea>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-4 flex justify-end">
-        <Button
-          variant="primary"
-          data-testid="save-ai-settings-btn"
-          :disabled="ctx.busy.value || !ctx.writable.value || settingsSubmitting"
-          @click="onSaveSettings"
+        <select
+          id="claude-perm-select"
+          v-model="claudePermission"
+          class="b-select"
+          data-testid="claude-perm-select"
         >
-          {{ settingsSubmitting ? '正在保存…' : '保存 AI 档位与预设' }}
-        </Button>
+          <option value="default">default（默认）</option>
+          <option value="acceptEdits">acceptEdits（自动接受编辑）</option>
+          <option value="auto">auto（自动允许常用只读工具）</option>
+          <option value="dontAsk">dontAsk（静默拒绝需审批的命令）</option>
+          <option value="bypassPermissions">bypassPermissions（跳过所有审批，高危）</option>
+          <option value="plan">plan（只读计划模式）</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="claude-effort-select">思考强度</label>
+        </div>
+        <select id="claude-effort-select" v-model="claudeEffort" class="b-select">
+          <option :value="null">默认</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="xhigh">xhigh</option>
+          <option value="max">max</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="claude-analysis-select">工单分析时</label>
+          <small>分析工单用的权限档位</small>
+        </div>
+        <select id="claude-analysis-select" v-model="claudeAnalysis" class="b-select">
+          <option value="plan">plan（只读计划，推荐）</option>
+          <option value="auto">auto</option>
+          <option value="acceptEdits">acceptEdits</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="claude-model-input">默认模型</label>
+          <small>留空则用 CLI 自己的默认</small>
+        </div>
+        <TextField
+          id="claude-model-input"
+          v-model="claudeModel"
+          label="Claude 默认模型"
+          class="model-field"
+          placeholder="如 claude-3-5-sonnet"
+        />
       </div>
     </section>
+
+    <!-- Codex 档位 -->
+    <section class="st-section" aria-label="Codex 默认值" data-testid="codex-settings-card">
+      <div class="st-head"><h2>Codex 默认值</h2></div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="codex-sandbox-select">沙箱档位</label>
+          <small>新会话默认使用</small>
+        </div>
+        <select
+          id="codex-sandbox-select"
+          v-model="codexSandbox"
+          class="b-select"
+          data-testid="codex-sandbox-select"
+        >
+          <option value="read-only">read-only（只读）</option>
+          <option value="workspace-write">workspace-write（工作区可写）</option>
+          <option value="danger-full-access">danger-full-access（完全访问，高危）</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="codex-effort-select">思考强度</label>
+        </div>
+        <select id="codex-effort-select" v-model="codexEffort" class="b-select">
+          <option value="none">none</option>
+          <option value="minimal">minimal</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="xhigh">xhigh</option>
+          <option value="max">max</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="codex-analysis-select">工单分析时</label>
+          <small>分析工单用的沙箱档位</small>
+        </div>
+        <select id="codex-analysis-select" v-model="codexAnalysis" class="b-select">
+          <option value="read-only">read-only（只读，推荐）</option>
+          <option value="workspace-write">workspace-write</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="codex-model-input">默认模型</label>
+          <small>留空则用 CLI 自己的默认</small>
+        </div>
+        <TextField
+          id="codex-model-input"
+          v-model="codexModel"
+          label="Codex 默认模型"
+          class="model-field"
+          placeholder="如 gpt-5.3-codex"
+        />
+      </div>
+    </section>
+
+    <!-- Antigravity (agy) 档位 -->
+    <section class="st-section" aria-label="Antigravity 默认值" data-testid="agy-settings-card">
+      <div class="st-head"><h2>Antigravity 默认值</h2></div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="agy-mode-select">运行模式</label>
+          <small>新会话默认使用</small>
+        </div>
+        <select
+          id="agy-mode-select"
+          v-model="agyMode"
+          class="b-select"
+          data-testid="agy-mode-select"
+        >
+          <option value="sandbox">sandbox（沙箱隔离）</option>
+          <option value="auto">auto（自动批准所有命令，高危）</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="agy-analysis-select">工单分析时</label>
+          <small>分析工单用的运行模式</small>
+        </div>
+        <select id="agy-analysis-select" v-model="agyAnalysis" class="b-select">
+          <option value="sandbox">sandbox（沙箱，推荐）</option>
+          <option value="auto">auto</option>
+        </select>
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <label for="agy-model-input">默认模型</label>
+          <small>留空则用 CLI 自己的默认</small>
+        </div>
+        <TextField
+          id="agy-model-input"
+          v-model="agyModel"
+          label="Antigravity 默认模型"
+          class="model-field"
+          placeholder="如 gemini-3.8-flash"
+        />
+      </div>
+    </section>
+
+    <!-- 模型预设 -->
+    <section class="st-section" aria-label="模型预设">
+      <div class="st-head"><h2>模型预设</h2></div>
+      <p class="st-note">下拉里可选的模型名，每行或用逗号分隔一个。</p>
+      <div class="st-row preset-row">
+        <div class="st-lbl">
+          <label for="claude-presets-textarea">Claude 模型预设</label>
+        </div>
+        <textarea
+          id="claude-presets-textarea"
+          v-model="claudePresetsText"
+          class="presets-textarea"
+          rows="3"
+          data-testid="claude-presets-textarea"
+        ></textarea>
+      </div>
+      <div class="st-row preset-row">
+        <div class="st-lbl">
+          <label for="codex-presets-textarea">Codex 模型预设</label>
+        </div>
+        <textarea
+          id="codex-presets-textarea"
+          v-model="codexPresetsText"
+          class="presets-textarea"
+          rows="3"
+          data-testid="codex-presets-textarea"
+        ></textarea>
+      </div>
+    </section>
+
+    <div class="st-actions">
+      <Button
+        variant="primary"
+        data-testid="save-ai-settings-btn"
+        :disabled="ctx.busy.value || !ctx.writable.value || settingsSubmitting"
+        @click="onSaveSettings"
+      >
+        {{ settingsSubmitting ? '正在保存…' : '保存默认值与预设' }}
+      </Button>
+    </div>
 
     <!-- 检测结果 Sheet -->
     <Sheet
@@ -1037,6 +1065,19 @@ async function onSaveSettings() {
 </template>
 
 <style scoped>
+/* 操作列 4 个按钮较宽；其余列不折行，窄窗口时横向滚动而不是逐字竖排。 */
+.profiles-tbl th,
+.profiles-tbl td {
+  white-space: nowrap;
+}
+.profiles-tbl .cell-cmd {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profiles-tbl .st-mono {
+  word-break: normal;
+}
 .profile-name-cell {
   display: flex;
   align-items: center;
@@ -1062,70 +1103,36 @@ async function onSaveSettings() {
   display: flex;
   gap: 6px;
 }
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-}
-.settings-card {
-  padding: 14px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg-window);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.card-title {
-  margin: 0 0 4px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text);
-}
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.form-row label {
-  font-size: 12px;
-  color: var(--text-muted);
-}
 .b-select {
-  height: 30px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
+  height: var(--ctl-h);
+  max-width: 100%;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--field-line);
   background: var(--bg-window);
-  color: var(--text);
+  color: var(--ink);
   padding: 0 8px;
   font-size: 12.5px;
   outline: none;
 }
-.presets-section {
-  padding: 14px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg-window);
+.model-field {
+  flex: none;
+  width: 260px;
+  max-width: 100%;
 }
-.presets-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-.preset-col {
-  display: flex;
+.preset-row {
+  align-items: flex-start;
   flex-direction: column;
   gap: 6px;
 }
-.preset-col label {
-  font-size: 12px;
-  color: var(--text-muted);
+.preset-row .presets-textarea {
+  width: 100%;
+  box-sizing: border-box;
 }
 .presets-textarea {
-  border-radius: 6px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--field-line);
   background: var(--bg-window);
-  color: var(--text);
+  color: var(--ink);
   padding: 8px;
   font-family: var(--font-mono);
   font-size: 12px;

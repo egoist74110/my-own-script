@@ -132,8 +132,8 @@ async function onConfirmSourceSwitch(opts: {
 <template>
   <section class="st-section" aria-label="ADO 工单 MCP" data-testid="mcp-ado-card">
     <div class="st-head">
-      <h2>ADO 工单 MCP</h2>
-      <Tag>stdio 模式</Tag>
+      <h2>ADO 工单</h2>
+      <Tag>按需启动</Tag>
       <div class="st-grow"></div>
       <Button
         variant="default"
@@ -144,9 +144,7 @@ async function onConfirmSourceSwitch(opts: {
         {{ isTesting ? '自检中…' : '运行自检' }}
       </Button>
     </div>
-    <p class="st-note">
-      通过 stdio 协议由各 AI CLI 会话按需拉起，无常驻进程。凭据每次调用从钥匙串读取。
-    </p>
+    <p class="st-note">由各 AI 会话按需启动，没有常驻进程；凭据每次调用时从钥匙串读取。</p>
 
     <!-- 自检错误或失败展示 -->
     <Banner v-if="testError" kind="error" data-testid="ado-test-error-banner">
@@ -193,15 +191,11 @@ async function onConfirmSourceSwitch(opts: {
       </div>
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 写工具开关 -->
-    <div class="setting-row">
-      <div class="setting-info">
-        <strong class="setting-title">写工具 (ado_create_work_item)</strong>
-        <p class="st-note">
-          允许 AI 在工单分析或会话中直接创建新工单。默认关闭，开启时 AI 可调用建单工具。
-        </p>
+    <div class="st-row">
+      <div class="st-lbl">
+        <b>允许 AI 创建工单</b>
+        <small>打开后，AI 在分析或会话中可以直接建单</small>
       </div>
       <Switch
         :model-value="Boolean(ado.allow_create_work_item)"
@@ -211,36 +205,30 @@ async function onConfirmSourceSwitch(opts: {
       />
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 附件缓存说明 -->
-    <div class="setting-row">
-      <div class="setting-info">
-        <strong class="setting-title">附件缓存与用量</strong>
-        <p class="st-note">
-          总量上限 {{ ado.attachment_cache_mb }} MB · 单文件上限
-          {{ ado.attachment_max_mb }} MB。遵循 LRU 及 14 天自动过期规则。
-        </p>
+    <div class="st-row">
+      <div class="st-lbl">
+        <b>附件缓存</b>
+        <small>
+          最多 {{ ado.attachment_cache_mb }} MB，单个 {{ ado.attachment_max_mb }} MB，14
+          天没用的自动清理
+        </small>
       </div>
-      <div class="setting-action">
-        <span class="mute st-note" data-testid="ado-attachment-cache-hint">暂无清空接口</span>
-      </div>
+      <span class="st-val" data-testid="ado-attachment-cache-hint">自动清理，无需手动清空</span>
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 分析来源切换 -->
-    <div class="setting-row">
-      <div class="setting-info">
-        <strong class="setting-title">工单 AI 分析 MCP 来源</strong>
-        <p class="st-note">
-          当前来源：
-          <strong data-testid="ado-current-mcp-source">
-            {{ aiMcpSource === 'toolbox' ? '新端 ADO MCP (toolbox_ado)' : '旧版工单 MCP (默认)' }}
-          </strong>
-        </p>
+    <div class="st-row">
+      <div class="st-lbl">
+        <b>工单分析用的服务</b>
+        <small>
+          当前：
+          <span data-testid="ado-current-mcp-source">
+            {{ aiMcpSource === 'toolbox' ? '新版 ADO 工单 MCP' : '旧版工单 MCP（默认）' }}
+          </span>
+        </small>
       </div>
-      <div class="setting-action">
+      <div class="st-ctl">
         <Button
           variant="default"
           data-testid="open-source-sheet-btn"
@@ -252,12 +240,13 @@ async function onConfirmSourceSwitch(opts: {
       </div>
     </div>
 
-    <hr class="st-sep" />
-
     <!-- 接入片段复制 -->
     <div class="snippet-section">
       <div class="snippet-header">
-        <strong class="setting-title">CLI 接入片段（无凭据）</strong>
+        <div class="st-lbl">
+          <b>接入配置</b>
+          <small>复制到 CLI 的配置文件里，不含凭据</small>
+        </div>
         <div class="st-grow"></div>
         <Button
           variant="plain"
@@ -304,10 +293,6 @@ async function onConfirmSourceSwitch(opts: {
 
 <style scoped>
 .test-result-box {
-  background: var(--bg-settings);
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -343,20 +328,6 @@ async function onConfirmSourceSwitch(opts: {
   overflow: auto;
   white-space: pre-wrap;
 }
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.setting-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.setting-title {
-  font-size: var(--text-body);
-}
 .snippet-section {
   display: flex;
   flex-direction: column;
@@ -373,7 +344,7 @@ async function onConfirmSourceSwitch(opts: {
 .snippet-box {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-settings);
+  background: var(--bg-inspector);
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   max-height: 160px;

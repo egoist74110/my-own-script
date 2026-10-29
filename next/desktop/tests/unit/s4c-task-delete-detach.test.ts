@@ -222,7 +222,7 @@ describe('S4-C 任务删除与运行来源 Telegram 标记单测', () => {
         }
 
         // 任务删除
-        if (url.pathname === '/api/tasks/task-deploy-1' && input.method === 'DELETE') {
+        if (url.pathname === '/api/release-configs/task-deploy-1' && input.method === 'DELETE') {
           const detachAcl = url.searchParams.get('detach_acl') === 'true'
           if (failWithReferenced && !detachAcl) {
             return new Response(
@@ -269,7 +269,7 @@ describe('S4-C 任务删除与运行来源 Telegram 标记单测', () => {
 
       // 验证第 1 次调用为普通删除，不带 detach_acl
       const firstDelete = calls.find(
-        (c) => c.method === 'DELETE' && c.path === '/api/tasks/task-deploy-1',
+        (c) => c.method === 'DELETE' && c.path === '/api/release-configs/task-deploy-1',
       )
       expect(firstDelete).toBeTruthy()
       expect(firstDelete?.query.detach_acl).toBeUndefined()
@@ -293,7 +293,7 @@ describe('S4-C 任务删除与运行来源 Telegram 标记单测', () => {
 
       // 验证第 2 次调用携带了 detach_acl=true
       const secondDelete = calls
-        .filter((c) => c.method === 'DELETE' && c.path === '/api/tasks/task-deploy-1')
+        .filter((c) => c.method === 'DELETE' && c.path === '/api/release-configs/task-deploy-1')
         .pop()
       expect(secondDelete).toBeTruthy()
       expect(secondDelete?.query.detach_acl).toBe('true')

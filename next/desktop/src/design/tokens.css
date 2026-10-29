@@ -1,7 +1,7 @@
 /*
- * 设计令牌：方向 B「macOS 原生」。
- * 数值参考 docs/modernization/design/b-native（只作参考，未拷贝其 HTML/脚本）；使用系统字体，无第三方视觉来源。
- * 深色跟随系统（prefers-color-scheme），本版不做手动切换。
+ * 设计令牌：方向 A「线路图」（docs/modernization/design/v2/README.md）。
+ * 浅色按规范取值；使用系统字体，无第三方视觉来源。
+ * 深色跟随系统（prefers-color-scheme），本版不做手动切换，只保证不坏（沿用上一版配色，新增令牌给出对应值）。
  * 强调色（深色下为荧光绿）只作底色，其上文字用 --on-accent；绿色不作文字色。
  */
 :root {
@@ -9,31 +9,33 @@
 
   /* 面 */
   --bg-window: #ffffff;
-  --bg-sidebar: #eeedf1;
+  --bg-sidebar: #f3f4f6;
   --bg-list: #ffffff;
-  --bg-inspector: #f7f7f9;
+  --bg-inspector: #fafafb;
   --bg-group: #ffffff;
   --bg-settings: #f5f5f7;
-  --line: #e5e5ea;
-  --line-sidebar: #dad9de;
+  --line: #e4e6eb;
+  --line-sidebar: #e4e6eb;
 
   /* 文字 */
-  --ink: #1d1d1f;
-  --mute: #6e6e73;
+  --ink: #1b1d22;
+  --mute: #5b616e;
   /* 在侧栏、控件底、选中未聚焦行等稍深的面上使用的次要文字（#6e6e73 在这些面上不足 4.5:1） */
-  --mute-tint: #636368;
+  --mute-tint: #5b616e;
+  /* 弱文字（规范）：只用于不承载关键信息的元信息 */
+  --faint: #8b919c;
   --disabled: #a1a1a6;
   --link: #0058d0;
 
   /* 控件与行 */
-  --ctl: #ededf0;
+  --ctl: #f3f4f6;
   --ctl-selected: #ffffff;
-  --hover: #f2f2f5;
-  --sel-blur: #e3e2e8;
-  --sidebar-sel: #d9d8df;
-  --toolbar-pressed: #e8e8ed;
-  --field-line: #d2d2d7;
-  --skeleton: #e8e8ec;
+  --hover: #f3f4f6;
+  --sel-blur: #e9ecf3;
+  --sidebar-sel: #e1e3e8;
+  --toolbar-pressed: #e9ecf3;
+  --field-line: #d3d6dd;
+  --skeleton: #e9ebef;
 
   /* 强调 */
   --accent: #0a63d6;
@@ -43,31 +45,34 @@
   --row-sel-bg: #0a63d6;
   --row-sel-fg: #ffffff;
   --row-sel-sub: #e8f1fd;
-  --danger: #b3261e;
+  --danger: #c2372f;
+  /* 主按钮：浅色为墨色实底，深色沿用强调色 */
+  --btn-primary-bg: #1b1d22;
+  --btn-primary-fg: #ffffff;
 
   /* 运行状态八态：底 / 文字 / 圆点 */
-  --st-queued-bg: #f0f0f3;
-  --st-queued-fg: #3a3a3f;
-  --st-queued-dot: #8e8e93;
-  --st-running-bg: #e6f0fd;
-  --st-running-fg: #0a4fad;
-  --st-running-dot: #0a63d6;
+  --st-queued-bg: #f3f4f6;
+  --st-queued-fg: #4b5160;
+  --st-queued-dot: #8b919c;
+  --st-running-bg: #e8eefc;
+  --st-running-fg: #2457d6;
+  --st-running-dot: #2457d6;
   --st-stopping-bg: #fff0e0;
   --st-stopping-fg: #8a3f00;
   --st-stopping-dot: #e07b00;
-  --st-success-bg: #e5f5ea;
-  --st-success-fg: #16692f;
-  --st-success-dot: #1f9d45;
-  --st-failed-bg: #fdecea;
-  --st-failed-fg: #a1211a;
-  --st-failed-dot: #d93025;
-  --st-cancelled-bg: #f0f0f3;
-  --st-cancelled-fg: #4a4a4f;
-  --st-cancelled-dot: #8e8e93;
-  --st-verify-bg: #fff3dc;
-  --st-verify-fg: #7a4100;
-  --st-verify-dot: #d98a00;
-  --st-disabled-bg: #f0f0f3;
+  --st-success-bg: #e6f4ec;
+  --st-success-fg: #176a46;
+  --st-success-dot: #1f8a5b;
+  --st-failed-bg: #fbeceb;
+  --st-failed-fg: #b02f28;
+  --st-failed-dot: #c2372f;
+  --st-cancelled-bg: #f3f4f6;
+  --st-cancelled-fg: #4b5160;
+  --st-cancelled-dot: #8b919c;
+  --st-verify-bg: #fdf1de;
+  --st-verify-fg: #8a5200;
+  --st-verify-dot: #9a5b00;
+  --st-disabled-bg: #f3f4f6;
   /* 合同给的 #6e6e73 在 #f0f0f3 上只有 4.46:1，加深到 4.5:1 以上 */
   --st-disabled-fg: #65656a;
   --st-disabled-dot: #c7c7cc;
@@ -92,6 +97,16 @@
   --kind-feature: #8e44c8;
   --p1: #b23c00;
 
+  /* 仓库线路色：Event / Front / VIP / API 四色固定，其余仓库按 hash 取后四色；不与状态色相同 */
+  --l-event: #0f8f86;
+  --l-front: #2f5fe0;
+  --l-vip: #7a4fd6;
+  --l-api: #d4651c;
+  --l-5: #b83280;
+  --l-6: #5a7d1a;
+  --l-7: #8a5a44;
+  --l-8: #3b4252;
+
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
@@ -105,8 +120,8 @@
   --text-group: 11px;
 
   /* 尺寸 */
-  --r-ctl: 6px;
-  --r-row: 7px;
+  --r-ctl: 7px;
+  --r-row: 9px;
   --r-group: 10px;
   --r-window: 12px;
   --sp-1: 4px;
@@ -118,8 +133,9 @@
   --ctl-h: 28px;
   --target-min: 28px;
   --topbar-h: 52px;
-  --sidebar-w: 232px;
-  --list-w: 360px;
+  --sidebar-w: 212px;
+  --sidebar-w-compact: 76px; /* 须容纳 macOS 红黄绿按钮（约 65px），否则会压住列表标题 */
+  --list-w: 320px;
   --inspector-w: 280px;
 }
 
@@ -137,6 +153,7 @@
     --ink: #ecedef;
     --mute: #8b8e98;
     --mute-tint: #8b8e98;
+    --faint: #8b8e98;
     --disabled: #6f727c;
     --link: #d4f56a;
 
@@ -157,6 +174,9 @@
     --row-sel-fg: #ecedef;
     --row-sel-sub: #b8bba6;
     --danger: #ff9b92;
+    --btn-primary-bg: #c6f432;
+    --btn-primary-fg: #14161a;
+    --l-8: #8892a6;
 
     --st-queued-bg: #26282d;
     --st-queued-fg: #c9cbd2;

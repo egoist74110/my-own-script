@@ -1,9 +1,21 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
+import {
+  CalendarPlus,
+  CornerLeftUp,
+  ExternalLink,
+  Flag,
+  GitCommitHorizontal,
+  History,
+  Link,
+  Sparkles,
+  User,
+} from 'lucide-vue-next'
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
+import OverflowMenu from '@/components/OverflowMenu.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import SafeHtml from '@/components/SafeHtml.vue'
 import Sheet from '@/components/Sheet.vue'
@@ -18,13 +30,14 @@ import {
 } from '@/features/ai/api'
 import { formatAiError } from '@/features/ai/terminal-protocol'
 import AttachmentsPane from './AttachmentsPane.vue'
+import BoardLine from './BoardLine.vue'
 import ChildrenPane from './ChildrenPane.vue'
 import CommentsPane from './CommentsPane.vue'
 import ErrorNotice from './ErrorNotice.vue'
 import HistoryPane from './HistoryPane.vue'
 import { badShape, unwrap, type HtmlField, type WorkItemDetail } from './api'
 import { formatDate, kindColor } from './format'
-import { QUERY_DEFAULTS, WI_KEY, projectKey, useWiApi } from './queries'
+import { QUERY_DEFAULTS, WI_KEY, projectKey, useBoardColumns, useWiApi } from './queries'
 import './panes.css'
 
 /**
@@ -35,6 +48,7 @@ const props = defineProps<{ projectId: string; id: number }>()
 const emit = defineEmits<{ select: [id: number]; loaded: [detail: WorkItemDetail | null] }>()
 const { api, maybeApi, online, qc } = useWiApi()
 
+const { columns: boardColumns } = useBoardColumns()
 const media = createMediaCache(maybeApi)
 provide(mediaCacheKey, media)
 onBeforeUnmount(() => media.clear())
@@ -79,20 +93,6 @@ const sections = computed(() => {
 // 检查器（页面级）需要详情数据：加载完成时上报，卸载时清空
 watch(d, (x) => emit('loaded', x), { immediate: true })
 onBeforeUnmount(() => emit('loaded', null))
-
-const metaLine = computed(() => {
-  const x = d.value
-  if (!x) return ''
-  const rev = x.rev === null || x.rev === undefined ? null : `r${x.rev}`
-  return [
-    x.assigned_to ?? '未指派',
-    `创建 ${formatDate(x.created_date)}`,
-    `更新 ${formatDate(x.changed_date)}`,
-    rev,
-  ]
-    .filter(Boolean)
-    .join(' · ')
-})
 
 // 先失效并等当前详情（及已打开的评论）重取完成，再清失败条目：
 // 否则旧 id 会先被重试一遍，而新 id 成功后过期提示仍在（CR-S2B-002）
@@ -192,6 +192,23 @@ async function startAnalysis() {
   }
 }
 
+// 复制链接：写入工单在 ADO 里的网址
+async function handleCopyLink() {
+  const url = d.value?.web_url
+  if (!url) return
+  copyToast.value = null
+  try {
+    await navigator.clipboard.writeText(url)
+    copyToast.value = '链接已复制到剪贴板'
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
+      copyToast.value = null
+    }, 3000)
+  } catch {
+    copyToast.value = '复制链接失败'
+  }
+}
+
 // 复制提示词状态
 const copyToast = ref<string | null>(null)
 const promptWarnings = ref<string[]>([])
@@ -231,52 +248,104 @@ async function handleCopyPrompt() {
     </div>
     <ErrorNotice v-else-if="q.error.value" :error="q.error.value" retry @retry="q.refetch()" />
     <template v-else-if="d">
+      <!-- 工具条：主操作 AI 分析；详情区 ≥560px 时其余操作直接摆出来，更窄时收进「⋯」（CSS 容器查询切换） -->
+      <div class="d-tools">
+        <Button
+          variant="primary"
+          data-testid="ai-analysis-btn"
+          :disabled="!canAnalyze"
+          :title="canAnalyze ? '' : '需配置本地仓库且有可用 AI CLI'"
+          @click="analysisSheetOpen = true"
+        >
+          <Sparkles :size="13" aria-hidden="true" />
+          AI 分析
+        </Button>
+        <Button
+          variant="default"
+          class="wide-only"
+          data-testid="copy-prompt-btn"
+          @click="handleCopyPrompt"
+        >
+          复制提示词
+        </Button>
+        <Button
+          variant="default"
+          class="wide-only"
+          data-testid="open-web"
+          @click="openExternal(d.web_url)"
+        >
+          <ExternalLink :size="13" aria-hidden="true" />
+          在 ADO 打开
+        </Button>
+        <OverflowMenu label="更多操作">
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item narrow-only"
+            data-testid="copy-prompt-menu-item"
+            @click="handleCopyPrompt"
+          >
+            <Sparkles :size="14" aria-hidden="true" />
+            复制提示词
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item narrow-only"
+            data-testid="open-web-menu-item"
+            @click="openExternal(d.web_url)"
+          >
+            <ExternalLink :size="14" aria-hidden="true" />
+            在 ADO 打开
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item"
+            data-testid="copy-link-menu-item"
+            @click="handleCopyLink"
+          >
+            <Link :size="14" aria-hidden="true" />
+            复制链接
+          </button>
+        </OverflowMenu>
+      </div>
+
       <header class="d-head">
-        <div class="d-line">
+        <h2>{{ d.title }}</h2>
+        <!-- 元信息：用图标分隔，不用“·”拼接 -->
+        <div class="meta" data-testid="wi-meta">
           <span class="type" :data-type="d.type ?? ''"
             ><span class="kd" :style="{ background: kindColor(d.type) }" aria-hidden="true"></span
             >{{ d.type ?? '—' }}</span
           >
-          <span class="mono idn">#{{ d.id }}</span>
-          <template v-if="d.parent_id">
-            <span aria-hidden="true">·</span>
-            <span class="parent-wrap"
-              >父项
-              <button
-                type="button"
-                class="parent"
-                data-testid="open-parent"
-                @click="emit('select', d.parent_id!)"
-              >
-                #{{ d.parent_id }}
-              </button></span
+          <span class="num">#{{ d.id }}</span>
+          <span v-if="d.parent_id" class="parent-wrap"
+            ><CornerLeftUp :size="13" aria-hidden="true" />父项
+            <button
+              type="button"
+              class="parent"
+              data-testid="open-parent"
+              @click="emit('select', d.parent_id!)"
             >
-          </template>
-
-          <span class="grow"></span>
-          <div class="wi-ai-btn-group">
-            <Button
-              size="sm"
-              variant="default"
-              data-testid="copy-prompt-btn"
-              @click="handleCopyPrompt"
-            >
-              复制提示词
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              data-testid="ai-analysis-btn"
-              :disabled="!canAnalyze"
-              :title="canAnalyze ? '' : '需配置本地仓库且有可用 AI CLI'"
-              @click="analysisSheetOpen = true"
-            >
-              AI 分析
-            </Button>
-          </div>
+              #{{ d.parent_id }}
+            </button></span
+          >
+          <span><User :size="13" aria-hidden="true" />{{ d.assigned_to ?? '未指派' }}</span>
+          <span v-if="d.priority !== null && d.priority !== undefined"
+            ><Flag :size="13" aria-hidden="true" />P{{ d.priority }}</span
+          >
+          <span class="num"
+            ><CalendarPlus :size="13" aria-hidden="true" />创建
+            {{ formatDate(d.created_date) }}</span
+          >
+          <span class="num"
+            ><History :size="13" aria-hidden="true" />更新 {{ formatDate(d.changed_date) }}</span
+          >
+          <span v-if="d.rev !== null && d.rev !== undefined" class="num"
+            ><GitCommitHorizontal :size="13" aria-hidden="true" />r{{ d.rev }}</span
+          >
         </div>
-        <h2>{{ d.title }}</h2>
-        <div class="meta">{{ metaLine }}</div>
 
         <!-- 复制提示词 Toast 提示与 Warnings -->
         <Banner
@@ -298,6 +367,7 @@ async function handleCopyPrompt() {
           <span>提示词警示：{{ promptWarnings.join(', ') }}</span>
         </Banner>
       </header>
+      <BoardLine :columns="boardColumns" :current="d.board_column" class="d-route" />
       <Banner
         v-if="media.expired.value > 0"
         kind="warn"
@@ -312,7 +382,7 @@ async function handleCopyPrompt() {
       </Banner>
       <SegmentedControl v-model="tab" :items="tabs" label="工单内容" class="d-tabs">
         <template #default="{ item }">
-          <div v-if="item.value === 'desc'" class="wi-pane" data-testid="wi-body">
+          <div v-if="item.value === 'desc'" class="wi-pane prose" data-testid="wi-body">
             <template v-for="[key, label, f] in sections" :key="key">
               <h3 v-if="sections.length > 1" class="wi-sec-h">{{ label }}</h3>
               <SafeHtml v-if="f?.html" :html="f.html" :media="media" />
@@ -441,26 +511,68 @@ async function handleCopyPrompt() {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  /* 详情区自己的宽度（不是窗口宽度）决定工具条怎么收：<560px 时次要操作进「⋯」 */
+  container: wi-detail / inline-size;
+}
+.d-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 49px;
+  padding: 10px 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+@container wi-detail (max-width: 559px) {
+  .wide-only {
+    display: none;
+  }
+}
+@container wi-detail (min-width: 560px) {
+  .narrow-only {
+    display: none;
+  }
 }
 .d-head {
-  padding: 22px 32px 0;
-  max-width: 820px;
+  padding: 18px 20px 0;
+  max-width: 860px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.d-line {
+h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+}
+.meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 14px;
   font-size: var(--text-sub);
   color: var(--mute);
 }
-.type {
+.meta > span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
+}
+.meta svg {
+  flex: none;
+  color: var(--faint);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.type {
   color: var(--accent-ink);
   font-weight: 600;
 }
@@ -469,27 +581,26 @@ async function handleCopyPrompt() {
   height: 8px;
   border-radius: 50%;
 }
-h2 {
-  margin: 2px 0 0;
-  font-size: var(--text-title);
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-  overflow-wrap: anywhere;
-}
-.meta {
-  font-size: 12.5px;
-  color: var(--mute);
+.d-route {
+  margin: 0 20px;
 }
 .d-tabs {
-  padding: 14px 32px 0;
+  padding: 14px 20px 0;
 }
 .d-tabs :deep(.tab-panel) {
-  margin: 0 -32px;
+  margin: 0 -20px;
 }
 .expired {
-  margin: 12px 32px 0;
+  margin: 12px 20px 0;
   max-width: 756px;
+}
+/* 描述正文：14px、行高 1.7；文字块行宽不超过 68ch（表格、图片、代码块不受限） */
+.prose {
+  font-size: var(--text-long);
+  line-height: 1.7;
+}
+.prose :deep(.safe-html > :not(table):not(img):not(pre)) {
+  max-width: 68ch;
 }
 .parent,
 .link {
@@ -519,13 +630,6 @@ h2 {
 }
 .bar.tall {
   height: 22px;
-}
-.grow {
-  flex: 1;
-}
-.wi-ai-btn-group {
-  display: flex;
-  gap: 6px;
 }
 .field-row {
   display: flex;

@@ -288,7 +288,7 @@ describe('S9-C UpdateCard & useUpdate', () => {
       const checkedEl = wrapper.find('[data-testid="update-checked-at"]')
       expect(checkedEl.exists()).toBe(true)
       expect(checkedEl.text()).toContain('上次检查：')
-      expect(checkedEl.text()).toMatch(/\d{4}-\d{2}-\d{2}/)
+      expect(checkedEl.text()).toMatch(/\d{2}-\d{2} \d{2}:\d{2}/)
     })
   })
 
@@ -506,7 +506,8 @@ describe('S9-C UpdateCard & useUpdate', () => {
       // 不得包含 endpoint 或敏感签名展示
       const html = wrapper.html()
       expect(html).not.toMatch(/endpoint/i)
-      expect(html).not.toMatch(/https?:\/\//i)
+      // lucide 图标的 svg 命名空间属性不算 URL
+      expect(html.replaceAll('xmlns="http://www.w3.org/2000/svg"', '')).not.toMatch(/https?:\/\//i)
       expect(html).not.toMatch(/updater_url|update_url/i)
     })
   })

@@ -3,20 +3,30 @@ import { computed } from 'vue'
 import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import Sheet from '@/components/Sheet.vue'
-import { errorText, type TaskView } from './api'
+import { releaseErrorText } from './api'
 
-const props = defineProps<{
-  open: boolean
-  task: TaskView | null
-  submitting?: boolean
-  error?: unknown
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    /** 要删除的对象（配置或命令），只用到名称。 */
+    task: { name: string } | null
+    /** 删除的是整个发布配置，还是其中一条运行命令。 */
+    kind?: 'config' | 'command'
+    /** 配置下的命令数（删配置时提示一并删除）。 */
+    commandCount?: number
+    submitting?: boolean
+    error?: unknown
+  }>(),
+  { kind: 'config', commandCount: 0, error: undefined },
+)
 
 const emit = defineEmits<{
   'update:open': [val: boolean]
   confirm: []
   'confirm-detach': []
 }>()
+
+const noun = computed(() => (props.kind === 'command' ? '运行命令' : '发布配置'))
 
 const referencedGroups = computed(() => {
   if (
@@ -37,28 +47,33 @@ const referencedGroups = computed(() => {
 <template>
   <Sheet
     :open="open"
-    :title="`确认删除任务「${task?.name}」？`"
-    description="删除后不可撤销。被其他配置引用的任务无法直接删除。"
+    :title="`确认删除${noun}「${task?.name}」？`"
+    description="删除后不可撤销。运行中的命令无法删除；被 Telegram 权限组引用时会先让你确认。"
     @update:open="emit('update:open', $event)"
   >
     <div class="delete-body">
       <Banner v-if="error" kind="error" class="mb-2" data-testid="delete-task-error">
-        {{ errorText(error) }}
+        {{ releaseErrorText(error) }}
       </Banner>
       <div
         v-if="referencedGroups.length > 0"
         class="referenced-box mb-2"
         data-testid="task-referenced-groups"
       >
-        <p class="warn-title">该任务已被以下 {{ referencedGroups.length }} 个权限组引用：</p>
+        <p class="warn-title">相关命令已被以下 {{ referencedGroups.length }} 个权限组引用：</p>
         <ul class="group-list">
           <li v-for="g in referencedGroups" :key="g">{{ g }}</li>
         </ul>
         <p class="detach-hint">
-          您可以选择同时从这些权限组中移除引用并删除任务，或先手动调整权限组配置。
+          可以同时从这些权限组中移除引用并删除，也可以先到设置里调整权限组再回来删除。
         </p>
       </div>
-      <p>将从工具箱配置中移除此任务定义。这不会影响磁盘上的本地代码仓库或远端 ADO 服务。</p>
+      <p v-if="kind === 'config'">
+        将从工具箱里移除这个发布配置{{
+          commandCount > 0 ? `和它下面的 ${commandCount} 条运行命令` : ''
+        }}，已有的运行记录不受影响。不会影响磁盘上的本地代码仓库或远端 ADO 服务。
+      </p>
+      <p v-else>将从这个配置里移除这条运行命令。不会影响发布目标、本地代码仓库或远端 ADO 服务。</p>
     </div>
     <template #actions>
       <Button :disabled="submitting" @click="emit('update:open', false)">取消</Button>

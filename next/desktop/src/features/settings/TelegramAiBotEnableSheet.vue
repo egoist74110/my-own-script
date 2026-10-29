@@ -9,6 +9,7 @@ const props = defineProps<{
   aiTitle: string
   submitting: boolean
   error?: string | null
+  webhookSet?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,7 +34,7 @@ function onConfirm() {
   if (!ackOldBotCleared.value || props.submitting) return
   emit('confirm', {
     ackOldBotCleared: ackOldBotCleared.value,
-    deleteWebhook: deleteWebhook.value,
+    deleteWebhook: Boolean(props.webhookSet && deleteWebhook.value),
   })
 }
 </script>
@@ -91,6 +92,22 @@ function onConfirm() {
         </label>
       </div>
 
+      <div v-if="webhookSet" class="mt-3" data-testid="ai-webhook-section">
+        <Banner kind="warn" class="mb-2">
+          检测到该 Bot 在 Telegram 上设置了 webhook。webhook
+          与长轮询不能同时存在，需确认删除后才能启用。
+        </Banner>
+        <label class="ack-label">
+          <input
+            v-model="deleteWebhook"
+            type="checkbox"
+            data-testid="ai-delete-webhook-checkbox"
+            :disabled="submitting"
+          />
+          <span class="font-medium text-sm">确认删除 Telegram 上已注册的 webhook</span>
+        </label>
+      </div>
+
       <div class="sheet-actions mt-4 flex justify-end gap-2">
         <Button
           type="button"
@@ -104,7 +121,7 @@ function onConfirm() {
           type="button"
           variant="primary"
           data-testid="confirm-enable-ai-bot-btn"
-          :disabled="!ackOldBotCleared || submitting"
+          :disabled="!ackOldBotCleared || submitting || (webhookSet && !deleteWebhook)"
           @click="onConfirm"
         >
           {{ submitting ? '正在启用…' : '确认启用' }}

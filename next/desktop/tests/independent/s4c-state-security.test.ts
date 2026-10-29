@@ -196,7 +196,7 @@ describe('S4-C 独立状态时序与敏感信息验证', () => {
     const b = await boot({ fetchImpl, path: '/settings' })
     await openTelegram(b)
     expect(document.querySelector('[data-testid="activity-table"]')?.textContent).toContain(
-      '暂无活动记录',
+      '还没有活动记录',
     )
     rows = [
       {

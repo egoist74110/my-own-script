@@ -80,6 +80,7 @@ onBeforeUnmount(() => {
       ref="trigger"
       type="button"
       class="row"
+      :title="`后端${label}`"
       aria-haspopup="dialog"
       :aria-expanded="open"
       data-testid="connection-trigger"
@@ -173,5 +174,20 @@ onBeforeUnmount(() => {
 .kv dd {
   margin: 0;
   text-align: right;
+}
+/* 960–1099：侧栏只剩图标，状态行只留圆点（名称见 title） */
+@media (max-width: 1099px) {
+  .row {
+    justify-content: center;
+    padding: 0;
+  }
+  .txt {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
 }
 </style>

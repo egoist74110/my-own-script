@@ -21,7 +21,8 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
         component: () => import('@/features/ai/AiSessionsPage.vue'),
       },
       {
-        path: '/settings',
+        // /settings/:tab? —— 分区可直达；vpn 落在“服务”分区并滚到 VPN 卡片。未知分区走兜底重定向。
+        path: '/settings/:tab(import|ado|repos|credentials|telegram|ai|mcp|services|vpn|general)?',
         name: 'settings',
         component: () => import('@/features/settings/SettingsPage.vue'),
       },

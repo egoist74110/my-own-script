@@ -21,6 +21,7 @@ import Button from '@/components/Button.vue'
 import InspectorToggle from '@/components/InspectorToggle.vue'
 import Sheet from '@/components/Sheet.vue'
 import { backendRuntimeKey } from '@/app/backend-runtime'
+import { repoLineColor } from '@/features/tasks/route'
 import {
   closeAiSession,
   decideAiApproval,
@@ -47,6 +48,11 @@ const emit = defineEmits<{
 }>()
 
 const runtime = inject(backendRuntimeKey)
+
+// 所属仓库的线路色（会话头里仓库名前的小竖条）；没有仓库时用中性灰
+const lineColor = computed(() =>
+  props.session.repo?.name ? repoLineColor(props.session.repo.name) : 'var(--faint)',
+)
 
 const chatRoot = ref<HTMLElement | null>(null)
 const flowContainer = ref<HTMLElement | null>(null)
@@ -586,7 +592,9 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
     <header class="chat-header">
       <div class="chat-meta">
         <span class="cli-badge" :data-cli="session.cli">{{ session.cli }}</span>
-        <strong class="session-title">{{ session.repo?.name }}</strong>
+        <strong class="session-title repo-mark" :style="{ '--c': lineColor }">{{
+          session.repo?.name
+        }}</strong>
         <span v-if="session.model" class="model-tag">{{ session.model }}</span>
         <span v-if="session.permission" class="perm-tag">{{ session.permission }}</span>
       </div>
@@ -698,19 +706,14 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
                   <Terminal v-else-if="toolCategory(t.tool).icon === 'terminal'" :size="14" />
                   <Wrench v-else :size="14" />
                 </span>
-                <span class="tool-label font-semibold">{{ toolCategory(t.tool).label }}</span>
+                <span class="tool-label">{{ toolCategory(t.tool).label }}</span>
                 <span v-if="t.summary" class="tool-summary mono">{{ t.summary }}</span>
-                <span class="tool-status ml-auto text-xs">
-                  <span v-if="!t.hasResult" class="text-blue-600">调用中…</span>
-                  <span
-                    v-else-if="t.isError"
-                    class="text-red-600 font-semibold flex items-center gap-1"
-                  >
-                    <AlertCircle :size="12" /> 失败
+                <span class="tool-status">
+                  <span v-if="!t.hasResult" class="st-run">调用中…</span>
+                  <span v-else-if="t.isError" class="st-bad">
+                    <AlertCircle :size="12" aria-hidden="true" /> 失败
                   </span>
-                  <span v-else class="text-emerald-600 flex items-center gap-1">
-                    <Check :size="12" /> 完成
-                  </span>
+                  <span v-else class="st-ok"> <Check :size="12" aria-hidden="true" /> 完成 </span>
                 </span>
               </div>
               <div v-if="t.resultText" class="tool-result-body mono" :class="{ error: t.isError }">
@@ -762,12 +765,10 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
         data-testid="approval-card"
       >
         <div class="approval-header">
-          <AlertTriangle :size="16" class="text-amber-600 mr-1.5" />
-          <strong class="approval-title text-amber-900">
-            {{ session.cli }} 请求执行命令/工具
-          </strong>
-          <span class="approval-timer ml-auto flex items-center text-xs text-amber-800">
-            <Clock :size="12" class="mr-1" />
+          <AlertTriangle :size="16" class="approval-ico" aria-hidden="true" />
+          <strong class="approval-title"> {{ session.cli }} 需要你批准一个操作 </strong>
+          <span class="approval-timer">
+            <Clock :size="12" aria-hidden="true" />
             <template v-if="isExpired">已过期 {{ formattedCountdown }}</template>
             <template v-else>剩余 {{ formattedCountdown }}</template>
           </span>
@@ -775,7 +776,7 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
 
         <div class="approval-details">
           <div class="approval-tool mono">
-            <span class="font-bold mr-1">{{ pendingApproval.tool }}:</span>
+            <span class="approval-tool-name">{{ pendingApproval.tool }}:</span>
             <span>{{ pendingApproval.summary }}</span>
           </div>
         </div>
@@ -794,10 +795,11 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
             variant="default"
             size="sm"
             data-testid="approval-allow-session"
+            :title="`本会话内再用 ${pendingApproval.tool} 不再询问`"
             :disabled="actionInProgress || isExpired"
             @click="handleApproval('allow_session')"
           >
-            本会话始终允许 <kbd class="kbd-hint">A</kbd>
+            总是允许 {{ pendingApproval.tool }} <kbd class="kbd-hint">A</kbd>
           </Button>
           <Button
             variant="destructive"
@@ -947,7 +949,7 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card, #fff);
+  background: var(--bg-window);
   outline: none;
 }
 .chat-header {
@@ -955,47 +957,69 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-height: 49px;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--line, #e5e5ea);
-  background: var(--bg-sub, #f9f9fb);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line);
 }
 .chat-meta {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .cli-badge {
+  flex: none;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  background: var(--accent-sub, rgba(10, 99, 214, 0.12));
-  color: var(--accent, #0a63d6);
+  background: var(--ctl);
+  color: var(--mute);
 }
 .session-title {
-  font-size: 13.5px;
+  font-size: var(--text-body);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 仓库名前的小竖条：所属仓库的线路色 */
+.repo-mark::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  margin-right: 5px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--c);
 }
 .model-tag,
 .perm-tag {
+  flex: none;
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--ctl, #ececf0);
-  color: var(--mute, #6e6e73);
+  background: var(--ctl);
+  color: var(--mute);
+  white-space: nowrap;
 }
 .chat-actions {
   display: flex;
+  flex: none;
   gap: 6px;
 }
 .chat-flow {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 24px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 .flow-empty {
   display: flex;
@@ -1006,54 +1030,56 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
 .turn-block {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  max-width: 820px;
 }
+/* 用户消息：靠右的浅底气泡 */
 .user-bubble {
   align-self: flex-end;
-  max-width: 75%;
-  padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
-  background: var(--accent, #0a63d6);
-  color: #fff;
-  font-size: 13.5px;
-  line-height: 1.5;
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: var(--sel-blur);
+  color: var(--ink);
+  font-size: var(--text-body);
+  line-height: 1.55;
   word-break: break-word;
 }
 .bubble-text {
   margin: 0;
   white-space: pre-wrap;
 }
+/* AI 回复：没有底色的正文 */
 .ai-response-box {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 88%;
+  min-width: 0;
 }
 .ai-author-row {
-  font-size: 12px;
-  color: var(--mute, #6e6e73);
+  font-size: var(--text-sub);
+  color: var(--faint);
 }
 .thinking-details {
-  border: 1px solid var(--line, #e5e5ea);
-  border-radius: 6px;
-  background: var(--bg-sub, #f9f9fb);
-  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: var(--text-sub);
 }
 .thinking-summary {
   padding: 6px 10px;
   cursor: pointer;
-  color: var(--mute, #6e6e73);
+  color: var(--mute);
   font-weight: 500;
 }
 .thinking-content {
   padding: 8px 10px;
-  border-top: 1px solid var(--line, #e5e5ea);
+  border-top: 1px solid var(--line);
 }
 .thinking-pre {
   margin: 0;
   white-space: pre-wrap;
   font-size: 11.5px;
-  color: var(--mute, #6e6e73);
+  color: var(--mute);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -1062,57 +1088,84 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
   flex-direction: column;
   gap: 6px;
 }
+/* 工具调用：一行带图标的细框条 */
 .b-tool {
   display: flex;
   flex-direction: column;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--bg-sub, #f5f5f7);
-  border: 1px solid var(--line, #e5e5ea);
-  font-size: 12px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--mute);
+  font-size: var(--text-sub);
 }
 .b-tool.tool-error {
-  border-color: #fca5a5;
-  background: #fef2f2;
+  border-color: var(--bn-error-line);
+  background: var(--bn-error-bg);
 }
 .tool-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
 }
 .tool-icon {
-  color: var(--mute, #6e6e73);
+  flex: none;
   display: flex;
   align-items: center;
 }
 .tool-label {
-  color: var(--ink, #1f2937);
+  flex: none;
+  color: var(--ink);
+  font-weight: 600;
 }
 .tool-summary {
-  color: var(--mute, #4b5563);
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 400px;
+}
+.tool-status {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--text-sub);
+}
+.tool-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.st-run {
+  color: var(--st-running-fg);
+}
+.st-ok {
+  color: var(--st-success-fg);
+}
+.st-bad {
+  color: var(--st-failed-fg);
+  font-weight: 600;
 }
 .tool-result-body {
-  margin-top: 4px;
+  margin-top: 6px;
   padding: 4px 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--bg-sidebar);
   font-size: 11px;
   white-space: pre-wrap;
   max-height: 120px;
   overflow-y: auto;
 }
 .tool-result-body.error {
-  color: #dc2626;
-  background: rgba(220, 38, 38, 0.06);
+  color: var(--st-failed-fg);
+  background: var(--st-failed-bg);
 }
 .assistant-markdown {
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--ink, #1f2937);
+  max-width: 68ch;
+  font-size: var(--text-long);
+  line-height: 1.65;
+  color: var(--ink);
   word-break: break-word;
 }
 .assistant-markdown :deep(p) {
@@ -1130,75 +1183,101 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
 .assistant-markdown :deep(code.inline-code) {
   padding: 2px 4px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--ctl);
   font-size: 12px;
 }
 .notice-badge,
 .error-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+  align-self: flex-start;
   font-size: 11.5px;
   padding: 4px 8px;
   border-radius: 4px;
-  margin-top: 2px;
 }
 .notice-badge {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--st-verify-bg);
+  color: var(--st-verify-fg);
 }
 .error-badge {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--st-failed-bg);
+  color: var(--st-failed-fg);
 }
 .turn-status-row {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .status-chip {
   display: inline-flex;
   align-items: center;
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 4px;
+  gap: 4px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .status-chip.success {
-  background: #ecfdf5;
-  color: #065f46;
+  background: var(--st-success-bg);
+  color: var(--st-success-fg);
 }
 .status-chip.failure {
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--st-failed-bg);
+  color: var(--st-failed-fg);
 }
+/* 等待审批：带浅橙底的提示块 */
 .approval-card {
-  border-radius: 8px;
-  border: 1px solid #fcd34d;
-  background: #fffbeb;
-  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: 88%;
+  gap: 8px;
+  max-width: 820px;
+  padding: 10px 12px;
+  border-radius: var(--r-group);
+  border: 1px solid var(--bn-warn-line);
+  background: var(--st-verify-bg);
+  color: var(--st-verify-fg);
 }
 .approval-header {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+.approval-title {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.approval-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--text-sub);
+  font-variant-numeric: tabular-nums;
 }
 .approval-details {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
-  background: #fff;
-  border: 1px solid #fef3c7;
-  font-size: 12.5px;
+  background: var(--bg-window);
+  color: var(--ink);
+  font-size: var(--text-sub);
+  overflow-x: auto;
+  white-space: pre;
+}
+.approval-tool-name {
+  margin-right: 4px;
+  font-weight: 700;
 }
 .approval-buttons {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .kbd-hint {
   margin-left: 4px;
   padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.12);
   font-size: 10px;
 }
 .working-indicator {
@@ -1211,7 +1290,7 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent, #0a63d6);
+  background: var(--st-running-dot);
   animation: pulse 1.5s infinite;
 }
 @keyframes pulse {
@@ -1225,37 +1304,44 @@ const isEnded = computed(() => props.session.state === 'ended' || props.session.
     transform: scale(0.85);
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .busy-dot {
+    animation: none;
+  }
+}
 .chat-composer-wrap {
   flex: none;
   padding: 12px 20px 16px;
-  border-top: 1px solid var(--line, #e5e5ea);
-  background: var(--bg-card, #fff);
+  border-top: 1px solid var(--line);
+  background: var(--bg-window);
 }
 .queue-notice {
   font-size: 11px;
-  color: var(--mute, #6e6e73);
+  color: var(--mute);
   margin-bottom: 4px;
   padding-left: 2px;
 }
 .composer-box {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line, #d2d2d7);
-  border-radius: 8px;
-  background: #fff;
+  max-width: 820px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--r-row);
+  background: var(--bg-window);
   padding: 6px 8px;
 }
 .composer-box:focus-within {
-  outline: 2px solid var(--focus, #0a63d6);
+  outline: 2px solid var(--focus-ring);
 }
 .composer-textarea {
   border: none;
   outline: none;
   resize: none;
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--text-body);
   width: 100%;
   background: transparent;
+  color: var(--ink);
 }
 .composer-toolbar {
   display: flex;

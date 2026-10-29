@@ -249,25 +249,25 @@ describe('S3-C 第二轮修复验证（TDD 失败断言）', () => {
       },
     })
 
-    // started_at: 10:00:02, 当前系统时间 10:00:05 -> 已用 0:03
-    expect(w.find('.run-time-meta').text()).toContain('已用 0:03')
+    // started_at: 10:00:02, 当前系统时间 10:00:05 -> 用时 0:03
+    expect(w.find('.run-time-meta').text()).toContain('用时 0:03')
 
     // 时间前进 5 秒
     vi.advanceTimersByTime(5000)
     await flushPromises()
-    expect(w.find('.run-time-meta').text()).toContain('已用 0:08')
+    expect(w.find('.run-time-meta').text()).toContain('用时 0:08')
 
     // 终态定格为 finished_at - started_at (10:00:15 - 10:00:02 = 13秒 = 0:13)
     await w.setProps({
       run: { ...fakeFinishedRun },
     })
     await flushPromises()
-    expect(w.find('.run-time-meta').text()).toContain('已用 0:13')
+    expect(w.find('.run-time-meta').text()).toContain('用时 0:13')
 
     // 之后时间再走，时间仍定格在 0:13
     vi.advanceTimersByTime(10000)
     await flushPromises()
-    expect(w.find('.run-time-meta').text()).toContain('已用 0:13')
+    expect(w.find('.run-time-meta').text()).toContain('用时 0:13')
     w.unmount()
   })
 

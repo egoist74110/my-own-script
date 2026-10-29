@@ -581,16 +581,15 @@ describe('检查器收起 / 展开', () => {
 })
 
 describe('导航与路由', () => {
-  it('禁用导航项：aria-disabled、title 说明尚未提供、不在 Tab 顺序中、无链接', async () => {
+  it('基础设施导航项都是真实链接：没有禁用项、没有“尚未提供”', async () => {
     const b = await boot()
-    const off = b.wrapper.findAll('[aria-disabled=true]')
-    expect(off.map((o) => o.text())).toEqual(['MCP', '服务', 'VPN'])
-    for (const o of off) {
-      expect(o.attributes('title')).toBe('尚未提供')
-      expect(o.element.tagName).not.toBe('A')
-      expect(o.attributes('href')).toBeUndefined()
-      expect(o.attributes('tabindex')).toBeUndefined()
-      expect((o.element as HTMLElement).tabIndex).toBe(-1)
+    expect(b.wrapper.findAll('[aria-disabled=true]')).toHaveLength(0)
+    expect(b.wrapper.get('aside[aria-label=侧栏]').text()).not.toContain('尚未提供')
+    for (const name of ['MCP', '服务', 'VPN']) {
+      const a = b.wrapper.findAll('nav a').find((x) => x.text() === name)
+      expect(a, name).toBeTruthy()
+      expect(a!.attributes('href')).toMatch(/^\/settings\//)
+      expect(a!.attributes('title')).toBe(name)
     }
     await b.done()
   })

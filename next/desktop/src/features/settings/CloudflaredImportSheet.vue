@@ -106,9 +106,9 @@ async function onSubmit() {
   gap: 6px;
 }
 .field-label {
-  font-size: var(--text-base);
+  font-size: var(--text-body);
   font-weight: 500;
-  color: var(--fg);
+  color: var(--ink);
 }
 .mb-3 {
   margin-bottom: 12px;

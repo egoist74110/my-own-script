@@ -47,19 +47,19 @@ watch(
         <ol class="steps-list">
           <li>
             <strong>S4 期间使用单独测试 Bot</strong>
-            ：建议在开发与真实验收阶段使用独立的测试 Bot，主 Bot 暂留旧端。
+            ：建议在开发与真实验收阶段使用独立的测试 Bot，主 Bot 暂留旧版。
           </li>
           <li>
             <strong>切换主 Bot 流程</strong>
-            ：先在新端导入 Token，再由用户手动删除旧 Keychain 条目（服务名
+            ：先在新版导入 Token，再由用户手动删除旧 Keychain 条目（服务名
             <code>my-own-script</code>，账号 <code>telegram_bot_token</code>）。
             <em class="warn-em">
-              请勿在旧端关闭「启用 Telegram 触发任务」开关，以免停掉旧端的三个 AI 机器人。
+              请勿在旧版关闭「启用 Telegram 触发任务」开关，以免停掉旧版的三个 AI 机器人。
             </em>
           </li>
           <li>
             <strong>回退方案</strong>
-            ：若需回退，只需在新端停用长轮询，并在旧端应用中重新填入 Token 即可恢复。
+            ：若需回退，只需在新版停用长轮询，并在旧版应用中重新填入 Token 即可恢复。
           </li>
         </ol>
       </div>

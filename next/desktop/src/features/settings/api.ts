@@ -14,6 +14,9 @@ export type CredentialStatus = S['CredentialStatus']
 export type ConnectionResult = S['ConnectionResult']
 export type TelegramView = S['TelegramView']
 export type BotView = S['BotView']
+export type TokenVerification = S['TokenVerification']
+export type VerifiedBot = S['VerifiedBot']
+export type TokenMutationResponse = S['TokenMutationResponse']
 export type Control = S['Control']
 export type OwnerView = S['OwnerView']
 export type Notify = S['Notify']
@@ -224,7 +227,9 @@ export const TELEGRAM_ERROR_MESSAGES: Record<string, string> = {
   webhook_set: '检测到 Telegram 已设置 Webhook',
   legacy_missing: '旧应用中未找到 Telegram Bot Token',
   owner_not_bound: '尚未绑定所有者',
-  telegram_request_failed: 'Telegram 请求失败',
+  telegram_request_failed: 'Telegram 请求失败，请稍后重试',
+  telegram_unreachable: '无法连接 Telegram，请检查网络或代理后重试',
+  token_invalid: 'Token 无效或已被撤销，请重新录入',
   telegram_store_unavailable: 'Telegram 存储不可用（只读错误态）',
   revision_conflict: '配置已被修改，请刷新后重试',
   no_credential: '未配置 Bot Token',
@@ -248,10 +253,17 @@ export const POLLER_STATE_LABEL: Record<PollerView['state'], string> = {
 }
 
 export const POLLER_STATE_DESC: Partial<Record<PollerView['state'], string>> = {
-  conflict: '另一个程序（可能是旧应用）正在轮询这个 Bot',
+  conflict:
+    '另一个程序（可能是旧应用）正在轮询这个 Bot。请先在旧应用里停用对应的 Telegram 开关，再点“重试接管”',
   token_invalid: 'Token 无效，请核对并重新录入',
   webhook_set: '已在 Telegram 设置 Webhook，接管前需删除 Webhook',
   store_unavailable: 'Telegram 存储处于只读错误态，无法启动轮询',
+}
+
+/** 校验失败时的下一步提示（按 verify.code）。 */
+export function verifyFailHint(code: TokenVerification['code']): string {
+  if (code === 'token_invalid') return '请重新录入正确的 Token。'
+  return '可能是网络问题，稍后点“重新检查”。'
 }
 
 export const TELEGRAM_TOKEN_REGEX = /^\d{5,16}:[A-Za-z0-9_-]{30,64}$/

@@ -41,86 +41,42 @@ async function onCopyLan() {
 </script>
 
 <template>
-  <div class="network-bar" data-testid="network-bar">
-    <div class="net-item">
-      <span class="net-label">VPN IP：</span>
+  <section class="st-section" aria-label="本机网络" data-testid="network-bar">
+    <div class="st-head"><h2>本机网络</h2></div>
+    <div class="st-row">
+      <div class="st-lbl">
+        <b>VPN IP</b>
+        <small>接入公司 VPN 后分配的地址</small>
+      </div>
       <span v-if="network?.vpn_ip" class="st-mono net-val" data-testid="vpn-ip">
         {{ network.vpn_ip }}
       </span>
-      <span v-else class="net-missing" data-testid="vpn-ip-missing">未检测到</span>
-      <Button
-        v-if="network?.vpn_ip"
-        size="sm"
-        data-testid="copy-vpn-btn"
-        class="copy-btn"
-        @click="onCopyVpn"
-      >
+      <span v-else class="st-val" data-testid="vpn-ip-missing">未检测到</span>
+      <Button v-if="network?.vpn_ip" size="sm" data-testid="copy-vpn-btn" @click="onCopyVpn">
         {{ vpnCopied ? '已复制' : '复制' }}
       </Button>
     </div>
 
-    <div class="net-divider" aria-hidden="true"></div>
-
-    <div class="net-item">
-      <span class="net-label">局域网 IP：</span>
+    <div class="st-row">
+      <div class="st-lbl">
+        <b>局域网 IP</b>
+        <small>同一网络里的其他设备用它访问本机</small>
+      </div>
+      <Tag v-if="network?.on_lan" data-testid="on-lan-tag">局域网在线</Tag>
       <span v-if="network?.lan_ip" class="st-mono net-val" data-testid="lan-ip">
         {{ network.lan_ip }}
       </span>
-      <span v-else class="net-missing" data-testid="lan-ip-missing">未检测到</span>
-      <Tag v-if="network?.on_lan" class="ml-1" data-testid="on-lan-tag">局域网在线</Tag>
-      <Button
-        v-if="network?.lan_ip"
-        size="sm"
-        data-testid="copy-lan-btn"
-        class="copy-btn"
-        @click="onCopyLan"
-      >
+      <span v-else class="st-val" data-testid="lan-ip-missing">未检测到</span>
+      <Button v-if="network?.lan_ip" size="sm" data-testid="copy-lan-btn" @click="onCopyLan">
         {{ lanCopied ? '已复制' : '复制' }}
       </Button>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.network-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--bg-window);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-group);
-  margin-bottom: 12px;
-  font-size: var(--text-base);
-}
-.net-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.net-label {
-  color: var(--mute);
-  font-weight: 500;
-}
 .net-val {
   font-weight: 600;
-  color: var(--fg);
-}
-.net-missing {
-  color: var(--mute);
-  font-style: normal;
-}
-.net-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--line);
-}
-.copy-btn {
-  padding: 0 8px;
-  height: 22px;
-  font-size: 11px;
-}
-.ml-1 {
-  margin-left: 4px;
+  color: var(--ink);
 }
 </style>

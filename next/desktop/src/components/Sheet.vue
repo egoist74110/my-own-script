@@ -9,7 +9,7 @@ import {
 } from 'reka-ui'
 
 /** 确认单：Reka Dialog，从顶栏下落；焦点陷阱，Esc 关闭。动作放 actions 插槽。 */
-defineProps<{ title: string; description?: string }>()
+defineProps<{ title: string; description?: string; wide?: boolean }>()
 const open = defineModel<boolean>('open', { default: false })
 </script>
 
@@ -17,7 +17,7 @@ const open = defineModel<boolean>('open', { default: false })
   <DialogRoot v-model:open="open">
     <DialogPortal>
       <DialogOverlay class="sheet-overlay" />
-      <DialogContent class="sheet" data-testid="sheet">
+      <DialogContent class="sheet" :data-wide="wide ? 'true' : undefined" data-testid="sheet">
         <DialogTitle class="sheet-title">{{ title }}</DialogTitle>
         <DialogDescription v-if="description" class="sheet-desc">{{
           description
@@ -55,6 +55,9 @@ const open = defineModel<boolean>('open', { default: false })
   box-shadow:
     0 0 0 0.5px var(--line),
     0 12px 32px rgba(0, 0, 0, 0.22);
+}
+.sheet[data-wide='true'] {
+  width: min(680px, calc(100vw - 32px));
 }
 .sheet[data-state='open'] {
   animation: sheet-in 0.18s ease-out both;

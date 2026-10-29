@@ -74,7 +74,7 @@ afterEach(() => {
 })
 
 describe('S3-C 独立列表与侧栏状态', () => {
-  it('无 last_run 行不伪造状态；停用行明确显示已停用；任务角标随服务的 active_run_id 消失', async () => {
+  it('无 last_run 行不伪造状态；命令停用不冒充配置状态；任务角标随服务的 active_run_id 消失', async () => {
     const never = baseTask('task-never', '从未运行')
     const disabled: TaskView = { ...baseTask('task-disabled', '停用任务'), enabled: false }
     let active: TaskView = { ...baseTask('task-active', '活动任务'), active_run_id: 'run-active' }
@@ -107,7 +107,10 @@ describe('S3-C 独立列表与侧栏状态', () => {
     const neverRow = b.wrapper.get('[data-testid="task-row-task-never"]')
     expect(neverRow.text()).toContain('未运行')
     expect(neverRow.find('.row-pill-wrap').exists()).toBe(false)
-    expect(b.wrapper.get('[data-testid="task-row-task-disabled"]').text()).toContain('已停用')
+    // 发布配置没有“停用”状态；状态只取最近一次运行，停用命令的配置也不伪造状态
+    const disabledRow = b.wrapper.get('[data-testid="task-row-task-disabled"]')
+    expect(disabledRow.text()).toContain('停用任务')
+    expect(disabledRow.find('.row-pill-wrap').exists()).toBe(false)
     expect(historyQueries.some((url) => url.searchParams.get('order') === 'desc')).toBe(true)
     expect(b.wrapper.find('[data-testid="task-badge"]').text()).toBe('1 运行中')
     await b.wrapper.get('[data-testid="task-row-task-active"]').trigger('click')

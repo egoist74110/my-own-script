@@ -66,9 +66,9 @@ const CORPUS: [string, string][] = [
 ]
 
 function assertSafe(root: HTMLElement) {
-  expect(
-    root.querySelector('script, iframe, svg, style, object, embed, form, input, math'),
-  ).toBeNull()
+  expect(root.querySelector('script, iframe, style, object, embed, form, input, math')).toBeNull()
+  // 页面自己的图标是 svg；这里只要求用户内容（.safe-html）里没有
+  expect(root.querySelector('.safe-html svg')).toBeNull()
   for (const el of root.querySelectorAll('.safe-html *')) {
     for (const a of Array.from(el.attributes)) {
       expect(a.name.startsWith('on'), `${el.tagName}[${a.name}]`).toBe(false)

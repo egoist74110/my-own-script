@@ -18,7 +18,7 @@ describe('设置页布局契约', () => {
   it('分区导航：固定 220px、不 flex-grow，右边 1px 分隔线', () => {
     // 选择器特异性须高于 SegmentedControl 的 `.seg-root[data-orientation='vertical'] .seg`（scoped 后 0,4,0），
     // 否则 220px/内边距被覆盖（主控集成截图实测导航只有 113px）
-    const b = block(page, ".panel .settings-tabs[data-orientation='vertical'] :deep(.seg) {")
+    const b = block(page, ".panel .settings-tabs[data-orientation='vertical'] > :deep(.seg) {")
     expect(b).toMatch(/flex:\s*none/)
     expect(b).toMatch(/width:\s*220px/)
     expect(b).toMatch(/border-right:\s*1px solid var\(--line\)/)
@@ -29,7 +29,7 @@ describe('设置页布局契约', () => {
     expect(b).not.toMatch(/flex-grow:\s*[1-9]|flex:\s*[1-9]/)
   })
   it('内容区：flex:1、min-width:0、设置底色', () => {
-    const b = block(page, '.settings-tabs :deep(.tab-panel) {')
+    const b = block(page, '.settings-tabs > :deep(.tab-panel) {')
     expect(b).toMatch(/flex:\s*1/)
     expect(b).toMatch(/min-width:\s*0/)
     expect(b).toMatch(/background:\s*var\(--bg-settings\)/)

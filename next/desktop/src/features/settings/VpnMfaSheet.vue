@@ -131,16 +131,16 @@ function onCancel() {
   gap: 6px;
 }
 .field-label {
-  font-size: var(--text-base);
+  font-size: var(--text-body);
   font-weight: 500;
-  color: var(--fg);
+  color: var(--ink);
 }
 .countdown-bar {
   padding: 8px 12px;
-  background: var(--bg-ctl, #f5f5f5);
-  border-radius: var(--r-ctl, 6px);
-  font-size: var(--text-base);
-  color: var(--fg);
+  background: var(--ctl);
+  border-radius: var(--r-ctl);
+  font-size: var(--text-body);
+  color: var(--ink);
 }
 .countdown-bar.warning {
   background: rgba(255, 150, 0, 0.1);

@@ -229,7 +229,7 @@ describe('S5-D 设置页「AI CLI」分区', () => {
     expect(rowClaude.text()).toContain('Claude Code')
     expect(rowClaude.text()).toContain('内置')
     expect(rowClaude.text()).toContain('claude')
-    expect(rowClaude.text()).toContain('可执行')
+    expect(rowClaude.text()).toContain('可以运行')
     expect(rowClaude.text()).toContain('(1.0.0)')
 
     // 内置配置的删除按钮应为 disabled 且有提示
@@ -239,7 +239,7 @@ describe('S5-D 设置页「AI CLI」分区', () => {
 
     // Codex 未在 PATH 找到
     const rowCodex = b.wrapper.find('[data-testid="profile-row-prof-codex"]')
-    expect(rowCodex.text()).toContain('不可执行')
+    expect(rowCodex.text()).toContain('无法运行')
     expect(rowCodex.text()).toContain('未在 PATH 找到 codex')
 
     // 自定义配置可删除
@@ -588,7 +588,7 @@ describe('S5-D1 第 2 轮回归测试 (S5D-T04, S5D-T05, S5D-T06, S5D-T07)', () 
     // 渲染提示横幅
     const banner = document.querySelector('[data-testid="invalid-profiles-banner"]')
     expect(banner).not.toBeNull()
-    expect(banner?.textContent).toContain('无效配置项')
+    expect(banner?.textContent).toContain('无法识别')
     // 有效 profile 正常展示
     expect(document.body.textContent).toContain('Claude Code')
 

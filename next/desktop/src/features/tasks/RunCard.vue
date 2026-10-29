@@ -25,6 +25,12 @@ const props = defineProps<{
   totalLineCount?: number
   loading?: boolean
   warning?: string | null
+  /** 仓库线路色（CSS 颜色值），缺省用中性线路色。 */
+  color?: string
+  /** 这次运行用的运行命令名称（配置下有多条命令，要标明是哪一条）。 */
+  commandName?: string
+  /** 命令用的分支，如“main 分支”。 */
+  branchText?: string
 }>()
 
 const emit = defineEmits<{
@@ -111,16 +117,22 @@ function confirmCancel() {
 
 <template>
   <div v-if="run" class="run-card" data-testid="run-card">
+    <h2 class="sec-title">本次运行</h2>
     <div class="run-card-header">
       <div class="run-card-status">
         <StatusPill :state="mapStatusToPill(true, run.status)" />
+        <span v-if="commandName" class="run-command" data-testid="run-command-name">{{
+          commandName
+        }}</span>
+        <span v-if="branchText" class="run-branch" data-testid="run-command-branch">{{
+          branchText
+        }}</span>
         <span class="run-op-name">{{ operationLabel(run.operation) }}</span>
         <Tag v-if="run.origin?.kind === 'telegram'" data-testid="run-origin-telegram">
           由 Telegram 触发
         </Tag>
-        <span class="run-time-meta">
-          {{ formatTime(run.started_at ?? run.created_at) }} 开始 · 已用
-          {{ elapsedText }}
+        <span class="run-time-meta num">
+          {{ formatTime(run.started_at ?? run.created_at) }} 开始，用时 {{ elapsedText }}
         </span>
       </div>
       <div class="run-card-actions">
@@ -149,18 +161,24 @@ function confirmCancel() {
       {{ runReasonText }}
     </Banner>
 
-    <div class="run-card-grid">
-      <div class="grid-left">
-        <StepList :steps="steps" />
-      </div>
-      <div class="grid-right">
-        <LogPanel
-          :lines="lines"
-          :total-line-count="totalLineCount"
-          :loading="loading"
-          :warning="warning"
-        />
-      </div>
+    <StepList
+      :steps="steps"
+      :run-status="run.status"
+      :targets="run.task_snapshot?.targets"
+      :effects="run.effects"
+      :summary="run.summary"
+      :color="color"
+      :now="now"
+    />
+
+    <div class="run-log">
+      <LogPanel
+        :lines="lines"
+        :total-line-count="totalLineCount"
+        :loading="loading"
+        :warning="warning"
+        :run-status="run.status"
+      />
     </div>
 
     <!-- 停止确认 Sheet -->
@@ -195,6 +213,7 @@ function confirmCancel() {
           :total-line-count="totalLineCount"
           :loading="loading"
           :warning="warning"
+          :run-status="run?.status"
         />
       </div>
       <template #actions>
@@ -206,54 +225,70 @@ function confirmCancel() {
 
 <style scoped>
 .run-card {
-  margin-top: 16px;
-  border-radius: var(--r-group);
-  border: 1px solid var(--line);
-  overflow: hidden;
-  background: var(--bg-card);
+  margin-top: 24px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+.sec-title {
+  margin: 0 0 8px;
+  font-size: var(--text-sub);
+  font-weight: 600;
+  color: var(--mute);
+}
+.run-log :deep(.log-panel) {
+  border-left: 0;
 }
 .run-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  background: color-mix(in srgb, var(--ink) 2%, transparent);
-  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
 }
 .run-card-status {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+.run-command {
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.run-branch {
+  font-family: var(--font-mono);
+  font-size: var(--text-sub);
+  color: var(--mute);
 }
 .run-op-name {
   font-weight: 600;
-  font-size: var(--text-body);
-  color: var(--ink);
+  font-size: var(--text-sub);
+  color: var(--mute);
 }
 .run-time-meta {
   color: var(--mute);
   font-size: var(--text-sub);
+  white-space: nowrap;
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .run-card-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.run-card-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-height: 220px;
-  max-height: 380px;
-}
-.grid-left {
-  overflow: auto;
-}
-.grid-right {
+.run-log {
+  height: 220px;
+  margin-top: 12px;
   overflow: hidden;
+  border-radius: var(--r-group);
+  border: 1px solid var(--line);
 }
 .cancel-desc {
   font-size: var(--text-body);
@@ -267,7 +302,7 @@ function confirmCancel() {
   font-weight: 600;
 }
 .run-reason-banner {
-  margin: 10px 14px 0 14px;
+  margin-top: 14px;
 }
 .full-log-modal {
   height: 60vh;
@@ -275,11 +310,5 @@ function confirmCancel() {
   overflow: hidden;
   border-radius: var(--r-ctl);
   border: 1px solid var(--line);
-}
-@media (max-width: 900px) {
-  .run-card-grid {
-    grid-template-columns: 1fr;
-    max-height: none;
-  }
 }
 </style>

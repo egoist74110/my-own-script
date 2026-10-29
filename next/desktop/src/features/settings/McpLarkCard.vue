@@ -9,6 +9,7 @@ import TextField from '@/components/TextField.vue'
 import type { PillState } from '@/components/pill'
 import type { LarkMcpView, RuntimeView } from './api'
 import McpLarkOwnershipSheet from './McpLarkOwnershipSheet.vue'
+import { fmtLocal } from './format'
 import { useMcpContext } from './useMcp'
 
 const props = defineProps<{
@@ -244,7 +245,7 @@ async function onCopyEndpoint() {
 <template>
   <section class="st-section" aria-label="飞书 / Lark MCP" data-testid="mcp-lark-card">
     <div class="st-head">
-      <h2>飞书 / Lark MCP</h2>
+      <h2>飞书</h2>
       <StatusPill :state="pillState" :label="pillLabel" data-testid="lark-status-pill" />
       <div class="st-grow"></div>
 
@@ -308,7 +309,7 @@ async function onCopyEndpoint() {
       </div>
     </div>
 
-    <p class="st-note">托管本地 lark-mcp 服务实例，提供飞书文档、多维表格与云盘工具。</p>
+    <p class="st-note">在本机运行飞书服务，供 AI 读写飞书文档、多维表格和云盘。</p>
 
     <!-- 错误横幅展示 -->
     <Banner v-if="cardError" kind="error" data-testid="lark-error-banner">
@@ -345,9 +346,9 @@ async function onCopyEndpoint() {
     </Banner>
 
     <!-- 补丁与令牌状态展示 -->
-    <div class="status-summary-box">
-      <div class="summary-col">
-        <span class="lbl">所有权状态：</span>
+    <dl class="st-kv">
+      <dt>所有权</dt>
+      <dd>
         <div class="summary-val" data-testid="lark-ownership-status">
           <template v-if="lk?.owner_confirmed_at">
             <Tag class="st-ok">已确认所有权</Tag>
@@ -374,10 +375,10 @@ async function onCopyEndpoint() {
             </Button>
           </template>
         </div>
-      </div>
+      </dd>
 
-      <div class="summary-col">
-        <span class="lbl">令牌状态：</span>
+      <dt>登录令牌</dt>
+      <dd>
         <div class="summary-val" data-testid="lark-token-status">
           <Tag :class="lk?.token_status?.state === 'ok' ? 'st-ok' : 'st-warn'">
             {{
@@ -385,17 +386,17 @@ async function onCopyEndpoint() {
                 ? '有效'
                 : lk?.token_status?.state === 'refresh_failing'
                   ? '刷新失败'
-                  : '未登录 / 未知'
+                  : '未登录'
             }}
           </Tag>
           <span v-if="lk?.login?.logged_in_at" class="st-mono mute">
-            (登录于 {{ lk.login.logged_in_at.slice(0, 16).replace('T', ' ') }})
+            登录于 {{ fmtLocal(lk.login.logged_in_at) }}
           </span>
         </div>
-      </div>
+      </dd>
 
-      <div class="summary-col">
-        <span class="lbl">补丁状态：</span>
+      <dt>刷新补丁</dt>
+      <dd>
         <div class="summary-val st-tags" data-testid="lark-patches-status">
           <Tag :class="lk?.patches?.mcp_tool === 'applied' ? 'st-ok' : 'st-warn'">
             mcp-tool: {{ lk?.patches?.mcp_tool || 'unknown' }}
@@ -407,30 +408,32 @@ async function onCopyEndpoint() {
             oidc: {{ lk?.patches?.oidc || 'unknown' }}
           </Tag>
         </div>
-      </div>
+      </dd>
 
-      <div v-if="lk?.endpoint" class="summary-col">
-        <span class="lbl">端点 URL：</span>
-        <div class="summary-val">
-          <span class="st-mono" data-testid="lark-endpoint-url">{{ lk.endpoint }}</span>
-          <Button
-            variant="plain"
-            size="sm"
-            data-testid="copy-lark-endpoint-btn"
-            @click="onCopyEndpoint"
-          >
-            {{ urlCopied ? '已复制！' : '复制' }}
-          </Button>
-        </div>
-      </div>
-    </div>
+      <template v-if="lk?.endpoint">
+        <dt>服务地址</dt>
+        <dd>
+          <div class="summary-val">
+            <span class="st-mono" data-testid="lark-endpoint-url">{{ lk.endpoint }}</span>
+            <Button
+              variant="plain"
+              size="sm"
+              data-testid="copy-lark-endpoint-btn"
+              @click="onCopyEndpoint"
+            >
+              {{ urlCopied ? '已复制！' : '复制' }}
+            </Button>
+          </div>
+        </dd>
+      </template>
+    </dl>
 
     <hr class="st-sep" />
 
     <!-- 运行组件状态与安装 -->
     <div class="runtime-section">
       <div class="st-head">
-        <strong class="setting-title">运行组件 (Node.js & npm 包)</strong>
+        <strong class="setting-title">运行环境（Node.js 与飞书包）</strong>
         <Tag :class="rt?.ready ? 'st-ok' : 'st-warn'" data-testid="runtime-ready-tag">
           {{ rt?.ready ? '组件就绪' : '组件未就绪' }}
         </Tag>
@@ -446,31 +449,30 @@ async function onCopyEndpoint() {
       </div>
 
       <dl class="st-kv runtime-kv">
-        <dt class="lbl">Node 来源</dt>
+        <dt>Node 来源</dt>
         <dd data-testid="runtime-node-source">
           {{
             rt?.node?.source === 'detected'
               ? '系统检测'
               : rt?.node?.source === 'managed'
                 ? '托管下载'
-                : '未找到 (下限 >= ' + (nodeMinVersion || '20.20.0') + ')'
+                : '未找到（需要 ' + (nodeMinVersion || '20.20.0') + ' 或更高）'
           }}
           <span v-if="rt?.node?.version" class="st-mono mute"> ({{ rt.node.version }})</span>
         </dd>
-        <dt class="lbl">Node 路径</dt>
+        <dt>Node 路径</dt>
         <dd class="st-mono" data-testid="runtime-node-path">{{ rt?.node?.path || '—' }}</dd>
-        <dt class="lbl">Lark MCP 包</dt>
+        <dt>飞书 MCP 包</dt>
         <dd data-testid="runtime-lark-pkg">
-          {{ rt?.packages?.['@larksuiteoapi/lark-mcp'] || '0.5.1' }}
-          ·
+          <span class="st-mono">{{ rt?.packages?.['@larksuiteoapi/lark-mcp'] || '0.5.1' }}</span>
           <span :class="rt?.lark_package_ready ? 'st-ok' : 'st-warn'">
             {{ rt?.lark_package_ready ? '已安装' : '未安装' }}
           </span>
         </dd>
-        <dt class="lbl">Keytar 原生模块</dt>
+        <dt>令牌存储模块</dt>
         <dd data-testid="runtime-keytar-status">
           <span :class="rt?.keytar_ready ? 'st-ok' : 'st-warn'">
-            {{ rt?.keytar_ready ? '已就绪' : '未就绪 (将退回内存存储)' }}
+            {{ rt?.keytar_ready ? '已就绪' : '未就绪，令牌将只保存在内存里' }}
           </span>
         </dd>
       </dl>
@@ -524,9 +526,9 @@ async function onCopyEndpoint() {
 
     <!-- 凭据管理（只写不读回） -->
     <div class="cred-section">
-      <strong class="setting-title">凭据管理 (App Secret)</strong>
+      <strong class="setting-title">App Secret</strong>
       <p class="st-note">
-        钥匙串中凭据只写不读回。当前状态：
+        App Secret 只写入钥匙串，不会读回显示。当前状态：
         <strong data-testid="lark-secret-configured-status">
           {{ lk?.secret_configured ? '已配置' : '未配置' }}
         </strong>
@@ -575,7 +577,7 @@ async function onCopyEndpoint() {
 
     <!-- 服务配置项 -->
     <div class="config-section">
-      <strong class="setting-title">服务参数设置</strong>
+      <strong class="setting-title">服务参数</strong>
       <div class="config-grid">
         <div class="st-fld">
           <span class="lbl">App ID</span>
@@ -589,7 +591,7 @@ async function onCopyEndpoint() {
         </div>
 
         <div class="st-fld">
-          <span class="lbl">域名 (Domain)</span>
+          <span class="lbl">域名</span>
           <select
             v-model="editDomain"
             class="st-select"
@@ -604,7 +606,7 @@ async function onCopyEndpoint() {
         </div>
 
         <div class="st-fld">
-          <span class="lbl">端口 (Port)</span>
+          <span class="lbl">端口</span>
           <TextField
             v-model="editPort"
             label="端口"
@@ -615,7 +617,7 @@ async function onCopyEndpoint() {
         </div>
 
         <div class="st-fld">
-          <span class="lbl">语言 (Language)</span>
+          <span class="lbl">语言</span>
           <select
             v-model="editLanguage"
             class="st-select"
@@ -628,7 +630,7 @@ async function onCopyEndpoint() {
         </div>
 
         <div class="st-fld span-2">
-          <span class="lbl">工具列表 (Tools)</span>
+          <span class="lbl">开放的工具</span>
           <TextField
             v-model="editTools"
             label="工具列表"
@@ -692,21 +694,6 @@ async function onCopyEndpoint() {
   flex-direction: column;
   gap: 4px;
 }
-.status-summary-box {
-  background: var(--bg-settings);
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.summary-col {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--text-body);
-}
 .summary-val {
   display: flex;
   align-items: center;
@@ -729,6 +716,7 @@ async function onCopyEndpoint() {
 }
 .setting-title {
   font-size: var(--text-body);
+  font-weight: 500;
 }
 .runtime-kv {
   margin: 0;
@@ -750,7 +738,7 @@ async function onCopyEndpoint() {
 .job-output {
   margin: 0;
   padding: 8px;
-  background: var(--bg-settings);
+  background: var(--bg-inspector);
   border-radius: var(--r-ctl);
   max-height: 140px;
   overflow: auto;
@@ -779,15 +767,6 @@ async function onCopyEndpoint() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.st-select {
-  height: var(--ctl-h);
-  border-radius: var(--r-ctl);
-  border: 1px solid var(--line);
-  background: var(--bg-ctl);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: var(--text-body);
 }
 .config-actions {
   display: flex;

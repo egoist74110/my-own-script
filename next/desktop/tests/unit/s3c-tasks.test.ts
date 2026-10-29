@@ -82,7 +82,7 @@ const fakePlan: PlanResponse = {
 }
 
 describe('S3-C 任务执行计划与确认（Preflight -> Confirm -> Start）', () => {
-  it('RunConfirmSheet 显示分支、目标与步骤；未勾选“旧应用没有在跑同一任务”前禁止确认', async () => {
+  it('RunConfirmSheet 显示分支、目标与步骤；无需勾选即可确认', async () => {
     const open = ref(true)
     const submittedPayload = ref<unknown>(null)
 
@@ -110,22 +110,11 @@ describe('S3-C 任务执行计划与确认（Preflight -> Confirm -> Start）', 
     expect(body).toContain('不可撤回的生产环境副作用')
     expect(body).toContain('计划 5 分钟内有效')
 
-    // 确认按钮初始为 disabled
+    // 确认按钮无需勾选，直接可用
     const confirmBtn = document.querySelector(
       '[data-testid=confirm-start-btn]',
     ) as HTMLButtonElement
     expect(confirmBtn).not.toBeNull()
-    expect(confirmBtn.disabled).toBe(true)
-
-    // 勾选 ack 确认复选框
-    const ackCheckbox = document.querySelector(
-      '[data-testid=ack-old-app-idle-checkbox]',
-    ) as HTMLInputElement
-    expect(ackCheckbox).not.toBeNull()
-    ackCheckbox.checked = true
-    ackCheckbox.dispatchEvent(new Event('change'))
-    await flushPromises()
-
     expect(confirmBtn.disabled).toBe(false)
 
     // 点击确认
@@ -159,13 +148,6 @@ describe('S3-C 任务执行计划与确认（Preflight -> Confirm -> Start）', 
       },
       attachTo: document.body,
     })
-    await flushPromises()
-
-    const ackCheckbox = document.querySelector(
-      '[data-testid=ack-old-app-idle-checkbox]',
-    ) as HTMLInputElement
-    ackCheckbox.checked = true
-    ackCheckbox.dispatchEvent(new Event('change'))
     await flushPromises()
 
     const confirmBtn = document.querySelector(

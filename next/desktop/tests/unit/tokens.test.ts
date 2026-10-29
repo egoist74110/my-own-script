@@ -46,20 +46,22 @@ const ok = (set: Record<string, string>, fg: string, bg: string, min = 4.5) =>
     `${fg} on ${bg} (${set[fg]} / ${set[bg]})`,
   ).toBeGreaterThanOrEqual(min)
 
-describe('设计令牌（方向 B）：浅色', () => {
+describe('设计令牌（方向 A）：浅色', () => {
   it('面、分隔线、文字、控件、强调的关键值', () => {
     const want: Record<string, string> = {
       'bg-window': '#ffffff',
-      'bg-sidebar': '#eeedf1',
-      'bg-inspector': '#f7f7f9',
+      'bg-sidebar': '#f3f4f6',
+      'bg-inspector': '#fafafb',
       'bg-settings': '#f5f5f7',
-      line: '#e5e5ea',
-      ink: '#1d1d1f',
-      mute: '#6e6e73',
+      line: '#e4e6eb',
+      ink: '#1b1d22',
+      mute: '#5b616e',
+      faint: '#8b919c',
       disabled: '#a1a1a6',
-      ctl: '#ededf0',
-      hover: '#f2f2f5',
-      'sel-blur': '#e3e2e8',
+      ctl: '#f3f4f6',
+      hover: '#f3f4f6',
+      'sel-blur': '#e9ecf3',
+      'btn-primary-bg': '#1b1d22',
       accent: '#0a63d6',
       'on-accent': '#ffffff',
       'accent-ink': '#0a55b8',
@@ -69,14 +71,15 @@ describe('设计令牌（方向 B）：浅色', () => {
   })
   it('运行状态八色（底 / 文字 / 圆点）', () => {
     const want: Record<string, [string, string, string]> = {
-      queued: ['#f0f0f3', '#3a3a3f', '#8e8e93'],
-      running: ['#e6f0fd', '#0a4fad', '#0a63d6'],
+      // 状态色取规范值；成功色 #1f8a5b 在浅底上只有 3.8:1，文字用加深的 #176a46，圆点保持规范值
+      queued: ['#f3f4f6', '#4b5160', '#8b919c'],
+      running: ['#e8eefc', '#2457d6', '#2457d6'],
       stopping: ['#fff0e0', '#8a3f00', '#e07b00'],
-      success: ['#e5f5ea', '#16692f', '#1f9d45'],
-      failed: ['#fdecea', '#a1211a', '#d93025'],
-      cancelled: ['#f0f0f3', '#4a4a4f', '#8e8e93'],
-      verify: ['#fff3dc', '#7a4100', '#d98a00'],
-      disabled: ['#f0f0f3', '#65656a', '#c7c7cc'], // 文字由合同的 #6e6e73 加深（后者仅 4.46:1）,
+      success: ['#e6f4ec', '#176a46', '#1f8a5b'],
+      failed: ['#fbeceb', '#b02f28', '#c2372f'],
+      cancelled: ['#f3f4f6', '#4b5160', '#8b919c'],
+      verify: ['#fdf1de', '#8a5200', '#9a5b00'],
+      disabled: ['#f3f4f6', '#65656a', '#c7c7cc'],
     }
     for (const [k, [bg, fg, dot]] of Object.entries(want)) {
       expect([light[`st-${k}-bg`], light[`st-${k}-fg`], light[`st-${k}-dot`]], k).toEqual([
@@ -85,6 +88,22 @@ describe('设计令牌（方向 B）：浅色', () => {
         dot,
       ])
     }
+  })
+  it('仓库线路色：四色固定，色板 8 色互不相同且不与状态圆点色重合', () => {
+    expect([light['l-event'], light['l-front'], light['l-vip'], light['l-api']]).toEqual([
+      '#0f8f86',
+      '#2f5fe0',
+      '#7a4fd6',
+      '#d4651c',
+    ])
+    const palette = [1, 2, 3, 4, 5, 6, 7, 8].map((i) =>
+      i <= 4 ? light[['l-event', 'l-front', 'l-vip', 'l-api'][i - 1]!] : light[`l-${i}`],
+    )
+    expect(new Set(palette).size).toBe(8)
+    const statusDots = Object.entries(light)
+      .filter(([k]) => /^st-.*-dot$/.test(k))
+      .map(([, v]) => v)
+    for (const c of palette) expect(statusDots).not.toContain(c)
   })
   it('提示横幅底与描边（信息 / 警告 / 错误）', () => {
     expect(light['bn-info-bg']).toBe('#f2f6fd')
@@ -111,8 +130,8 @@ describe('设计令牌（方向 B）：浅色', () => {
       '11px',
     ])
     expect([light['r-ctl'], light['r-row'], light['r-group'], light['r-window']]).toEqual([
-      '6px',
       '7px',
+      '9px',
       '10px',
       '12px',
     ])
@@ -127,9 +146,10 @@ describe('设计令牌（方向 B）：浅色', () => {
     expect([light['ctl-h'], light['topbar-h'], light['sidebar-w'], light['inspector-w']]).toEqual([
       '28px',
       '52px',
-      '232px',
+      '212px',
       '280px',
     ])
+    expect(light['sidebar-w-compact']).toBe('76px')
     expect(light['target-min']).toBe('28px')
     const list = parseInt(light['list-w']!)
     expect(list).toBeGreaterThanOrEqual(320)

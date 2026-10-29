@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RunConfirmSheet from '@/features/tasks/RunConfirmSheet.vue'
 import RunCard from '@/features/tasks/RunCard.vue'
-import { boot } from './boot'
+import { boot, pickCommand } from './boot'
 import { FakeSocket, hello, resetSeq } from './helpers'
 import {
   formatRunReason,
@@ -124,15 +124,6 @@ describe('S3-C 第四轮修复验证（TDD 失败断言）', () => {
     const startBtn = document.querySelector(
       '[data-testid="confirm-start-btn"]',
     ) as HTMLButtonElement
-    expect(startBtn.disabled).toBe(true)
-
-    // 即使勾选了已确认，无 commit 依然禁用
-    const checkbox = document.querySelector(
-      '[data-testid="ack-old-app-idle-checkbox"]',
-    ) as HTMLInputElement
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
     expect(startBtn.disabled).toBe(true)
 
     w2.unmount()
@@ -312,16 +303,7 @@ describe('S3-C 第四轮修复验证（TDD 失败断言）', () => {
     await flushPromises()
 
     // 点击运行打开确认单
-    await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-    await flushPromises()
-
-    const checkbox = document.querySelector(
-      '[data-testid="ack-old-app-idle-checkbox"]',
-    ) as HTMLInputElement
-    expect(checkbox).not.toBeNull()
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
+    await pickCommand(b, fakeTask.id)
 
     const startBtn = document.querySelector(
       '[data-testid="confirm-start-btn"]',

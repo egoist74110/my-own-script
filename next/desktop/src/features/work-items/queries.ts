@@ -1,11 +1,11 @@
 // 工单查询的公共部分：vue-query 键空间、统一缓存参数、取 API 客户端。
 // 键：['work-items','ado']（项目列表）；['work-items','p',projectId,...]（该项目下的列表/详情/评论/历史/子项）。
-import { useQueryClient } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, inject } from 'vue'
 import type { ApiClient } from '@/api/client'
 import { backendRuntimeKey } from '@/app/backend-runtime'
 import { useBackendStore } from '@/stores/backend'
-import { ApiError } from './api'
+import { ApiError, COLUMNS, unwrap } from './api'
 
 export const WI_KEY = ['work-items'] as const
 export const projectKey = (projectId: string) => [...WI_KEY, 'p', projectId] as const
@@ -30,4 +30,25 @@ export function useWiApi() {
   /** 给媒体缓存用：未连接时返回 null。 */
   const maybeApi = (): ApiClient | null => runtime?.api() ?? null
   return { api, maybeApi, online, qc, store }
+}
+
+/**
+ * 看板列（线路顺序）：以接口 /api/work-items/columns 为准，读不到或为空时退回内置五列。
+ * 列表页与详情页共用同一个查询键，所以只会请求一次。
+ */
+export function useBoardColumns() {
+  const { api, online } = useWiApi()
+  const q = useQuery({
+    ...QUERY_DEFAULTS,
+    queryKey: [...WI_KEY, 'columns'],
+    enabled: online,
+    queryFn: ({ signal }) => unwrap(api().GET('/api/work-items/columns', { signal })),
+  })
+  const columns = computed<string[]>(() => {
+    const cols = q.data.value?.columns
+    return Array.isArray(cols) && cols.length > 0 && cols.every((c) => typeof c === 'string')
+      ? cols
+      : [...COLUMNS]
+  })
+  return { columns, defaultColumn: computed(() => q.data.value?.default) }
 }

@@ -5,7 +5,7 @@ import type { components } from '@/api/schema'
 import RunConfirmSheet from '@/features/tasks/RunConfirmSheet.vue'
 import LogPanel from '@/features/tasks/LogPanel.vue'
 import { ApiError, errorText, TASK_ERROR_MESSAGES } from '@/features/tasks/api'
-import { boot } from '../unit/boot'
+import { boot, pickCommand } from '../unit/boot'
 import { FakeSocket, hello, resetSeq } from '../unit/helpers'
 
 type TaskView = components['schemas']['TaskView']
@@ -119,7 +119,7 @@ describe('S3-C 独立契约观察', () => {
     expect(errorText(new ApiError(503, 'busy', ''))).toContain('系统繁忙')
   })
 
-  it('只发布确认单保留完整 build id 与完整 commit，未确认旧应用空闲前不能发出确认', async () => {
+  it('只发布确认单保留完整 build id 与完整 commit', async () => {
     const wrapper = mount(RunConfirmSheet, {
       props: {
         open: true,
@@ -140,19 +140,8 @@ describe('S3-C 独立契约观察', () => {
     expect(copy).not.toContain('0123456)')
 
     const start = document.querySelector('[data-testid="confirm-start-btn"]') as HTMLButtonElement
-    expect(start.disabled).toBe(true)
-    const checkbox = document.querySelector(
-      '[data-testid="ack-old-app-idle-checkbox"]',
-    ) as HTMLInputElement
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
+    // 计划带 commit，无需勾选即可开始
     expect(start.disabled).toBe(false)
-    checkbox.checked = false
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
-    await start.click()
-    expect(wrapper.emitted('confirm')).toBeUndefined()
   })
 
   it('回滚确认显示完整历史 Release id 与完整 commit', async () => {
@@ -201,14 +190,7 @@ describe('S3-C 独立契约观察', () => {
     })
     b.sock.emit(hello())
     await flushPromises()
-    await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-    await flushPromises()
-    const checkbox = document.querySelector(
-      '[data-testid="ack-old-app-idle-checkbox"]',
-    ) as HTMLInputElement
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
+    await pickCommand(b, 'task-contract')
     const start = document.querySelector('[data-testid="confirm-start-btn"]') as HTMLButtonElement
 
     start.click()

@@ -6,6 +6,7 @@ import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import StatusPill from '@/components/StatusPill.vue'
 import type { PillState } from '@/components/pill'
+import { fmtLocal } from './format'
 import { updateErrorMessage, useUpdate, type UpdateSources } from './useUpdate'
 
 const props = withDefaults(
@@ -135,14 +136,7 @@ const checkedAtText = computed(() => {
   if (ts === null || ts === undefined || isNaN(ts)) {
     return '上次检查：从未'
   }
-  const date = new Date(ts * 1000)
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  const hh = String(date.getHours()).padStart(2, '0')
-  const mm = String(date.getMinutes()).padStart(2, '0')
-  const ss = String(date.getSeconds()).padStart(2, '0')
-  return `上次检查：${y}-${m}-${d} ${hh}:${mm}:${ss}`
+  return `上次检查：${fmtLocal(ts)}`
 })
 
 async function onConfirmRestart() {
@@ -155,10 +149,7 @@ async function onConfirmRestart() {
   <div class="st-section" data-testid="update-card">
     <!-- 头部：标题、状态胶囊、主动作 -->
     <div class="st-head">
-      <div class="title-with-icon">
-        <span class="card-icon" aria-hidden="true">🔄</span>
-        <h2>关于与更新</h2>
-      </div>
+      <h2>版本与更新</h2>
       <StatusPill :state="pillState" :label="pillLabel" data-testid="update-status-pill" />
       <div class="st-grow" />
 
@@ -210,7 +201,7 @@ async function onConfirmRestart() {
     <!-- 二次确认弹窗：重启需关闭后端并重启应用 -->
     <div
       v-if="confirmRestart"
-      class="confirm-box"
+      class="confirm-box st-free"
       data-testid="update-restart-confirm-box"
       role="dialog"
       aria-modal="true"
@@ -312,15 +303,6 @@ async function onConfirmRestart() {
 </template>
 
 <style scoped>
-.title-with-icon {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.card-icon {
-  font-size: 16px;
-  line-height: 1;
-}
 .actions-row {
   display: flex;
   align-items: center;
@@ -333,10 +315,6 @@ async function onConfirmRestart() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--r-ctl);
-  background: var(--bg-window);
-  border: 1px solid var(--line);
   font-size: var(--text-body);
 }
 .status-main {
@@ -414,7 +392,6 @@ async function onConfirmRestart() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 4px 2px;
   font-size: var(--text-sub);
   color: var(--mute);
 }
@@ -434,6 +411,7 @@ async function onConfirmRestart() {
   color: var(--mute);
 }
 .confirm-box {
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -124,9 +124,9 @@ async function onSubmit() {
   gap: 6px;
 }
 .field-label {
-  font-size: var(--text-base);
+  font-size: var(--text-body);
   font-weight: 500;
-  color: var(--fg);
+  color: var(--ink);
 }
 .hint-text {
   font-size: var(--text-sub);
@@ -143,9 +143,9 @@ async function onSubmit() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
   cursor: pointer;
-  color: var(--fg);
+  color: var(--ink);
   font-weight: 500;
 }
 .check-label input {

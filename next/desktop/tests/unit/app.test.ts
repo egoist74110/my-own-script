@@ -31,19 +31,22 @@ describe('B 方向壳：骨架与连接', () => {
     await b.done()
   })
 
-  it('侧栏分组：工作（任务/工单/AI 会话）与基础设施（MCP/服务/VPN 禁用，无切片号）；设置在底部', async () => {
+  it('侧栏分组：工作（任务/工单/AI 会话）与基础设施（MCP/服务/VPN 均可点）；设置在底部；没有“尚未提供”', async () => {
     const b = await boot()
     const groups = b.wrapper.findAll('nav[aria-label=分区] h2').map((h) => h.text())
     expect(groups).toEqual(['工作', '基础设施'])
     const links = b.wrapper.findAll('nav a').map((a) => a.attributes('href'))
-    expect(links).toEqual(['/tasks', '/work-items', '/ai', '/settings'])
-    const disabled = b.wrapper.findAll('[aria-disabled=true]')
-    expect(disabled.map((d) => d.text())).toEqual(['MCP', '服务', 'VPN'])
-    for (const d of disabled) {
-      expect(d.attributes('title')).toBe('尚未提供')
-      expect(d.attributes('tabindex')).toBeUndefined()
-      expect(d.text()).not.toMatch(/S\d/)
-    }
+    expect(links).toEqual([
+      '/tasks',
+      '/work-items',
+      '/ai',
+      '/settings/mcp',
+      '/settings/services',
+      '/settings/vpn',
+      '/settings',
+    ])
+    expect(b.wrapper.findAll('[aria-disabled=true]')).toHaveLength(0)
+    expect(b.wrapper.get('aside[aria-label=侧栏]').text()).not.toMatch(/尚未提供|S\d/)
     expect(b.wrapper.get('nav a[aria-current=page]').text()).toContain('任务')
     // 不做「已保存查询」「Pinned」，也不显示计数角标
     expect(b.wrapper.get('aside[aria-label=侧栏]').text()).not.toMatch(/Pinned|已保存/)

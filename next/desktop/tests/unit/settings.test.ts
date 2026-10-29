@@ -57,7 +57,7 @@ async function typeInto(b: B, label: string, value: string) {
 const pwd = (b: B) => b.wrapper.get('input[type=password]')
 
 describe('S1-B 导航与页签', () => {
-  it('导航 08 设置启用，路由 /settings；页签 导入·ADO 连接·本地仓库·凭据·常规', async () => {
+  it('导航 08 设置启用，路由 /settings；页签 导入·ADO 连接·本地仓库·凭据·通用', async () => {
     const b = await open(createFake())
     const link = b.wrapper.get('nav a[href="/settings"]')
     expect(link.text()).toContain('设置')
@@ -72,14 +72,14 @@ describe('S1-B 导航与页签', () => {
       'AI CLI',
       'MCP',
       '服务',
-      '常规',
+      '通用',
     ])
     await b.done()
   })
 
   it('页签与面板可访问关联：aria-controls 指向含真实内容的可见 tabpanel', async () => {
     const b = await open(createFake())
-    for (const label of ['导入', 'ADO 连接', '凭据', '常规']) {
+    for (const label of ['导入', 'ADO 连接', '凭据', '通用']) {
       await selectTab(b, label)
       const cur = b.wrapper.get('[role=tab][aria-selected=true]')
       const panel = document.getElementById(cur.attributes('aria-controls')!)!
@@ -593,7 +593,7 @@ describe('凭据页', () => {
     const b = await open(fake, '凭据')
     const t = b.wrapper.get('[data-testid=credentials-table]')
     const heads = t.findAll('th').map((h) => h.text())
-    expect(heads).toEqual(['类型', '所属', '存在', '来源', '状态', '更新时间', '操作'])
+    expect(heads).toEqual(['凭据', '用于', '存在', '来源', '状态', '更新于', '操作'])
     expect(t.text()).toContain('ADO PAT')
     expect(t.text()).toContain('示例库')
     expect(t.text()).toContain('孤立')
@@ -611,9 +611,9 @@ describe('凭据页', () => {
   })
 })
 
-describe('常规页与只读错误态', () => {
+describe('通用页与只读错误态', () => {
   it('显示数据目录、旧配置目录、版本、schema 版本、store 状态', async () => {
-    const b = await open(createFake(), '常规')
+    const b = await open(createFake(), '通用')
     expect(byTid(b, 'general-data-dir').text()).toBe('/tmp/fake-data')
     expect(byTid(b, 'general-legacy-dir').text()).toBe('/tmp/fake-legacy')
     expect(byTid(b, 'general-app-version').text()).toBe('0.1.0')
@@ -628,7 +628,7 @@ describe('常规页与只读错误态', () => {
       store_state: 'readonly_error',
       store_error: 'config.json 校验失败',
     })
-    const b = await open(fake, '常规')
+    const b = await open(fake, '通用')
     expect(byTid(b, 'store-error').text()).toContain('config.json 校验失败')
     expect(byTid(b, 'store-error').text()).toContain('/tmp/fake-data')
     expect(byTid(b, 'general-store-error').exists()).toBe(true)

@@ -14,6 +14,7 @@ import ToolbarButton from '@/components/ToolbarButton.vue'
 import type { PillState } from '@/components/pill'
 import { tabTriggerId } from '@/components/tabs'
 import { backendRuntimeKey } from '@/app/backend-runtime'
+import { repoLineColor } from '@/features/tasks/route'
 import { closeAiSession, deleteAiSession, interruptAiSession, type SessionView } from './api'
 import ChatView from './ChatView.vue'
 import NewSessionSheet from './NewSessionSheet.vue'
@@ -72,6 +73,20 @@ export interface DisplaySession {
   warnings?: string[]
   createdAt?: string
   rawReal?: SessionView
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+/** ISO 时间 → 本地 `MM-DD HH:mm`；无法解析时返回空串（不显示）。 */
+function formatWhen(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** 会话所属仓库的线路色；没有仓库时用中性灰。 */
+function lineColor(repo: string): string {
+  return repo ? repoLineColor(repo) : 'var(--faint)'
 }
 
 function abbrForCli(cli?: string | null): string {
@@ -392,35 +407,35 @@ function handleJumpToRepos() {
           <li v-for="s in list" :key="s.id">
             <button
               type="button"
-              class="sess b-row"
+              class="sess"
+              :style="{ '--c': lineColor(s.repo) }"
               :aria-current="s.id === selectedId ? 'true' : undefined"
               :data-selected="s.id === selectedId ? 'true' : 'false'"
               :data-testid="`session-${s.id}`"
               @click="selectedId = s.id"
             >
-              <span class="b-row-l1">
+              <span class="bar" aria-hidden="true"></span>
+              <span class="l1">
                 <span class="badge" :data-kind="s.kind" aria-hidden="true">{{ s.abbr }}</span>
-                <span class="b-row-title">{{ s.title }}</span>
+                <span class="title" :title="s.title">{{ s.title }}</span>
                 <span v-if="s.warnings?.length" class="warning-badge" title="存在告警">
                   <AlertTriangle :size="12" class="text-amber-500" aria-hidden="true" />
                 </span>
               </span>
-              <span class="b-row-l2">
-                <span class="mono">{{ s.repo }}</span>
-                <span aria-hidden="true">·</span>
+              <span class="l2">
                 <StatusPill
                   v-if="s.pillState"
                   :state="s.pillState"
-                  :label="s.state === 'awaiting_approval' ? '待审批' : undefined"
+                  :label="s.state === 'awaiting_approval' ? '等你批准' : undefined"
                   :title="s.stateText"
                 />
-                <span v-else>{{ s.stateText }}</span>
                 <span
                   v-if="s.isTerminal && s.exitCode !== null && s.exitCode !== undefined"
                   class="exit-code"
                 >
                   ({{ s.exitCode }})
                 </span>
+                <span class="when">{{ formatWhen(s.createdAt) }}</span>
                 <span class="sr-only">{{ s.stateText }}</span>
               </span>
             </button>
@@ -772,7 +787,62 @@ h1 {
   gap: 1px;
 }
 .sess {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
+  min-width: 0;
+  padding: 9px 10px 9px 14px;
+  border: 0;
+  border-radius: var(--r-row);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sess:hover {
+  background: var(--hover);
+}
+.sess[data-selected='true'] {
+  background: var(--sel-blur);
+}
+/* 左侧 3px 竖条：所属仓库的线路色 */
+.sess .bar {
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--c);
+}
+.l1,
+.l2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.l2 {
+  color: var(--faint);
+  font-size: var(--text-sub);
+  overflow: hidden;
+}
+.when {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .badge {
   flex: none;

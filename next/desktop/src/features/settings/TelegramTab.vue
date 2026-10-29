@@ -8,6 +8,9 @@ import Tag from '@/components/Tag.vue'
 import {
   isTelegramTokenValid,
   POLLER_STATE_DESC,
+  POLLER_STATE_LABEL,
+  verifyFailHint,
+  type TokenVerification,
   type ACLGroup,
   type ACLMember,
   type ActivityItem,
@@ -18,6 +21,7 @@ import TelegramGroupDeleteSheet from './TelegramGroupDeleteSheet.vue'
 import TelegramGroupEditSheet from './TelegramGroupEditSheet.vue'
 import TelegramMemberEditSheet from './TelegramMemberEditSheet.vue'
 import TelegramStatusPill from './TelegramStatusPill.vue'
+import { fmtLocal } from './format'
 import { settingsContextKey } from './useSettings'
 
 const ctx = inject(settingsContextKey)!
@@ -39,6 +43,58 @@ const tokenInput = ref('')
 const tokenError = ref<string | null>(null)
 const deleteTokenConfirm = ref(false)
 
+// --- Token 校验与身份 ---
+// 本地保存最近一次 mutation 响应里的 verify，overview 刷新后以持久化字段为准。
+const localVerify = ref<TokenVerification | null>(null)
+const tokenPresent = computed(() => Boolean(bot.value?.credential.present))
+const verifiedBot = computed(() => t.value?.control.verified_bot ?? bot.value?.verified_bot ?? null)
+const verify = computed<TokenVerification | null>(() =>
+  tokenPresent.value
+    ? (localVerify.value ?? bot.value?.verify ?? t.value?.control.token_verify ?? null)
+    : null,
+)
+const botUsername = computed(() => verifiedBot.value?.username || bot.value?.username || null)
+const botId = computed(
+  () => verifiedBot.value?.id || bot.value?.bot_id || t.value?.control.bot_id || null,
+)
+// 已校验有效：最近一次校验成功；没有校验记录但存在已验证身份（旧数据）也视为有效。
+const tokenVerified = computed(
+  () => tokenPresent.value && (verify.value ? verify.value.ok : Boolean(verifiedBot.value)),
+)
+const verifyFailed = computed(() => verify.value !== null && !verify.value.ok)
+const hasWebhook = computed(() => verify.value?.has_webhook === true)
+const identityPlaceholder = computed(() => (tokenPresent.value ? '未校验' : '—'))
+const showEnableGuide = computed(() => tokenVerified.value && !t.value?.control.enabled)
+const atName = computed(() => (botUsername.value ? `@${botUsername.value.replace(/^@/, '')}` : ''))
+
+watch(tokenPresent, (p) => {
+  if (!p) localVerify.value = null
+})
+
+/** 保存/导入后根据 verify 结果给出整页提示（不再只说“已导入”）。 */
+function noticeAfterToken(what: string, v: TokenVerification | undefined) {
+  localVerify.value = v ?? null
+  if (!v) return
+  if (v.ok) {
+    const who = botUsername.value ? `@${botUsername.value.replace(/^@/, '')}` : '机器人'
+    ctx.notice.value = { kind: 'ok', text: `${what}，Token 有效：${who}` }
+  } else {
+    ctx.notice.value = { kind: 'warn', text: `${what}，但 Token 校验失败：${v.message}` }
+  }
+}
+
+async function onVerifyToken() {
+  tokenError.value = null
+  const res = await ctx.verifyTelegramToken((err) => {
+    if (err.code === 'no_credential') {
+      tokenError.value = '未保存 Bot Token，请先录入或导入 Token'
+      return true
+    }
+    return false
+  })
+  if (res.ok && res.data?.verify) localVerify.value = res.data.verify
+}
+
 async function onSaveToken() {
   tokenError.value = null
   const val = tokenInput.value.trim()
@@ -48,7 +104,7 @@ async function onSaveToken() {
     return
   }
   tokenInput.value = '' // 提交后立即清空输入框，永不回显
-  await ctx.putTelegramToken(val, (err) => {
+  const res = await ctx.putTelegramToken(val, (err) => {
     if (err.status === 422 || err.code === 'validation_error') {
       tokenError.value = 'Token 格式不正确'
       return true
@@ -59,11 +115,12 @@ async function onSaveToken() {
     }
     return false
   })
+  if (res.ok) noticeAfterToken('Bot Token 已保存', res.data?.verify)
 }
 
 async function onImportLegacyToken() {
   tokenError.value = null
-  await ctx.importLegacyTelegramToken((err) => {
+  const res = await ctx.importLegacyTelegramToken((err) => {
     if (err.code === 'legacy_missing' || err.status === 404) {
       ctx.notice.value = { kind: 'warn', text: '旧应用中未找到 Telegram Bot Token' }
       return true
@@ -77,6 +134,7 @@ async function onImportLegacyToken() {
     }
     return false
   })
+  if (res.ok) noticeAfterToken('已从旧应用导入 Bot Token', res.data?.verify)
 }
 
 async function onConfirmDeleteToken() {
@@ -98,11 +156,15 @@ const enableSheetOpen = ref(false)
 const enableError = ref<string | null>(null)
 const webhookSetDetected = ref(false)
 
+function openEnableSheet() {
+  enableError.value = null
+  webhookSetDetected.value = false
+  enableSheetOpen.value = true
+}
+
 function onToggleControl(val: boolean) {
   if (val) {
-    enableError.value = null
-    webhookSetDetected.value = false
-    enableSheetOpen.value = true
+    openEnableSheet()
   } else {
     void ctx.disableTelegram()
   }
@@ -124,11 +186,36 @@ async function onConfirmEnable(opts: { ackOldBotStopped: boolean; deleteWebhook:
       enableError.value = '未保存 Bot Token，请先录入或导入 Token'
       return true
     }
+    if (err.code === 'telegram_active') {
+      enableError.value = 'Telegram 已在运行中。请先在“远程控制”里停用，再重新启用'
+      return true
+    }
+    if (err.code === 'telegram_request_failed' || err.code === 'telegram_unreachable') {
+      enableError.value = `${err.message}。请检查网络或代理后，点“确认启用”重试`
+      return true
+    }
+    if (err.code === 'token_invalid') {
+      enableError.value = 'Token 无效或已被撤销，请关闭此窗口后重新录入 Token'
+      return true
+    }
     enableError.value = err.message
     return true
   })
   if (res.ok) {
     enableSheetOpen.value = false
+    const st = t.value?.poller.state
+    if (st && ['conflict', 'token_invalid', 'webhook_set', 'store_unavailable'].includes(st)) {
+      ctx.notice.value = {
+        kind: 'warn',
+        text: `已启用，但连接状态为“${POLLER_STATE_LABEL[st]}”：${POLLER_STATE_DESC[st] ?? ''}`,
+      }
+    }
+  } else if (!enableError.value && res.error) {
+    // revision_conflict 等由 act 统一处理的错误：也要在 Sheet 内可见，不能静默失败
+    enableError.value =
+      res.error.code === 'revision_conflict'
+        ? '配置已被其他窗口或进程更新，已刷新为最新内容。请确认后再点“确认启用”重试'
+        : res.error.message
   }
 }
 
@@ -370,6 +457,10 @@ async function onConfirmDeleteMember() {
   await ctx.deleteAclMember(id)
 }
 
+function groupOf(m: ACLMember): ACLGroup | undefined {
+  return groups.value.find((x) => x.id === m.group_id)
+}
+
 function groupNameOfMember(gid: string): string {
   const g = groups.value.find((x) => x.id === gid)
   return g ? g.name : gid
@@ -445,10 +536,29 @@ onUnmounted(() => {
       </ul>
     </Banner>
 
+    <!-- 启用引导：Token 已验证但远程控制未启用 -->
+    <Banner v-if="showEnableGuide" kind="warn" data-testid="enable-guide-banner">
+      <span>
+        Token 已验证{{
+          atName ? `（${atName}）` : ''
+        }}，但远程控制还没启用，机器人现在不会响应任何命令。
+      </span>
+      <template #actions>
+        <Button
+          variant="primary"
+          data-testid="enable-guide-btn"
+          :disabled="ctx.busy.value || !ctx.writable.value"
+          @click="openEnableSheet"
+        >
+          启用远程控制
+        </Button>
+      </template>
+    </Banner>
+
     <!-- 1. Bot 卡片 -->
     <section class="st-section" aria-label="Bot 配置" data-testid="bot-card">
       <div class="st-head">
-        <h2>Bot 凭据与信息</h2>
+        <h2>机器人</h2>
         <span class="st-grow"></span>
         <Button
           data-testid="import-legacy-token-btn"
@@ -459,38 +569,70 @@ onUnmounted(() => {
         </Button>
       </div>
 
-      <p class="st-note">
-        Bot Token 仅保存在安全钥匙串（Keychain）中，界面永不回显其内容。提交或修改后输入框立即清空。
-      </p>
+      <p class="st-note">Bot Token 只存在钥匙串里，界面不会回显；提交后输入框立即清空。</p>
 
-      <div class="card-grid">
-        <dl class="st-kv">
-          <dt>凭据状态</dt>
-          <dd data-testid="token-present-status">
-            <Tag :tone="bot?.credential.present ? 'ok' : 'neutral'">
-              {{ bot?.credential.present ? '已保存' : '未保存' }}
-            </Tag>
-            <span v-if="bot?.credential.source" class="src-text">
-              （{{
-                bot.credential.source === 'imported'
-                  ? '旧配置导入'
-                  : bot.credential.source === 'manual'
-                    ? '手动录入'
-                    : '未知'
-              }}）
-            </span>
+      <dl class="st-kv">
+        <dt>Token</dt>
+        <dd data-testid="token-present-status">
+          <Tag :tone="bot?.credential.present ? 'ok' : 'neutral'">
+            {{ bot?.credential.present ? '已保存' : '未保存' }}
+          </Tag>
+          <span v-if="bot?.credential.source" class="src-text">
+            （{{
+              bot.credential.source === 'imported'
+                ? '从旧版导入'
+                : bot.credential.source === 'manual'
+                  ? '手动录入'
+                  : '未知'
+            }}）
+          </span>
+        </dd>
+        <dt>机器人账号</dt>
+        <dd class="st-mono" data-testid="bot-username">
+          {{ atName || identityPlaceholder }}
+        </dd>
+        <dt>Bot ID</dt>
+        <dd class="st-mono" data-testid="bot-id">{{ botId || identityPlaceholder }}</dd>
+        <template v-if="tokenPresent">
+          <dt>Token 校验</dt>
+          <dd data-testid="token-verify-status">
+            <template v-if="verify?.ok">
+              <Tag tone="ok" data-testid="token-verify-ok">
+                Token 有效{{ atName ? `：${atName}` : '' }}
+              </Tag>
+            </template>
+            <template v-else-if="verifyFailed">
+              <Tag tone="neutral" data-testid="token-verify-failed">校验失败</Tag>
+            </template>
+            <template v-else>
+              <Tag tone="neutral" data-testid="token-verify-unchecked">未校验</Tag>
+            </template>
+            <Button
+              size="sm"
+              data-testid="verify-token-btn"
+              class="verify-btn"
+              :disabled="ctx.busy.value || !ctx.writable.value"
+              @click="onVerifyToken"
+            >
+              {{ verifyFailed ? '重新检查' : '检查 Token' }}
+            </Button>
           </dd>
-          <dt>Bot 用户名</dt>
-          <dd class="st-mono" data-testid="bot-username">
-            {{ bot?.username ? `@${bot.username.replace(/^@/, '')}` : '—' }}
-          </dd>
-          <dt>Bot ID</dt>
-          <dd class="st-mono" data-testid="bot-id">{{ bot?.bot_id || '—' }}</dd>
-        </dl>
-      </div>
+        </template>
+      </dl>
+      <Banner
+        v-if="verifyFailed && verify"
+        kind="error"
+        class="mt-2"
+        data-testid="token-verify-error"
+      >
+        {{ verify.message }}{{ verifyFailHint(verify.code) }}
+      </Banner>
+      <Banner v-if="hasWebhook" kind="warn" class="mt-2" data-testid="token-webhook-note">
+        这个 Bot 设置了 webhook，启用时会询问是否删除。
+      </Banner>
 
       <!-- Token 输入表单 -->
-      <div class="token-form mt-2">
+      <div class="token-form">
         <div class="st-fld">
           <label class="lbl" for="bot-token-input">录入 Token</label>
           <div class="token-inputs">
@@ -533,22 +675,28 @@ onUnmounted(() => {
     <!-- 2. 接管卡片 -->
     <section class="st-section" aria-label="接管与轮询" data-testid="takeover-card">
       <div class="st-head">
-        <h2>接管与长轮询</h2>
-        <span class="st-grow"></span>
-        <div class="control-toggle">
-          <span class="toggle-lbl">启用 Telegram 控制</span>
-          <Switch
-            :model-value="Boolean(t?.control.enabled)"
-            data-testid="telegram-control-switch"
-            aria-label="启用 Telegram 控制"
-            :disabled="ctx.busy.value || !ctx.writable.value || !bot?.credential.present"
-            @update:model-value="(val: boolean) => onToggleControl(val)"
-          />
-        </div>
+        <h2>远程控制</h2>
       </div>
 
-      <div class="poller-status-row">
-        <span class="row-label">当前轮询状态：</span>
+      <div class="st-row">
+        <div class="st-lbl">
+          <b>用 Telegram 控制任务</b>
+          <small>关闭时机器人不接收任何命令</small>
+        </div>
+        <Switch
+          :model-value="Boolean(t?.control.enabled)"
+          data-testid="telegram-control-switch"
+          aria-label="用 Telegram 控制任务"
+          :disabled="ctx.busy.value || !ctx.writable.value || !bot?.credential.present"
+          @update:model-value="(val: boolean) => onToggleControl(val)"
+        />
+      </div>
+
+      <div class="st-row">
+        <div class="st-lbl">
+          <b>连接状态</b>
+          <small>机器人与 Telegram 服务器的连接</small>
+        </div>
         <TelegramStatusPill v-if="poller" :state="poller.state" data-testid="poller-status-pill" />
         <Button
           v-if="poller && (poller.state === 'conflict' || poller.state === 'backoff')"
@@ -562,7 +710,7 @@ onUnmounted(() => {
       </div>
 
       <!-- 状态补充说明 -->
-      <div v-if="poller && POLLER_STATE_DESC[poller.state]" class="poller-desc">
+      <div v-if="poller && POLLER_STATE_DESC[poller.state]" class="poller-desc st-free">
         <Banner
           :kind="poller.state === 'conflict' ? 'error' : 'warn'"
           data-testid="poller-state-desc-banner"
@@ -585,7 +733,7 @@ onUnmounted(() => {
     <!-- 3. Owner 卡片 -->
     <section class="st-section" aria-label="所有者设置" data-testid="owner-card">
       <div class="st-head">
-        <h2>所有者 (Owner)</h2>
+        <h2>所有者</h2>
         <Tag :tone="owner?.bound ? 'ok' : 'neutral'">{{ owner?.bound ? '已绑定' : '未绑定' }}</Tag>
         <span class="st-grow"></span>
         <Button
@@ -599,19 +747,17 @@ onUnmounted(() => {
         </Button>
       </div>
 
-      <div v-if="owner?.bound" class="owner-bound-info">
-        <dl class="st-kv">
-          <dt>Chat ID</dt>
-          <dd class="st-mono" data-testid="owner-chat-id">{{ owner.chat_id }}</dd>
-          <dt>绑定来源</dt>
-          <dd data-testid="owner-source">
-            {{ owner.source === 'imported' ? '旧配置导入' : '绑定码绑定' }}
-          </dd>
-        </dl>
-      </div>
+      <dl v-if="owner?.bound" class="st-kv">
+        <dt>Chat ID</dt>
+        <dd class="st-mono" data-testid="owner-chat-id">{{ owner.chat_id }}</dd>
+        <dt>绑定方式</dt>
+        <dd data-testid="owner-source">
+          {{ owner.source === 'imported' ? '从旧版导入' : '用绑定码绑定' }}
+        </dd>
+      </dl>
       <div v-else class="owner-unbound-box" data-testid="owner-unbound-box">
         <p class="st-note">
-          尚未绑定所有者。在 Telegram 中私聊机器人发送绑定码即可完成所有者绑定。
+          还没有绑定所有者。生成绑定码后，在 Telegram 里私聊机器人发送它即可绑定。
         </p>
         <div v-if="!bindCode" class="mt-2">
           <Button
@@ -625,12 +771,12 @@ onUnmounted(() => {
         </div>
         <div v-else class="bind-code-card mt-2" data-testid="bind-code-card">
           <div class="bind-code-line">
-            <span class="code-title">一次性绑定码：</span>
+            <span class="code-title">一次性绑定码</span>
             <span class="bind-code-val st-mono" data-testid="bind-code-display">{{
               bindCode
             }}</span>
             <span class="bind-countdown" data-testid="bind-code-countdown">
-              有效时间：{{ bindCountdown }}
+              剩余 {{ bindCountdown }}
             </span>
           </div>
           <p class="bind-instruction">
@@ -653,37 +799,31 @@ onUnmounted(() => {
       <div class="st-head">
         <h2>任务运行结果通知</h2>
       </div>
-      <div class="notify-switches">
-        <div class="switch-row">
-          <div class="switch-info">
-            <span class="switch-title">包含详细信息</span>
-            <span class="switch-desc">
-              开启后任务通知将包含分支、目标、Release 网页链接等详情；默认只发送操作与结果摘要。
-            </span>
-          </div>
-          <Switch
-            :model-value="Boolean(notify?.include_details)"
-            data-testid="notify-details-switch"
-            aria-label="包含详细信息"
-            :disabled="ctx.busy.value || !ctx.writable.value"
-            @update:model-value="(val: boolean) => onToggleNotifyDetails(val)"
-          />
+      <div class="st-row">
+        <div class="st-lbl">
+          <b>通知里带上详细信息</b>
+          <small>打开后包含分支、目标和 Release 链接；默认只发操作和结果摘要</small>
         </div>
-        <div class="switch-row">
-          <div class="switch-info">
-            <span class="switch-title">UI 触发运行通知所有者</span>
-            <span class="switch-desc">
-              在桌面应用界面触发的任务运行，完成后向所有者 (Owner) 发送 Telegram 通知。
-            </span>
-          </div>
-          <Switch
-            :model-value="Boolean(notify?.ui_runs_to_owner)"
-            data-testid="notify-ui-runs-switch"
-            aria-label="UI 触发运行通知所有者"
-            :disabled="ctx.busy.value || !ctx.writable.value"
-            @update:model-value="(val: boolean) => onToggleNotifyUiRuns(val)"
-          />
+        <Switch
+          :model-value="Boolean(notify?.include_details)"
+          data-testid="notify-details-switch"
+          aria-label="通知里带上详细信息"
+          :disabled="ctx.busy.value || !ctx.writable.value"
+          @update:model-value="(val: boolean) => onToggleNotifyDetails(val)"
+        />
+      </div>
+      <div class="st-row">
+        <div class="st-lbl">
+          <b>在桌面应用里运行也通知我</b>
+          <small>在桌面应用里启动的任务，完成后同样向所有者发 Telegram 通知</small>
         </div>
+        <Switch
+          :model-value="Boolean(notify?.ui_runs_to_owner)"
+          data-testid="notify-ui-runs-switch"
+          aria-label="在桌面应用里运行也通知我"
+          :disabled="ctx.busy.value || !ctx.writable.value"
+          @update:model-value="(val: boolean) => onToggleNotifyUiRuns(val)"
+        />
       </div>
     </section>
 
@@ -703,10 +843,103 @@ onUnmounted(() => {
       <p class="st-note" data-testid="test-message-hint">
         {{
           canTestMessage
-            ? '向已绑定的所有者发送一条固定测试文本以验证连通性。'
-            : '需先启用 Telegram 长轮询并绑定所有者 (Owner)，方可发送测试消息。'
+            ? '向所有者发一条固定的测试文字，确认机器人能正常发消息。'
+            : '需要先打开「用 Telegram 控制任务」并绑定所有者，才能发送测试消息。'
         }}
       </p>
+    </section>
+
+    <!-- 7. 组成员卡片 -->
+    <section class="st-section" aria-label="谁能用机器人" data-testid="acl-members-card">
+      <div class="st-head">
+        <h2>谁能用机器人</h2>
+        <Tag>{{ members.length }}</Tag>
+        <span class="st-grow"></span>
+        <Button
+          variant="primary"
+          data-testid="create-member-btn"
+          :disabled="ctx.busy.value || !ctx.writable.value || groups.length === 0"
+          @click="onNewMember"
+        >
+          ＋ 添加成员
+        </Button>
+      </div>
+
+      <p class="st-note">成员按组授权。只填了用户名的成员，第一次给机器人发消息后会自动绑定。</p>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="acl-members-table">
+          <thead>
+            <tr>
+              <th scope="col">成员</th>
+              <th scope="col">用户名</th>
+              <th scope="col">组</th>
+              <th scope="col">权限</th>
+              <th scope="col">绑定状态</th>
+              <th scope="col"><span class="sr-only">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(m, idx) in members" :key="m.id" :data-testid="`member-row-${m.id}`">
+              <td>
+                <div>{{ m.label || '—' }}</div>
+                <div
+                  v-for="w in getMemberWarnings(m, idx)"
+                  :key="w"
+                  class="inline-warn"
+                  data-testid="member-inline-warning"
+                >
+                  ⚠ {{ w }}
+                </div>
+              </td>
+              <td class="st-mono">
+                <span v-if="m.username">@{{ m.username.replace(/^@/, '') }}</span>
+                <span v-if="m.username && m.chat_id"> / </span>
+                <span v-if="m.chat_id">{{ m.chat_id }}</span>
+                <span v-if="!m.username && !m.chat_id">—</span>
+              </td>
+              <td>{{ groupNameOfMember(m.group_id) }}</td>
+              <td>
+                <div class="st-tags">
+                  <Tag v-if="groupOf(m)?.can_run" tone="ok">执行</Tag>
+                  <Tag v-if="groupOf(m)?.can_stop">停止</Tag>
+                  <Tag v-if="groupOf(m)?.can_status">状态</Tag>
+                  <Tag v-if="groupOf(m)?.can_rollback" tone="warn">回滚</Tag>
+                </div>
+              </td>
+              <td>
+                <span v-if="m.username">
+                  <Tag :tone="m.user_id ? 'ok' : 'neutral'">
+                    {{ m.user_id ? '已绑定' : '待绑定' }}
+                  </Tag>
+                </span>
+                <span v-else class="st-note">—</span>
+              </td>
+              <td>
+                <div class="st-actions">
+                  <Button
+                    data-testid="edit-member-btn"
+                    :disabled="ctx.busy.value || !ctx.writable.value"
+                    @click="onEditMember(m)"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    data-testid="delete-member-btn"
+                    :disabled="ctx.busy.value || !ctx.writable.value"
+                    @click="memberToDelete = m"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="members.length === 0">
+              <td colspan="6" class="st-note">还没有成员。先建好权限组，再添加成员。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- 6. 权限组卡片 -->
@@ -725,150 +958,73 @@ onUnmounted(() => {
         </Button>
       </div>
 
-      <table class="st-tbl" data-testid="acl-groups-table">
-        <thead>
-          <tr>
-            <th scope="col">组名称</th>
-            <th scope="col">操作权限</th>
-            <th scope="col">关联任务</th>
-            <th scope="col"><span class="sr-only">操作</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(g, idx) in groups" :key="g.id" :data-testid="`group-row-${g.id}`">
-            <td class="font-bold">
-              <div>{{ g.name }}</div>
-              <div
-                v-for="w in getGroupWarnings(g, idx)"
-                :key="w"
-                class="inline-warn"
-                data-testid="group-inline-warning"
-              >
-                ⚠ {{ w }}
-              </div>
-            </td>
-            <td>
-              <div class="st-tags">
-                <Tag v-if="g.can_run" tone="ok">执行</Tag>
-                <Tag v-if="g.can_stop">停止</Tag>
-                <Tag v-if="g.can_status">状态</Tag>
-                <Tag v-if="g.can_rollback" tone="warn">回滚</Tag>
-              </div>
-            </td>
-            <td>
-              <span class="task-summary">{{ taskNamesOfGroup(g) }}</span>
-            </td>
-            <td>
-              <div class="st-actions">
-                <Button
-                  data-testid="edit-group-btn"
-                  :disabled="ctx.busy.value || !ctx.writable.value"
-                  @click="onEditGroup(g)"
+      <p class="st-note">权限组决定成员能做什么：运行或回滚哪些任务、能否停止、能否查看状态。</p>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="acl-groups-table">
+          <thead>
+            <tr>
+              <th scope="col">组</th>
+              <th scope="col">权限</th>
+              <th scope="col" class="wrap">可操作的任务</th>
+              <th scope="col"><span class="sr-only">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(g, idx) in groups" :key="g.id" :data-testid="`group-row-${g.id}`">
+              <td class="font-bold">
+                <div>{{ g.name }}</div>
+                <div
+                  v-for="w in getGroupWarnings(g, idx)"
+                  :key="w"
+                  class="inline-warn"
+                  data-testid="group-inline-warning"
                 >
-                  编辑
-                </Button>
-                <Button
-                  variant="destructive"
-                  data-testid="delete-group-btn"
-                  :disabled="ctx.busy.value || !ctx.writable.value"
-                  @click="groupToDelete = g"
-                >
-                  删除
-                </Button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="groups.length === 0">
-            <td colspan="4" class="st-note">暂无权限组配置。</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
-    <!-- 7. 组成员卡片 -->
-    <section class="st-section" aria-label="组成员管理" data-testid="acl-members-card">
-      <div class="st-head">
-        <h2>组成员</h2>
-        <Tag>{{ members.length }}</Tag>
-        <span class="st-grow"></span>
-        <Button
-          variant="primary"
-          data-testid="create-member-btn"
-          :disabled="ctx.busy.value || !ctx.writable.value || groups.length === 0"
-          @click="onNewMember"
-        >
-          ＋ 添加成员
-        </Button>
+                  ⚠ {{ w }}
+                </div>
+              </td>
+              <td>
+                <div class="st-tags">
+                  <Tag v-if="g.can_run" tone="ok">执行</Tag>
+                  <Tag v-if="g.can_stop">停止</Tag>
+                  <Tag v-if="g.can_status">状态</Tag>
+                  <Tag v-if="g.can_rollback" tone="warn">回滚</Tag>
+                </div>
+              </td>
+              <td class="wrap">
+                <span class="task-summary">{{ taskNamesOfGroup(g) }}</span>
+              </td>
+              <td>
+                <div class="st-actions">
+                  <Button
+                    data-testid="edit-group-btn"
+                    :disabled="ctx.busy.value || !ctx.writable.value"
+                    @click="onEditGroup(g)"
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    data-testid="delete-group-btn"
+                    :disabled="ctx.busy.value || !ctx.writable.value"
+                    @click="groupToDelete = g"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="groups.length === 0">
+              <td colspan="4" class="st-note">还没有权限组。</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-
-      <table class="st-tbl" data-testid="acl-members-table">
-        <thead>
-          <tr>
-            <th scope="col">备注</th>
-            <th scope="col">所属组</th>
-            <th scope="col">标识</th>
-            <th scope="col">绑定状态</th>
-            <th scope="col"><span class="sr-only">操作</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(m, idx) in members" :key="m.id" :data-testid="`member-row-${m.id}`">
-            <td>
-              <div>{{ m.label || '—' }}</div>
-              <div
-                v-for="w in getMemberWarnings(m, idx)"
-                :key="w"
-                class="inline-warn"
-                data-testid="member-inline-warning"
-              >
-                ⚠ {{ w }}
-              </div>
-            </td>
-            <td>{{ groupNameOfMember(m.group_id) }}</td>
-            <td class="st-mono">
-              <span v-if="m.username">@{{ m.username.replace(/^@/, '') }}</span>
-              <span v-if="m.username && m.chat_id"> / </span>
-              <span v-if="m.chat_id">{{ m.chat_id }}</span>
-            </td>
-            <td>
-              <span v-if="m.username">
-                <Tag :tone="m.user_id ? 'ok' : 'neutral'">
-                  {{ m.user_id ? '已绑定' : '未绑定' }}
-                </Tag>
-              </span>
-              <span v-else class="st-note">—</span>
-            </td>
-            <td>
-              <div class="st-actions">
-                <Button
-                  data-testid="edit-member-btn"
-                  :disabled="ctx.busy.value || !ctx.writable.value"
-                  @click="onEditMember(m)"
-                >
-                  编辑
-                </Button>
-                <Button
-                  variant="destructive"
-                  data-testid="delete-member-btn"
-                  :disabled="ctx.busy.value || !ctx.writable.value"
-                  @click="memberToDelete = m"
-                >
-                  删除
-                </Button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="members.length === 0">
-            <td colspan="5" class="st-note">暂无成员。</td>
-          </tr>
-        </tbody>
-      </table>
     </section>
 
     <!-- 8. 旧白名单卡片 -->
     <section class="st-section" aria-label="旧白名单" data-testid="legacy-whitelist-card">
       <div class="st-head">
-        <h2>旧白名单 (Legacy Whitelist)</h2>
+        <h2>旧版白名单</h2>
         <Tag>{{ legacyWhitelist.length }}</Tag>
         <span class="st-grow"></span>
         <Button
@@ -882,11 +1038,11 @@ onUnmounted(() => {
       </div>
 
       <p class="st-note">
-        旧应用迁移保留的白名单条目，按已决策略仅授予只读 <code>/status</code> 查询权限。
+        从旧应用迁移过来的名单，只能用 <code>/status</code> 查看状态，不能运行任务。
       </p>
 
       <div v-if="!whitelistEditing" class="whitelist-view">
-        <div v-if="legacyWhitelist.length > 0" class="st-tags mt-1" data-testid="whitelist-tags">
+        <div v-if="legacyWhitelist.length > 0" class="st-tags" data-testid="whitelist-tags">
           <div v-for="(item, idx) in legacyWhitelist" :key="item" class="whitelist-item-row">
             <Tag class="st-mono">{{ item }}</Tag>
             <span
@@ -899,10 +1055,10 @@ onUnmounted(() => {
             </span>
           </div>
         </div>
-        <p v-else class="st-note">暂无旧白名单条目。</p>
+        <p v-else class="st-note">没有旧版白名单条目。</p>
       </div>
 
-      <div v-else class="whitelist-editor mt-2">
+      <div v-else class="whitelist-editor">
         <textarea
           v-model="whitelistDraft"
           rows="4"
@@ -939,41 +1095,43 @@ onUnmounted(() => {
         </Button>
       </div>
 
-      <p class="st-note">展示机器人最近接收并处理的指令与回调记录（仅元数据，不记录正文）。</p>
+      <p class="st-note">机器人最近收到并处理的指令和按钮回调。只记录元数据，不记录消息正文。</p>
 
-      <table class="st-tbl" data-testid="activity-table">
-        <thead>
-          <tr>
-            <th scope="col">时间</th>
-            <th scope="col">类型</th>
-            <th scope="col">指令/回调</th>
-            <th scope="col">Chat ID</th>
-            <th scope="col">状态</th>
-            <th scope="col">原因/说明</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(act, idx) in activities" :key="idx" :data-testid="`activity-row-${idx}`">
-            <td class="st-mono text-sub">{{ act.received_at }}</td>
-            <td>{{ act.kind }}</td>
-            <td class="st-mono">{{ act.command || '—' }}</td>
-            <td class="st-mono">{{ act.chat_id || '—' }}</td>
-            <td>
-              <Tag
-                :tone="
-                  act.status === 'handled' ? 'ok' : act.status === 'failed' ? 'warn' : 'neutral'
-                "
-              >
-                {{ act.status }}
-              </Tag>
-            </td>
-            <td>{{ act.reason || '—' }}</td>
-          </tr>
-          <tr v-if="!activities || activities.length === 0">
-            <td colspan="6" class="st-note">暂无活动记录。</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="activity-table">
+          <thead>
+            <tr>
+              <th scope="col">时间</th>
+              <th scope="col">类型</th>
+              <th scope="col">指令/回调</th>
+              <th scope="col">Chat ID</th>
+              <th scope="col">状态</th>
+              <th scope="col" class="wrap">说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(act, idx) in activities" :key="idx" :data-testid="`activity-row-${idx}`">
+              <td class="st-mono text-sub">{{ fmtLocal(act.received_at) }}</td>
+              <td>{{ act.kind }}</td>
+              <td class="st-mono">{{ act.command || '—' }}</td>
+              <td class="st-mono">{{ act.chat_id || '—' }}</td>
+              <td>
+                <Tag
+                  :tone="
+                    act.status === 'handled' ? 'ok' : act.status === 'failed' ? 'warn' : 'neutral'
+                  "
+                >
+                  {{ act.status }}
+                </Tag>
+              </td>
+              <td class="wrap">{{ act.reason || '—' }}</td>
+            </tr>
+            <tr v-if="!activities || activities.length === 0">
+              <td colspan="6" class="st-note">还没有活动记录。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Sheets -->
@@ -981,7 +1139,7 @@ onUnmounted(() => {
       v-model:open="enableSheetOpen"
       :submitting="ctx.busy.value"
       :error="enableError"
-      :webhook-set="webhookSetDetected"
+      :webhook-set="webhookSetDetected || hasWebhook"
       @confirm="onConfirmEnable"
     />
 
@@ -1083,25 +1241,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.control-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.toggle-lbl {
-  font-size: var(--text-body);
-  font-weight: 500;
-}
-.poller-status-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-}
-.row-label {
-  font-size: var(--text-body);
-  color: var(--mute);
-}
 .poller-desc {
   margin-top: 8px;
 }
@@ -1109,9 +1248,6 @@ onUnmounted(() => {
   font-size: var(--text-sub);
   color: var(--mute);
   margin-left: 6px;
-}
-.card-grid {
-  margin-top: 6px;
 }
 .token-inputs {
   display: flex;
@@ -1126,14 +1262,8 @@ onUnmounted(() => {
   margin: 6px 0 0 126px;
   font-size: var(--text-sub);
 }
-.owner-bound-info {
-  margin-top: 6px;
-}
-.owner-unbound-box {
-  margin-top: 6px;
-}
 .bind-code-card {
-  background: var(--bg-settings);
+  background: var(--bg-inspector);
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   padding: 12px 14px;
@@ -1176,37 +1306,6 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   font-weight: 600;
 }
-.notify-switches {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 6px;
-}
-.switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-.switch-row:last-child {
-  border-bottom: 0;
-}
-.switch-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.switch-title {
-  font-weight: 600;
-  font-size: var(--text-body);
-}
-.switch-desc {
-  font-size: var(--text-sub);
-  color: var(--mute);
-  line-height: 1.4;
-}
 .task-summary {
   font-size: var(--text-sub);
   color: var(--ink);
@@ -1223,6 +1322,9 @@ onUnmounted(() => {
 }
 .mt-1 {
   margin-top: 4px;
+}
+.verify-btn {
+  margin-left: 8px;
 }
 .mt-2 {
   margin-top: 8px;

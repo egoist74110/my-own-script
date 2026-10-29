@@ -51,8 +51,8 @@ function onConfirm() {
 <template>
   <Sheet
     :open="open"
-    :title="isSwitchingToToolbox ? '切换到新端 ADO MCP 分析来源' : '切回旧版工单 MCP 来源'"
-    description="工单 AI 分析提示词中的 MCP 工具来源切换步骤说明。"
+    :title="isSwitchingToToolbox ? '工单分析改用新版 ADO 工单 MCP' : '切回旧版工单 MCP 来源'"
+    description="先在各 CLI 里完成注册并自检，再切换；有问题可以随时切回旧版。"
     @update:open="emit('update:open', $event)"
   >
     <div class="source-body" data-testid="mcp-source-sheet">
@@ -65,7 +65,7 @@ function onConfirm() {
         <ol class="steps-list">
           <li>
             <strong>在各 CLI 中完成注册</strong>
-            ：复制 ADO 卡片上的接入片段，在 Claude Code、Codex 或 Antigravity CLI 中完成
+            ：复制 ADO 工单分组里的接入配置，在 Claude Code、Codex 或 Antigravity CLI 中完成
             <code>toolbox_ado</code> 注册。
           </li>
           <li>
@@ -74,12 +74,12 @@ function onConfirm() {
           </li>
           <li>
             <strong>确认勾选注册</strong>
-            ：确认已在使用的各客户端注册新端 MCP 后，方可将分析来源切到新端。
+            ：确认正在使用的各个 CLI 都已注册新版 MCP 后，才能切换。
           </li>
           <li>
             <strong>自动前缀适配</strong>
-            ：切换到新端后，提示词前缀将使用
-            <code>mcp__toolbox_ado__</code> 并去掉新端独有项目警示。
+            ：切换后，分析提示词里的工具前缀会改用
+            <code>mcp__toolbox_ado__</code> ，并去掉新版专有的项目提示。
           </li>
           <li>
             <strong>验证与回退</strong>
@@ -113,9 +113,7 @@ function onConfirm() {
         :disabled="!canSubmit"
         @click="onConfirm"
       >
-        {{
-          submitting ? '切换中…' : isSwitchingToToolbox ? '确认切换为新端 ADO MCP' : '切回旧版来源'
-        }}
+        {{ submitting ? '切换中…' : isSwitchingToToolbox ? '确认改用新版' : '切回旧版' }}
       </Button>
       <Button
         variant="default"
@@ -157,7 +155,7 @@ function onConfirm() {
   color: var(--mute);
 }
 .steps-list strong {
-  color: var(--text);
+  color: var(--ink);
 }
 .check-box {
   padding: 4px 2px;

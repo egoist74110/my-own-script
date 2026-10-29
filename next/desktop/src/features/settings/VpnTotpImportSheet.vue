@@ -227,19 +227,19 @@ function onCancel() {
   gap: 6px;
 }
 .field-label {
-  font-size: var(--text-base);
+  font-size: var(--text-body);
   font-weight: 500;
-  color: var(--fg);
+  color: var(--ink);
 }
 .totp-textarea {
   width: 100%;
   padding: 8px 10px;
-  border-radius: var(--r-ctl, 6px);
+  border-radius: var(--r-ctl);
   border: 1px solid var(--line);
-  background: var(--bg-ctl, #fff);
-  color: var(--fg);
+  background: var(--ctl);
+  color: var(--ink);
   font-family: var(--font-mono, monospace);
-  font-size: var(--text-sub, 12px);
+  font-size: var(--text-sub);
   resize: vertical;
 }
 .totp-textarea:focus {
@@ -252,7 +252,7 @@ function onCancel() {
   gap: 10px;
 }
 .file-chosen-name {
-  font-size: var(--text-sub, 12px);
+  font-size: var(--text-sub);
   color: var(--mute);
 }
 .candidate-box {
@@ -267,7 +267,7 @@ function onCancel() {
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
+  border-radius: var(--r-ctl);
   padding: 8px;
 }
 .candidate-item {
@@ -286,7 +286,7 @@ function onCancel() {
 }
 .candidate-label {
   font-weight: 500;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
 }
 .candidate-issuer {
   font-size: var(--text-sub);

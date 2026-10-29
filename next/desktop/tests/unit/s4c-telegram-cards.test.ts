@@ -611,7 +611,7 @@ describe('S4-C 设置页 Telegram 分区卡片单测', () => {
     await flushPromises()
 
     expect(b.wrapper.find('[data-testid="bind-code-display"]').text()).toBe('123456')
-    expect(b.wrapper.find('[data-testid="bind-code-countdown"]').text()).toContain('有效时间：')
+    expect(b.wrapper.find('[data-testid="bind-code-countdown"]').text()).toContain('剩余')
 
     // 模拟通过 WS 收到 owner 绑定成功并刷新为 bound
     fake.state.telegram.owner.bound = true
@@ -626,7 +626,7 @@ describe('S4-C 设置页 Telegram 分区卡片单测', () => {
     await flushPromises()
 
     expect(b.wrapper.find('[data-testid="owner-chat-id"]').text()).toBe('99999')
-    expect(b.wrapper.find('[data-testid="owner-source"]').text()).toBe('绑定码绑定')
+    expect(b.wrapper.find('[data-testid="owner-source"]').text()).toBe('用绑定码绑定')
 
     // 点击解绑
     await b.wrapper.find('button[data-testid="unbind-owner-btn"]').trigger('click')
@@ -657,7 +657,7 @@ describe('S4-C 设置页 Telegram 分区卡片单测', () => {
     const testBtn = b.wrapper.find('button[data-testid="send-test-message-btn"]')
     expect(testBtn.attributes('disabled')).toBeDefined()
     expect(b.wrapper.find('[data-testid="test-message-hint"]').text()).toContain(
-      '需先启用 Telegram 长轮询并绑定所有者',
+      '需要先打开「用 Telegram 控制任务」并绑定所有者',
     )
 
     // 切换通知开关

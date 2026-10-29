@@ -225,151 +225,187 @@ async function onSaveSettings() {
 </script>
 
 <template>
-  <section class="st-section" aria-label="cloudflared" data-testid="cloudflared-card">
-    <div class="st-head">
-      <div class="title-row">
-        <h2>Cloudflare 隧道 (cloudflared)</h2>
-        <StatusPill
-          :state="globalPillState"
-          :label="globalPillLabel"
-          data-testid="global-tunnel-status-pill"
-        />
-        <Tag v-if="bin?.version" data-testid="cloudflared-version-tag">
-          {{ bin.version }}
-        </Tag>
-      </div>
+  <div class="cf-wrap" data-testid="cloudflared-card">
+    <section class="st-section" aria-label="cloudflared">
+      <div class="st-head">
+        <div class="title-row">
+          <h2>Cloudflare 隧道</h2>
+          <StatusPill
+            :state="globalPillState"
+            :label="globalPillLabel"
+            data-testid="global-tunnel-status-pill"
+          />
+          <Tag v-if="bin?.version" data-testid="cloudflared-version-tag">
+            {{ bin.version }}
+          </Tag>
+        </div>
 
-      <div class="st-grow"></div>
+        <div class="st-grow"></div>
 
-      <!-- 全局隧道启停按钮 -->
-      <div class="control-actions">
-        <template v-if="isGlobalRunning">
-          <Button
-            variant="default"
-            data-testid="global-tunnel-stop-btn"
-            :disabled="isGlobalStopping || busy || !writable"
-            @click="onStopGlobal"
-          >
-            {{ isGlobalStopping ? '停止中…' : '停止全局隧道' }}
-          </Button>
-        </template>
-        <template v-else>
-          <Button
-            variant="primary"
-            data-testid="global-tunnel-start-btn"
-            :disabled="isGlobalStarting || busy || !writable"
-            @click="onStartGlobal"
-          >
-            {{ isGlobalStarting ? '启动中…' : '启动全局隧道' }}
-          </Button>
-        </template>
-      </div>
-    </div>
-
-    <!-- 协议变更提示（不自动重启） -->
-    <Banner
-      v-if="services.protocolNotice.value"
-      kind="warn"
-      class="mb-3"
-      data-testid="protocol-restart-banner"
-    >
-      {{ services.protocolNotice.value }}
-    </Banner>
-
-    <!-- 二进制缺失提示 -->
-    <Banner
-      v-if="bin && !bin.found"
-      kind="warn"
-      class="mb-3"
-      data-testid="cloudflared-binary-missing-banner"
-    >
-      未找到服务二进制执行文件，请检查安装路径
-    </Banner>
-
-    <!-- 错误反馈 -->
-    <Banner
-      v-if="services.globalTunnelError.value"
-      kind="error"
-      class="mb-3"
-      data-testid="global-tunnel-error-banner"
-    >
-      {{ services.globalTunnelError.value }}
-    </Banner>
-    <Banner
-      v-if="services.protocolError.value"
-      kind="error"
-      class="mb-3"
-      data-testid="protocol-error-banner"
-    >
-      {{ services.protocolError.value }}
-    </Banner>
-
-    <!-- 全局隧道信息卡片 -->
-    <div class="st-card">
-      <div class="card-subtitle">全局 Quick 隧道（固定指向 code-server 端口）</div>
-      <div class="st-row">
-        <div class="st-field grow">
-          <span class="st-label">公网临时域名</span>
-          <div class="url-display">
-            <span v-if="globalTunnel?.url" class="st-val st-mono" data-testid="global-tunnel-url">
-              {{ globalTunnel.url }}
-            </span>
-            <span v-else class="st-val st-mute" data-testid="global-tunnel-url-empty">
-              未运行或正在生成域名
-            </span>
+        <!-- 全局隧道启停按钮 -->
+        <div class="control-actions">
+          <template v-if="isGlobalRunning">
             <Button
-              v-if="globalTunnel?.url"
-              size="sm"
-              data-testid="copy-global-tunnel-url-btn"
-              class="ml-2"
-              @click="onCopyGlobalUrl"
+              variant="default"
+              data-testid="global-tunnel-stop-btn"
+              :disabled="isGlobalStopping || busy || !writable"
+              @click="onStopGlobal"
             >
-              {{ globalUrlCopied ? '已复制' : '复制域名' }}
+              {{ isGlobalStopping ? '停止中…' : '停止全局隧道' }}
             </Button>
-          </div>
+          </template>
+          <template v-else>
+            <Button
+              variant="primary"
+              data-testid="global-tunnel-start-btn"
+              :disabled="isGlobalStarting || busy || !writable"
+              @click="onStartGlobal"
+            >
+              {{ isGlobalStarting ? '启动中…' : '启动全局隧道' }}
+            </Button>
+          </template>
         </div>
       </div>
 
-      <!-- 协议偏好设置 -->
-      <div class="st-row border-top">
-        <div class="st-field grow">
-          <div class="protocol-row">
-            <div>
-              <span class="st-label">隧道传输协议</span>
-              <div class="protocol-controls">
-                <SegmentedControl
-                  :model-value="currentProtocol"
-                  :items="protocolOptions"
-                  label="隧道协议"
-                  class="protocol-seg"
-                  data-testid="protocol-segmented-control"
-                  :disabled="services.protocolUpdating.value || !writable"
-                  @update:model-value="onProtocolChange"
-                />
-                <Button
-                  size="sm"
-                  data-testid="open-import-pref-btn"
-                  :disabled="services.legacyImporting.value || !writable"
-                  @click="onOpenImportSheet"
-                >
-                  从旧应用导入协议偏好
-                </Button>
-              </div>
-            </div>
+      <!-- 协议变更提示（不自动重启） -->
+      <Banner
+        v-if="services.protocolNotice.value"
+        kind="warn"
+        class="mb-3"
+        data-testid="protocol-restart-banner"
+      >
+        {{ services.protocolNotice.value }}
+      </Banner>
+
+      <!-- 二进制缺失提示 -->
+      <Banner
+        v-if="bin && !bin.found"
+        kind="warn"
+        class="mb-3"
+        data-testid="cloudflared-binary-missing-banner"
+      >
+        没有找到 cloudflared 程序。请在下方「高级设置」里指定路径，或先安装它。
+      </Banner>
+
+      <!-- 错误反馈 -->
+      <Banner
+        v-if="services.globalTunnelError.value"
+        kind="error"
+        class="mb-3"
+        data-testid="global-tunnel-error-banner"
+      >
+        {{ services.globalTunnelError.value }}
+      </Banner>
+      <Banner
+        v-if="services.protocolError.value"
+        kind="error"
+        class="mb-3"
+        data-testid="protocol-error-banner"
+      >
+        {{ services.protocolError.value }}
+      </Banner>
+
+      <p class="st-note">全局隧道固定指向 code-server 的端口，每次启动会换一个临时域名。</p>
+
+      <!-- 全局隧道信息 -->
+      <dl class="st-kv">
+        <dt>公网临时域名</dt>
+        <dd>
+          <span v-if="globalTunnel?.url" class="st-mono" data-testid="global-tunnel-url">
+            {{ globalTunnel.url }}
+          </span>
+          <span v-else data-testid="global-tunnel-url-empty">未运行或正在生成域名</span>
+          <Button
+            v-if="globalTunnel?.url"
+            size="sm"
+            data-testid="copy-global-tunnel-url-btn"
+            @click="onCopyGlobalUrl"
+          >
+            {{ globalUrlCopied ? '已复制' : '复制域名' }}
+          </Button>
+        </dd>
+        <dt>传输协议</dt>
+        <dd>
+          <SegmentedControl
+            :model-value="currentProtocol"
+            :items="protocolOptions"
+            label="隧道协议"
+            class="protocol-seg"
+            data-testid="protocol-segmented-control"
+            :disabled="services.protocolUpdating.value || !writable"
+            @update:model-value="onProtocolChange"
+          />
+          <Button
+            size="sm"
+            data-testid="open-import-pref-btn"
+            :disabled="services.legacyImporting.value || !writable"
+            @click="onOpenImportSheet"
+          >
+            从旧应用导入协议偏好
+          </Button>
+        </dd>
+      </dl>
+
+      <!-- 高级配置折叠 / 展开 -->
+      <details class="st-details" data-testid="cloudflared-settings-details">
+        <summary class="st-summary">高级设置：最大隧道数与程序路径</summary>
+        <div class="st-settings-form">
+          <div class="form-row">
+            <label class="form-label" for="cf-max-tunnels">最大允许自定义隧道数</label>
+            <TextField
+              id="cf-max-tunnels"
+              v-model="editMaxTunnels"
+              label="最大允许自定义隧道数"
+              class="input-sm"
+              data-testid="cf-max-tunnels-input"
+              :disabled="settingsSubmitting || !writable || isGlobalRunning"
+            />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label" for="cf-bin-path">指定 cloudflared 路径</label>
+            <TextField
+              id="cf-bin-path"
+              v-model="editBinaryPath"
+              label="指定 cloudflared 路径"
+              placeholder="留空自动检测"
+              class="input-lg"
+              data-testid="cf-bin-input"
+              :disabled="settingsSubmitting || !writable || isGlobalRunning"
+            />
+          </div>
+
+          <Banner v-if="services.settingsError.value" kind="error" class="mb-2">
+            {{ services.settingsError.value }}
+          </Banner>
+          <Banner v-if="settingsSuccess" kind="info" class="mb-2">
+            {{ settingsSuccess }}
+          </Banner>
+
+          <div class="form-actions">
+            <Button
+              size="sm"
+              variant="default"
+              data-testid="save-cloudflared-settings-btn"
+              :disabled="settingsSubmitting || !writable || isGlobalRunning"
+              @click="onSaveSettings"
+            >
+              {{ settingsSubmitting ? '保存中…' : '保存设置' }}
+            </Button>
+            <span v-if="isGlobalRunning" class="running-hint">
+              服务运行中不可更改配置，请先停止服务
+            </span>
           </div>
         </div>
-      </div>
-    </div>
+      </details>
+    </section>
 
     <!-- 自定义隧道管理区 -->
-    <div class="custom-tunnels-section">
-      <div class="section-head">
-        <div>
-          <h3>自定义 Quick 隧道</h3>
-          <span class="count-sub">
-            （{{ tunnels.length }} / {{ settings?.max_tunnels ?? 5 }}）
-          </span>
-        </div>
+    <section class="st-section" aria-label="自定义隧道">
+      <div class="st-head">
+        <h2>自定义隧道</h2>
+        <Tag>{{ tunnels.length }} / {{ settings?.max_tunnels ?? 5 }}</Tag>
+        <div class="st-grow"></div>
         <Button
           size="sm"
           variant="default"
@@ -442,100 +478,28 @@ async function onSaveSettings() {
 
       <!-- 空状态 -->
       <div v-else class="tunnels-empty" data-testid="custom-tunnels-empty">
-        暂无自定义隧道，点击上方按钮可添加暴露回环端口的临时 Quick 隧道。
+        还没有自定义隧道。点「添加自定义隧道」，可把本机某个端口临时暴露到公网。
       </div>
-    </div>
-
-    <!-- 高级配置折叠 / 展开 -->
-    <details class="st-details" data-testid="cloudflared-settings-details">
-      <summary class="st-summary">配置项（最大隧道数 & 二进制路径确认）</summary>
-      <div class="st-settings-form">
-        <div class="form-row">
-          <label class="form-label" for="cf-max-tunnels">最大允许自定义隧道数</label>
-          <TextField
-            id="cf-max-tunnels"
-            v-model="editMaxTunnels"
-            label="最大允许自定义隧道数"
-            class="input-sm"
-            data-testid="cf-max-tunnels-input"
-            :disabled="settingsSubmitting || !writable || isGlobalRunning"
-          />
-        </div>
-
-        <div class="form-row">
-          <label class="form-label" for="cf-bin-path">指定 cloudflared 路径</label>
-          <TextField
-            id="cf-bin-path"
-            v-model="editBinaryPath"
-            label="指定 cloudflared 路径"
-            placeholder="留空自动检测"
-            class="input-lg"
-            data-testid="cf-bin-input"
-            :disabled="settingsSubmitting || !writable || isGlobalRunning"
-          />
-        </div>
-
-        <Banner v-if="services.settingsError.value" kind="error" class="mb-2">
-          {{ services.settingsError.value }}
-        </Banner>
-        <Banner v-if="settingsSuccess" kind="info" class="mb-2">
-          {{ settingsSuccess }}
-        </Banner>
-
-        <div class="form-actions">
-          <Button
-            size="sm"
-            variant="default"
-            data-testid="save-cloudflared-settings-btn"
-            :disabled="settingsSubmitting || !writable || isGlobalRunning"
-            @click="onSaveSettings"
-          >
-            {{ settingsSubmitting ? '保存中…' : '保存设置' }}
-          </Button>
-          <span v-if="isGlobalRunning" class="running-hint">
-            服务运行中不可更改配置，请先停止服务
-          </span>
-        </div>
-      </div>
-    </details>
+    </section>
 
     <!-- 添加自定义隧道 Sheet -->
     <CloudflaredTunnelSheet v-model:open="tunnelSheetOpen" />
 
     <!-- 导入协议偏好 Sheet -->
     <CloudflaredImportSheet v-model:open="importSheetOpen" />
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.st-section {
+.cf-wrap {
   display: flex;
   flex-direction: column;
-  background: var(--bg-window);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-group);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.st-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 22px;
 }
 .title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-h2 {
-  margin: 0;
-  font-size: var(--text-section);
-  font-weight: 600;
-  color: var(--fg);
-}
-.st-grow {
-  flex: 1;
 }
 .control-actions {
   display: flex;
@@ -551,100 +515,26 @@ h2 {
 .ml-2 {
   margin-left: 8px;
 }
-.st-card {
-  background: var(--bg-sub);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 12px 14px;
-}
-.card-subtitle {
-  font-size: var(--text-sub);
-  color: var(--mute);
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-.st-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.border-top {
-  border-top: 1px solid var(--line);
-  margin-top: 10px;
-  padding-top: 10px;
-}
-.st-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.st-field.grow {
-  flex: 1;
-  min-width: 0;
-}
-.st-label {
-  font-size: var(--text-sub);
-  color: var(--mute);
-}
-.st-val {
-  font-size: var(--text-base);
-  color: var(--fg);
-}
 .st-mute {
   color: var(--mute);
-}
-.url-display {
-  display: flex;
-  align-items: center;
-}
-.protocol-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.protocol-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 4px;
 }
 .protocol-seg {
   max-width: 200px;
 }
-.custom-tunnels-section {
-  margin-top: 16px;
-}
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.section-head h3 {
-  display: inline;
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--fg);
-}
-.count-sub {
-  font-size: var(--text-sub);
-  color: var(--mute);
-}
 .tunnels-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .tunnel-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  background: var(--bg-sub);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
   gap: 12px;
+}
+.tunnel-item + .tunnel-item {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 .tunnel-info {
   display: flex;
@@ -664,20 +554,20 @@ h2 {
 .target-badge {
   font-size: 11px;
   font-weight: 500;
-  background: var(--bg-hover);
+  background: var(--hover);
   padding: 1px 6px;
   border-radius: 4px;
   color: var(--mute);
 }
 .tunnel-target {
   font-weight: 600;
-  color: var(--fg);
+  color: var(--ink);
 }
 .domain-label {
   color: var(--mute);
 }
 .tunnel-url {
-  color: var(--fg);
+  color: var(--ink);
 }
 .copy-btn-sm {
   height: 20px;
@@ -685,23 +575,15 @@ h2 {
   font-size: 11px;
 }
 .tunnels-empty {
-  padding: 16px;
-  text-align: center;
   color: var(--mute);
-  font-size: var(--text-sub);
-  background: var(--bg-sub);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius-sm);
+  font-size: var(--text-body);
 }
 .st-details {
-  margin-top: 16px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
 }
 .st-summary {
   cursor: pointer;
-  color: var(--mute);
-  font-size: var(--text-sub);
+  color: var(--ink);
+  font-size: var(--text-body);
   user-select: none;
 }
 .st-settings-form {

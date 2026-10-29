@@ -1,15 +1,32 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
+import { Ban, Check, CircleHelp, Clock, Loader, Minus, Square, X } from 'lucide-vue-next'
 import { PILL_LABEL, type PillState } from './pill'
 
-/** 运行状态胶囊（八态）：颜色只作底与圆点，文字始终是文案。 */
+/** 运行状态标签（八态）：19px 高、图标 + 文字，任何宽度不折行；颜色只作底，不单靠颜色表达状态。 */
 const props = defineProps<{ state: PillState; label?: string }>()
 const text = computed(() => props.label || PILL_LABEL[props.state])
+const ICONS: Record<PillState, Component> = {
+  queued: Clock,
+  running: Loader,
+  stopping: Square,
+  success: Check,
+  failed: X,
+  cancelled: Ban,
+  verify: CircleHelp,
+  disabled: Minus,
+}
 </script>
 
 <template>
   <span class="pill" :data-state="state"
-    ><span class="dot" aria-hidden="true"></span><slot>{{ text }}</slot></span
+    ><component
+      :is="ICONS[state]"
+      class="dot"
+      :size="11"
+      :stroke-width="2.4"
+      aria-hidden="true"
+    /><slot>{{ text }}</slot></span
   >
 </template>
 
@@ -17,21 +34,19 @@ const text = computed(() => props.label || PILL_LABEL[props.state])
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 11.5px;
+  flex: none;
+  gap: 4px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   background: var(--pill-bg);
   color: var(--pill-fg);
 }
 .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--pill-dot);
+  flex: none;
 }
 .pill[data-state='running'] .dot {
   animation: pulse 1.6s ease-out infinite;

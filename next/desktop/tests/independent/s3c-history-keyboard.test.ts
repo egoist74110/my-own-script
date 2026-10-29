@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { components } from '@/api/schema'
 import RunHistory from '@/features/tasks/RunHistory.vue'
 import { formatDateTime } from '@/features/tasks/api'
-import { boot } from '../unit/boot'
+import { boot, pickCommand } from '../unit/boot'
 import { FakeSocket, hello, resetSeq } from '../unit/helpers'
 
 type S = components['schemas']
@@ -287,8 +287,7 @@ describe('S3-C 独立历史与键盘交互', () => {
     const b = await boot({ path: '/tasks', fetchImpl })
     b.sock.emit(hello())
     await flushPromises()
-    await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-    await flushPromises()
+    await pickCommand(b, task.id)
     let sheet = document.querySelector('[data-testid="sheet"]') as HTMLElement
     expect(sheet.contains(document.activeElement)).toBe(true)
     window.dispatchEvent(
@@ -297,17 +296,10 @@ describe('S3-C 独立历史与键盘交互', () => {
     await flushPromises()
     expect(document.querySelector('[data-testid="sheet"]')).toBeNull()
     expect(starts).toBe(0)
-    await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-    await flushPromises()
+    await pickCommand(b, task.id)
     sheet = document.querySelector('[data-testid="sheet"]') as HTMLElement
-    const checkbox = document.querySelector(
-      '[data-testid="ack-old-app-idle-checkbox"]',
-    ) as HTMLInputElement
     expect(sheet.contains(document.activeElement)).toBe(true)
-    checkbox.checked = true
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-    await flushPromises()
-    // 原生 checkbox/button 参与焦点序列，Tab 前进后再 Shift+Tab 回到确认按钮。
+    // 原生 button 参与焦点序列，Tab 前进后再 Shift+Tab 回到确认按钮。
     const actionButtons = [...sheet.querySelectorAll('button:not(:disabled)')]
     const confirm = document.querySelector('[data-testid="confirm-start-btn"]') as HTMLButtonElement
     expect(actionButtons).toContain(confirm)

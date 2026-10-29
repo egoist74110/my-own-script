@@ -9,6 +9,19 @@ export type TaskResponse = components['schemas']['TaskResponse']
 export type TaskCreate = components['schemas']['TaskCreate']
 export type TaskPatch = components['schemas']['TaskPatch']
 export type TaskOrder = components['schemas']['TaskOrder']
+export type ReleaseView = components['schemas']['ReleaseView']
+export type ReleaseListResponse = components['schemas']['ReleaseListResponse']
+export type ReleaseResponse = components['schemas']['ReleaseResponse']
+export type ReleaseCreate = components['schemas']['ReleaseCreate']
+export type ReleasePatch = components['schemas']['ReleasePatch']
+export type ReleaseTarget = components['schemas']['ReleaseTarget']
+export type ReleaseTargetInput = components['schemas']['ReleaseTargetInput']
+export type ReleaseBranch = components['schemas']['ReleaseBranch']
+export type ReleaseBranchInput = components['schemas']['ReleaseBranchInput']
+export type CommandView = components['schemas']['CommandView']
+export type CommandCreate = components['schemas']['CommandCreate']
+export type CommandPatch = components['schemas']['CommandPatch']
+export type LastRunSummary = components['schemas']['LastRunSummary']
 export type FlowInput = components['schemas']['FlowInput']
 export type TargetInput = components['schemas']['TargetInput']
 export type PlanResponse = components['schemas']['PlanResponse']
@@ -116,6 +129,48 @@ export const RUN_REASON_MESSAGES: Record<string, string> = {
 export function formatRunReason(reasonCode?: string | null): string {
   if (!reasonCode) return ''
   return RUN_REASON_MESSAGES[reasonCode] ?? reasonCode
+}
+
+/**
+ * 发布配置与运行命令的错误文案：写清楚出了什么事、接下来怎么办。
+ * 校验失败时后端的 message 是具体原因（如“目标仍被运行命令引用”），翻成“怎么办”；认不出的原样展示。
+ */
+export const RELEASE_ERROR_MESSAGES: Record<string, string> = {
+  revision_conflict: '这份配置刚刚被修改过，已重新读取最新内容。请核对后再保存一次。',
+  task_active: '这里有命令正在运行。等运行结束或先停止它，再重试。',
+  task_referenced: '有命令被 Telegram 权限组引用，不能直接删除。',
+  resource_active: '配置用到的仓库或发布资源正被占用。稍后再试。',
+  not_found: '配置或命令已不存在。列表已刷新，请重新选择。',
+  target_in_use: '这个发布目标仍被运行命令使用，不能删除。请先在对应命令里取消勾选它。',
+  branch_in_use: '这个分支仍被运行命令使用，不能删除。请先把这些命令改用别的分支。',
+}
+
+function releaseValidationHint(message: string): string {
+  // 旧版后端把引用保护当成 validation_error 返回，按文本兜底；新版走 target_in_use / branch_in_use 错误码
+  if (message.includes('目标仍被运行命令引用')) return RELEASE_ERROR_MESSAGES.target_in_use!
+  if (message.includes('分支仍被运行命令引用')) return RELEASE_ERROR_MESSAGES.branch_in_use!
+  if (message.includes('所选分支必须属于本配置'))
+    return '命令里选的分支已不在这个配置里。请重新选择分支。'
+  if (message.includes('所选目标必须属于本配置'))
+    return '命令里选的目标已不在这个配置里，或重复选择。请重新勾选目标。'
+  if (message.includes('TG 指令已存在')) return '这个 TG 命令已被别的命令使用。请换一个名字。'
+  if (message.includes('项目不存在')) return '找不到所选的 ADO 项目。请先在设置里同步项目。'
+  if (!message || message === '任务配置无效') return TASK_ERROR_MESSAGES.validation_error!
+  return message
+}
+
+export function releaseErrorText(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === 'validation_error') return releaseValidationHint(err.message)
+    if (err.code === 'target_in_use' || err.code === 'branch_in_use')
+      return RELEASE_ERROR_MESSAGES[err.code]!
+    return RELEASE_ERROR_MESSAGES[err.code] ?? errorText(err)
+  }
+  return errorText(err)
+}
+
+export function isRevisionConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'revision_conflict'
 }
 
 export function errorText(err: unknown): string {
@@ -235,4 +290,79 @@ export function formatRepoShort(repoName?: string | null, localRepoPath?: string
   const normalized = localRepoPath.replace(/[/\\]+$/, '')
   const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
   return lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized
+}
+
+/** 配置下最近一次运行（按创建时间取各命令 last_run 里最新的一条）。 */
+export function configLastRun(
+  cfg: Pick<ReleaseView, 'commands'>,
+): (LastRunSummary & { command: CommandView }) | null {
+  let best: (LastRunSummary & { command: CommandView }) | null = null
+  for (const c of cfg.commands) {
+    const r = c.last_run
+    if (!r) continue
+    if (!best || r.created_at > best.created_at) best = { ...r, command: c }
+  }
+  return best
+}
+
+/** 配置下正在运行的命令（若有多条，取第一条）。 */
+export function configActiveCommand(cfg: Pick<ReleaseView, 'commands'>): CommandView | null {
+  return cfg.commands.find((c) => Boolean(c.active_run_id)) ?? null
+}
+
+/** 配置列表项的状态标签：有运行中的命令显示运行中，否则取最近一次运行的结果。 */
+export function resolveConfigPillState(
+  cfg: Pick<ReleaseView, 'commands'>,
+  isSelected: boolean,
+  liveStatus: RunStatus | null,
+): PillState | null {
+  const active = configActiveCommand(cfg)
+  const last = configLastRun(cfg)
+  const fallback: RunStatus | null = active ? 'running' : (last?.status ?? null)
+  const status = isSelected ? (liveStatus ?? fallback) : fallback
+  if (!status) return null
+  return mapStatusToPill(true, status)
+}
+
+/** 命令选中的目标名（按命令里的顺序）；找不到的目标跳过。 */
+export function commandTargetNames(
+  cfg: Pick<ReleaseView, 'targets'>,
+  cmd: Pick<CommandView, 'target_ids'>,
+): string[] {
+  const byId = new Map((cfg.targets ?? []).map((t) => [t.id, t.name]))
+  return (cmd.target_ids ?? []).map((id) => byId.get(id)).filter((n): n is string => Boolean(n))
+}
+
+/** 命令用的分支：没选返回 null；选了但配置里已经没有这个分支也返回 null（用 commandBranchIssue 区分）。 */
+export function commandBranch(
+  cfg: Pick<ReleaseView, 'branches'>,
+  cmd: Pick<CommandView, 'branch_id'>,
+): ReleaseBranch | null {
+  if (!cmd.branch_id) return null
+  return (cfg.branches ?? []).find((b) => b.id === cmd.branch_id) ?? null
+}
+
+/** 命令的分支有什么问题：没选 / 已不存在；没问题返回 null。 */
+export function commandBranchIssue(
+  cfg: Pick<ReleaseView, 'branches'>,
+  cmd: Pick<CommandView, 'branch_id'>,
+): 'none' | 'missing' | null {
+  if (!cmd.branch_id) return 'none'
+  return commandBranch(cfg, cmd) ? null : 'missing'
+}
+
+/** 命令一句话概述：“main 分支，发布 管理、租户”；分支有问题时如实写出。 */
+export function commandRouteText(
+  cfg: Pick<ReleaseView, 'branches' | 'targets'>,
+  cmd: Pick<CommandView, 'branch_id' | 'target_ids'>,
+): string {
+  const issue = commandBranchIssue(cfg, cmd)
+  const branch =
+    issue === 'none'
+      ? '未选分支'
+      : issue === 'missing'
+        ? '分支已不存在'
+        : `${commandBranch(cfg, cmd)!.build_branch} 分支`
+  const names = commandTargetNames(cfg, cmd)
+  return `${branch}，${names.length ? `发布 ${names.join('、')}` : '未选发布目标'}`
 }

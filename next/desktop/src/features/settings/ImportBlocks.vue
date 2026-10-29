@@ -58,22 +58,26 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
       <p v-if="data.source_dir" class="st-mono" data-testid="import-source-dir">
         {{ text(data.source_dir) }}
       </p>
-      <table v-if="files.length" class="st-tbl">
-        <thead>
-          <tr>
-            <th scope="col">文件</th>
-            <th scope="col">状态</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="f in files" :key="text(f.name)">
-            <td class="st-mono">{{ text(f.name) }}</td>
-            <td :class="{ 'st-warn': f.state === 'error' }">
-              {{ FILE_STATE[text(f.state)] ?? text(f.state) }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="files.length" class="st-tw">
+        <div class="st-tw">
+          <table class="st-tbl">
+            <thead>
+              <tr>
+                <th scope="col">文件</th>
+                <th scope="col">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="f in files" :key="text(f.name)">
+                <td class="st-mono">{{ text(f.name) }}</td>
+                <td :class="{ 'st-warn': f.state === 'error' }">
+                  {{ FILE_STATE[text(f.state)] ?? text(f.state) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section class="st-section" aria-label="将导入的 libraries">
@@ -81,27 +85,31 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
         <h2>Libraries</h2>
         <Tag>{{ libraries.length }}</Tag>
       </div>
-      <table v-if="libraries.length" class="st-tbl" data-testid="import-libraries">
-        <thead>
-          <tr>
-            <th scope="col">名称</th>
-            <th scope="col">地址</th>
-            <th scope="col">旧 Keychain 中的 PAT</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="l in libraries" :key="text(l.id)">
-            <td>{{ text(l.name) }}</td>
-            <td class="st-mono">
-              {{ text(l.base_url) }}
-              <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
-            </td>
-            <td :class="{ 'st-warn': l.pat_status === 'unreadable' }">
-              {{ PAT_STATE[text(l.pat_status)] ?? (l.pat_status ? text(l.pat_status) : '—') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="libraries.length" class="st-tw">
+        <div class="st-tw">
+          <table class="st-tbl" data-testid="import-libraries">
+            <thead>
+              <tr>
+                <th scope="col">名称</th>
+                <th scope="col">地址</th>
+                <th scope="col">旧 Keychain 中的 PAT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="l in libraries" :key="text(l.id)">
+                <td>{{ text(l.name) }}</td>
+                <td class="st-mono">
+                  {{ text(l.base_url) }}
+                  <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
+                </td>
+                <td :class="{ 'st-warn': l.pat_status === 'unreadable' }">
+                  {{ PAT_STATE[text(l.pat_status)] ?? (l.pat_status ? text(l.pat_status) : '—') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
       <p v-else class="st-note">无</p>
     </section>
 
@@ -110,35 +118,39 @@ const isHttp = (u: unknown) => typeof u === 'string' && u.startsWith('http:')
         <h2>Projects</h2>
         <Tag>{{ projects.length }}</Tag>
       </div>
-      <table v-if="projects.length" class="st-tbl" data-testid="import-projects">
-        <thead>
-          <tr>
-            <th scope="col">Library</th>
-            <th scope="col">Collection</th>
-            <th scope="col">Project</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in projects" :key="text(p.id)">
-            <td>{{ libName(p.library_id) }}</td>
-            <td class="st-mono">{{ text(p.collection) }}</td>
-            <td class="st-mono">{{ text(p.project) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="projects.length" class="st-tw">
+        <div class="st-tw">
+          <table class="st-tbl" data-testid="import-projects">
+            <thead>
+              <tr>
+                <th scope="col">Library</th>
+                <th scope="col">Collection</th>
+                <th scope="col">Project</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in projects" :key="text(p.id)">
+                <td>{{ libName(p.library_id) }}</td>
+                <td class="st-mono">{{ text(p.collection) }}</td>
+                <td class="st-mono">{{ text(p.project) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
       <p v-else class="st-note">无</p>
     </section>
 
     <section class="st-section" aria-label="任务与保留段">
       <div class="st-head"><h2>任务</h2></div>
       <dl class="st-kv">
-        <dt class="lbl">规则</dt>
+        <dt>规则</dt>
         <dd data-testid="import-tasks-rule">
           {{ RULE[text(data.tasks_rule)] ?? text(data.tasks_rule) }}
         </dd>
-        <dt class="lbl">任务数</dt>
+        <dt>任务数</dt>
         <dd data-testid="import-task-count">{{ text(data.task_count) }}</dd>
-        <dt class="lbl">原样保留</dt>
+        <dt>原样保留</dt>
         <dd>
           <span class="st-tags">
             <Tag v-for="s in preserved" :key="s">{{ s }}</Tag>

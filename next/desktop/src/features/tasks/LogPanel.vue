@@ -2,6 +2,8 @@
 import { nextTick, ref, watch } from 'vue'
 import ToolbarButton from '@/components/ToolbarButton.vue'
 import { Copy, Check } from 'lucide-vue-next'
+import type { RunStatus } from './api'
+import { isRunActive } from './route'
 import type { LogLine } from './useRunLogs'
 
 const props = defineProps<{
@@ -9,6 +11,8 @@ const props = defineProps<{
   totalLineCount?: number
   loading?: boolean
   warning?: string | null
+  /** 运行状态：决定空日志时写什么（等待中 / 没有记录）。 */
+  runStatus?: RunStatus | null
 }>()
 
 const logContainer = ref<HTMLElement | null>(null)
@@ -42,7 +46,9 @@ async function copyLogs() {
 <template>
   <div class="log-panel" aria-label="实时日志">
     <div class="log-toolbar">
-      <span class="log-meta mono">共 {{ totalLineCount ?? lines.length }} 行日志</span>
+      <span v-if="(totalLineCount ?? lines.length) > 0" class="log-meta mono"
+        >共 {{ totalLineCount ?? lines.length }} 行日志</span
+      >
       <span v-if="warning" class="log-warning" data-testid="log-gap-warning">{{ warning }}</span>
       <ToolbarButton
         :label="copied ? '已复制' : '复制日志'"
@@ -56,7 +62,16 @@ async function copyLogs() {
     </div>
     <div ref="logContainer" class="log-content mono" data-testid="log-content">
       <div v-if="loading && lines.length === 0" class="log-placeholder">正在读取日志…</div>
-      <div v-else-if="lines.length === 0" class="log-placeholder">暂无日志输出</div>
+      <div
+        v-else-if="lines.length === 0"
+        class="log-placeholder"
+        data-testid="log-empty"
+        :data-state="!runStatus ? 'unknown' : isRunActive(runStatus) ? 'waiting' : 'none'"
+      >
+        <template v-if="!runStatus">暂无日志输出</template>
+        <template v-else-if="isRunActive(runStatus)">正在等待执行器输出…</template>
+        <template v-else>这次运行没有记录日志。可以看上方的步骤详情了解每一步的结果。</template>
+      </div>
       <div v-for="l in lines" :key="l.seq" class="log-line">
         <span class="log-seq">{{ l.seq }}</span>
         <span class="log-text">{{ l.text }}</span>

@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { components } from '@/api/schema'
 import RunCard from '@/features/tasks/RunCard.vue'
-import { boot } from '../unit/boot'
+import { boot, pickCommand } from '../unit/boot'
 import { FakeSocket, hello, resetSeq } from '../unit/helpers'
 import { createWiFake, wiErr } from '../unit/wi-fake'
 import { openWi, settle } from '../unit/wi-helpers'
@@ -127,17 +127,7 @@ describe('S3-C 独立补充路径', () => {
       const b = await boot({ path: '/tasks', fetchImpl })
       b.sock.emit(hello())
       await flushPromises()
-      await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-      await flushPromises()
-      const acknowledge = () => {
-        const checkbox = document.querySelector(
-          '[data-testid="ack-old-app-idle-checkbox"]',
-        ) as HTMLInputElement
-        checkbox.checked = true
-        checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-      }
-      acknowledge()
-      await flushPromises()
+      await pickCommand(b, task.id)
       const firstButton = document.querySelector(
         '[data-testid="confirm-start-btn"]',
       ) as HTMLButtonElement
@@ -150,9 +140,7 @@ describe('S3-C 独立补充路径', () => {
       const close = document.querySelector('[data-testid="sheet"] button') as HTMLButtonElement
       close.click()
       await flushPromises()
-      await b.wrapper.get('[data-testid="run-task-btn"]').trigger('click')
-      await flushPromises()
-      acknowledge()
+      await pickCommand(b, task.id)
       await flushPromises()
       ;(document.querySelector('[data-testid="confirm-start-btn"]') as HTMLButtonElement).click()
       await flushPromises()

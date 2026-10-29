@@ -4,6 +4,7 @@ import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import StatusPill from '@/components/StatusPill.vue'
 import StatusDot from '@/components/StatusDot.vue'
+import OverflowMenu from '@/components/OverflowMenu.vue'
 import Tag from '@/components/Tag.vue'
 import TextField from '@/components/TextField.vue'
 import Switch from '@/components/ui/switch/Switch.vue'
@@ -200,10 +201,7 @@ async function onClearBrowser() {
   <div class="st-section" data-testid="vpn-card">
     <!-- 头部：标题、状态胶囊、主动作 -->
     <div class="st-head">
-      <div class="title-with-icon">
-        <span class="vpn-icon">🛡️</span>
-        <h2>VPN（Check Point SASE）</h2>
-      </div>
+      <h2>VPN（Check Point SASE）</h2>
       <StatusPill :state="pillState" :label="pillLabel" data-testid="vpn-status-pill" />
       <div class="st-grow" />
 
@@ -241,26 +239,31 @@ async function onClearBrowser() {
           {{ vpn.actionLoading.value === 'cancel' ? '取消中…' : '取消连接' }}
         </Button>
 
-        <Button
-          variant="default"
-          data-testid="open-legacy-import-btn"
-          :disabled="props.busy || isRunActive"
-          @click="legacySheetOpen = true"
-        >
-          从旧应用导入
-        </Button>
+        <OverflowMenu v-if="!confirmClearBrowser" label="更多 VPN 操作">
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item"
+            data-testid="open-legacy-import-btn"
+            :disabled="props.busy || isRunActive"
+            @click="legacySheetOpen = true"
+          >
+            从旧应用导入
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item"
+            data-danger="true"
+            data-testid="clear-browser-btn"
+            :disabled="props.busy || isRunActive"
+            @click="confirmClearBrowser = true"
+          >
+            忘记此浏览器
+          </button>
+        </OverflowMenu>
 
-        <Button
-          v-if="!confirmClearBrowser"
-          variant="default"
-          data-testid="clear-browser-btn"
-          :disabled="props.busy || isRunActive"
-          @click="confirmClearBrowser = true"
-        >
-          忘记此浏览器
-        </Button>
-
-        <div v-else class="confirm-box" data-testid="clear-browser-confirm-box">
+        <div v-else class="confirm-box st-free" data-testid="clear-browser-confirm-box">
           <span class="confirm-tip">确认清空 Chrome Profile？</span>
           <Button
             variant="destructive"
@@ -298,7 +301,7 @@ async function onClearBrowser() {
     <!-- 状态详情条：客户端、IP、版本 -->
     <div class="info-bar" data-testid="vpn-info-bar">
       <div class="info-group">
-        <span class="info-label">客户端：</span>
+        <span class="info-label">客户端</span>
         <Tag v-if="!clientInstalled" state="verify" data-testid="client-not-installed-tag"
           >未安装客户端</Tag
         >
@@ -310,7 +313,7 @@ async function onClearBrowser() {
       </div>
 
       <div class="info-group">
-        <span class="info-label">VPN IP：</span>
+        <span class="info-label">VPN IP</span>
         <span class="ip-value" data-testid="vpn-ip-text">{{ ip || '未分配' }}</span>
         <Button
           v-if="ip"
@@ -351,7 +354,7 @@ async function onClearBrowser() {
             <span v-if="ev.error_code" class="step-error" data-testid="step-error-code">
               {{ vpnErrorMessage(ev.error_code) }}
             </span>
-            <span v-if="ev.ip" class="step-ip">（分配 IP: {{ ev.ip }}）</span>
+            <span v-if="ev.ip" class="step-ip">，分配 IP {{ ev.ip }}</span>
           </div>
         </div>
       </div>
@@ -359,9 +362,9 @@ async function onClearBrowser() {
 
     <!-- 凭据设置：密码与 TOTP 种子（纯只写，绝不回填明文） -->
     <div class="credentials-card" data-testid="vpn-credentials-section">
-      <div class="sub-head">VPN 认证凭据</div>
+      <div class="sub-head">登录凭据</div>
       <p class="st-note">
-        密码与 TOTP 种子密钥直接写入 macOS Keychain（toolbox-next）。任何位置绝不回填或显示明文。
+        密码和 TOTP 种子直接写入 macOS 钥匙串。界面任何位置都不会回填或显示明文。
       </p>
 
       <div class="cred-grid">
@@ -478,7 +481,7 @@ async function onClearBrowser() {
         data-testid="toggle-vpn-settings-btn"
         @click="showSettings = !showSettings"
       >
-        {{ showSettings ? '收起 VPN 设置项 ▲' : '展开 VPN 设置项 ▼' }}
+        {{ showSettings ? '收起 VPN 设置' : '展开 VPN 设置' }}
       </Button>
     </div>
 
@@ -507,7 +510,7 @@ async function onClearBrowser() {
         </div>
 
         <div class="form-item">
-          <label class="form-label" for="vpn-residency">数据驻留中心（Residency）</label>
+          <label class="form-label" for="vpn-residency">数据驻留区域</label>
           <select
             v-if="form.login"
             id="vpn-residency"
@@ -535,7 +538,7 @@ async function onClearBrowser() {
         </div>
 
         <div class="form-item">
-          <label class="form-label" for="vpn-tunnel-prefix">隧道 IP 前缀（网段判定）</label>
+          <label class="form-label" for="vpn-tunnel-prefix">隧道网段前缀</label>
           <TextField
             id="vpn-tunnel-prefix"
             v-model="form.tunnel_prefix"
@@ -569,17 +572,17 @@ async function onClearBrowser() {
         </div>
 
         <div class="form-item">
-          <label class="form-label">窗口自动化档位（OCR 与辅助点击）</label>
+          <label class="form-label">窗口自动化</label>
           <select
             v-model="form.window_automation"
             class="form-select"
             data-testid="vpn-window-automation-select"
           >
-            <option value="off">关闭 (off)</option>
-            <option value="connect">仅点击 Connect (connect)</option>
-            <option value="connect_update">Connect 与处理更新 (connect_update)</option>
+            <option value="off">关闭</option>
+            <option value="connect">只点「Connect」</option>
+            <option value="connect_update">点「Connect」并处理客户端更新</option>
           </select>
-          <span class="form-desc"> 会移动真实鼠标；需要系统屏幕录制与辅助功能权限。 </span>
+          <span class="form-desc"> 会移动真实鼠标，需要系统的屏幕录制和辅助功能权限。 </span>
         </div>
 
         <div class="form-item">
@@ -603,7 +606,7 @@ async function onClearBrowser() {
         <div class="form-item-full">
           <div class="timeout-grid">
             <div>
-              <label class="form-label">每档等待超时 (秒)</label>
+              <label class="form-label">每一步等待上限（秒）</label>
               <input
                 v-model.number="form.rung_timeout_s"
                 type="number"
@@ -614,7 +617,7 @@ async function onClearBrowser() {
               />
             </div>
             <div>
-              <label class="form-label">登录流程超时 (秒)</label>
+              <label class="form-label">登录流程上限（秒）</label>
               <input
                 v-model.number="form.login_timeout_s"
                 type="number"
@@ -625,7 +628,7 @@ async function onClearBrowser() {
               />
             </div>
             <div>
-              <label class="form-label">单次总时限 (秒)</label>
+              <label class="form-label">单次连接总时限（秒）</label>
               <input
                 v-model.number="form.max_run_s"
                 type="number"
@@ -636,7 +639,7 @@ async function onClearBrowser() {
               />
             </div>
             <div v-if="form.login" class="switch-row">
-              <label class="form-label">无头浏览器登录 (Headless)</label>
+              <label class="form-label">后台登录（不显示浏览器窗口）</label>
               <Switch
                 :checked="form.login.headless"
                 data-testid="vpn-headless-switch"
@@ -669,14 +672,6 @@ async function onClearBrowser() {
 </template>
 
 <style scoped>
-.title-with-icon {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.vpn-icon {
-  font-size: 18px;
-}
 .actions-row {
   display: flex;
   align-items: center;
@@ -687,14 +682,14 @@ async function onClearBrowser() {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 0, 0, 0.05);
-  border: 1px solid rgba(255, 0, 0, 0.2);
-  border-radius: var(--r-ctl, 6px);
+  background: var(--st-failed-bg);
+  border: 1px solid var(--bn-error-line);
+  border-radius: var(--r-ctl);
   padding: 2px 6px;
 }
 .confirm-tip {
-  font-size: var(--text-sub, 12px);
-  color: var(--fg);
+  font-size: var(--text-sub);
+  color: var(--ink);
 }
 .banner-block {
   margin-top: 4px;
@@ -703,29 +698,26 @@ async function onClearBrowser() {
   display: flex;
   align-items: center;
   gap: 24px;
-  padding: 8px 12px;
-  background: var(--bg-ctl, #f7f7f7);
-  border-radius: var(--r-ctl, 6px);
   flex-wrap: wrap;
 }
 .info-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
 }
 .info-label {
   color: var(--mute);
   font-size: var(--text-sub);
 }
 .client-name {
-  color: var(--fg);
+  color: var(--ink);
   font-weight: 500;
 }
 .ip-value {
   font-family: var(--font-mono, monospace);
   font-weight: 600;
-  color: var(--fg);
+  color: var(--ink);
 }
 .copy-btn {
   font-size: 11px;
@@ -736,10 +728,6 @@ async function onClearBrowser() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
-  background: var(--bg-card, #fff);
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
 }
 .timeline-head {
   font-size: var(--text-sub);
@@ -755,7 +743,7 @@ async function onClearBrowser() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
 }
 .timeline-row.error {
   color: #dc2626;
@@ -782,7 +770,7 @@ async function onClearBrowser() {
 .sub-head {
   font-size: var(--text-body);
   font-weight: 600;
-  color: var(--fg);
+  color: var(--ink);
 }
 .cred-grid {
   display: flex;
@@ -794,10 +782,8 @@ async function onClearBrowser() {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
-  background: var(--bg-card, #fff);
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
   flex-wrap: wrap;
 }
 .cred-meta {
@@ -807,7 +793,7 @@ async function onClearBrowser() {
 }
 .cred-title {
   font-weight: 500;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
 }
 .cred-form {
   display: flex;
@@ -817,11 +803,11 @@ async function onClearBrowser() {
 .cred-input {
   padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
-  font-size: var(--text-base);
+  border-radius: var(--r-ctl);
+  font-size: var(--text-body);
   min-width: 180px;
-  background: var(--bg-ctl, #fff);
-  color: var(--fg);
+  background: var(--ctl);
+  color: var(--ink);
 }
 .cred-input:focus {
   outline: none;
@@ -836,10 +822,6 @@ async function onClearBrowser() {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
-  background: var(--bg-card, #fff);
   margin-top: 4px;
 }
 .form-grid {
@@ -867,10 +849,10 @@ async function onClearBrowser() {
 .form-select {
   padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
-  background: var(--bg-ctl, #fff);
-  color: var(--fg);
-  font-size: var(--text-base);
+  border-radius: var(--r-ctl);
+  background: var(--ctl);
+  color: var(--ink);
+  font-size: var(--text-body);
 }
 .perm-row {
   display: flex;
@@ -882,7 +864,7 @@ async function onClearBrowser() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
 }
 .timeout-grid {
   display: grid;
@@ -894,10 +876,10 @@ async function onClearBrowser() {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-ctl, 6px);
-  font-size: var(--text-base);
-  background: var(--bg-ctl, #fff);
-  color: var(--fg);
+  border-radius: var(--r-ctl);
+  font-size: var(--text-body);
+  background: var(--ctl);
+  color: var(--ink);
 }
 .switch-row {
   display: flex;

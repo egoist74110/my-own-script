@@ -2,11 +2,12 @@
 import { ref, watch } from 'vue'
 import Button from '@/components/Button.vue'
 import Sheet from '@/components/Sheet.vue'
-import type { TaskView } from './api'
 
 const props = defineProps<{
   open: boolean
-  task: TaskView | null
+  task: { name: string } | null
+  /** 选中的运行命令名称。 */
+  commandName?: string
 }>()
 
 const emit = defineEmits<{
@@ -32,7 +33,11 @@ function onConfirm() {
 <template>
   <Sheet
     :open="open"
-    :title="`选择回滚版本 · ${task?.name}`"
+    :title="
+      commandName
+        ? `选择回滚版本：${task?.name} 的命令“${commandName}”`
+        : `选择回滚版本：${task?.name}`
+    "
     description="选择要回滚到的历史版本（偏移量 1-5，1 表示上一个版本）。"
     @update:open="emit('update:open', $event)"
   >

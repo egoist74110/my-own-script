@@ -183,12 +183,16 @@ describe('列表：筛选与分页', () => {
     await b.done()
   })
 
-  it('行信息：编号、类型、标题、指派、状态、优先级、变更时间', async () => {
+  it('行信息：标题、优先级、#编号、指派人、日期（MM-DD）；类型只作圆点，不占文字', async () => {
     const b = await openWi(fake)
-    const t = b.wrapper.get('[data-testid=wi-row-101]').text()
-    for (const s of ['#101', '工单标题 101', 'Bug', '示例开发者', '开发中', 'P2', '2026-10-02']) {
+    const row = b.wrapper.get('[data-testid=wi-row-101]')
+    const t = row.text()
+    for (const s of ['#101', '工单标题 101', '示例开发者', 'P2', '10-02']) {
       expect(t).toContain(s)
     }
+    expect(t).not.toContain('2026')
+    expect(t).not.toContain('·')
+    expect(row.get('.kd').attributes('title')).toBe('Bug')
     await b.done()
   })
 })
@@ -260,8 +264,8 @@ describe('详情与五个页签', () => {
     for (const s of ['#101', '工单标题 101', '示例开发者', '父项', '#100']) {
       expect(d.text()).toContain(s)
     }
-    // 「在浏览器打开」在详情顶栏（section 之外）
-    expect(b.wrapper.get('[data-testid=open-web]').text()).toBe('在浏览器打开')
+    // 「在 ADO 打开」在详情顶部工具条
+    expect(b.wrapper.get('[data-testid=open-web]').text()).toBe('在 ADO 打开')
     // 优先级与标签在 R1 换皮后位于右侧检查器
     const insp = b.wrapper.get('[data-testid=wi-props]').text()
     for (const s of ['P2', '演示', '虚构', '示例开发者']) expect(insp).toContain(s)

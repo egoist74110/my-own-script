@@ -44,18 +44,18 @@ watch(
         <ol class="steps-list">
           <li>
             <strong>前置检查</strong>
-            ：确保新端运行组件已安装就绪，并在当前卡片中已导入或录入 App Secret。
+            ：确保新版运行组件已安装就绪，并在当前卡片中已导入或录入 App Secret。
           </li>
           <li>
-            <strong>停止旧端服务</strong>
+            <strong>停止旧版服务</strong>
             ：在旧应用「MCP配置」页签点击停止 Lark MCP，并确认没有登录流程在进行。
             <em class="warn-em">
               此后切勿在旧应用中点击登录、登出或一键注入，以避免改写共享凭据存储。
             </em>
           </li>
           <li>
-            <strong>新端接管确认</strong>
-            ：勾选下方承诺并在本确认单点击“确认接管”。随后在新端点击“启动”服务（若遇 409
+            <strong>新版接管确认</strong>
+            ：勾选下方承诺并在本确认单点击“确认接管”。随后在新版点击“启动”服务（若遇 409
             端口被占说明旧应用尚未退出，请回到第 2 步）。
           </li>
           <li>
@@ -132,7 +132,7 @@ watch(
   color: var(--mute);
 }
 .steps-list strong {
-  color: var(--text);
+  color: var(--ink);
 }
 .warn-em {
   color: var(--st-verify-fg);

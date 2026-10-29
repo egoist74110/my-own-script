@@ -39,14 +39,15 @@ function need(t: Record<string, string>, name: string): string {
 describe('R1 令牌数值（浅色 / 深色）', () => {
   it('浅色关键令牌与合同一致', () => {
     expect(light['bg-window']).toBe('#ffffff')
-    expect(light['bg-sidebar']).toBe('#eeedf1')
-    expect(light['bg-inspector']).toBe('#f7f7f9')
+    // 方向 A（线路图）规范取值：纸 / 框架 / 墨 / 次文字 / 分隔线
+    expect(light['bg-sidebar']).toBe('#f3f4f6')
+    expect(light['bg-inspector']).toBe('#fafafb')
     expect(light['bg-settings']).toBe('#f5f5f7')
-    expect(light['line']).toBe('#e5e5ea')
-    expect(light['ink']).toBe('#1d1d1f')
-    expect(light['mute']).toBe('#6e6e73')
+    expect(light['line']).toBe('#e4e6eb')
+    expect(light['ink']).toBe('#1b1d22')
+    expect(light['mute']).toBe('#5b616e')
     expect(light['disabled']).toBe('#a1a1a6')
-    expect(light['ctl']).toBe('#ededf0')
+    expect(light['ctl']).toBe('#f3f4f6')
     expect(light['accent']).toBe('#0a63d6')
     expect(light['accent-ink']).toBe('#0a55b8')
     expect(light['link']).toBe('#0058d0')

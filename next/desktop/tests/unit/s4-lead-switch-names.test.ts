@@ -85,8 +85,8 @@ it('Telegram 分区的每个开关都有可访问名称', async () => {
   const switches = b.wrapper.findAll('[role=switch]')
   expect(switches.length).toBe(3)
   expect(switches.map((s) => s.attributes('aria-label'))).toEqual([
-    '启用 Telegram 控制',
-    '包含详细信息',
-    'UI 触发运行通知所有者',
+    '用 Telegram 控制任务',
+    '通知里带上详细信息',
+    '在桌面应用里运行也通知我',
   ])
 })

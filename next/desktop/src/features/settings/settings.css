@@ -1,30 +1,53 @@
-/* 设置页公共样式：分组白卡片 + 令牌色（警告文字用 --st-verify-fg 系，成功文字用 --st-success-fg 系）。 */
+/*
+ * 设置页公共样式：方向 A「线路图」的 macOS 系统设置式分组列表。
+ * 分组 = 标题 + 可选一句说明 + 一组行；行之间只用 1px 分隔线，不叠卡片阴影。
+ * 内容区最大 760px 左对齐；表格不折行，放不下时只在 .st-tw 容器里横向滚动。
+ * 警告文字用 --st-verify-fg 系，成功文字用 --st-success-fg 系。
+ */
+.st-page {
+  max-width: 760px;
+  min-width: 0;
+}
+.st-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.st-intro {
+  margin: 4px 0 0;
+  font-size: var(--text-body);
+  line-height: 1.6;
+  color: var(--mute);
+  max-width: 68ch;
+}
 .st-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 28px 28px;
-  max-width: 880px;
+  gap: 22px;
+  min-width: 0;
+  margin-top: 20px;
+  box-sizing: border-box;
 }
+
+/* —— 分组 —— */
 .st-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px 14px;
-  border-radius: var(--r-group);
-  background: var(--bg-group);
-  box-shadow: 0 0 0 0.5px var(--line);
+  min-width: 0;
 }
 .st-head {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: var(--ctl-h);
+  margin-bottom: 6px;
 }
-.st-head h2 {
+.st-head h2,
+.st-head h3 {
   margin: 0;
   font-size: var(--text-body);
-  font-weight: 700;
+  font-weight: 600;
 }
 .st-grow {
   flex: 1;
@@ -35,24 +58,132 @@
   line-height: 1.6;
   color: var(--mute);
 }
+.st-section > .st-note {
+  max-width: 68ch;
+  margin-bottom: 8px;
+}
+.st-section > .st-note:not(:first-child) {
+  margin-top: 0;
+}
+/* 行：分组里除标题、说明、提示条外的直接子元素。首行圆上角、末行圆下角，行间 1px 线 */
+.st-section:not(.st-editor) > :not(.st-head, .st-note, .banner, .st-free, .st-sep) {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-top-width: 0;
+  background: var(--bg-group);
+}
+.st-section:not(.st-editor)
+  > :not(.st-head, .st-note, .banner, .st-free, .st-sep):not(
+    :not(.st-head, .st-note, .banner, .st-free, .st-sep) ~ *
+  ) {
+  border-top-width: 1px;
+  border-top-left-radius: var(--r-group);
+  border-top-right-radius: var(--r-group);
+}
+.st-section:not(.st-editor)
+  > :not(.st-head, .st-note, .banner, .st-free, .st-sep):not(
+    :has(~ :not(.st-head, .st-note, .banner, .st-free, .st-sep))
+  ) {
+  border-bottom-left-radius: var(--r-group);
+  border-bottom-right-radius: var(--r-group);
+}
+.st-section:not(.st-editor) > .st-tw,
+.st-section:not(.st-editor) > .st-kv {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.st-section > .banner {
+  margin-bottom: 8px;
+}
+/* 说明紧跟在行组后面（例如表格下方的提示）：与行组留出间距 */
+.st-section > :not(.st-head, .st-note) + .st-note {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+/* 编辑区：作为一整块表单面板 */
+.st-editor {
+  max-width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-group);
+  background: var(--bg-group);
+}
+
+/* 显式行：左侧名称 + 一行小字说明，右侧值或控件 */
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
+}
+.st-row > .st-lbl {
+  flex: 1;
+  min-width: 0;
+}
+.st-lbl b {
+  display: block;
+  font-weight: 500;
+}
+.st-lbl small {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--text-sub);
+  color: var(--mute);
+  line-height: 1.5;
+}
+.st-val {
+  color: var(--mute);
+  white-space: nowrap;
+}
+.st-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* —— 表格：不折行，只在自己的容器里横向滚动 —— */
+.st-tw {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .st-tbl {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-body);
 }
+.st-tbl th,
+.st-tbl td {
+  white-space: nowrap;
+}
+.st-tbl th.wrap,
+.st-tbl td.wrap {
+  white-space: normal;
+  min-width: 180px;
+}
 .st-tbl th {
   text-align: left;
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-size: var(--text-sub);
   font-weight: 400;
   color: var(--mute);
   border-bottom: 1px solid var(--line);
 }
 .st-tbl td {
-  padding: 0 10px;
-  height: 36px;
+  padding: 0 12px;
+  height: 40px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
+}
+.st-tbl th:first-child,
+.st-tbl td:first-child {
+  padding-left: 0;
+}
+.st-tbl th:last-child,
+.st-tbl td:last-child {
+  padding-right: 0;
 }
 .st-tbl tbody tr:last-child td {
   border-bottom: 0;
@@ -70,10 +201,18 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
+.st-tbl td.st-note {
+  white-space: normal;
+  padding: 10px 0;
+}
 .st-mono {
   font-family: var(--font-mono);
   font-size: var(--text-sub);
-  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.st-tbl .st-mono {
+  overflow-wrap: normal;
 }
 .st-tags {
   display: inline-flex;
@@ -95,20 +234,41 @@
   font-size: var(--text-body);
   line-height: 1.7;
 }
+
+/* 键值：两列网格，每对之间一条分隔线 */
 .st-kv {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0;
   margin: 0;
-  align-items: baseline;
+  align-items: center;
 }
-.st-kv dt {
-  color: var(--mute);
+.st-kv > dt,
+.st-kv > dd {
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
-.st-kv dd {
+.st-kv > :nth-child(-n + 2) {
+  border-top: 0;
+}
+.st-kv > dt {
+  padding-right: 20px;
+  color: var(--ink);
+  font-weight: 500;
+}
+.st-kv > dd {
   margin: 0;
   font-size: var(--text-body);
+  color: var(--mute);
+  overflow-wrap: anywhere;
 }
+/* 提示块：只在需要用户行动时出现 */
 .st-box {
   padding: 10px 12px;
   border-radius: 8px;
@@ -165,18 +325,27 @@
   flex-direction: column;
   gap: 8px;
 }
-.st-editor {
-  max-width: 880px;
-}
 .st-inspector h2 {
   margin: 0;
   font-size: var(--text-long);
   font-weight: 700;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .st-sep {
   height: 1px;
   background: var(--line);
   border: 0;
   margin: 0;
+}
+.st-page .tag {
+  white-space: nowrap;
+}
+
+/* 行与行之间已有分隔线，分组里单独的分隔线隐藏 */
+.st-section:not(.st-editor) > .st-sep {
+  display: none;
+}
+.st-lbl label {
+  display: block;
+  font-weight: 500;
 }

@@ -17,6 +17,8 @@ withDefaults(defineProps<{ tone?: 'neutral' | 'ok' | 'warn' }>(), { tone: 'neutr
   color: var(--ink);
   font-size: var(--text-sub);
   line-height: 18px;
+  white-space: nowrap;
+  flex: none;
 }
 .tag[data-tone='ok'] {
   background: var(--st-success-bg);

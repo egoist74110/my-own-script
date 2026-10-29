@@ -551,13 +551,13 @@ describe('页签：可访问关联与键盘', () => {
     ;(tabs[0]!.element as HTMLElement).focus()
     await tabs[0]!.trigger('keydown', { key: 'End' })
     await flushPromises()
-    expect(selected()).toContain('常规')
+    expect(selected()).toContain('通用')
     await b.wrapper.findAll('[role=tab]')[3]!.trigger('keydown', { key: 'Home' })
     await flushPromises()
     expect(selected()).toContain('导入')
     await b.wrapper.findAll('[role=tab]')[0]!.trigger('keydown', { key: 'ArrowUp' })
     await flushPromises()
-    expect(selected()).toContain('常规')
+    expect(selected()).toContain('通用')
   })
 
   it('设置页签 roving tabindex：只有当前页签在 Tab 序列中', async () => {
@@ -644,7 +644,7 @@ describe('settings.changed 刷新与后续写的 revision', () => {
 
   it('seq 不新于已处理事件的 settings.changed 被忽略：不重新取数，revision 不更新', async () => {
     const fake = createFake()
-    const b = await open(fake, { tab: '常规' })
+    const b = await open(fake, { tab: '通用' })
     const before = gets(fake)
     b.sock.emit({ ...env('settings.changed', { revision: 99 }, { topic: 'settings' }), seq: 0 })
     await flushPromises()
@@ -680,13 +680,13 @@ describe('断线重连', () => {
   })
 })
 
-describe('凭据与常规的只读边界', () => {
-  it('凭据页与常规页不存在任何可编辑输入框', async () => {
+describe('凭据与通用的只读边界', () => {
+  it('凭据页与通用页不存在任何可编辑输入框', async () => {
     const fake = createFake()
     const b = await open(fake, { tab: '凭据' })
     expect(b.wrapper.find('[data-testid=credentials-tab] input').exists()).toBe(false)
     expect(b.wrapper.find('[data-testid=credentials-tab] textarea').exists()).toBe(false)
-    await selectTab(b, '常规')
+    await selectTab(b, '通用')
     expect(b.wrapper.find('[data-testid=general-tab] input').exists()).toBe(false)
     expect(b.wrapper.find('[data-testid=general-tab] textarea').exists()).toBe(false)
   })

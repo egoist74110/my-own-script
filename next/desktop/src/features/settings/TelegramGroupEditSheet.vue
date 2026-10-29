@@ -143,9 +143,7 @@ function onSave() {
           </span>
         </div>
 
-        <div v-if="allTasks.length === 0" class="st-note">
-          暂无可关联任务，请前往任务页创建任务。
-        </div>
+        <div v-if="allTasks.length === 0" class="st-note">还没有可选的任务，请先到任务页创建。</div>
         <div v-else class="task-checkbox-list" data-testid="group-task-list">
           <label
             v-for="t in allTasks"

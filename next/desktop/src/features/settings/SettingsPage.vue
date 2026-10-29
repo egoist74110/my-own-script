@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, nextTick, provide, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Cable,
   Cpu,
@@ -23,25 +24,46 @@ import LocalReposTab from './LocalReposTab.vue'
 import McpTab from './McpTab.vue'
 import ServicesTab from './ServicesTab.vue'
 import TelegramTab from './TelegramTab.vue'
+import { SETTINGS_VPN_ANCHOR, tabFromParam } from './tabs'
 import { settingsContextKey, useSettingsContext } from './useSettings'
 import './settings.css'
 
 const ctx = useSettingsContext()
 provide(settingsContextKey, ctx)
 
-const tab = ref('import')
+const route = useRoute()
+const router = useRouter()
+
+// 当前分区以 URL 为准（/settings/:tab）；/settings 无参数时用本地默认：先“导入”，
+// 导入已处理过则落在 ADO 连接（用户手动选过就不再干预）。
+const fallbackTab = ref('import')
 let picked = false
+const routeTab = computed(() => tabFromParam(route.params.tab))
+const tab = computed(() => routeTab.value ?? fallbackTab.value)
 function onTab(v: string) {
   picked = true
-  tab.value = v
+  fallbackTab.value = v
+  const target = `/settings/${v}`
+  if (route.path !== target) void router.push(target)
 }
-// 首次载入：已处理过导入（完成/跳过）时直接落在 ADO 连接；用户手动切过页签则不再干预
 watch(
   () => ctx.overview.data.value?.import?.state,
   (s) => {
-    if (!picked && (s === 'completed' || s === 'declined')) tab.value = 'ado'
+    if (!picked && !routeTab.value && (s === 'completed' || s === 'declined'))
+      fallbackTab.value = 'ado'
   },
   { once: true },
+)
+
+// /settings/vpn：服务分区渲染后把 VPN 卡片滚到可见处
+watch(
+  () => route.params.tab,
+  async (p) => {
+    if (p !== 'vpn') return
+    await nextTick()
+    document.getElementById(SETTINGS_VPN_ANCHOR)?.scrollIntoView?.({ block: 'start' })
+  },
+  { immediate: true, flush: 'post' },
 )
 
 const tabs = computed(() => [
@@ -92,21 +114,23 @@ const tabs = computed(() => [
     icon: Server,
     iconColor: '#007aff',
   },
-  { value: 'general', label: '常规', icon: SlidersHorizontal, iconColor: '#8e8e93' },
+  { value: 'general', label: '通用', icon: SlidersHorizontal, iconColor: '#8e8e93' },
 ])
 const o = computed(() => ctx.overview.data.value ?? null)
 const summary = computed(() =>
-  o.value ? `revision ${o.value.revision} · schema v${o.value.schema_version}` : '读取中',
+  o.value ? `修订 ${o.value.revision}，结构 v${o.value.schema_version}` : '读取中',
 )
 
 const ASIDE: Record<string, string> = {
-  import: '导入只发生一次：不同步、不回写旧配置；旧 Keychain 条目只读。',
-  credentials: '凭据值永远不会显示在界面上，这里只有存在与否、来源和状态。',
-  telegram: 'Bot Token 保存在安全钥匙串中，长轮询与所有者绑定独立于旧应用。',
-  ai: '管理 AI CLI 工具、运行档位与模型预设，内置配置不可删除。',
-  mcp: '管理 ADO 工单、飞书与 Figma 的 MCP 服务接入与运行配置。',
-  services: '管理 code-server 与 cloudflared 隧道，网络信息只读展示。',
-  general: '数据目录、旧配置目录与版本信息均为只读。',
+  import: '只导入一次：不会持续同步，也不会改动旧配置；旧钥匙串里的条目只读。',
+  ado: '连接的 ADO 服务器与项目。PAT 在 library 详情里录入或更换。',
+  repos: '任务构建用的本地仓库。路径只保存为文本，不会被读取。',
+  credentials: '应用保存的全部凭据一览。',
+  telegram: '用 Telegram 远程触发任务：设置机器人、谁能用它，以及运行结果的通知。',
+  ai: '管理 AI 命令行工具，以及新会话和工单分析使用的默认权限与模型。',
+  mcp: '给 Claude Code、Codex、Antigravity 共用的工具服务：ADO 工单、飞书、Figma。',
+  services: '本机的 VPN、code-server 和 cloudflared 隧道。网络地址只读显示。',
+  general: '数据目录、旧配置目录和版本信息，均为只读。',
 }
 const noticeKind = computed(() => {
   const k = ctx.notice.value?.kind
@@ -169,16 +193,19 @@ const noticeKind = computed(() => {
         @update:model-value="onTab"
       >
         <template #default="{ item }">
-          <p v-if="ASIDE[item.value]" class="st-note intro">{{ ASIDE[item.value] }}</p>
-          <ImportTab v-if="item.value === 'import'" />
-          <AdoTab v-else-if="item.value === 'ado'" />
-          <LocalReposTab v-else-if="item.value === 'repos'" />
-          <CredentialsTab v-else-if="item.value === 'credentials'" />
-          <TelegramTab v-else-if="item.value === 'telegram'" />
-          <AiCliTab v-else-if="item.value === 'ai'" />
-          <McpTab v-else-if="item.value === 'mcp'" />
-          <ServicesTab v-else-if="item.value === 'services'" />
-          <GeneralTab v-else />
+          <div class="st-page">
+            <h2 class="st-title">{{ item.label }}</h2>
+            <p v-if="ASIDE[item.value]" class="st-intro">{{ ASIDE[item.value] }}</p>
+            <ImportTab v-if="item.value === 'import'" />
+            <AdoTab v-else-if="item.value === 'ado'" />
+            <LocalReposTab v-else-if="item.value === 'repos'" />
+            <CredentialsTab v-else-if="item.value === 'credentials'" />
+            <TelegramTab v-else-if="item.value === 'telegram'" />
+            <AiCliTab v-else-if="item.value === 'ai'" />
+            <McpTab v-else-if="item.value === 'mcp'" />
+            <ServicesTab v-else-if="item.value === 'services'" />
+            <GeneralTab v-else />
+          </div>
         </template>
       </SegmentedControl>
     </section>
@@ -235,8 +262,8 @@ h1 {
   min-height: 0;
   display: flex;
 }
-/* 选择器需高于 SegmentedControl 的竖向规则（.seg-root[data-orientation] .seg） */
-.panel .settings-tabs[data-orientation='vertical'] :deep(.seg) {
+/* 选择器需高于 SegmentedControl 的竖向规则（.seg-root[data-orientation] .seg）；用子代选择器，避免波及页内嵌套的分段控件 */
+.panel .settings-tabs[data-orientation='vertical'] > :deep(.seg) {
   flex: none;
   flex-grow: 0;
   width: 220px;
@@ -245,18 +272,19 @@ h1 {
   align-self: stretch;
   align-content: flex-start;
   border-right: 1px solid var(--line);
-  background: var(--bg-window);
+  background: var(--bg-inspector);
 }
-.settings-tabs :deep(.tab-panel) {
+.settings-tabs > :deep(.tab-panel) {
   flex: 1 1 0;
   min-width: 0;
-  overflow: auto;
+  /* 整页不出横向滚动；宽表格在自己的容器里滚 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+  box-sizing: border-box;
   background: var(--bg-settings);
 }
-.settings-tabs :deep(.tab-panel[hidden]) {
+.settings-tabs > :deep(.tab-panel[hidden]) {
   display: none;
-}
-.intro {
-  padding: 16px 28px 0;
 }
 </style>

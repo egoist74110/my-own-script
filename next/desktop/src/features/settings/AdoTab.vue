@@ -70,43 +70,45 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
           ＋ 新建 library
         </Button>
       </div>
-      <table class="st-tbl" data-testid="library-table">
-        <thead>
-          <tr>
-            <th scope="col">名称</th>
-            <th scope="col">地址</th>
-            <th scope="col">PAT</th>
-            <th scope="col"><span class="sr-only">标记</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="l in libraries"
-            :key="l.id"
-            tabindex="0"
-            :aria-selected="isSel('library', l.id)"
-            :data-selected="isSel('library', l.id)"
-            :data-testid="`library-row-${l.id}`"
-            @click="pick({ kind: 'library', id: l.id })"
-            @keydown.enter.self="pick({ kind: 'library', id: l.id })"
-          >
-            <td>{{ l.name }}</td>
-            <td class="st-mono">
-              {{ l.base_url }}
-              <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
-            </td>
-            <td :class="{ 'st-warn': l.credential.state !== 'present' }">
-              {{ PAT[l.credential.state] }}
-            </td>
-            <td><Tag v-if="active.lib === l.id" tone="ok">当前</Tag></td>
-          </tr>
-          <tr v-if="!libraries.length">
-            <td colspan="4" class="st-note">
-              还没有 library。可从「导入」页签导入旧配置，或手动新建。
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="library-table">
+          <thead>
+            <tr>
+              <th scope="col">名称</th>
+              <th scope="col">地址</th>
+              <th scope="col">PAT</th>
+              <th scope="col"><span class="sr-only">标记</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="l in libraries"
+              :key="l.id"
+              tabindex="0"
+              :aria-selected="isSel('library', l.id)"
+              :data-selected="isSel('library', l.id)"
+              :data-testid="`library-row-${l.id}`"
+              @click="pick({ kind: 'library', id: l.id })"
+              @keydown.enter.self="pick({ kind: 'library', id: l.id })"
+            >
+              <td>{{ l.name }}</td>
+              <td class="st-mono">
+                {{ l.base_url }}
+                <Tag v-if="isHttp(l.base_url)" tone="warn">HTTP 明文</Tag>
+              </td>
+              <td :class="{ 'st-warn': l.credential.state !== 'present' }">
+                {{ PAT[l.credential.state] }}
+              </td>
+              <td><Tag v-if="active.lib === l.id" tone="ok">当前</Tag></td>
+            </tr>
+            <tr v-if="!libraries.length">
+              <td colspan="4" class="st-note">
+                还没有 library。可从「导入」页签导入旧配置，或手动新建。
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="st-section" aria-label="Projects">
@@ -123,36 +125,38 @@ const isHttp = (u: string) => u.toLowerCase().startsWith('http:')
           ＋ 新建 project
         </Button>
       </div>
-      <table class="st-tbl" data-testid="project-table">
-        <thead>
-          <tr>
-            <th scope="col">Library</th>
-            <th scope="col">Collection</th>
-            <th scope="col">Project</th>
-            <th scope="col"><span class="sr-only">标记</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="p in projects"
-            :key="p.id"
-            tabindex="0"
-            :aria-selected="isSel('project', p.id)"
-            :data-selected="isSel('project', p.id)"
-            :data-testid="`project-row-${p.id}`"
-            @click="pick({ kind: 'project', id: p.id })"
-            @keydown.enter.self="pick({ kind: 'project', id: p.id })"
-          >
-            <td>{{ libName(p.library_id) }}</td>
-            <td class="st-mono">{{ p.collection }}</td>
-            <td class="st-mono">{{ p.project }}</td>
-            <td><Tag v-if="active.proj === p.id" tone="ok">当前</Tag></td>
-          </tr>
-          <tr v-if="!projects.length">
-            <td colspan="4" class="st-note">还没有 project。</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="project-table">
+          <thead>
+            <tr>
+              <th scope="col">Library</th>
+              <th scope="col">Collection</th>
+              <th scope="col">Project</th>
+              <th scope="col"><span class="sr-only">标记</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="p in projects"
+              :key="p.id"
+              tabindex="0"
+              :aria-selected="isSel('project', p.id)"
+              :data-selected="isSel('project', p.id)"
+              :data-testid="`project-row-${p.id}`"
+              @click="pick({ kind: 'project', id: p.id })"
+              @keydown.enter.self="pick({ kind: 'project', id: p.id })"
+            >
+              <td>{{ libName(p.library_id) }}</td>
+              <td class="st-mono">{{ p.collection }}</td>
+              <td class="st-mono">{{ p.project }}</td>
+              <td><Tag v-if="active.proj === p.id" tone="ok">当前</Tag></td>
+            </tr>
+            <tr v-if="!projects.length">
+              <td colspan="4" class="st-note">还没有 project。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="st-section st-editor" aria-label="ADO 详情">

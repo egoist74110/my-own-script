@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 按钮：primary（强调底）/ default / destructive（红字）/ plain；高度 28，圆角 6。 */
+/** 按钮：primary（墨色实底，深色为强调色）/ default / destructive（红字）/ plain；高度 28，圆角 6。 */
 withDefaults(
   defineProps<{
     variant?: 'primary' | 'default' | 'destructive' | 'plain'
@@ -37,8 +37,8 @@ withDefaults(
   filter: brightness(0.97);
 }
 .b-btn[data-variant='primary'] {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-weight: 600;
 }
 .b-btn[data-variant='destructive'] {

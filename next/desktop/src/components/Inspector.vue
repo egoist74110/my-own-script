@@ -8,7 +8,11 @@ defineProps<{ label: string; alert?: boolean }>()
 const host = inject(inspectorHostKey, null)
 const ui = useUiStore()
 onMounted(() => (ui.inspectorUsers += 1))
-onBeforeUnmount(() => (ui.inspectorUsers -= 1))
+onBeforeUnmount(() => {
+  ui.inspectorUsers -= 1
+  // 换页后不让上一页打开的浮层带到下一页
+  if (ui.inspectorUsers <= 0) ui.closeInspectorFloat()
+})
 </script>
 
 <template>

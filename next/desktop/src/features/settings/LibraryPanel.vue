@@ -214,7 +214,7 @@ const patText = computed(() => {
   if (c.state === 'unreadable') return '无法读取 Keychain'
   return c.present ? '已保存' : '未保存'
 })
-const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' } as const
+const SOURCE = { imported: '从旧版导入', manual: '手动录入', unknown: '未知' } as const
 </script>
 
 <template>
@@ -302,7 +302,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
         <dd data-testid="library-pat-status">
           {{ patText }}
           <template v-if="library!.credential.present !== false">
-            · {{ SOURCE[library!.credential.source] }}
+            （{{ SOURCE[library!.credential.source] }}）
           </template>
         </dd>
       </dl>
@@ -329,7 +329,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
 
       <hr class="st-sep" />
       <div class="st-fld">
-        <span class="lbl" aria-hidden="true">测试连接 · collection</span>
+        <span class="lbl" aria-hidden="true">测试连接用的 collection</span>
         <TextField v-model="collection" label="测试用 collection" placeholder="DefaultCollection" />
       </div>
       <p v-if="pat" class="st-note">将使用输入框里的 PAT 测试（不保存）。</p>
@@ -349,7 +349,7 @@ const SOURCE = { imported: '导入', manual: '手动录入', unknown: '未知' }
         <strong :class="result.ok ? 'st-ok' : 'st-warn'">{{
           CATEGORY_TEXT[result.category]
         }}</strong>
-        <span v-if="result.http_status" class="st-mono"> · HTTP {{ result.http_status }}</span>
+        <span v-if="result.http_status" class="st-mono">（HTTP {{ result.http_status }}）</span>
         <div v-if="result.message">{{ result.message }}</div>
       </div>
 

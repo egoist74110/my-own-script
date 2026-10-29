@@ -504,6 +504,17 @@ export function useSettingsContext() {
         '已从旧应用导入 Bot Token',
         handle,
       ),
+    verifyTelegramToken: (handle?: (e: ApiError) => boolean) =>
+      act(
+        (revision) =>
+          unwrap(
+            api().POST('/api/telegram/token/verify', {
+              body: { revision },
+            }),
+          ),
+        undefined,
+        handle,
+      ),
     deleteTelegramToken: (handle?: (e: ApiError) => boolean) =>
       act(
         (revision) =>

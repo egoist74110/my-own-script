@@ -66,6 +66,10 @@ defineOptions({ inheritAttrs: false })
   gap: 4px 10px;
   overflow-wrap: anywhere;
 }
+/* 列表/段落等块级内容独占一行，不与前面的说明文字并排。 */
+.body > :slotted(:is(ul, ol, p, div, dl)) {
+  flex-basis: 100%;
+}
 .title {
   color: var(--bn-title);
   font-weight: 600;

@@ -236,6 +236,10 @@ describe('S5-D2: ChatView 结构化事件流与交互', () => {
     expect(card.exists()).toBe(true)
     expect(card.text()).toContain('rm -rf /tmp/test')
     expect(card.text()).toContain('剩余')
+    // 按钮文字写清后果：允许一次 / 总是允许 <工具> / 拒绝
+    expect(w.get('[data-testid="approval-allow-once"]').text()).toContain('允许一次')
+    expect(w.get('[data-testid="approval-allow-session"]').text()).toContain('总是允许 Bash')
+    expect(w.get('[data-testid="approval-deny"]').text()).toContain('拒绝')
 
     // 点击允许一次
     await w.find('[data-testid="approval-allow-once"]').trigger('click')
@@ -927,7 +931,7 @@ describe('S5-D2: NewSessionSheet 对话模式与配置项', () => {
       await b.done()
     })
 
-    it('S5-LEAD-004: 会话列表 awaiting_approval 状态胶囊文字显示为“待审批”', async () => {
+    it('S5-LEAD-004: 会话列表 awaiting_approval 状态胶囊文字显示为“等你批准”', async () => {
       const fakeFetch = vi.fn().mockImplementation(async (req: Request) => {
         const url = new URL(req.url)
         if (req.url.endsWith('/health')) {
@@ -967,7 +971,11 @@ describe('S5-D2: NewSessionSheet 对话模式与配置项', () => {
       for (let i = 0; i < 4; i++) await flushPromises()
 
       const pill = b.wrapper.get('[data-testid=session-sess-awaiting] .pill')
-      expect(pill.text()).toBe('待审批')
+      expect(pill.text()).toBe('等你批准')
+      // 左侧 3px 竖条用所属仓库的线路色（线路色变量名取自 tokens 的 --l-*）
+      const row = b.wrapper.get('[data-testid=session-sess-awaiting]')
+      expect(row.attributes('style')).toMatch(/--c:\s*var\(--l-\d\)/)
+      expect(row.find('.bar').exists()).toBe(true)
       expect(pill.text()).not.toContain('需核实')
 
       await b.done()

@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import { RefreshCw } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
-import { FileText } from 'lucide-vue-next'
-import Button from '@/components/Button.vue'
+import { ChevronLeft, ChevronRight, FileText, RefreshCw } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Inspector from '@/components/Inspector.vue'
 import InspectorToggle from '@/components/InspectorToggle.vue'
-import ListRow from '@/components/ListRow.vue'
 import SearchField from '@/components/SearchField.vue'
-import SegmentedControl from '@/components/SegmentedControl.vue'
 import Skeleton from '@/components/Skeleton.vue'
 import Tag from '@/components/Tag.vue'
 import ToolbarButton from '@/components/ToolbarButton.vue'
-import { openExternal } from '@/components/open-external'
 import { tabTriggerId } from '@/components/tabs'
+import BoardRoute from './BoardRoute.vue'
 import ErrorNotice from './ErrorNotice.vue'
 import WorkItemDetail from './WorkItemDetail.vue'
+import WorkItemRow from './WorkItemRow.vue'
 import {
-  COLUMNS,
   DEFAULT_COLUMN,
   DEFAULT_PAGE_SIZE,
   PAGE_SIZES,
@@ -28,8 +24,8 @@ import {
   type WorkItemDetail as WiDetail,
   type WorkItemSummary,
 } from './api'
-import { formatDate, kindColor } from './format'
-import { QUERY_DEFAULTS, WI_KEY, projectKey, useWiApi } from './queries'
+import { formatMonthDay, kindColor } from './format'
+import { QUERY_DEFAULTS, WI_KEY, projectKey, useBoardColumns, useWiApi } from './queries'
 import { loadSelection, saveSelection } from './selection'
 import './panes.css'
 
@@ -61,6 +57,9 @@ function projectLabel(p: { library_id: string; project: string }): string {
   return `${lib?.name ?? p.library_id} / ${p.project}`
 }
 
+// 看板列以接口为准（顺序即线路顺序），读不到时退回内置五列
+const { columns: boardColumns, defaultColumn } = useBoardColumns()
+
 const saved = loadSelection()
 const projectId = ref<string | null>(null)
 const column = ref<string>(saved.column ?? DEFAULT_COLUMN)
@@ -82,6 +81,12 @@ watch(
   },
   { immediate: true },
 )
+// 当前列不在接口给的列里（例如保存的列已不存在）：退回接口默认列，再退回第一列
+watch(boardColumns, (cols) => {
+  if (cols.includes(column.value)) return
+  const dflt = defaultColumn.value
+  column.value = (dflt && cols.includes(dflt) ? dflt : cols[0]) ?? DEFAULT_COLUMN
+})
 watch([projectId, column], ([p, c]) => {
   if (p) saveSelection({ project_id: p, column: c })
 })
@@ -117,13 +122,23 @@ const list = useQuery({
 })
 const items = computed<WorkItemSummary[]>(() => list.data.value?.items ?? [])
 
-const colTabs = computed(() =>
-  COLUMNS.map((c) => ({
-    value: c,
-    label: c,
-    count: c === column.value && list.data.value ? items.value.length : undefined,
-  })),
-)
+// 每站条数：只有读过的列才有数（缓存里的列表），没读过的站留空，不为凑数多发请求
+const cacheTick = ref(0)
+const stopCache = qc.getQueryCache().subscribe(() => cacheTick.value++)
+onBeforeUnmount(stopCache)
+const columnCounts = computed<Record<string, string | undefined>>(() => {
+  void cacheTick.value
+  const out: Record<string, string | undefined> = {}
+  for (const c of boardColumns.value) {
+    const d = qc.getQueryData<{ items?: unknown[]; truncated?: boolean }>([
+      ...projectKey(projectId.value ?? ''),
+      'list',
+      c,
+    ])
+    if (d && Array.isArray(d.items)) out[c] = `${d.items.length}${d.truncated ? '+' : ''}`
+  }
+  return out
+})
 const assignees = computed(() =>
   [...new Set(items.value.map((w) => w.assigned_to).filter((x): x is string => !!x))].sort(),
 )
@@ -159,7 +174,7 @@ const projectName = computed(
 const subtitle = computed(() =>
   [projectName.value, list.data.value ? `${column.value} ${items.value.length} 项` : column.value]
     .filter(Boolean)
-    .join(' · '),
+    .join('，'),
 )
 const inspectorRows = computed(() => {
   const x = selectedDetail.value
@@ -191,12 +206,12 @@ const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
       </header>
       <div class="filters">
         <SearchField v-model="keyword" label="搜索工单" placeholder="标题、#编号" />
-        <SegmentedControl
+        <BoardRoute
           v-model="column"
-          :items="colTabs"
+          :columns="boardColumns"
+          :counts="columnCounts"
           label="看板列"
           panel-id="wi-list-panel"
-          fill
         />
       </div>
 
@@ -232,26 +247,20 @@ const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
           <p v-if="list.data.value?.omitted" class="note" data-testid="omitted">
             有 {{ list.data.value.omitted }} 条无法读取，已跳过
           </p>
-          <ul class="b-list rows">
+          <ul class="rows">
             <li v-for="w in rows" :key="w.id">
-              <ListRow
+              <WorkItemRow
+                :id="w.id"
                 :title="w.title"
-                :meta="formatDate(w.changed_date)"
-                :dot="kindColor(w.type)"
+                :assignee="w.assigned_to"
+                :priority="w.priority"
+                :date="formatMonthDay(w.changed_date)"
+                :type="w.type"
+                :kind-color="kindColor(w.type)"
                 :selected="w.id === selectedId"
                 :data-testid="`wi-row-${w.id}`"
                 @click="selectedId = w.id"
-              >
-                <span class="mono">#{{ w.id }}</span>
-                <span>{{ w.type ?? '—' }}</span>
-                <span aria-hidden="true">·</span>
-                <span>{{ w.assigned_to ?? '未指派' }}</span>
-                <span aria-hidden="true">·</span>
-                <span>{{ w.state ?? '—' }}</span>
-                <span v-if="w.priority !== null && w.priority !== undefined" class="pri"
-                  >P{{ w.priority }}</span
-                >
-              </ListRow>
+              />
             </li>
           </ul>
           <template v-if="list.isPending.value && projectId">
@@ -269,13 +278,25 @@ const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
             <option v-for="n in PAGE_SIZES" :key="n" :value="n">{{ n }} 条/页</option>
           </select>
         </label>
-        <Button :disabled="page <= 1" data-testid="prev-page" @click="page--">上一页</Button>
-        <span class="mono info" data-testid="page-info"
-          >{{ page }} / {{ totalPages }} · 共 {{ filtered.length }} 条</span
+        <span class="info" data-testid="page-info"
+          >第 {{ page }} / {{ totalPages }} 页，共 {{ filtered.length }} 条</span
         >
-        <Button :disabled="page >= totalPages" data-testid="next-page" @click="page++"
-          >下一页</Button
-        >
+        <span class="pg-btns">
+          <ToolbarButton
+            label="上一页"
+            :disabled="page <= 1"
+            data-testid="prev-page"
+            @click="page--"
+            ><ChevronLeft :size="16" aria-hidden="true"
+          /></ToolbarButton>
+          <ToolbarButton
+            label="下一页"
+            :disabled="page >= totalPages"
+            data-testid="next-page"
+            @click="page++"
+            ><ChevronRight :size="16" aria-hidden="true"
+          /></ToolbarButton>
+        </span>
       </nav>
     </section>
 
@@ -301,13 +322,6 @@ const refreshing = computed(() => ado.isFetching.value || list.isFetching.value)
           </select>
         </label>
         <span class="grow"></span>
-        <Button
-          v-if="selectedDetail"
-          variant="plain"
-          data-testid="open-web"
-          @click="openExternal(selectedDetail.web_url)"
-          >在浏览器打开</Button
-        >
         <InspectorToggle />
       </header>
       <section aria-label="工单详情" class="detailbody">
@@ -435,6 +449,12 @@ h1 {
 }
 .rows {
   flex: none;
+  margin: 0;
+  padding: 2px 8px 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .note {
   margin: 0;
@@ -446,10 +466,6 @@ h1 {
   margin: 0;
   padding: 16px;
   color: var(--mute);
-}
-.pri {
-  margin-left: auto;
-  font-weight: 600;
 }
 .pager {
   flex: none;
@@ -463,8 +479,14 @@ h1 {
   color: var(--mute);
 }
 .info {
-  flex: 1;
+  flex: 1 0 auto;
   text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pg-btns {
+  display: inline-flex;
+  gap: 2px;
 }
 .sel-wrap {
   display: inline-flex;

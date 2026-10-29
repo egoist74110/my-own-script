@@ -46,40 +46,42 @@ const isSel = (id: string) => {
           ＋ 新建仓库
         </Button>
       </div>
-      <table class="st-tbl" data-testid="repo-table">
-        <thead>
-          <tr>
-            <th scope="col">名称</th>
-            <th scope="col">路径</th>
-            <th scope="col">状态</th>
-            <th scope="col">警告</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="r in repos"
-            :key="r.id"
-            tabindex="0"
-            :aria-selected="isSel(r.id)"
-            :data-selected="isSel(r.id)"
-            :data-testid="`repo-row-${r.id}`"
-            @click="pick({ kind: 'repo', id: r.id })"
-            @keydown.enter.self="pick({ kind: 'repo', id: r.id })"
-          >
-            <td>{{ r.name }}</td>
-            <td class="st-mono">{{ r.path }}</td>
-            <td :class="{ 'st-warn': !r.exists }" :data-testid="`repo-exists-${r.id}`">
-              {{ r.exists ? '存在' : '目录不存在' }}
-            </td>
-            <td class="st-warn" :data-testid="`repo-warn-${r.id}`">
-              {{ (r.warnings ?? []).join('；') }}
-            </td>
-          </tr>
-          <tr v-if="!repos.length">
-            <td colspan="4" class="st-note">还没有本地仓库。</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="st-tw">
+        <table class="st-tbl" data-testid="repo-table">
+          <thead>
+            <tr>
+              <th scope="col">名称</th>
+              <th scope="col">路径</th>
+              <th scope="col">状态</th>
+              <th scope="col">警告</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="r in repos"
+              :key="r.id"
+              tabindex="0"
+              :aria-selected="isSel(r.id)"
+              :data-selected="isSel(r.id)"
+              :data-testid="`repo-row-${r.id}`"
+              @click="pick({ kind: 'repo', id: r.id })"
+              @keydown.enter.self="pick({ kind: 'repo', id: r.id })"
+            >
+              <td>{{ r.name }}</td>
+              <td class="st-mono">{{ r.path }}</td>
+              <td :class="{ 'st-warn': !r.exists }" :data-testid="`repo-exists-${r.id}`">
+                {{ r.exists ? '存在' : '目录不存在' }}
+              </td>
+              <td class="st-warn" :data-testid="`repo-warn-${r.id}`">
+                {{ (r.warnings ?? []).join('；') }}
+              </td>
+            </tr>
+            <tr v-if="!repos.length">
+              <td colspan="4" class="st-note">还没有本地仓库。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="st-section st-editor" aria-label="本地仓库详情">

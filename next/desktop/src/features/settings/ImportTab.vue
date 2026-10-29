@@ -4,6 +4,7 @@ import Button from '@/components/Button.vue'
 import Sheet from '@/components/Sheet.vue'
 import Tag from '@/components/Tag.vue'
 import type { ApiError, ImportPreview } from './api'
+import { fmtLocal } from './format'
 import ImportBlocks from './ImportBlocks.vue'
 import { settingsContextKey } from './useSettings'
 
@@ -154,18 +155,21 @@ async function doDecline() {
       </template>
 
       <template v-else-if="state === 'completed' || state === 'declined'">
-        <dl class="st-kv" data-testid="import-readonly">
-          <dt class="lbl">状态</dt>
-          <dd>{{ STATE_TEXT[state] }}</dd>
-          <template v-if="imp.finished_at">
-            <dt class="lbl">时间</dt>
-            <dd class="st-mono">{{ imp.finished_at }}</dd>
-          </template>
-          <template v-if="imp.source_dir">
-            <dt class="lbl">来源</dt>
-            <dd class="st-mono">{{ imp.source_dir }}</dd>
-          </template>
-        </dl>
+        <section class="st-section" aria-label="导入结果">
+          <div class="st-head"><h2>导入结果</h2></div>
+          <dl class="st-kv" data-testid="import-readonly">
+            <dt>状态</dt>
+            <dd>{{ STATE_TEXT[state] }}</dd>
+            <template v-if="imp.finished_at">
+              <dt>时间</dt>
+              <dd class="st-mono">{{ fmtLocal(imp.finished_at) }}</dd>
+            </template>
+            <template v-if="imp.source_dir">
+              <dt>来源</dt>
+              <dd class="st-mono">{{ imp.source_dir }}</dd>
+            </template>
+          </dl>
+        </section>
         <ImportBlocks v-if="state === 'completed' && imp.summary" :data="imp.summary" />
         <p v-if="state === 'declined'" class="st-note">已选择不导入旧配置；不再提供重新导入。</p>
       </template>

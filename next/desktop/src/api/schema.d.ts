@@ -795,6 +795,182 @@ export interface paths {
         patch: operations["patch_api_mcp_settings_patch"];
         trace?: never;
     };
+    "/api/release-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Configs */
+        get: operations["configs_api_release_configs_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_release_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/discover/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Branches */
+        get: operations["branches_api_release_configs_discover_branches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/discover/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Queues */
+        get: operations["queues_api_release_configs_discover_queues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/discover/repo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Repo */
+        post: operations["repo_api_release_configs_discover_repo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/discover/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Targets */
+        get: operations["targets_api_release_configs_discover_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Order */
+        put: operations["order_api_release_configs_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Config */
+        get: operations["config_api_release_configs__config_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_release_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch */
+        patch: operations["patch_api_release_configs__config_id__patch"];
+        trace?: never;
+    };
+    "/api/release-configs/{config_id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Commands */
+        get: operations["commands_api_release_configs__config_id__commands_get"];
+        put?: never;
+        /** Create Command */
+        post: operations["create_command_api_release_configs__config_id__commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/{config_id}/commands/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Command Order */
+        put: operations["command_order_api_release_configs__config_id__commands_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/release-configs/{config_id}/commands/{command_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Command */
+        get: operations["command_api_release_configs__config_id__commands__command_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Command */
+        delete: operations["delete_command_api_release_configs__config_id__commands__command_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Command */
+        patch: operations["patch_command_api_release_configs__config_id__commands__command_id__patch"];
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -1447,6 +1623,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telegram/ai-bots/{ai_id}/token/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Verify Token */
+        post: operations["ai_verify_token_api_telegram_ai_bots__ai_id__token_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/telegram/control/disable": {
         parameters: {
             query?: never;
@@ -1595,6 +1788,23 @@ export interface paths {
         put?: never;
         /** Import Token */
         post: operations["import_token_api_telegram_token_import_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telegram/token/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Token */
+        post: operations["verify_token_api_telegram_token_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2068,6 +2278,8 @@ export interface components {
             enabled: boolean;
             /** Enabled At */
             enabled_at?: string | null;
+            token_verify?: components["schemas"]["TokenVerification"] | null;
+            verified_bot?: components["schemas"]["VerifiedBot"] | null;
         };
         /** AIBotEnableRequest */
         AIBotEnableRequest: {
@@ -2461,6 +2673,8 @@ export interface components {
             credential: components["schemas"]["CredentialView"];
             /** Username */
             username: string | null;
+            verified_bot?: components["schemas"]["VerifiedBot"] | null;
+            verify?: components["schemas"]["TokenVerification"] | null;
         };
         /** BrowserProfileCleared */
         BrowserProfileCleared: {
@@ -2643,6 +2857,108 @@ export interface components {
              */
             default: string;
         };
+        /** CommandCreate */
+        CommandCreate: {
+            /** Branch Id */
+            branch_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Target Ids */
+            target_ids: string[];
+            /**
+             * Tg Command
+             * @default
+             */
+            tg_command: string;
+            /**
+             * Tg Desc
+             * @default
+             */
+            tg_desc: string;
+        };
+        /** CommandListResponse */
+        CommandListResponse: {
+            /** Items */
+            items: components["schemas"]["CommandView"][];
+            /** Revision */
+            revision: number;
+        };
+        /** CommandPatch */
+        CommandPatch: {
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Revision */
+            revision: number;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Target Ids */
+            target_ids?: string[] | null;
+            /** Tg Command */
+            tg_command?: string | null;
+            /** Tg Desc */
+            tg_desc?: string | null;
+        };
+        /** CommandResponse */
+        CommandResponse: {
+            item: components["schemas"]["CommandView"];
+            /** Revision */
+            revision: number;
+        };
+        /** CommandView */
+        CommandView: {
+            /** Active Run Id */
+            active_run_id: string | null;
+            /** Branch Id */
+            branch_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            last_run: components["schemas"]["LastRunSummary"] | null;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Target Ids */
+            target_ids?: string[];
+            /**
+             * Tg Command
+             * @default
+             */
+            tg_command: string;
+            /**
+             * Tg Desc
+             * @default
+             */
+            tg_desc: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** Comment */
         Comment: {
             /** Author */
@@ -2693,6 +3009,8 @@ export interface components {
             enabled: boolean;
             /** Enabled At */
             enabled_at?: string | null;
+            token_verify?: components["schemas"]["TokenVerification"] | null;
+            verified_bot?: components["schemas"]["VerifiedBot"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -2807,6 +3125,85 @@ export interface components {
             release_stage_names?: string[];
         } & {
             [key: string]: unknown;
+        };
+        /** DiscoverBranchesResponse */
+        DiscoverBranchesResponse: {
+            /** Branches */
+            branches: string[];
+            /** Default Branch */
+            default_branch: string | null;
+        };
+        /** DiscoverQueuesResponse */
+        DiscoverQueuesResponse: {
+            /** Queues */
+            queues: components["schemas"]["DiscoveredItem"][];
+        };
+        /** DiscoverRepoInput */
+        DiscoverRepoInput: {
+            /** Local Repo Path */
+            local_repo_path: string;
+        };
+        /** DiscoverRepoResponse */
+        DiscoverRepoResponse: {
+            /** Default Branch */
+            default_branch?: string | null;
+            /** Existing Config Id */
+            existing_config_id?: string | null;
+            /** Local Repo Path */
+            local_repo_path: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Label */
+            project_label?: string | null;
+            /** Reason */
+            reason?: "project_not_matched" | null;
+            /** Remote Url */
+            remote_url: string;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /** Suggested Name */
+            suggested_name?: string | null;
+        };
+        /** DiscoverTargetsResponse */
+        DiscoverTargetsResponse: {
+            /** Builds */
+            builds: components["schemas"]["DiscoveredBuild"][];
+            /** Releases */
+            releases: components["schemas"]["DiscoveredRelease"][];
+            /** Suggested Targets */
+            suggested_targets: components["schemas"]["ReleaseTargetInput"][];
+        };
+        /** DiscoveredBuild */
+        DiscoveredBuild: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pipeline" | "build";
+            /** Name */
+            name: string;
+        };
+        /** DiscoveredItem */
+        DiscoveredItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** DiscoveredRelease */
+        DiscoveredRelease: {
+            /** Build Definition Ids */
+            build_definition_ids: string[];
+            /** Environments */
+            environments: components["schemas"]["DiscoveredItem"][];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** EffectIntent */
         EffectIntent: {
@@ -4014,6 +4411,208 @@ export interface components {
              */
             type: "Build";
         };
+        /** ReleaseBranch */
+        ReleaseBranch: {
+            /**
+             * Build Branch
+             * @default
+             */
+            build_branch: string;
+            /** Id */
+            id: string;
+            /** Merges */
+            merges?: components["schemas"]["GitMergeRule"][];
+            /** Push Branches */
+            push_branches?: string[];
+            /** Update Branches */
+            update_branches?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReleaseBranchInput */
+        ReleaseBranchInput: {
+            /**
+             * Build Branch
+             * @default
+             */
+            build_branch: string;
+            /** Id */
+            id?: string | null;
+            /** Merges */
+            merges?: components["schemas"]["GitMergeRule"][];
+            /** Push Branches */
+            push_branches?: string[];
+            /** Update Branches */
+            update_branches?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReleaseCreate */
+        ReleaseCreate: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /** Branches */
+            branches?: components["schemas"]["ReleaseBranchInput"][];
+            /**
+             * Local Repo Path
+             * @default
+             */
+            local_repo_path: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Targets */
+            targets?: components["schemas"]["ReleaseTargetInput"][];
+        };
+        /** ReleaseListResponse */
+        ReleaseListResponse: {
+            /** Items */
+            items: components["schemas"]["ReleaseView"][];
+            /** Revision */
+            revision: number;
+        };
+        /** ReleasePatch */
+        ReleasePatch: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /** Branches */
+            branches?: components["schemas"]["ReleaseBranchInput"][] | null;
+            /** Local Repo Path */
+            local_repo_path?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /** Revision */
+            revision: number;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Targets */
+            targets?: components["schemas"]["ReleaseTargetInput"][] | null;
+        };
+        /** ReleaseResponse */
+        ReleaseResponse: {
+            item: components["schemas"]["ReleaseView"];
+            /** Revision */
+            revision: number;
+        };
+        /** ReleaseTarget */
+        ReleaseTarget: {
+            /** Build Id */
+            build_id?: string | null;
+            /** Build Kind */
+            build_kind?: string | null;
+            /** Build Name */
+            build_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default 目标1
+             */
+            name: string;
+            /** Release Id */
+            release_id?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Release Stage Ids */
+            release_stage_ids?: string[];
+            /** Release Stage Names */
+            release_stage_names?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReleaseTargetInput */
+        ReleaseTargetInput: {
+            /** Build Id */
+            build_id?: string | null;
+            /** Build Kind */
+            build_kind?: ("pipeline" | "build") | null;
+            /** Build Name */
+            build_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id?: string | null;
+            /**
+             * Name
+             * @default 目标1
+             */
+            name: string;
+            /** Release Id */
+            release_id?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Release Stage Ids */
+            release_stage_ids?: string[];
+            /** Release Stage Names */
+            release_stage_names?: string[];
+        };
+        /** ReleaseView */
+        ReleaseView: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
+            /** Branches */
+            branches?: components["schemas"]["ReleaseBranch"][];
+            /** Commands */
+            commands: components["schemas"]["CommandView"][];
+            /** Id */
+            id: string;
+            /**
+             * Local Repo Path
+             * @default
+             */
+            local_repo_path: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Targets */
+            targets?: components["schemas"]["ReleaseTarget"][];
+            /** Warnings */
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
+        };
         /** RemoteProject */
         RemoteProject: {
             /** Name */
@@ -4849,6 +5448,16 @@ export interface components {
             /** Pat */
             pat?: string | null;
         };
+        /** TokenMutationResponse */
+        TokenMutationResponse: {
+            /** Id */
+            id?: string | null;
+            /** Revision */
+            revision: number;
+            verify: components["schemas"]["TokenVerification"];
+            /** Warnings */
+            warnings?: string[];
+        };
         /** TokenRequest */
         TokenRequest: {
             /** Revision */
@@ -4858,6 +5467,19 @@ export interface components {
              * Format: password
              */
             token: string;
+        };
+        /** TokenVerification */
+        TokenVerification: {
+            /** Checked At */
+            checked_at: string;
+            /** Code */
+            code?: ("token_invalid" | "telegram_unreachable" | "telegram_request_failed") | null;
+            /** Has Webhook */
+            has_webhook?: boolean | null;
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
         };
         /** TotpImport */
         TotpImport: {
@@ -4938,6 +5560,17 @@ export interface components {
         /** ValidationErrorResponse */
         ValidationErrorResponse: {
             detail: components["schemas"]["ValidationErrorDetail"];
+        };
+        /** VerifiedBot */
+        VerifiedBot: {
+            /** First Name */
+            first_name?: string | null;
+            /** Id */
+            id: string;
+            /** Username */
+            username?: string | null;
+            /** Verified At */
+            verified_at: string;
         };
         /** VpnClient */
         VpnClient: {
@@ -7003,6 +7636,524 @@ export interface operations {
             };
         };
     };
+    configs_api_release_configs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseListResponse"];
+                };
+            };
+        };
+    };
+    create_api_release_configs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    branches_api_release_configs_discover_branches_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                repo_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverBranchesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queues_api_release_configs_discover_queues_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverQueuesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repo_api_release_configs_discover_repo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverRepoInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverRepoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    targets_api_release_configs_discover_targets_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                repo_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverTargetsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    order_api_release_configs_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_api_release_configs__config_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_release_configs__config_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+                detach_acl?: boolean;
+            };
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_api_release_configs__config_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleasePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commands_api_release_configs__config_id__commands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_command_api_release_configs__config_id__commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    command_order_api_release_configs__config_id__commands_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    command_api_release_configs__config_id__commands__command_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_command_api_release_configs__config_id__commands__command_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+                detach_acl?: boolean;
+            };
+            header?: never;
+            path: {
+                config_id: string;
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_command_api_release_configs__config_id__commands__command_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     runs_api_runs_get: {
         parameters: {
             query?: {
@@ -8818,7 +9969,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MutationResponse"];
+                    "application/json": components["schemas"]["TokenMutationResponse"];
                 };
             };
             /** @description Not Found */
@@ -8958,7 +10109,78 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MutationResponse"];
+                    "application/json": components["schemas"]["TokenMutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    ai_verify_token_api_telegram_ai_bots__ai_id__token_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ai_id: "claude_code" | "codex" | "gemini";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenMutationResponse"];
                 };
             };
             /** @description Not Found */
@@ -9508,7 +10730,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MutationResponse"];
+                    "application/json": components["schemas"]["TokenMutationResponse"];
                 };
             };
             /** @description Not Found */
@@ -9644,7 +10866,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MutationResponse"];
+                    "application/json": components["schemas"]["TokenMutationResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_token_api_telegram_token_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenMutationResponse"];
                 };
             };
             /** @description Not Found */

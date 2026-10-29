@@ -17,15 +17,15 @@ const emit = defineEmits<{
 <template>
   <Sheet
     :open="open"
-    title="开启 ADO 写工具权限确认"
-    description="开启写工具后，AI 将具有在 ADO 创建工单的权限。"
+    title="允许 AI 创建工单？"
+    description="打开后，AI 可以在会话或工单分析中直接在 ADO 里建单。"
     @update:open="emit('update:open', $event)"
   >
     <div class="confirm-body" data-testid="mcp-ado-write-confirm-dialog">
       <div class="confirm-desc">
-        <p>写工具 <code>ado_create_work_item</code> 允许 AI 在会话或工单分析过程中直接创建工单。</p>
+        <p>AI 会通过工具 <code>ado_create_work_item</code> 创建工单，不再逐次询问你。</p>
         <p class="st-warn">
-          开启后该工具将暴露在 MCP 工具列表中，请确保已了解可能带来的数据写入风险。
+          这个工具会向 ADO 写入数据，创建出的工单需要你自己去 ADO 里修改或删除。确认可以接受再打开。
         </p>
       </div>
     </div>
