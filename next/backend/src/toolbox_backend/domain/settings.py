@@ -220,6 +220,23 @@ class RunCommand(BaseModel):
     sort_order: int = 0
     branch_id: Id
     target_ids: list[Id] = Field(default_factory=list)
+    # 命令级覆盖：None 沿用分支/配置；有值只对这条命令生效（空列表、空路径表示明确清空）。
+    update_branches: list[str] | None = None
+    merges: list[GitMergeRule] | None = None
+    push_branches: list[str] | None = None
+    local_repo_path: str | None = None
+    agent_queue_id: str | None = None
+    agent_queue_name: str | None = None
+
+
+COMMAND_OVERRIDES = (
+    "update_branches",
+    "merges",
+    "push_branches",
+    "local_repo_path",
+    "agent_queue_id",
+    "agent_queue_name",
+)
 
 
 class ReleaseConfig(BaseModel):
@@ -246,15 +263,25 @@ class ReleaseConfig(BaseModel):
             {**selected[tid].model_dump(exclude={"id"}), "enabled": True}
             for tid in command.target_ids
         ]
-        extra = command.model_dump(exclude={"target_ids", "branch_id", "name"})
+        extra = command.model_dump(exclude={"target_ids", "branch_id", "name", *COMMAND_OVERRIDES})
         flow = next(b for b in self.branches if b.id == command.branch_id)
+        git_flow = flow.model_dump(exclude={"id"})
+        over = command.model_dump(include=set(COMMAND_OVERRIDES))
+        for key in ("update_branches", "merges", "push_branches"):
+            if over[key] is not None:
+                git_flow[key] = over[key]
+        if over["local_repo_path"] is not None:
+            fields["local_repo_path"] = over["local_repo_path"]
+        if over["agent_queue_id"] is not None:
+            fields["agent_queue_id"] = over["agent_queue_id"]
+            fields["agent_queue_name"] = over["agent_queue_name"]
         return DynamicTask(
             **{
                 **fields,
                 **extra,
                 "name": self.name,
                 "targets": targets,
-                "git_flow": flow.model_dump(exclude={"id"}),
+                "git_flow": git_flow,
             }
         )
 

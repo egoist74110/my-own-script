@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from toolbox_backend.api.task_schemas import FlowInput, LastRunSummary, TargetInput
+from toolbox_backend.api.task_schemas import FlowInput, LastRunSummary, MergeInput, TargetInput
 from toolbox_backend.domain.settings import GitMergeRule, ReleaseConfig, RunCommand, StrictModel
 
 
@@ -55,6 +55,12 @@ class CommandFields(StrictModel):
     sort_order: int = 0
     branch_id: str
     target_ids: list[str] = Field(min_length=1, max_length=20)
+    update_branches: list[str] | None = Field(default=None, max_length=50)
+    merges: list[MergeInput] | None = Field(default=None, max_length=50)
+    push_branches: list[str] | None = Field(default=None, max_length=50)
+    local_repo_path: str | None = None
+    agent_queue_id: str | None = None
+    agent_queue_name: str | None = Field(default=None, max_length=200)
 
 
 class CommandCreate(CommandFields):
@@ -70,6 +76,12 @@ class CommandPatch(StrictModel):
     sort_order: int | None = None
     branch_id: str | None = None
     target_ids: list[str] | None = Field(default=None, min_length=1, max_length=20)
+    update_branches: list[str] | None = Field(default=None, max_length=50)
+    merges: list[MergeInput] | None = Field(default=None, max_length=50)
+    push_branches: list[str] | None = Field(default=None, max_length=50)
+    local_repo_path: str | None = None
+    agent_queue_id: str | None = None
+    agent_queue_name: str | None = Field(default=None, max_length=200)
 
 
 class CommandView(RunCommand):

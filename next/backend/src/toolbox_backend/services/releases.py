@@ -186,7 +186,34 @@ class ReleasesService:
             command = merged["tg_command"]
             if command and any(t.id != ident and t.tg_command == command for t in c.tasks.items):
                 raise invalid("TG 指令已存在")
+            flow = normalize_flow(
+                {
+                    k: merged[k]
+                    for k in ("update_branches", "merges", "push_branches")
+                    if merged.get(k) is not None
+                }
+            )
+            for key in ("update_branches", "push_branches", "merges"):
+                if key in flow:
+                    merged[key] = flow[key]
+            validate_fields(
+                {
+                    "git_flow": flow,
+                    "local_repo_path": merged.get("local_repo_path"),
+                    "agent_queue_id": merged.get("agent_queue_id"),
+                }
+            )
             item = checked(RunCommand, {**merged, "id": ident})
+            if any(
+                getattr(item, k) is not None
+                for k in ("update_branches", "merges", "push_branches", "local_repo_path")
+            ):
+                task = parent.expand(item)
+                flow = task.git_flow
+                if (
+                    flow.update_branches or flow.merges or flow.push_branches
+                ) and not task.local_repo_path.strip():
+                    raise invalid("没有本地仓库路径时不支持更新、合并、推送规则")
             if old:
                 parent.commands[parent.commands.index(old)] = item
             else:

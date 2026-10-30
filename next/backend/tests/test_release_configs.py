@@ -13,6 +13,7 @@ from tests.test_s4b_execution import execution, latest
 from toolbox_backend.adapters.config_store import ConfigStore
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.settings import (
+    COMMAND_OVERRIDES,
     Config,
     DynamicTask,
     config_v6_to_v7,
@@ -152,7 +153,9 @@ async def revision(client):
     return (await client.get("/api/release-configs")).json()["revision"]
 
 
-@pytest.mark.parametrize("legacy,create", [(False, False), (False, True), (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "legacy,create", [(False, False), (False, True), (True, False), (True, True)]
+)
 async def test_branch_write_normalizes_flow_and_handles_blank_by_api(tmp_path, legacy, create):
     async with execution(tmp_path) as (app, _, _, _):
         async with httpx.AsyncClient(
@@ -409,6 +412,79 @@ async def test_release_api_selection_snapshot_acl_tg_and_protected_delete(tmp_pa
             assert all("task:test" not in g.task_ids for g in config.telegram.acl_groups)
 
 
+async def test_command_overrides_expand_and_validate(tmp_path):
+    async with execution(tmp_path) as (app, _, _, _):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://127.0.0.1:1234",
+            headers={"Authorization": "Bearer s4b-local-test"},
+        ) as client:
+            body = {
+                "revision": await revision(client),
+                "name": "覆盖",
+                "project_id": "proj:test",
+                "repo_id": "ov-repo",
+                "branches": [{"build_branch": "main", "update_branches": ["main"]}],
+                "targets": [{"build_kind": "build", "build_id": "22"}],
+            }
+            response = await client.post("/api/release-configs", json=body)
+            assert response.status_code == 200, response.text
+            url = f"/api/release-configs/{response.json()['id']}"
+            parent = (await client.get(url)).json()["item"]
+            base = {
+                "name": "C",
+                "target_ids": [parent["targets"][0]["id"]],
+                "branch_id": parent["branches"][0]["id"],
+            }
+            # 没有本地路径时，覆盖 Git 规则被拒绝
+            denied = await client.post(
+                url + "/commands",
+                json={**base, "revision": await revision(client), "push_branches": ["main"]},
+            )
+            assert denied.status_code == 422
+            # 沿用分支规则、无覆盖时：字段为空
+            plain = await client.post(
+                url + "/commands", json={**base, "revision": await revision(client)}
+            )
+            assert plain.status_code == 200, plain.text
+            item = (await client.get(url + "/commands/" + plain.json()["id"])).json()["item"]
+            assert item["update_branches"] is None and item["agent_queue_id"] is None
+            # 带覆盖：Git 规则、队列
+            response = await client.patch(
+                url + "/commands/" + plain.json()["id"],
+                json={
+                    "revision": await revision(client),
+                    "agent_queue_id": "9",
+                    "agent_queue_name": "队列9",
+                    "update_branches": [],
+                    "merges": [],
+                },
+            )
+            assert response.status_code == 200, response.text
+            config = await app.state.config_store.read()
+            parent_cfg = config.tasks.release_configs[-1]
+            task = parent_cfg.expand(parent_cfg.commands[0])
+            assert task.git_flow.update_branches == []
+            assert task.git_flow.push_branches == []
+            assert task.agent_queue_id == "9" and task.agent_queue_name == "队列9"
+            # 恢复继承
+            response = await client.patch(
+                url + "/commands/" + plain.json()["id"],
+                json={
+                    "revision": await revision(client),
+                    "update_branches": None,
+                    "merges": None,
+                    "agent_queue_id": None,
+                    "agent_queue_name": None,
+                },
+            )
+            assert response.status_code == 200, response.text
+            config = await app.state.config_store.read()
+            parent_cfg = config.tasks.release_configs[-1]
+            task = parent_cfg.expand(parent_cfg.commands[0])
+            assert task.git_flow.update_branches == ["main"]
+
+
 async def test_release_command_crud_validation_order_revision_and_auth(tmp_path):
     async with execution(tmp_path) as (app, _, _, _):
         async with httpx.AsyncClient(
@@ -598,7 +674,9 @@ def test_v7_to_v8_merge_flow_dedup_names_command_identity_and_extensions():
     assert commands["b"].branch_id == commands["c"].branch_id != commands["a"].branch_id
     for old in configs:
         for command in old["commands"]:
-            current = commands[command["id"]].model_dump(exclude={"branch_id", "target_ids"})
+            current = commands[command["id"]].model_dump(
+                exclude={"branch_id", "target_ids", *COMMAND_OVERRIDES}
+            )
             assert current == {k: v for k, v in command.items() if k != "target_ids"}
             expanded = parent.expand(commands[command["id"]]).model_dump()
             assert expanded["git_flow"] == old["git_flow"]

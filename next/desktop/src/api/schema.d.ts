@@ -2859,6 +2859,10 @@ export interface components {
         };
         /** CommandCreate */
         CommandCreate: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
             /** Branch Id */
             branch_id: string;
             /**
@@ -2866,8 +2870,14 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /** Local Repo Path */
+            local_repo_path?: string | null;
+            /** Merges */
+            merges?: components["schemas"]["MergeInput"][] | null;
             /** Name */
             name: string;
+            /** Push Branches */
+            push_branches?: string[] | null;
             /** Revision */
             revision: number;
             /**
@@ -2887,6 +2897,8 @@ export interface components {
              * @default
              */
             tg_desc: string;
+            /** Update Branches */
+            update_branches?: string[] | null;
         };
         /** CommandListResponse */
         CommandListResponse: {
@@ -2897,12 +2909,22 @@ export interface components {
         };
         /** CommandPatch */
         CommandPatch: {
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
             /** Branch Id */
             branch_id?: string | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Local Repo Path */
+            local_repo_path?: string | null;
+            /** Merges */
+            merges?: components["schemas"]["MergeInput"][] | null;
             /** Name */
             name?: string | null;
+            /** Push Branches */
+            push_branches?: string[] | null;
             /** Revision */
             revision: number;
             /** Sort Order */
@@ -2913,6 +2935,8 @@ export interface components {
             tg_command?: string | null;
             /** Tg Desc */
             tg_desc?: string | null;
+            /** Update Branches */
+            update_branches?: string[] | null;
         };
         /** CommandResponse */
         CommandResponse: {
@@ -2924,6 +2948,10 @@ export interface components {
         CommandView: {
             /** Active Run Id */
             active_run_id: string | null;
+            /** Agent Queue Id */
+            agent_queue_id?: string | null;
+            /** Agent Queue Name */
+            agent_queue_name?: string | null;
             /** Branch Id */
             branch_id: string;
             /**
@@ -2934,11 +2962,17 @@ export interface components {
             /** Id */
             id: string;
             last_run: components["schemas"]["LastRunSummary"] | null;
+            /** Local Repo Path */
+            local_repo_path?: string | null;
+            /** Merges */
+            merges?: components["schemas"]["GitMergeRule"][] | null;
             /**
              * Name
              * @default
              */
             name: string;
+            /** Push Branches */
+            push_branches?: string[] | null;
             /**
              * Sort Order
              * @default 0
@@ -2956,6 +2990,8 @@ export interface components {
              * @default
              */
             tg_desc: string;
+            /** Update Branches */
+            update_branches?: string[] | null;
         } & {
             [key: string]: unknown;
         };

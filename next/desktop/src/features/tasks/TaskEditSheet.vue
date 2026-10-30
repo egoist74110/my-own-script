@@ -84,6 +84,8 @@ const remoteBranchSel = ref<string[]>([])
 const remoteTargetsOpen = ref(false)
 const queueOpen = ref(false)
 
+/** 没有本地路径时，执行器不支持 Git 规则（更新/合并/推送）。 */
+const noLocalPath = computed(() => !localRepoPath.value.trim())
 const pid = computed(() => projectId.value.trim())
 const rid = computed(() => repoId.value.trim())
 const canDiscover = computed(() => Boolean(pid.value && rid.value))
@@ -439,7 +441,6 @@ function toggleStage(t: EditableTarget, id: string, on: boolean) {
 // ───────────── 保存按钮的所有禁用原因：都在按钮旁写出来，指向收起区域的给“去修改” ─────────────
 
 /** 没有本地路径时，执行器不支持 Git 规则（更新/合并/推送）：对应分支行提示并禁止保存。 */
-const noLocalPath = computed(() => !localRepoPath.value.trim())
 const anyRules = computed(() => gitRulesNoPath.value.size > 0)
 function focusPath() {
   pathField.value?.focus()

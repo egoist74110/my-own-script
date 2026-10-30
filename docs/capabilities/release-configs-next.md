@@ -12,6 +12,7 @@
 | ReleaseTarget | `id` + 原 DeployTarget 全部字段 | 稳定目标标识；构建类型/定义、Release 定义、环境 id 与显示名 |
 | RunCommand | `id`, `name`, `tg_command`, `tg_desc`, `enabled`, `sort_order` | 原命令 id、TG 信息、启用和排序不变 |
 | RunCommand | `branch_id` | 必填，必须属于当前配置的分支目录 |
+| RunCommand | `update_branches`, `merges`, `push_branches`, `local_repo_path`, `agent_queue_id`, `agent_queue_name` | 命令级覆盖，均可空：`null` 沿用分支/配置；有值只对这条命令生效，空列表/空路径 = 明确清空。覆盖后有效 Git 规则非空而本地路径为空时 422 |
 | RunCommand | `target_ids` | 本配置内有序、非重复目标 id，新增/修改要求 1–20 个；执行顺序与列表一致 |
 | CommandView | 上述字段 + `last_run`, `active_run_id` | 继续按命令 id 查询运行概览 |
 

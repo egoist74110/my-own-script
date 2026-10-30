@@ -426,6 +426,39 @@ describe('发布配置任务页', () => {
     await b.done()
   })
 
+  it('命令编辑：默认沿用（覆盖字段提交 null）；勾选单独设置 Git 规则 / 队列后提交具体值', async () => {
+    const server = makeServer()
+    const b = await bootTasks(server)
+    await b.wrapper.get('[data-testid="new-command-btn"]').trigger('click')
+    await flushPromises()
+    setInput('例如：同步构建发布测试环境', '带覆盖')
+    const pick = q<HTMLInputElement>('[data-testid="select-branch-b-dev"]')!
+    pick.click()
+    pick.dispatchEvent(new Event('change', { bubbles: true }))
+    q<HTMLButtonElement>('[data-testid="select-target-tg-1"]')!.click()
+    await flushPromises()
+
+    const toggle = q<HTMLInputElement>('[data-testid="override-git-toggle"]')!
+    toggle.checked = true
+    toggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+    expect(q('[data-testid="cmd-git-order"]')).not.toBeNull()
+    q<HTMLButtonElement>('[data-testid="save-command-btn"]')!.click()
+    await flushPromises()
+    const post = server.calls.find(
+      (c) => c.method === 'POST' && c.path === '/api/release-configs/cfg-event/commands',
+    )!
+    expect(post.body).toMatchObject({
+      name: '带覆盖',
+      update_branches: expect.any(Array),
+      merges: expect.any(Array),
+      push_branches: expect.any(Array),
+      local_repo_path: null,
+      agent_queue_id: null,
+    })
+    await b.done()
+  })
+
   it('配置编辑：被命令使用的目标不能删并写清怎么办；没被使用的可以删', async () => {
     const server = makeServer()
     const b = await bootTasks(server)

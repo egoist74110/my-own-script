@@ -1814,6 +1814,29 @@
       "CommandCreate": {
         "additionalProperties": false,
         "properties": {
+          "agent_queue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Id"
+          },
+          "agent_queue_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Name"
+          },
           "branch_id": {
             "title": "Branch Id",
             "type": "string"
@@ -1823,11 +1846,52 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "local_repo_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Repo Path"
+          },
+          "merges": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MergeInput"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merges"
+          },
           "name": {
             "maxLength": 2000,
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "push_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Branches"
           },
           "revision": {
             "minimum": 0.0,
@@ -1860,6 +1924,21 @@
             "maxLength": 2000,
             "title": "Tg Desc",
             "type": "string"
+          },
+          "update_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Branches"
           }
         },
         "required": [
@@ -1895,6 +1974,29 @@
       "CommandPatch": {
         "additionalProperties": false,
         "properties": {
+          "agent_queue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Id"
+          },
+          "agent_queue_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Name"
+          },
           "branch_id": {
             "anyOf": [
               {
@@ -1917,6 +2019,32 @@
             ],
             "title": "Enabled"
           },
+          "local_repo_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Repo Path"
+          },
+          "merges": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MergeInput"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merges"
+          },
           "name": {
             "anyOf": [
               {
@@ -1929,6 +2057,21 @@
               }
             ],
             "title": "Name"
+          },
+          "push_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Branches"
           },
           "revision": {
             "minimum": 0.0,
@@ -1986,6 +2129,21 @@
               }
             ],
             "title": "Tg Desc"
+          },
+          "update_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Branches"
           }
         },
         "required": [
@@ -2025,6 +2183,28 @@
             ],
             "title": "Active Run Id"
           },
+          "agent_queue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Id"
+          },
+          "agent_queue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Queue Name"
+          },
           "branch_id": {
             "title": "Branch Id",
             "type": "string"
@@ -2048,10 +2228,49 @@
               }
             ]
           },
+          "local_repo_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Repo Path"
+          },
+          "merges": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GitMergeRule"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merges"
+          },
           "name": {
             "default": "",
             "title": "Name",
             "type": "string"
+          },
+          "push_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Branches"
           },
           "sort_order": {
             "default": 0,
@@ -2074,6 +2293,20 @@
             "default": "",
             "title": "Tg Desc",
             "type": "string"
+          },
+          "update_branches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Branches"
           }
         },
         "required": [

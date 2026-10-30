@@ -5,6 +5,9 @@ import Banner from '@/components/Banner.vue'
 import Button from '@/components/Button.vue'
 import Sheet from '@/components/Sheet.vue'
 import TextField from '@/components/TextField.vue'
+import BranchRuleFields from './BranchRuleFields.vue'
+import LocalPathField from './LocalPathField.vue'
+import QueueSelect from './QueueSelect.vue'
 import Switch from '@/components/ui/switch/Switch.vue'
 import {
   releaseErrorText,
@@ -13,10 +16,19 @@ import {
   type CommandView,
   type ReleaseView,
 } from './api'
+import { useDiscoverBranches, useDiscoverQueues } from './discover'
+import {
+  analyzeMerges,
+  blankBranch,
+  branchFromView,
+  parseList,
+  type EditableBranch,
+} from './release-draft'
 
 /**
  * 运行命令编辑器：名称、TG 命令与说明、是否启用、用哪个分支（必选），以及要发布的目标（有序、至少一个）。
  * 分支和目标只能从所属配置的目录里选；要新分支或新目标先编辑配置。
+ * “只对这条命令生效”：Git 规则（更新/合并/推送）、本地仓库路径、构建队列都可以单独覆盖；不覆盖就沿用分支/配置里的。
  */
 const props = defineProps<{
   open: boolean
@@ -57,8 +69,81 @@ const unselectedTargets = computed(() =>
   catalog.value.filter((t) => !selected.value.includes(t.id)),
 )
 
+// ───────────── 命令级覆盖：不勾选 = 沿用所选分支 / 配置 ─────────────
+
+const overrideGit = ref(false)
+const gitDraft = ref<EditableBranch>(blankBranch('', false))
+const overridePath = ref(false)
+const pathDraft = ref('')
+const overrideQueue = ref(false)
+const queueId = ref('')
+const queueName = ref('')
+
+const selectedBranch = computed(() => branchCatalog.value.find((b) => b.id === branchId.value))
+const pid = computed(() => props.config?.project_id ?? '')
+const rid = computed(() => props.config?.repo_id ?? '')
+const remoteBranchesQ = useDiscoverBranches(
+  pid,
+  rid,
+  computed(() => props.open && overrideGit.value),
+)
+const queuesQ = useDiscoverQueues(
+  pid,
+  computed(() => props.open && overrideQueue.value),
+)
+
+/** 这条命令实际用的本地路径：覆盖了用覆盖值，否则用配置的。 */
+const effectivePath = computed(() =>
+  overridePath.value ? pathDraft.value.trim() : (props.config?.local_repo_path ?? '').trim(),
+)
+const noLocalPath = computed(() => !effectivePath.value)
+const badMerges = computed(() => analyzeMerges(gitDraft.value.merges).bad)
+const effectiveHasRules = computed(() => {
+  if (overrideGit.value)
+    return Boolean(
+      parseList(gitDraft.value.update_branches).length ||
+      parseList(gitDraft.value.push_branches).length ||
+      analyzeMerges(gitDraft.value.merges).rules.length,
+    )
+  const b = selectedBranch.value
+  return Boolean(b?.update_branches?.length || b?.merges?.length || b?.push_branches?.length)
+})
+const gitNeedsPath = computed(() => noLocalPath.value && effectiveHasRules.value)
+
+function toggleGit(on: boolean) {
+  overrideGit.value = on
+  // 打开时以所选分支现有规则为起点，方便在它基础上改
+  if (on) {
+    const b = selectedBranch.value
+    gitDraft.value = b ? branchFromView(b, true) : blankBranch('', true)
+  }
+}
+function togglePath(on: boolean) {
+  overridePath.value = on
+  if (on && !pathDraft.value) pathDraft.value = props.config?.local_repo_path ?? ''
+}
+function toggleQueue(on: boolean) {
+  overrideQueue.value = on
+  if (on && !queueId.value) {
+    queueId.value = props.config?.agent_queue_id ?? ''
+    queueName.value = props.config?.agent_queue_name ?? ''
+  }
+}
+
 function initForm() {
   const c = props.command
+  overrideGit.value = Boolean(c && (c.update_branches || c.merges || c.push_branches))
+  gitDraft.value = {
+    ...blankBranch('', true),
+    update_branches: c?.update_branches?.join(', ') ?? '',
+    merges: c?.merges?.map((m) => `${m.source}:${m.target}`).join(', ') ?? '',
+    push_branches: c?.push_branches?.join(', ') ?? '',
+  }
+  overridePath.value = c?.local_repo_path != null
+  pathDraft.value = c?.local_repo_path ?? ''
+  overrideQueue.value = c?.agent_queue_id != null
+  queueId.value = c?.agent_queue_id ?? ''
+  queueName.value = c?.agent_queue_name ?? ''
   name.value = c?.name ?? ''
   tgCommand.value = c?.tg_command ?? ''
   tgDesc.value = c?.tg_desc ?? ''
@@ -101,7 +186,14 @@ function move(idx: number, dir: -1 | 1) {
 
 const noneSelected = computed(() => selected.value.length === 0)
 const noBranch = computed(() => !branchId.value)
-const canSave = computed(() => Boolean(name.value.trim()) && !noBranch.value && !noneSelected.value)
+const canSave = computed(
+  () =>
+    Boolean(name.value.trim()) &&
+    !noBranch.value &&
+    !noneSelected.value &&
+    !(overrideGit.value && badMerges.value.length > 0) &&
+    !gitNeedsPath.value,
+)
 
 function onSubmit() {
   if (props.submitting || !canSave.value) return
@@ -113,6 +205,13 @@ function onSubmit() {
     branch_id: branchId.value,
     sort_order: props.command?.sort_order ?? props.config?.commands.length ?? 0,
     target_ids: [...selected.value],
+    // 不覆盖 = null（沿用）；覆盖 = 具体值，空列表/空路径表示明确清空
+    update_branches: overrideGit.value ? parseList(gitDraft.value.update_branches) : null,
+    merges: overrideGit.value ? analyzeMerges(gitDraft.value.merges).rules : null,
+    push_branches: overrideGit.value ? parseList(gitDraft.value.push_branches) : null,
+    local_repo_path: overridePath.value ? pathDraft.value.trim() : null,
+    agent_queue_id: overrideQueue.value ? queueId.value.trim() : null,
+    agent_queue_name: overrideQueue.value ? queueName.value.trim() || null : null,
     revision: props.revision,
   }
   emit('save', payload)
@@ -122,6 +221,7 @@ function onSubmit() {
 <template>
   <Sheet
     :open="open"
+    wide
     :title="isEdit ? '编辑运行命令' : '新建运行命令'"
     :description="`属于发布配置“${config?.name ?? ''}”。运行时只发布这里选的目标，不能临时加减。`"
     @update:open="emit('update:open', $event)"
@@ -262,6 +362,87 @@ function onSubmit() {
         <p v-else-if="selectedTargets.length > 1" class="hint">
           运行时按上面的顺序，一个接一个发布。
         </p>
+
+        <h4 class="form-sec-title">只对这条命令生效的设置</h4>
+        <p class="hint">默认沿用所选分支和发布配置里的设置；勾选后，这条命令用自己的。</p>
+
+        <div class="ovr" data-testid="override-git">
+          <label class="ovr-head">
+            <input
+              type="checkbox"
+              :checked="overrideGit"
+              data-testid="override-git-toggle"
+              @change="toggleGit(($event.target as HTMLInputElement).checked)"
+            />
+            <span>单独设置 Git 规则（更新 / 合并 / 推送）</span>
+          </label>
+          <p v-if="!overrideGit" class="hint">
+            当前沿用分支“{{ selectedBranch?.build_branch || '未选' }}”的规则。
+          </p>
+          <BranchRuleFields
+            v-else
+            v-model="gitDraft"
+            label-prefix="命令"
+            testid-prefix="cmd-git"
+            :options="remoteBranchesQ.data.value?.branches"
+            :loading="remoteBranchesQ.isFetching.value"
+            :disabled="noLocalPath"
+          />
+          <p v-if="overrideGit && badMerges.length" class="need" role="alert">
+            合并规则格式不对，改好后才能保存。
+          </p>
+        </div>
+
+        <div class="ovr" data-testid="override-path">
+          <label class="ovr-head">
+            <input
+              type="checkbox"
+              :checked="overridePath"
+              data-testid="override-path-toggle"
+              @change="togglePath(($event.target as HTMLInputElement).checked)"
+            />
+            <span>单独设置本地仓库路径</span>
+          </label>
+          <p v-if="!overridePath" class="hint">
+            当前沿用配置的路径：{{ config?.local_repo_path || '未设置（只构建发布）' }}
+          </p>
+          <template v-else>
+            <LocalPathField
+              v-model="pathDraft"
+              :repo-id="config?.repo_id ?? ''"
+              :repo-name="config?.repo_name ?? ''"
+            />
+            <p class="hint">留空 = 这条命令不用本地仓库，只构建发布。</p>
+          </template>
+        </div>
+        <p v-if="gitNeedsPath" class="need" data-testid="command-git-needs-path" role="alert">
+          没有本地仓库路径，但这条命令有 Git 规则：清空规则或设置本地路径后才能保存。
+        </p>
+
+        <div class="ovr" data-testid="override-queue">
+          <label class="ovr-head">
+            <input
+              type="checkbox"
+              :checked="overrideQueue"
+              data-testid="override-queue-toggle"
+              @change="toggleQueue(($event.target as HTMLInputElement).checked)"
+            />
+            <span>单独设置构建队列</span>
+          </label>
+          <p v-if="!overrideQueue" class="hint">
+            当前沿用配置的队列：{{ config?.agent_queue_name || config?.agent_queue_id || '不指定' }}
+          </p>
+          <QueueSelect
+            v-else
+            v-model:queue-id="queueId"
+            v-model:queue-name="queueName"
+            :queues="queuesQ.data.value?.queues"
+            :loading="queuesQ.isFetching.value"
+            :error="queuesQ.error.value"
+            label="命令构建队列"
+            @retry="queuesQ.refetch()"
+          />
+        </div>
       </form>
     </div>
 
@@ -408,6 +589,21 @@ function onSubmit() {
 .mini-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.ovr {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+}
+.ovr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  cursor: pointer;
 }
 .mb-2 {
   margin-bottom: 8px;
