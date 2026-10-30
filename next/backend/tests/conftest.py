@@ -59,6 +59,31 @@ def vpn_native_isolation(monkeypatch, request):
             monkeypatch.setattr(BrowserType, "launch_persistent_context", forbidden_async)
 
 
+@pytest.fixture(autouse=True)
+def vpn_bypass_system_isolation(monkeypatch, tmp_path_factory):
+    """Never see or modify the machine's real root bypass installation.
+
+    Points the fixed system paths at a missing temp location (so `installed()`
+    is False) and refuses privileged/system-mutating commands unless a test
+    substitutes its own fake `subprocess.run`.
+    """
+    from toolbox_backend.vpn import bypass_daemon, bypass_installer
+
+    missing = tmp_path_factory.mktemp("bypass-root") / "absent"
+    monkeypatch.setattr(bypass_daemon, "ROOT", missing)
+    monkeypatch.setattr(bypass_installer, "ROOT", missing)
+    monkeypatch.setattr(bypass_installer, "PLIST", missing / "daemon.plist")
+    real_run = subprocess.run
+    blocked = {"/usr/bin/osascript", "/bin/launchctl", "/sbin/route"}
+
+    def guarded_run(argv, *args, **kwargs):
+        if isinstance(argv, (list, tuple)) and argv and str(argv[0]) in blocked:
+            pytest.fail("privileged VPN bypass command is forbidden in tests: " + str(argv[0]))
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", guarded_run)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def isolation(tmp_path_factory):
     root = tmp_path_factory.mktemp("s1-isolation")

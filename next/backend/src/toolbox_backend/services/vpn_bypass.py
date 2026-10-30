@@ -199,7 +199,8 @@ class VpnBypassService:
                 def inspect():
                     routes = runtime.route_table()
                     runtime.physical_gateway(config, routes)
-                    return sorted(set(config["targets"]) | set(runtime.discover(config)))
+                    discovered = runtime.discover(config, runtime.command, routes)
+                    return sorted(set(config["targets"]) | set(discovered))
 
                 targets = await asyncio.to_thread(inspect)
             except OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError:

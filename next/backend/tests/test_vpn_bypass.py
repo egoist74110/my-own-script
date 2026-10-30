@@ -13,10 +13,23 @@ from toolbox_backend.adapters.config_store import ConfigStore
 from toolbox_backend.app import create_app
 from toolbox_backend.domain.errors import SettingsError
 from toolbox_backend.domain.settings import Config
-from toolbox_backend.domain.vpn_bypass import BypassSettingsWrite, VpnBypassConfig
+from toolbox_backend.domain.vpn_bypass import BypassSettingsWrite, BypassStatus, VpnBypassConfig
 from toolbox_backend.services.vpn_bypass import VpnBypassService, export_bundle
 from toolbox_backend.settings import Settings
 from toolbox_backend.vpn import bypass_daemon as daemon
+
+
+class NotInstalled:
+    """Explicit fake: these tests must never reach the real privileged adapter."""
+
+    def installed(self):
+        return False
+
+    def status(self, config):
+        return BypassStatus()
+
+    def apply(self, action, config):
+        pytest.fail("authorization must not be requested")
 
 
 def config(**changes):
@@ -69,7 +82,7 @@ def test_normalization_and_duplicate_ids():
 async def test_persist_revision_and_backward_compatibility(tmp_path):
     store = ConfigStore(tmp_path)
     await store.initialize()
-    service = VpnBypassService(store)
+    service = VpnBypassService(store, NotInstalled())
     initial = await service.snapshot()
     body = BypassSettingsWrite(
         revision=initial["revision"], settings=config(targets=["1.2.3.0/24"])
@@ -124,12 +137,12 @@ async def test_api_auth_typed_config_and_export(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_preview_is_read_only_and_reports_inspection_failures(tmp_path, monkeypatch):
     store = ConfigStore(tmp_path)
-    service = VpnBypassService(store)
+    service = VpnBypassService(store, NotInstalled())
     await service.update(BypassSettingsWrite(revision=0, settings=config(targets=["1.2.3.4"])))
     monkeypatch.setattr("toolbox_backend.services.vpn_bypass.sys.platform", "darwin")
     monkeypatch.setattr(daemon, "route_table", lambda: {})
     monkeypatch.setattr(daemon, "physical_gateway", lambda *args: ("192.168.8.1", "en0"))
-    monkeypatch.setattr(daemon, "discover", lambda *args: ["2.3.4.5/32"])
+    monkeypatch.setattr(daemon, "discover", lambda *args, **kwargs: ["2.3.4.5/32"])
     result = await service.sweep(True)
     assert result.targets == ["1.2.3.4/32", "2.3.4.5/32"]
     assert not result.applied and result.requires_privilege
@@ -274,8 +287,7 @@ def test_retention_capacity_and_disabled_cleanup():
 def test_failed_add_never_reports_success_and_pending_not_deleted():
     routing = Routing()
     routing.mutate = lambda *args: None
-    with pytest.raises(RuntimeError, match="addition verification"):
-        routing.sweep(config(targets=["1.2.3.4"]))
+    assert routing.sweep(config(targets=["1.2.3.4"])) == [["1.2.3.4/32", "add_failed"]]
     assert routing.state["owned"]["1.2.3.4/32"]["phase"] == "pending"
     routing.table["1.2.3.4/32"] = {"gateway": "192.168.8.1", "interface": "en0", "flags": "UGHS"}
     assert routing.sweep(config()) == [["1.2.3.4/32", "pending_conflict_manual_recovery"]]
@@ -368,8 +380,7 @@ def test_delete_failure_is_verified_not_claimed():
     routing = Routing()
     routing.sweep(config(targets=["1.2.3.4"]))
     routing.mutate = lambda *args: None
-    with pytest.raises(RuntimeError, match="deletion verification"):
-        routing.sweep(config())
+    assert routing.sweep(config()) == [["1.2.3.4/32", "delete_failed"]]
     assert routing.state["owned"]["1.2.3.4/32"]["phase"] == "owned"
 
 
@@ -441,3 +452,138 @@ def test_commands_are_fixed_argv_and_timeout(monkeypatch):
     assert options["timeout"] == 8
     assert options.get("shell", False) is False
     assert options["env"]["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin"
+
+
+def test_one_failing_target_does_not_block_others():
+    routing = Routing()
+    original = routing.mutate
+
+    def mutate(action, net, owner):
+        if net == "1.2.3.4/32":
+            raise RuntimeError("route: File exists")
+        original(action, net, owner)
+
+    routing.mutate = mutate
+    events = routing.sweep(config(targets=["1.2.3.4", "5.6.7.8"]))
+    assert events == [["1.2.3.4/32", "add_failed"], ["5.6.7.8/32", "added_verified"]]
+    assert routing.state["owned"]["5.6.7.8/32"]["phase"] == "owned"
+
+
+def test_unavailable_gateway_removes_undesired_routes_but_never_adds():
+    routing = Routing()
+    routing.sweep(config(targets=["1.2.3.4", "5.6.7.8"]))
+    routing.calls.clear()
+    events = daemon.reconcile(
+        config(targets=["5.6.7.8", "9.9.9.9"]),
+        routing.state,
+        [],
+        copy.deepcopy(routing.table),
+        None,
+        lambda: copy.deepcopy(routing.table),
+        routing.mutate,
+        routing.persist,
+        101,
+    )
+    assert events == [["1.2.3.4/32", "removed"]]
+    assert [c[:2] for c in routing.calls] == [("delete", "1.2.3.4/32")]
+    assert set(routing.state["owned"]) == {"5.6.7.8/32"}  # still desired: kept untouched
+
+
+def test_sweep_with_bad_gateway_still_cleans_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected", lambda *a, **k: None)
+    owner = {"gateway": "192.168.8.1", "interface": "en0"}
+    table = {"8.8.4.4/32": dict(owner, flags="UGSc")}
+    (tmp_path / "state.json").write_text(
+        json.dumps({"cache": {}, "owned": {"8.8.4.4/32": dict(owner, phase="owned")}})
+    )
+    monkeypatch.setattr(daemon, "route_table", lambda *a: copy.deepcopy(table))
+
+    def no_gateway(*args):
+        raise RuntimeError("gateway has no active on-link physical route")
+
+    monkeypatch.setattr(daemon, "physical_gateway", no_gateway)
+    monkeypatch.setattr(daemon, "discover", lambda *a, **k: [])
+    calls = []
+
+    def command(argv, allowed=(0,)):
+        calls.append(argv)
+        table.pop(argv[4], None)
+        return ""
+
+    monkeypatch.setattr(daemon, "command", command)
+    assert daemon.sweep_once(config(targets=[]), "loop") == 1
+    assert [argv[2] for argv in calls] == ["delete"]
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert status["errors"] == [daemon.GATEWAY_ERROR]
+    assert json.loads((tmp_path / "state.json").read_text())["owned"] == {}
+
+
+@pytest.mark.parametrize(
+    "net,expected",
+    [
+        ("1.2.3.4/32", True),  # via VPN split default 0/1
+        ("192.168.8.20/32", False),  # LAN host
+        ("10.254.4.9/32", False),  # VPN-pushed intranet
+        ("198.18.0.7/32", False),  # proxy fake-IP
+        ("100.64.1.1/32", False),  # CGNAT
+        ("44.1.1.1/32", False),  # another tool's host route
+        ("8.8.4.4/32", True),  # our own exact route via the physical gateway
+        ("23.1.1.1/32", False),  # more specific third-party public route
+    ],
+)
+def test_discoverable_only_endpoints_on_default_routes(net, expected):
+    routes = {
+        "0.0.0.0/0": {"gateway": "192.168.8.1", "interface": "en0", "flags": "UGScg"},
+        "0.0.0.0/1": {"gateway": "utun4", "interface": "utun4", "flags": "UScg"},
+        "128.0.0.0/1": {"gateway": "utun4", "interface": "utun4", "flags": "USc"},
+        "192.168.8.0/24": {"gateway": "link#4", "interface": "en0", "flags": "UCS"},
+        "44.1.1.1/32": {"gateway": "192.168.8.1", "interface": "en0", "flags": "UGH"},
+        "8.8.4.4/32": {"gateway": "192.168.8.1", "interface": "en0", "flags": "UGSc"},
+        "23.0.0.0/8": {"gateway": "utun4", "interface": "utun4", "flags": "USc"},
+    }
+    gateway = ("192.168.8.1", "en0")
+    assert daemon.discoverable(net, routes, gateway, {"8.8.4.4/32": {}}) is expected
+    # Preview has no journal: an exact route via the physical gateway counts as ours.
+    if net not in {"44.1.1.1/32"}:
+        assert daemon.discoverable(net, routes, gateway) is expected
+
+
+def test_discovery_isolates_missing_app_and_failing_process(tmp_path, monkeypatch):
+    class Libproc:
+        def __init__(self):
+            def pidpath(pid, buffer, size):
+                buffer.value = b"/opt/ok/bin/ok"
+                return len(buffer.value)
+
+            self.proc_pidpath = pidpath
+
+    monkeypatch.setattr(daemon.ctypes, "CDLL", lambda path: Libproc())
+    monkeypatch.setattr(daemon.os.path, "realpath", lambda p: str(p))
+    cfg = config(
+        apps=[
+            {"id": "gone", "name": "Gone", "application_path": str(tmp_path / "Gone.app")},
+            {"id": "ok", "name": "OK", "executable_path": "/opt/ok/bin/ok"},
+        ]
+    )
+
+    def run(argv, allowed=(0,)):
+        if argv[0] == "/bin/ps":
+            return "11\n12\n"
+        if argv[4] == "11":
+            raise subprocess.TimeoutExpired("lsof", 8)
+        return "n192.168.8.2:100->1.2.3.4:443\n"
+
+    failures = []
+    assert daemon.discover(cfg, run, failures=failures) == ["1.2.3.4/32"]
+    assert failures == ["gone", "11"]
+    with pytest.raises(OSError):
+        daemon.discover(cfg, run)  # without a failures list, preview still fails closed
+
+
+@pytest.mark.parametrize("field,value", [("gateway", 1), ("interface", ["en0"])])
+def test_config_type_errors_are_value_errors(field, value):
+    raw = config()
+    raw[field] = value
+    with pytest.raises(ValueError):
+        daemon.validate_config(raw)

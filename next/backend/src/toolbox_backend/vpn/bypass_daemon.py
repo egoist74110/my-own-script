@@ -22,6 +22,19 @@ from pathlib import Path
 
 ROOT = Path("/Library/Application Support/toolbox-vpn-bypass")
 MAX_ROUTES = 1024
+RECOVERABLE = (OSError, ValueError, RuntimeError, subprocess.SubprocessError)
+# Discovered endpoints in these ranges are LAN, VPN intranet, CGNAT or proxy
+# fake-IP space; diverting them to the physical gateway breaks connectivity.
+# Manual targets may still name them explicitly.
+NOT_DISCOVERABLE = [
+    ipaddress.IPv4Network(n)
+    for n in ("10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16", "198.18.0.0/15")
+]
+GATEWAY_ERROR = (
+    "物理网关或网卡当前不可用（可能已切换网络）；已暂停新增路由，仅清理不再需要的自有路由。"
+)
+DISCOVERY_ERROR = "部分应用发现失败；将在下一周期重试。"
+ROUTE_ERROR = "部分目标路由添加或删除未通过校验；将在下一周期重试。"
 
 
 def target(value):
@@ -57,10 +70,14 @@ def validate_config(raw):
         if type(raw[key]) is not int or not low <= raw[key] <= high:
             raise ValueError("invalid timing")
     gateway = raw["gateway"]
-    if gateway is not None and ("/" in gateway or target(gateway).endswith("/32") is False):
+    if gateway is not None and (
+        not isinstance(gateway, str) or "/" in gateway or not target(gateway).endswith("/32")
+    ):
         raise ValueError("invalid gateway")
     interface = raw["interface"]
-    if interface is not None and not re.fullmatch(r"en[0-9]{1,3}", interface):
+    if interface is not None and (
+        not isinstance(interface, str) or not re.fullmatch(r"en[0-9]{1,3}", interface)
+    ):
         raise ValueError("invalid physical interface")
     if not isinstance(raw["targets"], list) or len(raw["targets"]) > 256:
         raise ValueError("too many manual targets")
@@ -162,31 +179,75 @@ def physical_gateway(config, routes, run=command):
     return gw, iface
 
 
-def executable_paths(apps):
+def executable_paths(apps, failures=None):
     paths = set()
     for app in apps:
         if not app["enabled"]:
             continue
-        if app["executable_path"]:
-            paths.add(os.path.realpath(app["executable_path"]))
-        else:
-            bundle = Path(app["application_path"])
-            with (bundle / "Contents/Info.plist").open("rb") as stream:
-                metadata = stream.read(1_000_001)
-                if len(metadata) > 1_000_000:
-                    raise RuntimeError("app metadata too large")
-                exe = plistlib.loads(metadata).get("CFBundleExecutable")
-            if not isinstance(exe, str) or not exe or "/" in exe or exe in {".", ".."}:
-                raise RuntimeError("invalid app executable metadata")
-            paths.add(os.path.realpath(bundle / "Contents/MacOS" / exe))
+        try:
+            paths.add(app_executable(app))
+        except RECOVERABLE:
+            if failures is None:
+                raise
+            failures.append(app["id"])  # e.g. uninstalled app; other apps continue
     return paths
 
 
-def discover(config, run=command):
-    """Match kernel executable paths, never argv or process-name substring."""
-    paths = executable_paths(config["apps"])
+def app_executable(app):
+    if app["executable_path"]:
+        return os.path.realpath(app["executable_path"])
+    bundle = Path(app["application_path"])
+    with (bundle / "Contents/Info.plist").open("rb") as stream:
+        metadata = stream.read(1_000_001)
+    if len(metadata) > 1_000_000:
+        raise RuntimeError("app metadata too large")
+    try:
+        exe = plistlib.loads(metadata).get("CFBundleExecutable")
+    except Exception:  # malformed XML/binary plist raises non-ValueError types too
+        raise ValueError("invalid app metadata") from None
+    if not isinstance(exe, str) or not exe or "/" in exe or exe in {".", ".."}:
+        raise RuntimeError("invalid app executable metadata")
+    return os.path.realpath(bundle / "Contents/MacOS" / exe)
+
+
+def discoverable(net, routes, gateway, owned=None):
+    """Only endpoints currently carried by a default/split-default route.
+
+    Endpoints behind a more specific route (LAN subnet, VPN-pushed intranet,
+    another tool's host route) are skipped, except our own exact route so live
+    connections keep refreshing the cache. The daemon passes its ownership
+    journal; the read-only preview falls back to gateway/interface matching.
+    """
+    network = ipaddress.IPv4Network(net)
+    if any(network.overlaps(n) for n in NOT_DISCOVERABLE):
+        return False
+    best, best_row = None, None
+    for dest, row in routes.items():
+        candidate = ipaddress.IPv4Network(dest)
+        if network.subnet_of(candidate) and (best is None or candidate.prefixlen > best.prefixlen):
+            best, best_row = candidate, row
+    if best is None or best.prefixlen <= 1:
+        return True
+    if owned is not None:
+        return best == network and net in owned
+    return (
+        best == network
+        and gateway is not None
+        and matches(best_row, {"gateway": gateway[0], "interface": gateway[1]})
+    )
+
+
+def discover(config, run=command, routes=None, failures=None, owned=None):
+    """Match kernel executable paths, never argv or process-name substring.
+
+    With routes, keep only endpoints safe to divert (see discoverable). With a
+    failures list, per-app/per-process errors are recorded and skipped instead
+    of aborting the whole discovery.
+    """
+    paths = executable_paths(config["apps"], failures)
     if not paths:
         return []
+    gateway = (config["gateway"], config["interface"]) if config["gateway"] else None
     libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
     libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
     libproc.proc_pidpath.restype = ctypes.c_int
@@ -200,7 +261,13 @@ def discover(config, run=command):
             continue  # processes may exit or be inaccessible
         if os.path.realpath(os.fsdecode(buffer.value)) not in paths:
             continue
-        output = run(["/usr/sbin/lsof", "-nP", "-a", "-p", value, "-i4", "-Fn"], (0, 1))
+        try:
+            output = run(["/usr/sbin/lsof", "-nP", "-a", "-p", value, "-i4", "-Fn"], (0, 1))
+        except RECOVERABLE:
+            if failures is None:
+                raise
+            failures.append(value)
+            continue
         # Recheck identity after lsof to mitigate PID reuse.
         again = ctypes.create_string_buffer(4096)
         if libproc.proc_pidpath(int(value), again, len(again)) <= 0 or again.value != buffer.value:
@@ -210,9 +277,12 @@ def discover(config, run=command):
                 continue
             remote = line.split("->", 1)[1].split(":", 1)[0]
             try:
-                found.add(target(remote))
+                net = target(remote)
             except ValueError:
                 continue
+            if routes is not None and not discoverable(net, routes, gateway, owned):
+                continue
+            found.add(net)
             if len(found) > MAX_ROUTES:
                 raise RuntimeError("too many discovered endpoints")
     return sorted(found)
@@ -255,20 +325,29 @@ def reconcile(config, state, discovered, routes, gateway, read_routes, mutate, p
             del owned[net]  # route replaced externally: relinquish, never delete it
             persist(state)
             owner = None
-        wanted_owner = {"gateway": gateway[0], "interface": gateway[1], "phase": "owned"}
-        if owner and (net not in desired or owner != wanted_owner):
+        # gateway None: physical gateway unavailable; remove only, never add or
+        # re-point still-desired routes.
+        wanted_owner = gateway and {
+            "gateway": gateway[0],
+            "interface": gateway[1],
+            "phase": "owned",
+        }
+        if owner and (net not in desired or (wanted_owner and owner != wanted_owner)):
             # Refresh immediately before deletion, only remove still-owned exact route.
             if matches(read_routes().get(net), owner):
-                mutate("delete", net, owner)
+                try:
+                    mutate("delete", net, owner)
+                except RECOVERABLE:
+                    pass  # verified below
                 routes = read_routes()
                 if matches(routes.get(net), owner):
-                    raise RuntimeError("route deletion verification failed")
+                    events.append([net, "delete_failed"])  # still owned; retry next sweep
+                    continue
                 events.append([net, "removed"])
             del owned[net]
             persist(state)
-            row = routes.get(net)
             owner = None
-        if net not in desired or owner:
+        if net not in desired or owner or not wanted_owner:
             continue
         routes = read_routes()
         if net in routes:
@@ -276,10 +355,15 @@ def reconcile(config, state, discovered, routes, gateway, read_routes, mutate, p
             continue
         owned[net] = dict(wanted_owner, phase="pending")
         persist(state)  # crash-safe journal BEFORE invoking route
-        mutate("add", net, wanted_owner)
+        try:
+            mutate("add", net, wanted_owner)
+        except RECOVERABLE:
+            pass  # verified below
         routes = read_routes()
         if not matches(routes.get(net), wanted_owner):
-            raise RuntimeError("route addition verification failed; pending retained")
+            # Pending retained: dropped next sweep if absent, never deleted if present.
+            events.append([net, "add_failed"])
+            continue
         owned[net] = wanted_owner
         persist(state)
         events.append([net, "added_verified"])
@@ -383,8 +467,23 @@ def sweep_once(config, action):
             config = dict(config, enabled=False)
         routes = route_table()
         # Undo requires no gateway or app discovery, and can never add a route.
-        gateway = physical_gateway(config, routes) if config["enabled"] else ("", "")
-        discovered = discover(config) if config["enabled"] else []
+        # An unavailable gateway or a failing app must not block cleanup of
+        # routes that are no longer desired, nor maintenance of other targets.
+        gateway, discovered = None, []
+        if config["enabled"]:
+            try:
+                gateway = physical_gateway(config, routes)
+            except RECOVERABLE:
+                errors.append(GATEWAY_ERROR)
+            failures = []
+            try:
+                discovered = discover(
+                    config, routes=routes, failures=failures, owned=state["owned"]
+                )
+            except RECOVERABLE:
+                failures.append("discovery")
+            if failures:
+                errors.append(DISCOVERY_ERROR)
 
         def mutate(operation, net, owner):
             command(
@@ -411,8 +510,10 @@ def sweep_once(config, action):
             save_state,
             time.time(),
         )
+        if any(e[1].endswith("_failed") for e in events):
+            errors.append(ROUTE_ERROR)
         routes = route_table()
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):  # fmt: skip
+    except RECOVERABLE:
         # No paths, process output, or app metadata in the world-readable report.
         errors = ["路由检查、应用发现或修复失败；将在下一周期重试。"]
         routes = {}  # Never publish a successful verification from a stale table.

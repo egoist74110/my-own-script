@@ -439,7 +439,7 @@ def test_recoverable_discovery_error_publishes_fresh_public_status_then_recovers
     monkeypatch.setattr(daemon, "route_table", dict)
     monkeypatch.setattr(daemon, "physical_gateway", lambda *args: ("192.168.8.1", "en0"))
 
-    def broken(*args):
+    def broken(*args, **kwargs):
         raise OSError("private path should not leak")
 
     monkeypatch.setattr(daemon, "discover", broken)
@@ -449,7 +449,7 @@ def test_recoverable_discovery_error_publishes_fresh_public_status_then_recovers
     assert "private path" not in json.dumps(status)
     assert time.time() - status["last_sweep_at"] < 5
     assert (tmp_path / "status.json").stat().st_mode & 0o777 == 0o644
-    monkeypatch.setattr(daemon, "discover", lambda *args: [])
+    monkeypatch.setattr(daemon, "discover", lambda *args, **kwargs: [])
     assert daemon.sweep_once(config(targets=[]), "loop") == 0
     assert json.loads((tmp_path / "status.json").read_text())["errors"] == []
     assert (tmp_path / "state.json").stat().st_mode & 0o777 == 0o600

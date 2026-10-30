@@ -99,8 +99,8 @@ def runtime_preflight():
             raise RuntimeError("unverifiable runtime image")
 
 
-def command(argv, allowed=(0,)):
-    result = subprocess.run(argv, capture_output=True, text=True, env=ENV, timeout=20)
+def command(argv, allowed=(0,), timeout=20):
+    result = subprocess.run(argv, capture_output=True, text=True, env=ENV, timeout=timeout)
     if result.returncode not in allowed:
         raise RuntimeError("privileged system operation failed")
     return result
@@ -213,6 +213,9 @@ def execute(action, helper_source, config):
                 "sweep" if enabled else "undo",
             ],
             allowed=(0, 1, 2),
+            # Up to 256 targets x (route + 2 netstat) plus lsof; a kill mid-add
+            # would strand a pending entry. Stays within the 300 s auth window.
+            timeout=240,
         )
         command(["/bin/launchctl", "enable" if enabled else "disable", JOB])
         if enabled:
