@@ -21,6 +21,7 @@ def _make_fake_repo(
     cargo_v: str = "0.0.0",
     pkg_v: str = "0.0.0",
     pyproj_v: str = "0.1.0",
+    init_v: str = "0.1.0",
 ) -> dict[str, Path]:
     tauri_conf = root / "next/desktop/src-tauri/tauri.conf.json"
     cargo_toml = root / "next/desktop/src-tauri/Cargo.toml"
@@ -75,7 +76,15 @@ def _make_fake_repo(
         encoding="utf-8",
     )
 
+    backend_init = root / "next/backend/src/toolbox_backend/__init__.py"
+    backend_init.parent.mkdir(parents=True, exist_ok=True)
+    backend_init.write_text(
+        '"""TOOLBOX next backend process."""\n\n' f'__version__ = "{init_v}"\n',
+        encoding="utf-8",
+    )
+
     return {
+        "init": backend_init,
         "tauri": tauri_conf,
         "cargo": cargo_toml,
         "package": package_json,
@@ -107,6 +116,7 @@ class TestSyncVersion(unittest.TestCase):
             self.assertIn("Cargo.toml", combined)
             self.assertIn("package.json", combined)
             self.assertIn("pyproject.toml", combined)
+            self.assertIn("__init__.py", combined)
             self.assertIn("1.0.0", combined)
 
     def test_write_updates_only_target_versions_preserving_surrounding_bytes(self) -> None:
@@ -122,12 +132,17 @@ class TestSyncVersion(unittest.TestCase):
             before_cargo = files["cargo"].read_bytes()
             before_pkg = files["package"].read_bytes()
             before_pyproj = files["pyproject"].read_bytes()
+            before_init = files["init"].read_bytes()
             before_tauri = files["tauri"].read_bytes()
 
             res_write = self._run("--root", str(root), "--write")
             self.assertEqual(res_write.returncode, 0, msg=res_write.stderr)
 
             self.assertEqual(files["tauri"].read_bytes(), before_tauri)
+            self.assertEqual(
+                files["init"].read_bytes(),
+                before_init.replace(b'"0.1.0"', b'"1.2.3"', 1),
+            )
             self.assertEqual(
                 files["cargo"].read_bytes(),
                 before_cargo.replace(b'version = "0.0.0"', b'version = "1.2.3"', 1),

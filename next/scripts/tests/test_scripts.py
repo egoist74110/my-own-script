@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import shutil
@@ -441,8 +442,12 @@ class TestShellScripts(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(res.returncode, 0, msg=res.stdout + res.stderr)
-            self.assertTrue((out_dir / "TOOLBOX-1.0.0-arm64.dmg").is_file())
-            self.assertTrue((out_dir / "TOOLBOX-1.0.0-arm64.zip").is_file())
+            # make_dmg.sh names artifacts after the real tauri.conf.json version.
+            version = json.loads(
+                (SCRIPTS_DIR.parent / "desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+            )["version"]
+            self.assertTrue((out_dir / f"TOOLBOX-{version}-arm64.dmg").is_file())
+            self.assertTrue((out_dir / f"TOOLBOX-{version}-arm64.zip").is_file())
             calls = log_file.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(calls), 2)
             self.assertIn("-format UDZO", calls[0])

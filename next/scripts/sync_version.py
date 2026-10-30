@@ -61,6 +61,13 @@ def _find_package_json_version(content: bytes, path: Path) -> tuple[str, int, in
     return m_ver.group(2).decode("utf-8"), m_ver.start(2), m_ver.end(2)
 
 
+def _find_python_dunder_version(content: bytes, path: Path) -> tuple[str, int, int]:
+    m_ver = re.compile(rb'(?m)^__version__[ \t]*=[ \t]*"([^"\r\n]+)"').search(content)
+    if not m_ver:
+        raise ValueError(f"missing __version__ in {path}")
+    return m_ver.group(1).decode("utf-8"), m_ver.start(1), m_ver.end(1)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -79,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     cargo_toml = root / "next/desktop/src-tauri/Cargo.toml"
     package_json = root / "next/desktop/package.json"
     pyproject_toml = root / "next/backend/pyproject.toml"
+    backend_init = root / "next/backend/src/toolbox_backend/__init__.py"
 
     try:
         source_ver = _extract_source_version(tauri_conf)
@@ -88,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
         pkg_ver, pkg_s, pkg_e = _find_package_json_version(pkg_bytes, package_json)
         pyproj_bytes = _read_bytes(pyproject_toml)
         pyproj_ver, pyproj_s, pyproj_e = _find_toml_section_version(pyproj_bytes, "project", pyproject_toml)
+        init_bytes = _read_bytes(backend_init)
+        init_ver, init_s, init_e = _find_python_dunder_version(init_bytes, backend_init)
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -96,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         ("next/desktop/src-tauri/Cargo.toml", cargo_toml, cargo_bytes, cargo_ver, cargo_s, cargo_e),
         ("next/desktop/package.json", package_json, pkg_bytes, pkg_ver, pkg_s, pkg_e),
         ("next/backend/pyproject.toml", pyproject_toml, pyproj_bytes, pyproj_ver, pyproj_s, pyproj_e),
+        # Reported by the backend at runtime (/health) and stamped into contracts/openapi.json.
+        ("next/backend/src/toolbox_backend/__init__.py", backend_init, init_bytes, init_ver, init_s, init_e),
     ]
 
     if args.check:
