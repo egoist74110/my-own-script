@@ -636,6 +636,13 @@ async def test_lark_health_probe_marks_unhealthy_after_3_failures(
     tick_done: asyncio.Queue[str] = asyncio.Queue()
 
     async def deterministic_prober(port: int, timeout_s: float = 0.5) -> bool:
+        # A real HTTP probe only succeeds once the fake server listens, by which
+        # time its stderr patch markers are out; mirror that so start_lark does
+        # not judge patch state before the fake process has printed anything.
+        for _ in range(200):
+            if svc._lark_patches.all_applied:
+                break
+            await asyncio.sleep(0.01)
         return probe_healthy
 
     async def deterministic_health_sleep(interval_s: float) -> None:
