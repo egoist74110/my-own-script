@@ -91,6 +91,43 @@ if [ -n "$UPDATER_CONFIG" ]; then
   python3 "$HERE/validate_updater_config.py" "$UPDATER_CONFIG"
 fi
 
+# Preflight: name the missing piece in seconds instead of failing mid-build.
+# Non-interactive shells (agents, cron) skip ~/.zshrc, so locate nvm's node and cargo ourselves.
+if ! command -v pnpm >/dev/null 2>&1; then
+  NVM_BIN="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1 || true)"
+  [ -n "$NVM_BIN" ] && PATH="$NVM_BIN:$PATH"
+fi
+# rustup's shims must win over any other cargo, or rust-toolchain.toml is bypassed.
+[ -d "$HOME/.cargo/bin" ] && PATH="$HOME/.cargo/bin:$PATH"
+for d in "$HOME/.local/bin" /opt/homebrew/bin; do
+  case ":$PATH:" in *":$d:"*) ;; *) [ -d "$d" ] && PATH="$PATH:$d" ;; esac
+done
+export PATH
+export TOOLBOX_PBS_PYTHON_HOME="${TOOLBOX_PBS_PYTHON_HOME:-$REPO/next/.local/spike/python/cpython-3.14.8-macos-aarch64-none}"
+
+preflight_fail=0
+preflight_need() {
+  command -v "$1" >/dev/null 2>&1 || { echo "preflight: '$1' not found ($2)" >&2; preflight_fail=1; }
+}
+preflight_need pnpm "install node via nvm, then 'npm i -g pnpm'"
+preflight_need uv "brew install uv"
+preflight_need cargo "install rustup"
+preflight_need rustup "install rustup"
+if [ ! -x "$TOOLBOX_PBS_PYTHON_HOME/bin/python3.14" ]; then
+  echo "preflight: no Python runtime at $TOOLBOX_PBS_PYTHON_HOME" >&2
+  echo "  fix: UV_PYTHON_INSTALL_DIR=$REPO/next/.local/spike/python uv python install 3.14" >&2
+  preflight_fail=1
+fi
+# rust-toolchain.toml pins the compiler: rustc 1.95 + the macOS 27 linker emits proc-macro
+# dylibs that dyld refuses to load ("mis-aligned LINKEDIT"), failing the build mid-way.
+RUST_WANT="$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' "$REPO/rust-toolchain.toml" 2>/dev/null || true)"
+if [ -n "$RUST_WANT" ] && command -v rustup >/dev/null 2>&1; then
+  rustup toolchain list | grep -q "^$RUST_WANT" \
+    || { echo "preflight: Rust toolchain $RUST_WANT not installed (fix: rustup toolchain install $RUST_WANT)" >&2; preflight_fail=1; }
+fi
+[ "$preflight_fail" -eq 0 ] || exit 1
+echo "[build_app] preflight ok: $(cd "$DESKTOP/src-tauri" && rustc --version), node $(node --version)"
+
 echo "[build_app] step 1/6: checking version consistency..."
 python3 "$HERE/sync_version.py" --root "$REPO" --check
 
