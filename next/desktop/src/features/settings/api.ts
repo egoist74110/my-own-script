@@ -1,6 +1,6 @@
 // 设置页的 API 辅助：错误归一化与类型别名。错误只携带后端给出的固定 code/message，
 // 绝不带请求体（PAT 只出现在请求体里，不会进入 ApiError）。
-import type { components } from '@/api/schema'
+import type { components, paths } from '@/api/schema'
 
 type S = components['schemas']
 export type SettingsResponse = S['SettingsResponse']
@@ -110,6 +110,24 @@ export type TotpImport = S['TotpImport']
 export type ManualMfa = S['ManualMfa']
 export type ManualMfaResult = S['ManualMfaResult']
 
+// VPN 分流（bypass）：类型从生成的路径响应/请求体推导，不手写 Schema；后端生成契约后才可通过 typecheck。
+type JsonBody<T> = T extends { content: { 'application/json': infer J } } ? J : never
+type BypassPaths = paths['/api/vpn/bypass']
+export type VpnBypassView = JsonBody<BypassPaths['get']['responses'][200]>
+// Pydantic 默认列表在 OpenAPI 中可选；编辑器将它们规范化为空数组。
+export type VpnBypassConfig = Required<VpnBypassView['settings']>
+export type VpnBypassApp = VpnBypassConfig['apps'][number]
+export type VpnBypassStatus = NonNullable<VpnBypassView['status']>
+export type VpnBypassSweepResult = JsonBody<
+  paths['/api/vpn/bypass/sweep']['post']['responses'][200]
+>
+export type VpnBypassTarget = NonNullable<VpnBypassStatus['targets']>[number]
+export type VpnBypassActivateRequest = NonNullable<
+  paths['/api/vpn/bypass/activate']['post']['requestBody']
+>['content']['application/json']
+// 旧版「导出」接口仍保留在后端，面板不再使用。
+export type VpnBypassExport = JsonBody<paths['/api/vpn/bypass/export']['post']['responses'][200]>
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -203,6 +221,10 @@ export const SERVICES_ERROR_MESSAGES: Record<string, string> = {
   not_found: '未找到指定条目',
   store_unavailable: '配置存储不可用',
   store_busy: '配置存储正忙',
+  bypass_sync_failed: '配置已保存，但同步到系统失败',
+  bypass_auth_cancelled: '已取消系统授权，助手未获准更新',
+  bypass_not_installed: '分流助手尚未安装',
+  bypass_not_enabled: '分流配置未启用，无法应用',
 }
 
 export const MCP_ERROR_MESSAGES: Record<string, string> = {
@@ -296,6 +318,10 @@ export const VPN_ERROR_MESSAGES: Record<string, string> = {
   not_found: '指定的运行记录或条目不存在',
   store_unavailable: '配置存储不可用',
   store_busy: '配置存储正忙',
+  bypass_sync_failed: '配置已保存，但同步到系统失败',
+  bypass_auth_cancelled: '已取消系统授权，助手未获准更新',
+  bypass_not_installed: '分流助手尚未安装',
+  bypass_not_enabled: '分流配置未启用，无法应用',
 }
 
 export const VPN_RUNG_LABELS: Record<number, string> = {

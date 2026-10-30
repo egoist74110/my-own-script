@@ -1321,6 +1321,359 @@
         "title": "BrowserProfileCleared",
         "type": "object"
       },
+      "BypassActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "BypassActionRequest",
+        "type": "object"
+      },
+      "BypassApp": {
+        "additionalProperties": false,
+        "properties": {
+          "application_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Path"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "executable_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executable Path"
+          },
+          "id": {
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BypassApp",
+        "type": "object"
+      },
+      "BypassExport": {
+        "properties": {
+          "config_json": {
+            "title": "Config Json",
+            "type": "string"
+          },
+          "helper_source": {
+            "title": "Helper Source",
+            "type": "string"
+          },
+          "instructions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Instructions",
+            "type": "array"
+          },
+          "launchd_plist": {
+            "title": "Launchd Plist",
+            "type": "string"
+          },
+          "runtime_requirement": {
+            "title": "Runtime Requirement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_json",
+          "helper_source",
+          "launchd_plist",
+          "instructions",
+          "runtime_requirement"
+        ],
+        "title": "BypassExport",
+        "type": "object"
+      },
+      "BypassExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "python_path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Python Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "python_path"
+        ],
+        "title": "BypassExportRequest",
+        "type": "object"
+      },
+      "BypassSettingsWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/VpnBypassConfig"
+          }
+        },
+        "required": [
+          "revision",
+          "settings"
+        ],
+        "title": "BypassSettingsWrite",
+        "type": "object"
+      },
+      "BypassSnapshot": {
+        "properties": {
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/VpnBypassConfig"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BypassStatus"
+          }
+        },
+        "required": [
+          "revision",
+          "settings"
+        ],
+        "title": "BypassSnapshot",
+        "type": "object"
+      },
+      "BypassStatus": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "installed": {
+            "default": false,
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "last_sweep_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sweep At"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "message": {
+            "default": "尚未安装后台助手；保存配置不代表规则已生效。",
+            "title": "Message",
+            "type": "string"
+          },
+          "mode": {
+            "const": "managed",
+            "default": "managed",
+            "title": "Mode",
+            "type": "string"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          },
+          "state": {
+            "default": "not_installed",
+            "enum": [
+              "not_installed",
+              "stopped",
+              "pending",
+              "active",
+              "degraded",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "synced": {
+            "default": false,
+            "title": "Synced",
+            "type": "boolean"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/BypassTargetStatus"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "title": "BypassStatus",
+        "type": "object"
+      },
+      "BypassSweepRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "apply": {
+            "default": false,
+            "title": "Apply",
+            "type": "boolean"
+          }
+        },
+        "title": "BypassSweepRequest",
+        "type": "object"
+      },
+      "BypassSweepResult": {
+        "properties": {
+          "applied": {
+            "const": false,
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "gateway": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "requires_privilege": {
+            "title": "Requires Privilege",
+            "type": "boolean"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "requires_privilege",
+          "targets",
+          "gateway",
+          "interface",
+          "errors",
+          "message"
+        ],
+        "title": "BypassSweepResult",
+        "type": "object"
+      },
+      "BypassTargetStatus": {
+        "properties": {
+          "gateway": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "owned": {
+            "default": false,
+            "title": "Owned",
+            "type": "boolean"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "BypassTargetStatus",
+        "type": "object"
+      },
       "CheckResponse": {
         "properties": {
           "exit_code": {
@@ -10274,6 +10627,70 @@
         "title": "VerifiedBot",
         "type": "object"
       },
+      "VpnBypassConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/BypassApp"
+            },
+            "maxItems": 32,
+            "title": "Apps",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "gateway": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "interval_s": {
+            "default": 20,
+            "maximum": 300.0,
+            "minimum": 5.0,
+            "title": "Interval S",
+            "type": "integer"
+          },
+          "retention_s": {
+            "default": 300,
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Retention S",
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 256,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "title": "VpnBypassConfig",
+        "type": "object"
+      },
       "VpnClient": {
         "additionalProperties": false,
         "properties": {
@@ -17848,6 +18265,232 @@
           }
         },
         "summary": "Clear Browser Profile"
+      }
+    },
+    "/api/vpn/bypass": {
+      "get": {
+        "operationId": "status_api_vpn_bypass_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BypassSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "vpn-bypass"
+        ]
+      }
+    },
+    "/api/vpn/bypass/activate": {
+      "post": {
+        "operationId": "activate_api_vpn_bypass_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BypassActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BypassSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate",
+        "tags": [
+          "vpn-bypass"
+        ]
+      }
+    },
+    "/api/vpn/bypass/deactivate": {
+      "post": {
+        "operationId": "deactivate_api_vpn_bypass_deactivate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BypassActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BypassSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deactivate",
+        "tags": [
+          "vpn-bypass"
+        ]
+      }
+    },
+    "/api/vpn/bypass/export": {
+      "post": {
+        "operationId": "export_api_vpn_bypass_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BypassExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BypassExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "vpn-bypass"
+        ]
+      }
+    },
+    "/api/vpn/bypass/settings": {
+      "patch": {
+        "operationId": "settings_api_vpn_bypass_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BypassSettingsWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings",
+        "tags": [
+          "vpn-bypass"
+        ]
+      }
+    },
+    "/api/vpn/bypass/sweep": {
+      "post": {
+        "operationId": "sweep_api_vpn_bypass_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BypassSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BypassSweepResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sweep",
+        "tags": [
+          "vpn-bypass"
+        ]
       }
     },
     "/api/vpn/connect": {

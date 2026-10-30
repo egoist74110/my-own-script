@@ -20,6 +20,7 @@ import { useVpnContext } from './useVpn'
 import VpnTotpImportSheet from './VpnTotpImportSheet.vue'
 import VpnMfaSheet from './VpnMfaSheet.vue'
 import VpnLegacyImportSheet from './VpnLegacyImportSheet.vue'
+import VpnBypassPanel from './VpnBypassPanel.vue'
 
 const props = defineProps<{
   snapshot?: VpnSnapshot | null
@@ -661,6 +662,13 @@ async function onClearBrowser() {
         </Button>
       </div>
     </div>
+
+    <!-- 分流（bypass）：独立配置与独立保存版本 -->
+    <VpnBypassPanel
+      :revision="snap?.revision ?? null"
+      :busy="props.busy"
+      :writable="props.writable"
+    />
 
     <!-- 子 Sheets -->
     <VpnTotpImportSheet :open="totpSheetOpen" @update:open="totpSheetOpen = $event" />

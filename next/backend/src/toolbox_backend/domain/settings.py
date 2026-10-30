@@ -24,6 +24,7 @@ from toolbox_backend.domain.mcp import McpConfig
 from toolbox_backend.domain.services import ServicesConfig
 from toolbox_backend.domain.telegram import TelegramConfig
 from toolbox_backend.domain.vpn import VpnConfig
+from toolbox_backend.domain.vpn_bypass import VpnBypassConfig
 
 
 def identifier(value: str) -> str:
@@ -586,6 +587,7 @@ class Config(StrictModel):
     schema_version: Literal[8] = 8
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     vpn: VpnConfig = Field(default_factory=VpnConfig)
+    vpn_bypass: VpnBypassConfig = Field(default_factory=VpnBypassConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)

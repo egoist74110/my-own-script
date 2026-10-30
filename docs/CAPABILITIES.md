@@ -51,6 +51,7 @@
 | 能力 | 一句话说明 | 入口/关键文件 | 详细文档 |
 | --- | --- | --- | --- |
 | 连接自愈 / 远程登录 / TOTP | 检测→重开→重登阶梯、Playwright 登录、本地 TOTP | `be/services/vpn.py`、`be/vpn/`、`be/adapters/vpn_*.py` | [vpn](capabilities/vpn.md) |
+| IPv4 直连规则清单 / 持续修复 | 应用与地址规则、系统授权安装/应用、常驻修复、真实状态校验、保存同步与停用撤销 | `be/services/vpn_bypass.py`、`be/vpn/bypass_daemon.py`、`fe/features/settings/VpnBypassPanel.vue` | [vpn-bypass](capabilities/vpn-bypass.md) |
 
 ### 服务管理
 

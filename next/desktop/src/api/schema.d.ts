@@ -1845,6 +1845,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vpn/bypass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_vpn_bypass_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/bypass/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate */
+        post: operations["activate_api_vpn_bypass_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/bypass/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate */
+        post: operations["deactivate_api_vpn_bypass_deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/bypass/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export */
+        post: operations["export_api_vpn_bypass_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpn/bypass/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Settings */
+        patch: operations["settings_api_vpn_bypass_settings_patch"];
+        trace?: never;
+    };
+    "/api/vpn/bypass/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sweep */
+        post: operations["sweep_api_vpn_bypass_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vpn/connect": {
         parameters: {
             query?: never;
@@ -2680,6 +2782,149 @@ export interface components {
         BrowserProfileCleared: {
             /** Cleared */
             cleared: boolean;
+        };
+        /** BypassActionRequest */
+        BypassActionRequest: {
+            /** Revision */
+            revision: number;
+        };
+        /** BypassApp */
+        BypassApp: {
+            /** Application Path */
+            application_path?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Executable Path */
+            executable_path?: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** BypassExport */
+        BypassExport: {
+            /** Config Json */
+            config_json: string;
+            /** Helper Source */
+            helper_source: string;
+            /** Instructions */
+            instructions: string[];
+            /** Launchd Plist */
+            launchd_plist: string;
+            /** Runtime Requirement */
+            runtime_requirement: string;
+        };
+        /** BypassExportRequest */
+        BypassExportRequest: {
+            /** Python Path */
+            python_path: string;
+        };
+        /** BypassSettingsWrite */
+        BypassSettingsWrite: {
+            /** Revision */
+            revision: number;
+            settings: components["schemas"]["VpnBypassConfig"];
+        };
+        /** BypassSnapshot */
+        BypassSnapshot: {
+            /** Revision */
+            revision: number;
+            settings: components["schemas"]["VpnBypassConfig"];
+            status?: components["schemas"]["BypassStatus"];
+        };
+        /** BypassStatus */
+        BypassStatus: {
+            /** Errors */
+            errors?: string[];
+            /**
+             * Installed
+             * @default false
+             */
+            installed: boolean;
+            /** Last Sweep At */
+            last_sweep_at?: number | null;
+            /** Limitations */
+            limitations?: string[];
+            /**
+             * Message
+             * @default 尚未安装后台助手；保存配置不代表规则已生效。
+             */
+            message: string;
+            /**
+             * Mode
+             * @default managed
+             * @constant
+             */
+            mode: "managed";
+            /**
+             * Running
+             * @default false
+             */
+            running: boolean;
+            /**
+             * State
+             * @default not_installed
+             * @enum {string}
+             */
+            state: "not_installed" | "stopped" | "pending" | "active" | "degraded" | "error";
+            /**
+             * Synced
+             * @default false
+             */
+            synced: boolean;
+            /** Targets */
+            targets?: components["schemas"]["BypassTargetStatus"][];
+        };
+        /** BypassSweepRequest */
+        BypassSweepRequest: {
+            /**
+             * Apply
+             * @default false
+             */
+            apply: boolean;
+        };
+        /** BypassSweepResult */
+        BypassSweepResult: {
+            /**
+             * Applied
+             * @default false
+             * @constant
+             */
+            applied: false;
+            /** Errors */
+            errors: string[];
+            /** Gateway */
+            gateway: string | null;
+            /** Interface */
+            interface: string | null;
+            /** Message */
+            message: string;
+            /** Requires Privilege */
+            requires_privilege: boolean;
+            /** Targets */
+            targets: string[];
+        };
+        /** BypassTargetStatus */
+        BypassTargetStatus: {
+            /** Gateway */
+            gateway?: string | null;
+            /** Interface */
+            interface?: string | null;
+            /**
+             * Owned
+             * @default false
+             */
+            owned: boolean;
+            /** Target */
+            target: string;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
         };
         /** CheckResponse */
         CheckResponse: {
@@ -5607,6 +5852,32 @@ export interface components {
             username?: string | null;
             /** Verified At */
             verified_at: string;
+        };
+        /** VpnBypassConfig */
+        VpnBypassConfig: {
+            /** Apps */
+            apps?: components["schemas"]["BypassApp"][];
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Gateway */
+            gateway?: string | null;
+            /** Interface */
+            interface?: string | null;
+            /**
+             * Interval S
+             * @default 20
+             */
+            interval_s: number;
+            /**
+             * Retention S
+             * @default 300
+             */
+            retention_s: number;
+            /** Targets */
+            targets?: string[];
         };
         /** VpnClient */
         VpnClient: {
@@ -11057,6 +11328,191 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserProfileCleared"];
+                };
+            };
+        };
+    };
+    status_api_vpn_bypass_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BypassSnapshot"];
+                };
+            };
+        };
+    };
+    activate_api_vpn_bypass_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BypassSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_api_vpn_bypass_deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BypassSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_vpn_bypass_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BypassExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_api_vpn_bypass_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sweep_api_vpn_bypass_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BypassSweepRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BypassSweepResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

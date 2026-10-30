@@ -161,6 +161,9 @@ def create_app(
         ),
         migrations=migrations,
     )
+    from toolbox_backend.services.vpn_bypass import VpnBypassService
+
+    app.state.vpn_bypass_service = VpnBypassService(store)
     app.state.config_store = store
     app.state.settings_service = SettingsService(
         store,
@@ -305,6 +308,9 @@ def create_app(
     from toolbox_backend.api import vpn_routes
 
     app.include_router(vpn_routes.router)
+    from toolbox_backend.api import vpn_bypass_routes
+
+    app.include_router(vpn_bypass_routes.router)
 
     # add_middleware prepends: the last one added is outermost.
     # Resulting order: Host -> CORS -> Auth -> BodyLimit -> routes.

@@ -3,6 +3,10 @@
 ## 这个能力做什么
 控制本机 SASE 客户端（默认 bundle `com.safervpn.osx.smb`，深链协议 `CheckPointSASE`，可选 `HarmonySASE`）：探测连接、一次「运行」按阶梯自愈、用 Playwright 驱动 Chrome 做 SSO 远程登录（含 MFA）、本地算 TOTP、可选用截屏 OCR 自动点「连接/更新」按钮。桌面端在设置 → 服务页的 VPN 卡；TG `/vpn status`、`/vpn on` 也走同一服务。
 
+## 直连分流清单
+
+服务页 VPN 卡中的 IPv4 分流规则、应用/地址维护、系统授权安装、常驻修复与实际状态见 [vpn-bypass](vpn-bypass.md)。首次保存不安装助手，需点「授权安装并应用」；安装后保存同步配置，停用时停止守护并撤销自有路由。
+
 ## 关键文件（均在 `next/` 下）
 
 | 做什么 | 文件 |
