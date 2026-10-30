@@ -89,6 +89,7 @@ for p in \
   lib/python3.14/test lib/python3.14/idlelib lib/python3.14/tkinter lib/python3.14/turtledemo \
   lib/python3.14/ensurepip lib/python3.14/lib2to3 lib/python3.14/pydoc_data lib/python3.14/turtle.py \
   lib/python3.14/config-3.14-darwin lib/python3.14/site-packages/pip \
+  lib/python3.14/site-packages/PyObjCTest \
   lib/python3.14/lib-dynload/_tkinter.cpython-314-darwin.so \
   lib/tcl9.0 lib/tk9.0 lib/tcl9 lib/tk9 lib/itcl4.3.4 lib/thread3.0.1 lib/tdbc1.1.10 \
   lib/libtcl9.0.dylib lib/libtcl9tk9.0.dylib lib/libpython3.14.a \
@@ -102,6 +103,8 @@ done
 
 find "$RUNTIME_OUT/lib/python3.14" -type d \( -name tests -o -name test -o -name __pycache__ \) \
   -prune -exec rm -rf {} +
+# Debug symbols shipped inside wheels (pyobjc); never loaded at runtime.
+find "$RUNTIME_OUT" -type d -name '*.dSYM' -prune -exec rm -rf {} +
 
 echo "[build_runtime] precompiling bytecode (--invalidation-mode unchecked-hash)..."
 "$PY" -m compileall -q -j 0 --invalidation-mode unchecked-hash "$RUNTIME_OUT/lib/python3.14"
