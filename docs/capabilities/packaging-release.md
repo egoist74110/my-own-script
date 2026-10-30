@@ -7,7 +7,7 @@
 
 | 做什么 | 文件 |
 | --- | --- |
-| 版本号唯一来源 | `next/desktop/src-tauri/tauri.conf.json` 的 `version`（当前 `1.0.0`） |
+| 版本号唯一来源 | `next/desktop/src-tauri/tauri.conf.json` 的 `version`（当前 `1.1.0`） |
 | 版本校验/同步（到 `Cargo.toml`、`desktop/package.json`、`backend/pyproject.toml`） | `next/scripts/sync_version.py`（`--check` / `--write`） |
 | 完整构建流水线 | `next/scripts/build_app.sh` |
 | 后端运行时（PBS Python + 依赖 + MCP 资源，离线） | `next/scripts/build_runtime.sh`、`next/build/app-resources/backend/` |

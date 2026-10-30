@@ -1,6 +1,6 @@
 [package]
 name = "toolbox-desktop"
-version = "1.0.0"
+version = "1.1.0"
 description = "TOOLBOX desktop shell (Tauri 2): window, tray and Python backend supervision"
 edition = "2021"
 rust-version = "1.85"
