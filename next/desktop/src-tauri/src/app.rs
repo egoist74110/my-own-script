@@ -284,7 +284,13 @@ pub fn run() {
             cfg.on_status = Some(Arc::new(move |status: &Status| {
                 // Payload is {state, pid, restarts}; never the token.
                 let _ = handle.emit(STATUS_EVENT, status);
-                let _ = status_item.set_text(status_label(status));
+                // Fire-and-forget: set_text from a worker blocks on the main thread,
+                // which may itself be blocked in RunEvent::Exit awaiting this shutdown.
+                let item = status_item.clone();
+                let label = status_label(status);
+                let _ = handle.run_on_main_thread(move || {
+                    let _ = item.set_text(label);
+                });
             }));
             cfg.log = Arc::new(|line| eprintln!("[toolbox] {line}"));
             // Supervisor::start needs a Tokio context.
@@ -372,7 +378,11 @@ pub fn run() {
             // skipped ExitRequested; idempotent with begin_quit.
             if let Some(state) = app.try_state::<AppState>() {
                 let supervisor = state.supervisor.clone();
-                tauri::async_runtime::block_on(async move { supervisor.shutdown().await });
+                // Bounded: never let a stuck shutdown hang the process on exit.
+                let _ = tauri::async_runtime::block_on(async move {
+                    tokio::time::timeout(std::time::Duration::from_secs(10), supervisor.shutdown())
+                        .await
+                });
             }
         }
         _ => {}
